@@ -4,8 +4,8 @@
 
 | 闸门 | 状态 | 证据 |
 |---|---|---|
-| Git 仓库初始化 | 待最终提交 | 已准备忽略规则和基线文件 |
-| Git 工作区干净 | 待最终提交 | 完成基线提交后复核 |
+| Git 仓库初始化 | PASS | `main` 分支，基线提交 `83346aa` |
+| Git 工作区干净 | PASS | 基线提交后无未提交文件 |
 | 项目 Python 隔离 | PASS | `.venv` 使用 Python 3.12.10 |
 | 依赖锁存在 | PASS | `uv.lock` 已生成 |
 | Docker 可用 | PASS | Docker Server 与 Compose 正常 |
@@ -17,6 +17,7 @@
 | 未提交真实密钥 | PASS | 仅保留 `.env.example` 和开发占位值 |
 | Bootstrap 已文档化 | PASS | Windows/Bash bootstrap 与 dev 脚本齐备 |
 | Compose 配置 | PASS | API + PostgreSQL 配置可解析 |
+| 干净容器重建 | PASS | Python 3.12-slim 从锁文件构建，迁移和 `/health` 通过 |
 
 当前已验证命令：
 
@@ -30,4 +31,6 @@ uv run uvicorn apps.control_plane.api:app
 GET /health
 ```
 
-剩余 Gate 动作仅为 Git 基线提交与提交后干净状态复核。
+**Environment Gate：PASS。**
+
+工程基线已经建立，可以进入下一阶段；领域持久化仍需从内存 Repository 迁移到 PostgreSQL，这是业务实现增量，不再是环境阻塞项。
