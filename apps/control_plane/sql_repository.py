@@ -377,6 +377,25 @@ class SqlAlchemyRepository:
                 _iso(row.created_at),
             )
 
+    def list_approvals(self) -> list[Approval]:
+        with Session(self.engine) as session:
+            rows = session.scalars(select(ApprovalRow).order_by(ApprovalRow.created_at.desc())).all()
+        return [
+            Approval(
+                row.action,
+                row.resource_type,
+                row.resource_id,
+                row.requested_by,
+                row.payload_json,
+                ApprovalStatus(row.status),
+                row.decided_by,
+                row.decision_reason,
+                row.id,
+                _iso(row.created_at),
+            )
+            for row in rows
+        ]
+
     def save_approval(self, approval: Approval) -> Approval:
         with Session(self.engine) as session, session.begin():
             row = session.get(ApprovalRow, approval.id)

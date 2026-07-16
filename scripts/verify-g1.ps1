@@ -123,6 +123,8 @@ $result = [ordered]@{
     evidence_ledger = $false
     sku_episode_intake = $false
     passport_human_review = $false
+    supplier_comparison_intake = $false
+    procurement_dual_control = $false
     sourcing_evidence_gate = $false
     operations_readiness = $false
     passport_evidence_gate = $false
@@ -165,8 +167,13 @@ try {
     $env:KJDS_REPOSITORY = "postgres"
     $env:KJDS_SHADOW_MODE = "true"
     $env:KJDS_API_KEY = "g1-smoke-" + [guid]::NewGuid().ToString("N")
+    $ApproverApiKey = "g1-approver-" + [guid]::NewGuid().ToString("N")
     $env:KJDS_API_ACTOR = "g1-verifier"
     $env:KJDS_API_ROLES = "operator,reviewer,approver,risk,admin"
+    $ApiCredentials = @{}
+    $ApiCredentials[$env:KJDS_API_KEY] = @{ actor = "g1-verifier"; roles = @("operator", "reviewer", "admin") }
+    $ApiCredentials[$ApproverApiKey] = @{ actor = "g1-independent-approver"; roles = @("approver") }
+    $env:KJDS_API_KEYS_JSON = $ApiCredentials | ConvertTo-Json -Compress
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
@@ -227,6 +234,7 @@ try {
     $sku = "G1-SMOKE-" + (Get-Date -Format "yyyyMMddHHmmss")
     $body = @{ sku = $sku; name = "Disposable G-1 smoke product" } | ConvertTo-Json
     $headers = @{ "X-KJDS-API-Key" = $env:KJDS_API_KEY }
+    $approverHeaders = @{ "X-KJDS-API-Key" = $ApproverApiKey }
     $unauthorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products"
     $invalid = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers @{ "X-KJDS-API-Key" = "invalid" }
     $authorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers $headers
@@ -468,6 +476,85 @@ try {
         throw "Passport immutable evidence gate smoke failed"
     }
     $result.passport_evidence_gate = $true
+
+    $comparisonOffers = @(1..3 | ForEach-Object {
+        @{
+            supplier_ref = "g1-factory-$_"
+            platform = "1688"
+            external_id = "G1-COMPARE-$sku-$_"
+            source_url = "https://example.com/g1-offer-$_"
+            title = "G-1 comparison supplier $_"
+            currency = "CNY"
+            unit_price = 30 + $_
+            source_to_cny_rate = 1
+            min_order_quantity = 100
+            weight_kg = 0.5
+            length_cm = 30
+            width_cm = 20
+            height_cm = 10
+            domestic_logistics_per_unit = 2
+            attributes = @{}
+            media = @()
+        }
+    })
+    $comparisonProfitInputs = @{
+        sale_price_rub = 1800
+        rub_per_cny = 12
+        international_freight_cny_per_kg = 30
+        packaging_cny = 2
+        last_mile_cny = 15
+        customs_rate = 0.05
+        platform_fee_rate = 0.15
+        advertising_rate = 0.08
+        return_reserve_rate = 0.04
+        other_cost_cny = 0
+    }
+    $comparisonForm = @{
+        product_id = $product.id
+        effective_at = "2026-07-16T00:00:00+08:00"
+        offers_json = $comparisonOffers | ConvertTo-Json -Depth 5 -Compress
+        profit_inputs_json = $comparisonProfitInputs | ConvertTo-Json -Compress
+        offer_evidence_1 = Get-Item $EpisodeSmokeFiles[0]
+        offer_evidence_2 = Get-Item $EpisodeSmokeFiles[1]
+        offer_evidence_3 = Get-Item $EpisodeSmokeFiles[2]
+        assumption_evidence = Get-Item $EvidenceSmokeFile
+    }
+    $comparisonIntake = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/comparison-intake" -Method Post -Headers $headers -Form $comparisonForm
+    $comparisonRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/comparison-intake" -Method Post -Headers $headers -Form $comparisonForm
+    $comparison = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/comparisons/$($product.id)" -Headers $headers
+    if (
+        $comparisonIntake.offers.Count -ne 3 -or
+        $comparisonRetry.scenarios[0].id -ne $comparisonIntake.scenarios[0].id -or
+        $comparison.supplier_count -lt 3 -or
+        -not $comparison.ready_for_procurement_review
+    ) {
+        throw "Three-supplier evidence comparison smoke failed"
+    }
+    $result.supplier_comparison_intake = $true
+
+    $selectedOffer = $comparisonIntake.offers[0]
+    $selectedScenario = $comparisonIntake.scenarios[0]
+    $procurementBody = @{
+        product_id = $product.id
+        offer_id = $selectedOffer.id
+        scenario_id = $selectedScenario.id
+        quantity = $selectedOffer.min_order_quantity
+        rationale = "G-1 evidence-backed three-supplier comparison"
+    } | ConvertTo-Json
+    $procurementApproval = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/procurement-candidates" -Method Post -Headers $headers -ContentType "application/json" -Body $procurementBody
+    $selfApprovalStatus = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/approvals/$($procurementApproval.id)/decision" -Method Post -Headers $headers -ContentType "application/json" -Body (@{ approved = $true; reason = "self approval must fail" } | ConvertTo-Json)
+    $approvedProcurement = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/approvals/$($procurementApproval.id)/decision" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{ approved = $true; reason = "Independent G-1 approval" } | ConvertTo-Json)
+    $approvalQueue = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/approvals" -Headers $headers
+    if (
+        $procurementApproval.status -ne "pending" -or
+        $selfApprovalStatus -ne 422 -or
+        $approvedProcurement.status -ne "approved" -or
+        $approvedProcurement.decided_by -ne "g1-independent-approver" -or
+        -not ($approvalQueue | Where-Object { $_.id -eq $procurementApproval.id })
+    ) {
+        throw "Procurement dual-control approval smoke failed"
+    }
+    $result.procurement_dual_control = $true
 
     $orderExternalId = "G1-ORDER-" + [guid]::NewGuid().ToString("N")
     @(

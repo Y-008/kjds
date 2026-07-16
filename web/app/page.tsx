@@ -62,6 +62,20 @@ type PassportReview = {
     created_at: string;
   };
 };
+type ProductIdentity = { id: string; sku: string; name: string };
+type SourcingComparison = {
+  product: ProductIdentity;
+  supplier_count: number;
+  offer_count: number;
+  scenario_count: number;
+  ready_for_procurement_review: boolean;
+  rows: Array<{
+    offer: { id: string; supplier_ref: string; platform: string; title: string; unit_price: string; currency: string; min_order_quantity: number; evidence_ref: string };
+    scenario: null | { id: string; cm3_cny: string; cm3_rate: string; break_even_price_rub: string; evidence: string[] };
+    has_positive_cm3: boolean;
+  }>;
+};
+type ApprovalRecord = { id: string; action: string; resource_id: string; status: string; requested_by: string; payload: Record<string, unknown> };
 type GateRequirement = {
   id: string;
   title: string;
@@ -98,6 +112,9 @@ export default function Home() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [sourceConnectors, setSourceConnectors] = useState<SourceConnector[]>([]);
   const [offers, setOffers] = useState<unknown[]>([]);
+  const [products, setProducts] = useState<ProductIdentity[]>([]);
+  const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
+  const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
   const [skuReadiness, setSkuReadiness] = useState<ProductReadiness[]>([]);
   const [passportReviews, setPassportReviews] = useState<PassportReview[]>([]);
   const [gateReadiness, setGateReadiness] = useState<GateReadiness | null>(null);
@@ -106,10 +123,12 @@ export default function Home() {
   const [skuUploading, setSkuUploading] = useState(false);
   const [reviewingKey, setReviewingKey] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [sourcingUploading, setSourcingUploading] = useState(false);
+  const [procurementDrafts, setProcurementDrafts] = useState<Record<string, { quantity: string; rationale: string }>>({});
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -117,6 +136,7 @@ export default function Home() {
       fetch("/backend/v1/products", { cache: "no-store" }),
       fetch("/backend/v1/operations/readiness", { cache: "no-store" }),
       fetch("/backend/v1/passport-reviews", { cache: "no-store" }),
+      fetch("/backend/v1/approvals", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -124,8 +144,10 @@ export default function Home() {
     if (offersResponse.ok) setOffers(await offersResponse.json());
     if (gateResponse.ok) setGateReadiness(await gateResponse.json());
     if (reviewResponse.ok) setPassportReviews(await reviewResponse.json());
+    if (approvalsResponse.ok) setApprovals(await approvalsResponse.json());
     if (productsResponse.ok) {
-      const products: { id: string }[] = await productsResponse.json();
+      const products: ProductIdentity[] = await productsResponse.json();
+      setProducts(products);
       const readiness = await Promise.all(
         products.slice(0, 3).map(async (product) => {
           const response = await fetch(`/backend/v1/products/${product.id}/readiness`, { cache: "no-store" });
@@ -133,6 +155,11 @@ export default function Home() {
         }),
       );
       setSkuReadiness(readiness.filter((item): item is ProductReadiness => item !== null));
+      const comparisonRows = await Promise.all(products.slice(0, 3).map(async (product) => {
+        const response = await fetch(`/backend/v1/sourcing/comparisons/${product.id}`, { cache: "no-store" });
+        return response.ok ? response.json() as Promise<SourcingComparison> : null;
+      }));
+      setComparisons(comparisonRows.filter((item): item is SourcingComparison => item !== null && item.offer_count > 0));
     }
   }, []);
 
@@ -268,8 +295,61 @@ export default function Home() {
     }
   }
 
+  async function uploadSupplierComparison(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
+    const file = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).files?.[0];
+    const evidenceFiles = [1, 2, 3].map((index) => file(`supplier_evidence_${index}`));
+    const assumptions = file("assumption_evidence");
+    if (evidenceFiles.some((item) => !item) || !assumptions) return;
+    const offerRows = [1, 2, 3].map((index) => ({
+      supplier_ref: value(`supplier_ref_${index}`), platform: value(`platform_${index}`), external_id: value(`external_id_${index}`),
+      source_url: value(`source_url_${index}`), title: value(`offer_title_${index}`), currency: value(`currency_${index}`),
+      unit_price: value(`unit_price_${index}`), source_to_cny_rate: value(`source_to_cny_rate_${index}`),
+      min_order_quantity: Number(value(`moq_${index}`)), weight_kg: value(`supplier_weight_${index}`),
+      length_cm: value(`supplier_length_${index}`), width_cm: value(`supplier_width_${index}`), height_cm: value(`supplier_height_${index}`),
+      domestic_logistics_per_unit: value(`domestic_logistics_${index}`), attributes: {}, media: [],
+    }));
+    const profitInputs = {
+      sale_price_rub: value("sale_price_rub"), rub_per_cny: value("rub_per_cny"),
+      international_freight_cny_per_kg: value("international_freight"), packaging_cny: value("packaging_cny"),
+      last_mile_cny: value("last_mile_cny"), customs_rate: value("customs_rate"), platform_fee_rate: value("platform_fee_rate"),
+      advertising_rate: value("advertising_rate"), return_reserve_rate: value("return_reserve_rate"), other_cost_cny: value("other_cost_cny"),
+    };
+    const body = new FormData();
+    body.append("product_id", value("sourcing_product_id")); body.append("effective_at", new Date().toISOString());
+    body.append("offers_json", JSON.stringify(offerRows)); body.append("profit_inputs_json", JSON.stringify(profitInputs));
+    evidenceFiles.forEach((item, index) => body.append(`offer_evidence_${index + 1}`, item as File));
+    body.append("assumption_evidence", assumptions);
+    setSourcingUploading(true); setNotice("正在固化三家报价并计算可比 CM3…");
+    try {
+      const response = await fetch("/backend/v1/sourcing/comparison-intake", { method: "POST", body });
+      const result = await response.json();
+      setNotice(response.ok ? `${result.comparison.product.sku} 已完成三家证据化报价比较` : result.detail ?? "报价比较录入失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法提交供应商比较，请检查服务状态"); }
+    finally { setSourcingUploading(false); }
+  }
+
+  async function requestProcurement(comparison: SourcingComparison, row: SourcingComparison["rows"][number]) {
+    if (!row.scenario) return;
+    const draft = procurementDrafts[row.offer.id] ?? { quantity: String(row.offer.min_order_quantity), rationale: "" };
+    if (!draft.rationale.trim()) { setNotice("提交采购审批前必须填写选择理由"); return; }
+    try {
+      const response = await fetch("/backend/v1/sourcing/procurement-candidates", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: comparison.product.id, offer_id: row.offer.id, scenario_id: row.scenario.id, quantity: Number(draft.quantity), rationale: draft.rationale }),
+      });
+      const result = await response.json();
+      setNotice(response.ok ? `采购候选已进入双人审批：${result.id}` : result.detail ?? "采购审批申请失败");
+      if (response.ok) await load();
+    } catch { setNotice("无法提交采购审批，请检查服务状态"); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
+  const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
 
   return (
     <main className="shell">
@@ -400,6 +480,45 @@ export default function Home() {
             </article>;
           })}</div> : <div className="empty"><CheckCircle2 size={25} /><strong>没有待审核 Passport</strong><p>新的 SKU Episode 提交后会自动进入这里。</p></div>}
         </section>
+
+        <section className="sourcing-intake-panel">
+          <div className="panel-title"><div><p className="eyebrow">THREE-QUOTE GATE</p><h3>三家供应商证据化比价</h3></div><span className="badge">{pendingProcurementApprovals} 项采购待审批</span></div>
+          <form className="sourcing-intake" onSubmit={uploadSupplierComparison}>
+            <div className="sourcing-common">
+              <label>候选 SKU<select name="sourcing_product_id" required><option value="">选择 SKU</option>{products.map((item) => <option value={item.id} key={item.id}>{item.sku} · {item.name}</option>)}</select></label>
+              <label>目标售价 RUB<input name="sale_price_rub" type="number" min="0.01" step="0.01" required /></label><label>RUB/CNY<input name="rub_per_cny" type="number" min="0.0001" step="0.0001" required /></label>
+              <label>国际运费 CNY/kg<input name="international_freight" type="number" min="0" step="0.01" required /></label><label>包装 CNY<input name="packaging_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+              <label>尾程 CNY<input name="last_mile_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>关税率<input name="customs_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label>
+              <label>平台费率<input name="platform_fee_rate" type="number" min="0" max="0.9999" step="0.0001" required /></label><label>广告率<input name="advertising_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label>
+              <label>退货准备率<input name="return_reserve_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label><label>其他成本 CNY<input name="other_cost_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+              <label>利润假设证据<input name="assumption_evidence" type="file" required /></label>
+            </div>
+            <div className="supplier-entry-grid">{[1, 2, 3].map((index) => <details open key={index}><summary><span>{index}</span><strong>供应商 {index}</strong><small>原始报价与实测条件</small></summary><div className="supplier-fields">
+              <label>供应商标识<input name={`supplier_ref_${index}`} required /></label><label>来源平台<select name={`platform_${index}`} defaultValue="1688"><option value="1688">1688</option><option value="alibaba">Alibaba</option><option value="manual">线下/人工</option></select></label>
+              <label>报价快照编号<input name={`external_id_${index}`} required /></label><label>商品标题<input name={`offer_title_${index}`} required /></label>
+              <label className="wide">原始链接<input name={`source_url_${index}`} type="url" required /></label><label>币种<input name={`currency_${index}`} defaultValue="CNY" maxLength={3} required /></label>
+              <label>单价<input name={`unit_price_${index}`} type="number" min="0.01" step="0.01" required /></label><label>兑 CNY 汇率<input name={`source_to_cny_rate_${index}`} type="number" min="0.0001" step="0.0001" defaultValue="1" required /></label>
+              <label>MOQ<input name={`moq_${index}`} type="number" min="1" required /></label><label>重量 kg<input name={`supplier_weight_${index}`} type="number" min="0.001" step="0.001" required /></label>
+              <label>长 cm<input name={`supplier_length_${index}`} type="number" min="0" step="0.1" defaultValue="0" required /></label><label>宽 cm<input name={`supplier_width_${index}`} type="number" min="0" step="0.1" defaultValue="0" required /></label>
+              <label>高 cm<input name={`supplier_height_${index}`} type="number" min="0" step="0.1" defaultValue="0" required /></label><label>国内物流/件<input name={`domestic_logistics_${index}`} type="number" min="0" step="0.01" defaultValue="0" required /></label>
+              <label className="wide">报价证据<input name={`supplier_evidence_${index}`} type="file" required /></label>
+            </div></details>)}</div>
+            <div className="intake-submit"><p>三份报价和共同利润假设都会哈希固化；系统只生成比较与审批申请，不会自动采购。</p><button disabled={sourcingUploading}>{sourcingUploading ? "正在比较…" : "建立三家报价比较"}</button></div>
+          </form>
+        </section>
+
+        {comparisons.length > 0 && <section className="comparison-panel">
+          <div className="panel-title"><div><p className="eyebrow">SOURCING DECISION</p><h3>报价与 CM3 比较</h3></div><span className="gate ready">仅人工提交采购</span></div>
+          {comparisons.map((comparison) => <div className="comparison-group" key={comparison.product.id}><div className="comparison-title"><strong>{comparison.product.sku} · {comparison.product.name}</strong><span>{comparison.supplier_count}/3 家供应商</span></div><div className="comparison-grid">{comparison.rows.map((row, index) => {
+            const draft = procurementDrafts[row.offer.id] ?? { quantity: String(row.offer.min_order_quantity), rationale: "" };
+            const passportReady = skuReadiness.find((item) => item.product.id === comparison.product.id)?.ready_for_validation;
+            return <article className="comparison-card" key={row.offer.id}><div className="rank">#{index + 1}</div><strong>{row.offer.supplier_ref}</strong><small>{row.offer.platform} · {row.offer.unit_price} {row.offer.currency} · MOQ {row.offer.min_order_quantity}</small><div className="cm3"><span>预计 CM3</span><b>{row.scenario ? `${row.scenario.cm3_cny} CNY` : "缺少场景"}</b><small>{row.scenario ? `${(Number(row.scenario.cm3_rate) * 100).toFixed(1)}% · 保本价 ${row.scenario.break_even_price_rub} RUB` : ""}</small></div>
+              <label>采购数量<input type="number" min={row.offer.min_order_quantity} value={draft.quantity} onChange={(event) => setProcurementDrafts((current) => ({ ...current, [row.offer.id]: { ...draft, quantity: event.target.value } }))} /></label>
+              <label>选择理由<textarea value={draft.rationale} onChange={(event) => setProcurementDrafts((current) => ({ ...current, [row.offer.id]: { ...draft, rationale: event.target.value } }))} placeholder="为什么选择它，而不是另外两家？" /></label>
+              <button disabled={!comparison.ready_for_procurement_review || !passportReady || !row.has_positive_cm3} onClick={() => requestProcurement(comparison, row)}>提交双人采购审批</button>{!passportReady && <em>需先批准三本 Passport</em>}
+            </article>;
+          })}</div></div>)}
+        </section>}
 
         <section className="metrics">
           <article><span className="metric-icon green"><CircleDollarSign /></span><div><p>CM3 净利润</p><strong>待导入</strong><small>真实费用齐全后计算</small></div></article>

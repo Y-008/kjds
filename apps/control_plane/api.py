@@ -38,10 +38,11 @@ from .security import (
 from .services import CommerceService
 from .source_connectors import source_connector_catalog
 from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOffer
+from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeService
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.11.0"
+APP_VERSION = "0.12.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -64,6 +65,7 @@ finance = FinanceService(engine)
 automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
 sourcing_store = SqlSourcingStore(engine)
 sourcing = SourcingService(sourcing_store, repo, evidence_validator=evidence.require_valid)
+sourcing_intake = SupplierComparisonIntakeService(sourcing=sourcing, evidence=evidence)
 readiness = GateReadinessService(
     commerce=commerce,
     sourcing_store=sourcing_store,
@@ -292,6 +294,16 @@ class ProfitScenarioInput(BaseModel):
     return_reserve_rate: Decimal = Decimal("0")
     other_cost_cny: Decimal = Decimal("0")
     evidence: list[str] = Field(min_length=1)
+
+
+class ProcurementCandidateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: str
+    offer_id: str
+    scenario_id: str
+    quantity: int = Field(ge=1)
+    rationale: str = Field(min_length=1, max_length=2000)
 
 
 class OzonListingDraftInput(BaseModel):
@@ -628,6 +640,130 @@ def capture_supplier_offer(
 @app.get("/v1/sourcing/offers")
 def list_supplier_offers(limit: int = 100):
     return run(lambda: sourcing_store.list_offers(min(max(limit, 1), 500)))
+
+
+@app.post("/v1/sourcing/comparison-intake", status_code=201)
+async def capture_supplier_comparison(
+    product_id: Annotated[str, Form()],
+    effective_at: Annotated[str, Form()],
+    offers_json: Annotated[str, Form()],
+    profit_inputs_json: Annotated[str, Form()],
+    offer_evidence_1: Annotated[UploadFile, File()],
+    offer_evidence_2: Annotated[UploadFile, File()],
+    offer_evidence_3: Annotated[UploadFile, File()],
+    assumption_evidence: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    try:
+        raw_offers = json.loads(offers_json)
+        raw_inputs = json.loads(profit_inputs_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="Offer and profit input payloads must be valid JSON") from exc
+    if not isinstance(raw_offers, list) or len(raw_offers) != 3 or not isinstance(raw_inputs, dict):
+        raise HTTPException(status_code=422, detail="Exactly three offers and one profit input object are required")
+    offer_values = []
+    for raw_offer in raw_offers:
+        if not isinstance(raw_offer, dict):
+            raise HTTPException(status_code=422, detail="Every supplier offer must be an object")
+        validated = SupplierOfferInput(
+            **raw_offer,
+            product_id=product_id,
+            evidence_ref="pending-capture",
+        ).model_dump()
+        validated.pop("product_id")
+        validated.pop("evidence_ref")
+        offer_values.append(validated)
+    validated_inputs = ProfitScenarioInput(
+        **raw_inputs,
+        offer_id="pending-capture",
+        evidence=["pending-capture"],
+    ).model_dump()
+    validated_inputs.pop("offer_id")
+    validated_inputs.pop("evidence")
+    uploads = [offer_evidence_1, offer_evidence_2, offer_evidence_3]
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    payloads = []
+    for values, upload in zip(offer_values, uploads, strict=True):
+        content = await upload.read(max_bytes + 1)
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail="Supplier offer evidence exceeds size limit")
+        payloads.append(
+            OfferEvidencePayload(
+                offer_data=values,
+                content=content,
+                filename=upload.filename or "supplier-offer.bin",
+                content_type=upload.content_type or "application/octet-stream",
+            )
+        )
+    assumption_content = await assumption_evidence.read(max_bytes + 1)
+    if len(assumption_content) > max_bytes:
+        raise HTTPException(status_code=413, detail="Profit assumption evidence exceeds size limit")
+    return run(
+        lambda: sourcing_intake.ingest(
+            product_id=product_id,
+            effective_at=effective_at,
+            offers=payloads,
+            profit_inputs=ProfitInputs(**validated_inputs),
+            assumption_content=assumption_content,
+            assumption_filename=assumption_evidence.filename or "profit-assumptions.bin",
+            assumption_content_type=assumption_evidence.content_type or "application/octet-stream",
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/sourcing/comparisons/{product_id}")
+def compare_supplier_offers(product_id: str):
+    return run(lambda: sourcing.compare_product_offers(product_id))
+
+
+@app.post("/v1/sourcing/procurement-candidates", status_code=201)
+def request_procurement_candidate(
+    body: ProcurementCandidateInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+
+    def request():
+        comparison = sourcing.compare_product_offers(body.product_id)
+        if not comparison["ready_for_procurement_review"]:
+            raise ValueError("Three evidence-backed supplier offers and CM3 scenarios are required")
+        selected = next(
+            (
+                item
+                for item in comparison["rows"]
+                if item["offer"].id == body.offer_id
+                and item["scenario"] is not None
+                and item["scenario"].id == body.scenario_id
+            ),
+            None,
+        )
+        if selected is None:
+            raise ValueError("Selected offer and scenario are not part of this product comparison")
+        if selected["scenario"].cm3_cny <= 0:
+            raise ValueError("Procurement candidate requires positive expected CM3")
+        if body.quantity < selected["offer"].min_order_quantity:
+            raise ValueError("Procurement quantity is below supplier MOQ")
+        if not commerce.product_readiness(body.product_id)["ready_for_validation"]:
+            raise ValueError("All three Passports must be approved before procurement review")
+        payload = {
+            **body.model_dump(),
+            "supplier_ref": selected["offer"].supplier_ref,
+            "expected_cm3_cny": str(selected["scenario"].cm3_cny),
+            "expected_cm3_rate": str(selected["scenario"].cm3_rate),
+            "comparison_offer_ids": [item["offer"].id for item in comparison["rows"]],
+            "evidence": selected["scenario"].evidence,
+        }
+        return commerce.request_approval(
+            action="procurement.place_order",
+            resource_type="profit_scenario",
+            resource_id=body.scenario_id,
+            requested_by=principal.actor_id,
+            payload=payload,
+        )
+
+    return run(request)
 
 
 @app.post("/v1/sourcing/profit-scenarios", status_code=201)
@@ -1051,6 +1187,12 @@ def profit(order_id: str):
 def request_approval(body: ApprovalInput, principal: Annotated[Principal, Depends(current_principal)]):
     ensure_role(principal, "operator", "admin")
     return run(lambda: commerce.request_approval(**body.model_dump(), requested_by=principal.actor_id))
+
+
+@app.get("/v1/approvals")
+def list_approvals(principal: Annotated[Principal, Depends(current_principal)]):
+    ensure_role(principal, "operator", "reviewer", "approver", "admin")
+    return run(repo.list_approvals)
 
 
 @app.post("/v1/approvals/{approval_id}/decision")

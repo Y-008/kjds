@@ -303,6 +303,16 @@ class CommerceService:
     ) -> Approval:
         if action not in HIGH_RISK_ACTIONS:
             raise ValueError("Approval endpoint is reserved for registered high-risk actions")
+        for existing in self.repo.list_approvals():
+            if (
+                existing.action == action
+                and existing.resource_type == resource_type
+                and existing.resource_id == resource_id
+                and existing.requested_by == requested_by
+                and existing.payload == payload
+                and existing.status == ApprovalStatus.PENDING
+            ):
+                return existing
         approval = self.repo.add_approval(
             Approval(
                 action=action,

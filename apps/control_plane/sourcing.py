@@ -167,6 +167,9 @@ class SourcingService:
             raise ValueError("Profit assumptions require at least one immutable evidence record")
         evidence_ids = list(dict.fromkeys([offer.evidence_ref, *normalized_assumptions]))
         self.evidence_validator(evidence_ids)
+        for existing in self.store.list_scenarios():
+            if existing.offer_id == offer.id and existing.inputs == inputs and existing.evidence == evidence_ids:
+                return existing
         if inputs.sale_price_rub <= 0 or inputs.rub_per_cny <= 0:
             raise ValueError("Sale price and RUB/CNY rate must be positive")
         rates = [
@@ -217,6 +220,37 @@ class SourcingService:
             evidence=evidence_ids,
         )
         return self.store.save_scenario(scenario)
+
+    def compare_product_offers(self, product_id: str) -> dict:
+        product = self.repository.get_product(product_id)
+        offer_snapshots = [item for item in self.store.list_offers(limit=500) if item.product_id == product_id]
+        latest_by_supplier = {}
+        for offer in offer_snapshots:
+            latest_by_supplier.setdefault(offer.supplier_ref, offer)
+        offers = list(latest_by_supplier.values())
+        latest_scenarios = {}
+        for scenario in self.store.list_scenarios(limit=5000):
+            latest_scenarios.setdefault(scenario.offer_id, scenario)
+        rows = []
+        for offer in offers:
+            scenario = latest_scenarios.get(offer.id)
+            rows.append(
+                {
+                    "offer": offer,
+                    "scenario": scenario,
+                    "has_positive_cm3": bool(scenario and scenario.cm3_cny > 0),
+                }
+            )
+        rows.sort(key=lambda item: item["scenario"].cm3_cny if item["scenario"] else Decimal("-999999"), reverse=True)
+        supplier_count = len({item.supplier_ref for item in offers})
+        return {
+            "product": {"id": product.id, "sku": product.sku, "name": product.name},
+            "supplier_count": supplier_count,
+            "offer_count": len(offers),
+            "scenario_count": sum(item["scenario"] is not None for item in rows),
+            "ready_for_procurement_review": supplier_count >= 3 and len(rows) >= 3 and all(item["scenario"] for item in rows),
+            "rows": rows,
+        }
 
     def create_ozon_listing_draft(
         self,
