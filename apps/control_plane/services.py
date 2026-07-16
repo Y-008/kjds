@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from decimal import Decimal
 
 from .domain import (
@@ -42,8 +43,9 @@ AGENT_POLICIES: dict[str, set[AgentMode]] = {
 
 
 class CommerceService:
-    def __init__(self, repository: Repository) -> None:
+    def __init__(self, repository: Repository, evidence_validator: Callable[[list[str]], None]) -> None:
         self.repo = repository
+        self.evidence_validator = evidence_validator
 
     def create_product(self, *, sku: str, name: str) -> Product:
         product = self.repo.add_product(Product(sku=sku.strip(), name=name.strip()))
@@ -68,6 +70,7 @@ class CommerceService:
                 raise ValueError("Reviewed passport decision must be approved, rejected, or blocked")
             if not evidence:
                 raise ValueError("Reviewed passport requires evidence")
+            self.evidence_validator(evidence)
         previous = self.repo.latest_passports(product_id).get(kind)
         passport = Passport(
             product_id=product_id,
@@ -103,11 +106,24 @@ class CommerceService:
                         "missing_fields": sorted(PASSPORT_REQUIRED_FACTS[kind]),
                         "evidence_count": 0,
                         "approved_by": None,
+                        "evidence_valid": None,
+                        "evidence_error": None,
                     }
                 )
                 continue
-            if passport.is_approved:
+            evidence_valid: bool | None = None
+            evidence_error: str | None = None
+            if passport.approved_by:
+                try:
+                    self.evidence_validator(passport.evidence)
+                    evidence_valid = True
+                except (KeyError, ValueError) as exc:
+                    evidence_valid = False
+                    evidence_error = str(exc)
+            if passport.is_approved and evidence_valid:
                 status = "approved"
+            elif passport.approved_by and evidence_valid is False:
+                status = "invalid_evidence"
             elif passport.is_blocked:
                 status = "blocked"
             elif passport.facts.get("decision") == "approved" and not passport.approved_by:
@@ -122,6 +138,8 @@ class CommerceService:
                     "missing_fields": passport.missing_required_facts,
                     "evidence_count": len(passport.evidence),
                     "approved_by": passport.approved_by,
+                    "evidence_valid": evidence_valid,
+                    "evidence_error": evidence_error,
                 }
             )
         return {
@@ -137,8 +155,8 @@ class CommerceService:
 
     def validate_product(self, product_id: str) -> Product:
         product = self.repo.get_product(product_id)
-        passports = self.repo.latest_passports(product_id)
-        missing = [kind.value for kind in PassportType if kind not in passports or not passports[kind].is_approved]
+        readiness = self.product_readiness(product_id)
+        missing = [item["kind"] for item in readiness["passports"] if item["status"] != "approved"]
         if missing:
             raise ValueError(f"Approved passports required: {', '.join(missing)}")
         product.status = ProductStatus.VALIDATED

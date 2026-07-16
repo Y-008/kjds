@@ -39,7 +39,7 @@ PASSPORT_FACTS = {
 class CoreFlowTest(TestCase):
     def setUp(self):
         self.repo = InMemoryRepository()
-        self.commerce = CommerceService(self.repo)
+        self.commerce = CommerceService(self.repo, evidence_validator=lambda _: None)
         self.market = MarketIntelligenceService(self.repo)
         self.content = ContentGrowthService(self.repo)
         self.product = self.commerce.create_product(sku="TEST-001", name="Test Product")
@@ -71,6 +71,20 @@ class CoreFlowTest(TestCase):
         readiness = self.commerce.product_readiness(self.product.id)
         self.assertFalse(readiness["ready_for_validation"])
         self.assertEqual({item["status"] for item in readiness["passports"]}, {"missing"})
+
+    def test_reviewed_passport_fails_closed_when_evidence_gate_rejects_reference(self):
+        def reject(_):
+            raise ValueError("evidence is not registered")
+
+        self.commerce.evidence_validator = reject
+        with self.assertRaisesRegex(ValueError, "not registered"):
+            self.commerce.add_passport(
+                product_id=self.product.id,
+                kind=PassportType.PRODUCT,
+                facts=PASSPORT_FACTS[PassportType.PRODUCT],
+                evidence=["evidence://untrusted"],
+                approved_by="product-owner",
+            )
 
     def test_rejected_compliance_passport_blocks_validation(self):
         self.commerce.add_passport(

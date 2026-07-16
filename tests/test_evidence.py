@@ -1,3 +1,4 @@
+import pytest
 from sqlalchemy import create_engine, update
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -47,6 +48,24 @@ def test_hash_verification_detects_blob_tampering():
             update(EvidenceBlobRow).where(EvidenceBlobRow.sha256 == record.sha256).values(content_bytes=b"tampered")
         )
     assert service.verify(record.id).valid is False
+
+
+def test_evidence_gate_rejects_unknown_duplicate_and_tampered_references():
+    engine, service = make_service()
+    record = capture(service)
+    service.require_valid([record.id])
+
+    with pytest.raises(KeyError, match="Unknown evidence"):
+        service.require_valid(["evd_missing"])
+    with pytest.raises(ValueError, match="Duplicate evidence"):
+        service.require_valid([record.id, record.id])
+
+    with Session(engine) as session, session.begin():
+        session.execute(
+            update(EvidenceBlobRow).where(EvidenceBlobRow.sha256 == record.sha256).values(content_bytes=b"tampered")
+        )
+    with pytest.raises(ValueError, match="failed hash verification"):
+        service.require_valid([record.id])
 
 
 def test_lineage_links_evidence_to_fact_and_other_evidence():

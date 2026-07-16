@@ -39,7 +39,7 @@ from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOff
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -51,7 +51,8 @@ def build_repository():
 
 repo = build_repository()
 engine = getattr(repo, "engine", None) or create_database_engine()
-commerce = CommerceService(repo)
+evidence = EvidenceService(engine)
+commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
 market = MarketIntelligenceService(repo)
 content = ContentGrowthService(repo)
 imports = OzonImportService(engine)
@@ -62,7 +63,6 @@ sourcing_store = SqlSourcingStore(engine)
 sourcing = SourcingService(sourcing_store, repo)
 authenticator = ApiKeyAuthenticator.from_environment()
 kill_switch = KillSwitchService(engine)
-evidence = EvidenceService(engine)
 providers = {
     "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
     "comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189")),
@@ -779,17 +779,32 @@ def add_passport(
     reviewed = decision in {"approved", "rejected", "blocked"}
     if reviewed:
         ensure_role(principal, "reviewer", "compliance", "admin")
-    return run(
-        lambda: commerce.add_passport(
+    def create_and_link():
+        passport = commerce.add_passport(
             product_id=product_id,
             **body.model_dump(),
             approved_by=principal.actor_id if reviewed else None,
         )
-    )
+        if reviewed:
+            for evidence_id in passport.evidence:
+                evidence.link(
+                    evidence_id=evidence_id,
+                    target_type="passport",
+                    target_id=passport.id,
+                    relationship="supports",
+                    created_by=principal.actor_id,
+                )
+        return passport
+
+    return run(create_and_link)
 
 
 @app.post("/v1/products/{product_id}/validate")
-def validate_product(product_id: str):
+def validate_product(
+    product_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
     return run(lambda: commerce.validate_product(product_id))
 
 

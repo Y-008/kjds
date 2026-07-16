@@ -116,6 +116,7 @@ $result = [ordered]@{
     kill_switch = $false
     api_database_write = $false
     evidence_ledger = $false
+    passport_evidence_gate = $false
     formal_fact_promotion = $false
     finance_reconciliation = $false
     cash_forecast = $false
@@ -160,14 +161,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0007.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0008.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260716_0007"
+    $result.migration = "20260716_0008"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0006")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0007")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0006") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0007") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -255,6 +256,64 @@ try {
         throw "Immutable evidence and lineage smoke failed"
     }
     $result.evidence_ledger = $true
+
+    $passportBodies = @(
+        @{
+            kind = "product"
+            facts = @{
+                decision = "approved"
+                material = "verification-material"
+                intended_use = "G-1 verification only"
+                country_of_origin = "CN"
+                weight_kg = "0.5"
+                dimensions_cm = @{ length = 30; width = 20; height = 10 }
+            }
+            evidence = @($evidenceRecord.id)
+        },
+        @{
+            kind = "compliance"
+            facts = @{
+                decision = "approved"
+                hs_code = "verification-only"
+                eaeu_rules = @("verification-only")
+                eac_requirement = "verification-only"
+                chestny_znak_requirement = "verification-only"
+                russian_labeling = "verification-only"
+                ip_status = "verification-only"
+                transport_restrictions = "verification-only"
+                sellability = "verification-only"
+            }
+            evidence = @($evidenceRecord.id)
+        },
+        @{
+            kind = "quality"
+            facts = @{
+                decision = "approved"
+                golden_sample_ref = "g1://sample"
+                inspection_plan = @("verification-only")
+                packaging_test = "verification-only"
+            }
+            evidence = @($evidenceRecord.id)
+        }
+    )
+    $passportIds = @()
+    foreach ($passportBody in $passportBodies) {
+        $passport = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products/$($product.id)/passports" -Method Post -Headers $headers -ContentType "application/json" -Body ($passportBody | ConvertTo-Json -Depth 6)
+        $passportIds += $passport.id
+    }
+    $validatedProduct = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products/$($product.id)/validate" -Method Post -Headers $headers
+    $validatedReadiness = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products/$($product.id)/readiness" -Headers $headers
+    $passportLineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/lineage" -Headers $headers
+    $linkedPassports = @($passportLineage | Where-Object { $_.to_type -eq "passport" -and $_.to_id -in $passportIds })
+    if (
+        $validatedProduct.status -ne "validated" -or
+        -not $validatedReadiness.ready_for_validation -or
+        @($validatedReadiness.passports | Where-Object { -not $_.evidence_valid }).Count -ne 0 -or
+        $linkedPassports.Count -ne 3
+    ) {
+        throw "Passport immutable evidence gate smoke failed"
+    }
+    $result.passport_evidence_gate = $true
 
     $orderExternalId = "G1-ORDER-" + [guid]::NewGuid().ToString("N")
     @(

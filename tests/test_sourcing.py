@@ -83,7 +83,7 @@ class MemorySourcingStore:
 class SourcingFlowTest(TestCase):
     def setUp(self):
         self.repo = InMemoryRepository()
-        self.commerce = CommerceService(self.repo)
+        self.commerce = CommerceService(self.repo, evidence_validator=lambda _: None)
         self.store = MemorySourcingStore()
         self.sourcing = SourcingService(self.store, self.repo)
         self.offer = self.sourcing.capture_offer(

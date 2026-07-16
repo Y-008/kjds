@@ -222,6 +222,17 @@ class EvidenceService:
         actual = hashlib.sha256(content).hexdigest()
         return EvidenceVerification(record.id, record.sha256, actual, len(content), hmac_compare(record.sha256, actual))
 
+    def require_valid(self, evidence_ids: list[str]) -> None:
+        normalized = [item.strip() for item in evidence_ids if item.strip()]
+        if not normalized:
+            raise ValueError("At least one immutable evidence record is required")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("Duplicate evidence references are not allowed")
+        for evidence_id in normalized:
+            verification = self.verify(evidence_id)
+            if not verification.valid:
+                raise ValueError(f"Evidence failed hash verification: {evidence_id}")
+
     def link(
         self,
         *,

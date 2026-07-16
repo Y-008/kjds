@@ -59,6 +59,8 @@ tests/
 
 `/v1/evidence` 接收原始文件并计算 SHA-256，同时记录来源、证据等级、业务生效时间、系统记录时间和创建人。证据可链接到商品、订单、结算或其他证据；PostgreSQL 触发器禁止修改和删除账本行。默认单文件上限为 10 MB，可通过 `KJDS_EVIDENCE_MAX_BYTES` 调整。
 
+已审核的 Product / Compliance / Quality Passport 只能引用账本中存在且哈希复验通过的证据，重复引用会被拒绝。商品放行时系统会重新复验证据，Passport 版本在 PostgreSQL 中只可追加、不可修改或删除。
+
 ## Ozon 数据合同与正式事实
 
 - `GET /v1/contracts/ozon` 返回 `ozon-v1` 订单、费用、退货和结算合同。
