@@ -39,7 +39,7 @@ from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOff
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.7.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -60,7 +60,7 @@ facts = FactPromotionService(engine)
 finance = FinanceService(engine)
 automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
 sourcing_store = SqlSourcingStore(engine)
-sourcing = SourcingService(sourcing_store, repo)
+sourcing = SourcingService(sourcing_store, repo, evidence_validator=evidence.require_valid)
 authenticator = ApiKeyAuthenticator.from_environment()
 kill_switch = KillSwitchService(engine)
 providers = {
@@ -271,6 +271,7 @@ class ProfitScenarioInput(BaseModel):
     advertising_rate: Decimal = Decimal("0")
     return_reserve_rate: Decimal = Decimal("0")
     other_cost_cny: Decimal = Decimal("0")
+    evidence: list[str] = Field(min_length=1)
 
 
 class OzonListingDraftInput(BaseModel):
@@ -531,9 +532,25 @@ def sourcing_connectors():
 
 
 @app.post("/v1/sourcing/offers", status_code=201)
-def capture_supplier_offer(body: SupplierOfferInput):
+def capture_supplier_offer(
+    body: SupplierOfferInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
     offer = SupplierOffer(**body.model_dump())
-    return run(lambda: sourcing.capture_offer(offer))
+
+    def capture():
+        result = sourcing.capture_offer(offer)
+        evidence.link(
+            evidence_id=result.evidence_ref,
+            target_type="supplier_offer",
+            target_id=result.id,
+            relationship="source_for",
+            created_by=principal.actor_id,
+        )
+        return result
+
+    return run(capture)
 
 
 @app.get("/v1/sourcing/offers")
@@ -542,10 +559,28 @@ def list_supplier_offers(limit: int = 100):
 
 
 @app.post("/v1/sourcing/profit-scenarios", status_code=201)
-def calculate_sourcing_profit(body: ProfitScenarioInput):
+def calculate_sourcing_profit(
+    body: ProfitScenarioInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
     values = body.model_dump()
     offer_id = values.pop("offer_id")
-    return run(lambda: sourcing.calculate_profit(offer_id, ProfitInputs(**values)))
+    assumption_evidence = values.pop("evidence")
+
+    def calculate():
+        result = sourcing.calculate_profit(offer_id, ProfitInputs(**values), assumption_evidence)
+        for evidence_id in result.evidence:
+            evidence.link(
+                evidence_id=evidence_id,
+                target_type="profit_scenario",
+                target_id=result.id,
+                relationship="supports",
+                created_by=principal.actor_id,
+            )
+        return result
+
+    return run(calculate)
 
 
 @app.post("/v1/listings/ozon/drafts", status_code=201)

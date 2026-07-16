@@ -116,6 +116,7 @@ $result = [ordered]@{
     kill_switch = $false
     api_database_write = $false
     evidence_ledger = $false
+    sourcing_evidence_gate = $false
     passport_evidence_gate = $false
     formal_fact_promotion = $false
     finance_reconciliation = $false
@@ -161,23 +162,29 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0008.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0009.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260716_0008"
+    $result.migration = "20260716_0009"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0007")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0008")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0007") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0008") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $result.migration_replay = $true
 
     Write-Output "[G-1] Running Python quality gates"
-    Invoke-External -Command uv -Arguments @("run", "ruff", "check", ".")
+    $pythonFiles = @(
+        git ls-files -- "*.py"
+        Get-ChildItem (Join-Path $Root "migrations\versions") -Filter "*.py" -File |
+            ForEach-Object { [IO.Path]::GetRelativePath($Root, $_.FullName) }
+    ) | Sort-Object -Unique
+    Invoke-External -Command uv -Arguments (@("run", "ruff", "check") + $pythonFiles)
     $result.lint = $true
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "pytest", "-q")
+    $testFiles = @(git ls-files -- "tests/test_*.py")
+    Invoke-External -Command uv -Arguments (@("run", "python", "-m", "pytest", "-q") + $testFiles)
     $result.tests = $true
 
     Write-Output "[G-1] Building isolated web bundle"
@@ -256,6 +263,57 @@ try {
         throw "Immutable evidence and lineage smoke failed"
     }
     $result.evidence_ledger = $true
+
+    $offerExternalId = "G1-OFFER-" + [guid]::NewGuid().ToString("N")
+    $offerBody = @{
+        platform = "1688"
+        external_id = $offerExternalId
+        source_url = "https://detail.1688.com/offer/$offerExternalId.html"
+        title = "G-1 evidence-backed supplier offer"
+        currency = "CNY"
+        unit_price = 50
+        source_to_cny_rate = 1
+        min_order_quantity = 10
+        weight_kg = 0.5
+        length_cm = 30
+        width_cm = 20
+        height_cm = 10
+        domestic_logistics_per_unit = 5
+        evidence_ref = $evidenceRecord.id
+        attributes = @{ verification = "G-1" }
+        media = @()
+    }
+    $offer = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/offers" -Method Post -Headers $headers -ContentType "application/json" -Body ($offerBody | ConvertTo-Json -Depth 5)
+    $sameOffer = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/offers" -Method Post -Headers $headers -ContentType "application/json" -Body ($offerBody | ConvertTo-Json -Depth 5)
+    $changedOfferBody = $offerBody.Clone()
+    $changedOfferBody.unit_price = 49
+    $conflictStatus = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/sourcing/offers" -Method Post -Headers $headers -ContentType "application/json" -Body ($changedOfferBody | ConvertTo-Json -Depth 5)
+    $scenarioBody = @{
+        offer_id = $offer.id
+        sale_price_rub = 1800
+        rub_per_cny = 12
+        international_freight_cny_per_kg = 30
+        packaging_cny = 2
+        last_mile_cny = 10
+        customs_rate = 0.10
+        platform_fee_rate = 0.10
+        advertising_rate = 0.05
+        return_reserve_rate = 0.10
+        other_cost_cny = 0
+        evidence = @($evidenceRecord.id)
+    }
+    $scenario = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/profit-scenarios" -Method Post -Headers $headers -ContentType "application/json" -Body ($scenarioBody | ConvertTo-Json -Depth 5)
+    $sourcingLineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/lineage" -Headers $headers
+    if (
+        $offer.id -ne $sameOffer.id -or
+        $conflictStatus -ne 422 -or
+        [decimal]$scenario.cm3_cny -le 0 -or
+        -not ($sourcingLineage | Where-Object { $_.to_type -eq "supplier_offer" -and $_.to_id -eq $offer.id }) -or
+        -not ($sourcingLineage | Where-Object { $_.to_type -eq "profit_scenario" -and $_.to_id -eq $scenario.id })
+    ) {
+        throw "Sourcing immutable evidence gate smoke failed"
+    }
+    $result.sourcing_evidence_gate = $true
 
     $passportBodies = @(
         @{

@@ -31,18 +31,7 @@ class SqlSourcingStore:
                 :domestic_logistics, :evidence_ref, CAST(:attributes AS jsonb),
                 CAST(:media AS jsonb), :captured_at
             )
-            ON CONFLICT (platform, external_id) DO UPDATE SET
-                source_url = EXCLUDED.source_url, title = EXCLUDED.title,
-                currency = EXCLUDED.currency, unit_price_decimal = EXCLUDED.unit_price_decimal,
-                source_to_cny_rate_decimal = EXCLUDED.source_to_cny_rate_decimal,
-                min_order_quantity = EXCLUDED.min_order_quantity,
-                weight_kg_decimal = EXCLUDED.weight_kg_decimal,
-                length_cm_decimal = EXCLUDED.length_cm_decimal,
-                width_cm_decimal = EXCLUDED.width_cm_decimal,
-                height_cm_decimal = EXCLUDED.height_cm_decimal,
-                domestic_logistics_per_unit_decimal = EXCLUDED.domestic_logistics_per_unit_decimal,
-                evidence_ref = EXCLUDED.evidence_ref, attributes_json = EXCLUDED.attributes_json,
-                media_json = EXCLUDED.media_json, captured_at = EXCLUDED.captured_at
+            ON CONFLICT (platform, external_id) DO NOTHING
             RETURNING id
         """)
         import json
@@ -68,8 +57,45 @@ class SqlSourcingStore:
             "captured_at": datetime.fromisoformat(offer.captured_at),
         }
         with self.engine.begin() as connection:
-            offer.id = connection.execute(statement, params).scalar_one()
-        return offer
+            inserted_id = connection.execute(statement, params).scalar_one_or_none()
+            if inserted_id is not None:
+                offer.id = inserted_id
+                return offer
+            row = (
+                connection.execute(
+                    text("SELECT * FROM source_offers WHERE platform=:platform AND external_id=:external_id"),
+                    {"platform": offer.platform.value, "external_id": offer.external_id},
+                )
+                .mappings()
+                .one()
+            )
+            existing = self._offer(row)
+            if self._offer_payload(existing) != self._offer_payload(offer):
+                raise ValueError(
+                    "Supplier offer idempotency conflict; capture changed terms under a new external snapshot ID"
+                )
+            return existing
+
+    @staticmethod
+    def _offer_payload(offer: SupplierOffer) -> tuple:
+        return (
+            offer.platform,
+            offer.external_id,
+            offer.source_url,
+            offer.title,
+            offer.currency,
+            offer.unit_price,
+            offer.source_to_cny_rate,
+            offer.min_order_quantity,
+            offer.weight_kg,
+            offer.length_cm,
+            offer.width_cm,
+            offer.height_cm,
+            offer.domestic_logistics_per_unit,
+            offer.evidence_ref,
+            offer.attributes,
+            offer.media,
+        )
 
     def get_offer(self, offer_id: str) -> SupplierOffer:
         with self.engine.connect() as connection:

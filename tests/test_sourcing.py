@@ -85,7 +85,7 @@ class SourcingFlowTest(TestCase):
         self.repo = InMemoryRepository()
         self.commerce = CommerceService(self.repo, evidence_validator=lambda _: None)
         self.store = MemorySourcingStore()
-        self.sourcing = SourcingService(self.store, self.repo)
+        self.sourcing = SourcingService(self.store, self.repo, evidence_validator=lambda _: None)
         self.offer = self.sourcing.capture_offer(
             SupplierOffer(
                 platform=SourcePlatform.ALIBABA_1688,
@@ -119,6 +119,7 @@ class SourcingFlowTest(TestCase):
                 advertising_rate=Decimal("0.05"),
                 return_reserve_rate=Decimal("0.10"),
             ),
+            ["evidence://assumptions/ru/2026-07-13"],
         )
 
     def test_profit_scenario_includes_logistics_and_break_even(self):
@@ -127,6 +128,50 @@ class SourcingFlowTest(TestCase):
         self.assertEqual(result.international_logistics_cny, Decimal("15.00"))
         self.assertEqual(result.cm3_cny, Decimal("23.30"))
         self.assertEqual(result.break_even_price_rub, Decimal("1427.20"))
+        self.assertEqual(
+            result.evidence,
+            ["capture://1688/100/2026-07-13", "evidence://assumptions/ru/2026-07-13"],
+        )
+
+    def test_offer_and_scenario_require_valid_evidence(self):
+        rejected = SourcingService(
+            self.store,
+            self.repo,
+            evidence_validator=lambda _: (_ for _ in ()).throw(ValueError("invalid evidence")),
+        )
+        with self.assertRaisesRegex(ValueError, "invalid evidence"):
+            rejected.calculate_profit(
+                self.offer.id,
+                ProfitInputs(
+                    sale_price_rub=Decimal("1800"),
+                    rub_per_cny=Decimal("12"),
+                    international_freight_cny_per_kg=Decimal("30"),
+                    packaging_cny=Decimal("2"),
+                    last_mile_cny=Decimal("10"),
+                    customs_rate=Decimal("0.10"),
+                    platform_fee_rate=Decimal("0.10"),
+                    advertising_rate=Decimal("0.05"),
+                    return_reserve_rate=Decimal("0.10"),
+                ),
+                ["invalid"],
+            )
+
+        with self.assertRaisesRegex(ValueError, "Profit assumptions require"):
+            self.sourcing.calculate_profit(
+                self.offer.id,
+                ProfitInputs(
+                    sale_price_rub=Decimal("1800"),
+                    rub_per_cny=Decimal("12"),
+                    international_freight_cny_per_kg=Decimal("30"),
+                    packaging_cny=Decimal("2"),
+                    last_mile_cny=Decimal("10"),
+                    customs_rate=Decimal("0.10"),
+                    platform_fee_rate=Decimal("0.10"),
+                    advertising_rate=Decimal("0.05"),
+                    return_reserve_rate=Decimal("0.10"),
+                ),
+                [],
+            )
 
     def test_listing_draft_requires_approved_product_passports(self):
         product = self.commerce.create_product(sku="RU-001", name="Storage box")

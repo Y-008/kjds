@@ -61,6 +61,8 @@ tests/
 
 已审核的 Product / Compliance / Quality Passport 只能引用账本中存在且哈希复验通过的证据，重复引用会被拒绝。商品放行时系统会重新复验证据，Passport 版本在 PostgreSQL 中只可追加、不可修改或删除。
 
+供应商报价同样必须引用哈希复验通过的原始证据；利润场景除报价证据外还必须提供价格、汇率、物流、费率等假设的证据。报价和利润场景在 PostgreSQL 中只可追加；同一平台外部报价编号若提交不同内容会返回冲突，不会覆盖历史。证据血缘会分别连接到 `supplier_offer` 与 `profit_scenario`。
+
 ## Ozon 数据合同与正式事实
 
 - `GET /v1/contracts/ozon` 返回 `ozon-v1` 订单、费用、退货和结算合同。

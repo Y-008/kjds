@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
@@ -126,9 +127,15 @@ class SourcingStore(Protocol):
 
 
 class SourcingService:
-    def __init__(self, store: SourcingStore, repository: Repository) -> None:
+    def __init__(
+        self,
+        store: SourcingStore,
+        repository: Repository,
+        evidence_validator: Callable[[list[str]], None],
+    ) -> None:
         self.store = store
         self.repository = repository
+        self.evidence_validator = evidence_validator
 
     def capture_offer(self, offer: SupplierOffer) -> SupplierOffer:
         if offer.unit_price <= 0 or offer.source_to_cny_rate <= 0:
@@ -139,10 +146,21 @@ class SourcingService:
             raise ValueError("Offer source_url must be HTTP(S)")
         if not offer.evidence_ref:
             raise ValueError("Offer evidence is required")
+        self.evidence_validator([offer.evidence_ref])
         return self.store.save_offer(offer)
 
-    def calculate_profit(self, offer_id: str, inputs: ProfitInputs) -> ProfitScenario:
+    def calculate_profit(
+        self,
+        offer_id: str,
+        inputs: ProfitInputs,
+        assumption_evidence: list[str],
+    ) -> ProfitScenario:
         offer = self.store.get_offer(offer_id)
+        normalized_assumptions = [item.strip() for item in assumption_evidence if item.strip()]
+        if not normalized_assumptions:
+            raise ValueError("Profit assumptions require at least one immutable evidence record")
+        evidence_ids = list(dict.fromkeys([offer.evidence_ref, *normalized_assumptions]))
+        self.evidence_validator(evidence_ids)
         if inputs.sale_price_rub <= 0 or inputs.rub_per_cny <= 0:
             raise ValueError("Sale price and RUB/CNY rate must be positive")
         rates = [
@@ -190,7 +208,7 @@ class SourcingService:
             cm3_cny=cm3,
             cm3_rate=cm3_rate,
             break_even_price_rub=break_even_rub,
-            evidence=[offer.evidence_ref],
+            evidence=evidence_ids,
         )
         return self.store.save_scenario(scenario)
 
