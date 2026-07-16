@@ -65,13 +65,21 @@ class CommerceService:
         facts = dict(facts)
         evidence = [item.strip() for item in evidence if item.strip()]
         decision = facts.get("decision")
+        if evidence:
+            self.evidence_validator(evidence)
         if approved_by:
             if decision not in {"approved", "rejected", "blocked"}:
                 raise ValueError("Reviewed passport decision must be approved, rejected, or blocked")
             if not evidence:
                 raise ValueError("Reviewed passport requires evidence")
-            self.evidence_validator(evidence)
         previous = self.repo.latest_passports(product_id).get(kind)
+        if (
+            previous is not None
+            and previous.facts == facts
+            and previous.evidence == evidence
+            and previous.approved_by == approved_by
+        ):
+            return previous
         passport = Passport(
             product_id=product_id,
             kind=kind,

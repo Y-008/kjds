@@ -67,6 +67,8 @@ tests/
 
 `GET /v1/operations/readiness` 按真实数据库事实计算当前阶段门，不接受人工填写“已完成”：三个候选 SKU、三类 Passport、每 SKU 三个不同供应商、正 CM3 场景、Ozon 四类正式事实、费用映射、RUB/CNY 汇率及未知费用都会独立显示。经营负责人和 Ozon 账户证据可以从经营看板直接上传；`POST /v1/operations/gate-evidence` 会自动哈希固化并链接到 `gate_requirement/GOV-001` 或 `gate_requirement/OZN-001`，只有哈希复验通过的证据才计入。前端直接显示每项缺口和下一步，不会把工程骨架冒充为业务放行。
 
+`POST /v1/intake/sku-episodes` 与经营看板的“候选 SKU 一站式录入”会同时建立商品身份、Product / Compliance / Quality Passport 草稿、三份不可变原始证据及血缘。重复提交相同 SKU 与文件会恢复既有对象，不增加虚假版本；同一 SKU 更换商品身份会被拒绝。录入结果始终是待人工审核草稿，不会自动批准合规、采购或上架。
+
 ## Ozon 数据合同与正式事实
 
 - `GET /v1/contracts/ozon` 返回 `ozon-v1` 订单、费用、退货和结算合同。

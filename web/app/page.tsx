@@ -90,6 +90,7 @@ export default function Home() {
   const [gateReadiness, setGateReadiness] = useState<GateReadiness | null>(null);
   const [uploading, setUploading] = useState(false);
   const [gateUploading, setGateUploading] = useState(false);
+  const [skuUploading, setSkuUploading] = useState(false);
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
@@ -174,6 +175,54 @@ export default function Home() {
     }
   }
 
+  async function uploadSkuEpisode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement).value.trim();
+    const lines = (name: string) => value(name).split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    const file = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).files?.[0];
+    const productEvidence = file("product_evidence");
+    const complianceEvidence = file("compliance_evidence");
+    const qualityEvidence = file("quality_evidence");
+    if (!productEvidence || !complianceEvidence || !qualityEvidence) return;
+    const productFacts = {
+      decision: "draft",
+      material: value("material"), intended_use: value("intended_use"), country_of_origin: value("country_of_origin"),
+      weight_kg: value("weight_kg"),
+      dimensions_cm: { length: value("length_cm"), width: value("width_cm"), height: value("height_cm") },
+    };
+    const complianceFacts = {
+      decision: "draft", hs_code: value("hs_code"), eaeu_rules: lines("eaeu_rules"),
+      eac_requirement: value("eac_requirement"), chestny_znak_requirement: value("chestny_znak_requirement"),
+      russian_labeling: value("russian_labeling"), ip_status: value("ip_status"),
+      transport_restrictions: value("transport_restrictions"), sellability: value("sellability"),
+    };
+    const qualityFacts = {
+      decision: "draft", golden_sample_ref: value("golden_sample_ref"),
+      inspection_plan: lines("inspection_plan"), packaging_test: value("packaging_test"),
+    };
+    const body = new FormData();
+    body.append("sku", value("sku")); body.append("name", value("product_name"));
+    body.append("effective_at", new Date().toISOString());
+    body.append("product_facts_json", JSON.stringify(productFacts));
+    body.append("compliance_facts_json", JSON.stringify(complianceFacts));
+    body.append("quality_facts_json", JSON.stringify(qualityFacts));
+    body.append("product_evidence", productEvidence); body.append("compliance_evidence", complianceEvidence);
+    body.append("quality_evidence", qualityEvidence);
+    setSkuUploading(true);
+    setNotice("正在建立 SKU、三类 Passport 与证据血缘…");
+    try {
+      const response = await fetch("/backend/v1/intake/sku-episodes", { method: "POST", body });
+      const result = await response.json();
+      setNotice(response.ok ? `${result.product.sku} 已建立，等待三类 Passport 人工复核` : result.detail ?? "SKU 录入失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch {
+      setNotice("无法提交 SKU Episode，请检查服务状态");
+    } finally {
+      setSkuUploading(false);
+    }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
 
@@ -241,6 +290,45 @@ export default function Home() {
             </select>
             <input name="gate_file" aria-label="阶段门证据文件" type="file" required />
             <button disabled={gateUploading}>{gateUploading ? "正在固化…" : "提交证据"}</button>
+          </form>
+        </section>
+
+        <section className="sku-intake-panel">
+          <div className="panel-title"><div><p className="eyebrow">SKU EPISODE INTAKE</p><h3>候选 SKU 一站式录入</h3></div><span className="badge">草稿 · 需人工审核</span></div>
+          <form className="sku-intake" onSubmit={uploadSkuEpisode}>
+            <div className="intake-basic">
+              <label>SKU<input name="sku" placeholder="例如 RU-001" required /></label>
+              <label>商品名称<input name="product_name" placeholder="使用可稳定识别的商品名称" required /></label>
+            </div>
+            <div className="intake-passports">
+              <details open>
+                <summary><span>1</span><strong>商品 Passport</strong><small>材料、用途、产地、重量与尺寸</small></summary>
+                <div className="intake-fields">
+                  <label>材料<input name="material" required /></label><label>用途<input name="intended_use" required /></label>
+                  <label>原产国<input name="country_of_origin" defaultValue="CN" required /></label><label>重量 kg<input name="weight_kg" type="number" min="0.001" step="0.001" required /></label>
+                  <label>长 cm<input name="length_cm" type="number" min="0" step="0.1" required /></label><label>宽 cm<input name="width_cm" type="number" min="0" step="0.1" required /></label>
+                  <label>高 cm<input name="height_cm" type="number" min="0" step="0.1" required /></label><label>商品证据<input name="product_evidence" type="file" required /></label>
+                </div>
+              </details>
+              <details open>
+                <summary><span>2</span><strong>俄罗斯合规 Passport</strong><small>先记录事实与未知项，审核人再作结论</small></summary>
+                <div className="intake-fields">
+                  <label>HS Code<input name="hs_code" required /></label><label>EAC 要求<input name="eac_requirement" defaultValue="unknown" required /></label>
+                  <label>诚实标要求<input name="chestny_znak_requirement" defaultValue="unknown" required /></label><label>俄文标签<input name="russian_labeling" defaultValue="unknown" required /></label>
+                  <label>知识产权状态<input name="ip_status" defaultValue="review_required" required /></label><label>运输限制<input name="transport_restrictions" defaultValue="unknown" required /></label>
+                  <label>可售状态<input name="sellability" defaultValue="pending_review" required /></label><label>合规证据<input name="compliance_evidence" type="file" required /></label>
+                  <label className="wide">EAEU 规则依据（每行一条）<textarea name="eaeu_rules" required /></label>
+                </div>
+              </details>
+              <details open>
+                <summary><span>3</span><strong>样品质量 Passport</strong><small>黄金样、验货计划与包装测试</small></summary>
+                <div className="intake-fields">
+                  <label>黄金样编号<input name="golden_sample_ref" required /></label><label>包装测试<input name="packaging_test" defaultValue="pending" required /></label>
+                  <label>质量证据<input name="quality_evidence" type="file" required /></label><label className="wide">验货项目（每行一条）<textarea name="inspection_plan" required /></label>
+                </div>
+              </details>
+            </div>
+            <div className="intake-submit"><p>提交只建立可追溯草稿，不代表合规批准、采购授权或上架放行。</p><button disabled={skuUploading}>{skuUploading ? "正在建立…" : "建立 SKU Episode"}</button></div>
           </form>
         </section>
 

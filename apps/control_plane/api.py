@@ -21,6 +21,7 @@ from .evidence import EvidenceGrade, EvidenceService
 from .facts import FactPromotionService
 from .finance import CashPlanStatus, FeeSignRule, FinanceEntryKind, FinanceService
 from .imports import MAX_IMPORT_BYTES, OzonImportService
+from .intake import PassportEvidencePayload, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .ozon_contracts import contract_catalog
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
@@ -40,7 +41,7 @@ from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOff
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.10.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -54,6 +55,7 @@ repo = build_repository()
 engine = getattr(repo, "engine", None) or create_database_engine()
 evidence = EvidenceService(engine)
 commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
+intake = SkuEpisodeIntakeService(commerce=commerce, evidence=evidence)
 market = MarketIntelligenceService(repo)
 content = ContentGrowthService(repo)
 imports = OzonImportService(engine)
@@ -682,6 +684,65 @@ def create_product(body: ProductInput):
     return run(lambda: commerce.create_product(**body.model_dump()))
 
 
+@app.post("/v1/intake/sku-episodes", status_code=201)
+async def intake_sku_episode(
+    sku: Annotated[str, Form()],
+    name: Annotated[str, Form()],
+    effective_at: Annotated[str, Form()],
+    product_facts_json: Annotated[str, Form()],
+    compliance_facts_json: Annotated[str, Form()],
+    quality_facts_json: Annotated[str, Form()],
+    product_evidence: Annotated[UploadFile, File()],
+    compliance_evidence: Annotated[UploadFile, File()],
+    quality_evidence: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    facts_by_kind: dict[PassportType, dict] = {}
+    for kind, raw in (
+        (PassportType.PRODUCT, product_facts_json),
+        (PassportType.COMPLIANCE, compliance_facts_json),
+        (PassportType.QUALITY, quality_facts_json),
+    ):
+        try:
+            facts = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail=f"{kind.value}_facts_json must be valid JSON") from exc
+        if not isinstance(facts, dict):
+            raise HTTPException(status_code=422, detail=f"{kind.value}_facts_json must be a JSON object")
+        facts_by_kind[kind] = facts
+
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    uploads = {
+        PassportType.PRODUCT: product_evidence,
+        PassportType.COMPLIANCE: compliance_evidence,
+        PassportType.QUALITY: quality_evidence,
+    }
+    payloads = []
+    for kind, upload in uploads.items():
+        content = await upload.read(max_bytes + 1)
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail=f"{kind.value} evidence exceeds {max_bytes} bytes")
+        payloads.append(
+            PassportEvidencePayload(
+                kind=kind,
+                facts=facts_by_kind[kind],
+                content=content,
+                filename=upload.filename or f"{kind.value}-evidence.bin",
+                content_type=upload.content_type or "application/octet-stream",
+            )
+        )
+    return run(
+        lambda: intake.ingest(
+            sku=sku,
+            name=name,
+            effective_at=effective_at,
+            payloads=payloads,
+            created_by=principal.actor_id,
+        )
+    )
+
+
 @app.get("/v1/products")
 def list_products():
     return run(commerce.list_products)
@@ -882,15 +943,14 @@ def add_passport(
             **body.model_dump(),
             approved_by=principal.actor_id if reviewed else None,
         )
-        if reviewed:
-            for evidence_id in passport.evidence:
-                evidence.link(
-                    evidence_id=evidence_id,
-                    target_type="passport",
-                    target_id=passport.id,
-                    relationship="supports",
-                    created_by=principal.actor_id,
-                )
+        for evidence_id in passport.evidence:
+            evidence.link(
+                evidence_id=evidence_id,
+                target_type="passport",
+                target_id=passport.id,
+                relationship="supports",
+                created_by=principal.actor_id,
+            )
         return passport
 
     return run(create_and_link)

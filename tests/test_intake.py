@@ -1,0 +1,107 @@
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
+
+from apps.control_plane.domain import PassportType
+from apps.control_plane.evidence import EvidenceService
+from apps.control_plane.intake import PassportEvidencePayload, SkuEpisodeIntakeService
+from apps.control_plane.repository import InMemoryRepository
+from apps.control_plane.services import CommerceService
+from apps.control_plane.sql_repository import Base
+
+FACTS = {
+    PassportType.PRODUCT: {
+        "decision": "draft",
+        "material": "polypropylene",
+        "intended_use": "household storage",
+        "country_of_origin": "CN",
+        "weight_kg": "0.5",
+        "dimensions_cm": {"length": 30, "width": 20, "height": 10},
+    },
+    PassportType.COMPLIANCE: {
+        "decision": "draft",
+        "hs_code": "3924.90",
+        "eaeu_rules": ["requires reviewer confirmation"],
+        "eac_requirement": "unknown",
+        "chestny_znak_requirement": "unknown",
+        "russian_labeling": "required",
+        "ip_status": "review_required",
+        "transport_restrictions": "unknown",
+        "sellability": "pending_review",
+    },
+    PassportType.QUALITY: {
+        "decision": "draft",
+        "golden_sample_ref": "sample://RU-001/golden",
+        "inspection_plan": ["dimensions", "material", "appearance"],
+        "packaging_test": "pending",
+    },
+}
+
+
+def make_service():
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    evidence = EvidenceService(engine)
+    repo = InMemoryRepository()
+    commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
+    return repo, evidence, SkuEpisodeIntakeService(commerce=commerce, evidence=evidence)
+
+
+def payloads():
+    return [
+        PassportEvidencePayload(
+            kind=kind,
+            facts=FACTS[kind],
+            content=f"{kind.value} evidence".encode(),
+            filename=f"{kind.value}.txt",
+            content_type="text/plain",
+        )
+        for kind in PassportType
+    ]
+
+
+def test_sku_episode_intake_is_idempotent_and_keeps_drafts_unapproved():
+    repo, evidence, intake = make_service()
+    first = intake.ingest(
+        sku="RU-001",
+        name="Storage box",
+        effective_at="2026-07-16T00:00:00+08:00",
+        payloads=payloads(),
+        created_by="operator-1",
+    )
+    second = intake.ingest(
+        sku="RU-001",
+        name="Storage box",
+        effective_at="2026-07-16T00:00:00+08:00",
+        payloads=payloads(),
+        created_by="operator-1",
+    )
+
+    assert second["product"]["id"] == first["product"]["id"]
+    latest = repo.latest_passports(first["product"]["id"])
+    assert {item.version for item in latest.values()} == {1}
+    assert {item["status"] for item in second["readiness"]["passports"]} == {"draft"}
+    for record, passport in zip(first["evidence"], first["passports"], strict=True):
+        assert any(edge.to_id == passport["id"] for edge in evidence.lineage(record["id"]))
+
+
+def test_sku_episode_rejects_identity_conflict_on_retry():
+    _, _, intake = make_service()
+    intake.ingest(
+        sku="RU-001",
+        name="Storage box",
+        effective_at="2026-07-16T00:00:00+08:00",
+        payloads=payloads(),
+        created_by="operator-1",
+    )
+    try:
+        intake.ingest(
+            sku="RU-001",
+            name="Different product",
+            effective_at="2026-07-16T00:00:00+08:00",
+            payloads=payloads(),
+            created_by="operator-1",
+        )
+    except ValueError as exc:
+        assert "different product name" in str(exc)
+    else:
+        raise AssertionError("Expected SKU identity conflict")

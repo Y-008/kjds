@@ -8,6 +8,11 @@ $DatabaseName = "kjds_g1_smoke"
 $ApiPort = 8010
 $WebPort = 3010
 $EvidenceSmokeFile = Join-Path $Runtime ("g1-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
+$EpisodeSmokeFiles = @(
+    Join-Path $Runtime ("g1-product-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
+    Join-Path $Runtime ("g1-compliance-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
+    Join-Path $Runtime ("g1-quality-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
+)
 $ImportSmokeFile = Join-Path $Runtime ("g1-orders-" + [guid]::NewGuid().ToString("N") + ".csv")
 $ApiProcess = $null
 $WebProcess = $null
@@ -116,6 +121,7 @@ $result = [ordered]@{
     kill_switch = $false
     api_database_write = $false
     evidence_ledger = $false
+    sku_episode_intake = $false
     sourcing_evidence_gate = $false
     operations_readiness = $false
     passport_evidence_gate = $false
@@ -272,6 +278,47 @@ try {
             effective_at = "2026-07-16T00:00:00+08:00"
         } | Out-Null
     }
+
+    $episodeSku = "G1-EPISODE-" + [guid]::NewGuid().ToString("N")
+    @("product evidence", "compliance evidence", "quality evidence") | ForEach-Object -Begin { $index = 0 } -Process {
+        Set-Content -LiteralPath $EpisodeSmokeFiles[$index] -Value $_ -NoNewline -Encoding UTF8
+        $index++
+    }
+    $episodeForm = @{
+        sku = $episodeSku
+        name = "G-1 episode intake product"
+        effective_at = "2026-07-16T00:00:00+08:00"
+        product_facts_json = (@{
+            decision = "draft"; material = "verification"; intended_use = "verification"
+            country_of_origin = "CN"; weight_kg = "0.5"
+            dimensions_cm = @{ length = 30; width = 20; height = 10 }
+        } | ConvertTo-Json -Depth 4 -Compress)
+        compliance_facts_json = (@{
+            decision = "draft"; hs_code = "verification"; eaeu_rules = @("verification")
+            eac_requirement = "unknown"; chestny_znak_requirement = "unknown"
+            russian_labeling = "unknown"; ip_status = "review_required"
+            transport_restrictions = "unknown"; sellability = "pending_review"
+        } | ConvertTo-Json -Depth 4 -Compress)
+        quality_facts_json = (@{
+            decision = "draft"; golden_sample_ref = "g1://sample"
+            inspection_plan = @("verification"); packaging_test = "pending"
+        } | ConvertTo-Json -Depth 4 -Compress)
+        product_evidence = Get-Item $EpisodeSmokeFiles[0]
+        compliance_evidence = Get-Item $EpisodeSmokeFiles[1]
+        quality_evidence = Get-Item $EpisodeSmokeFiles[2]
+    }
+    $episode = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/intake/sku-episodes" -Method Post -Headers $headers -Form $episodeForm
+    $episodeRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/intake/sku-episodes" -Method Post -Headers $headers -Form $episodeForm
+    $episodeLineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($episode.evidence[0].id)/lineage" -Headers $headers
+    if (
+        $episode.product.id -ne $episodeRetry.product.id -or
+        $episode.passports.Count -ne 3 -or
+        @($episode.readiness.passports | Where-Object { $_.status -ne "draft" }).Count -ne 0 -or
+        -not ($episodeLineage | Where-Object { $_.to_type -eq "passport" -and $_.to_id -eq $episode.passports[0].id })
+    ) {
+        throw "Idempotent SKU episode intake smoke failed"
+    }
+    $result.sku_episode_intake = $true
 
     $offerExternalId = "G1-OFFER-" + [guid]::NewGuid().ToString("N")
     $offerBody = @{
@@ -546,10 +593,12 @@ try {
         }
     }
     Remove-Item -LiteralPath $EvidenceSmokeFile -Force -ErrorAction SilentlyContinue
+    $EpisodeSmokeFiles | ForEach-Object { Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $ImportSmokeFile -Force -ErrorAction SilentlyContinue
     $result.cleanup_files =
         -not (Test-Path $WebSmoke) -and
         -not (Test-Path $EvidenceSmokeFile) -and
+        -not ($EpisodeSmokeFiles | Where-Object { Test-Path $_ }) -and
         -not (Test-Path $ImportSmokeFile)
     if ($result.status -eq "PASS" -and -not ($result.cleanup_processes -and $result.cleanup_database -and $result.cleanup_files)) {
         $result.status = "FAIL"
