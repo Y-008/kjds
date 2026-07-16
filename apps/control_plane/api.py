@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import asdict
 from decimal import Decimal
 from typing import Annotated, Any
+from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,6 +15,7 @@ from .automation import AutomationService, RiskLevel
 from .content_growth import ContentGrowthService
 from .database import create_database_engine, database_health
 from .domain import AgentMode, ChargeType, ContentType, PassportType
+from .evidence import EvidenceGrade, EvidenceService
 from .imports import OzonImportService
 from .intelligence import MarketIntelligenceService
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
@@ -52,6 +55,7 @@ sourcing_store = SqlSourcingStore(engine)
 sourcing = SourcingService(sourcing_store, repo)
 authenticator = ApiKeyAuthenticator.from_environment()
 kill_switch = KillSwitchService(engine)
+evidence = EvidenceService(engine)
 providers = {
     "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
     "comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189")),
@@ -277,6 +281,14 @@ class KillSwitchInput(BaseModel):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+class LineageLinkInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_type: str = Field(min_length=1, max_length=100)
+    target_id: str = Field(min_length=1, max_length=300)
+    relationship: str = Field(min_length=1, max_length=100)
+
+
 @app.get("/health")
 def health() -> dict:
     try:
@@ -343,6 +355,87 @@ def engage_kill_switch(body: KillSwitchInput, principal: Annotated[Principal, De
 def release_kill_switch(body: KillSwitchInput, principal: Annotated[Principal, Depends(current_principal)]):
     ensure_role(principal, "admin")
     return asdict(kill_switch.set_state(engaged=False, reason=body.reason, actor_id=principal.actor_id))
+
+
+@app.post("/v1/evidence", status_code=201)
+async def capture_evidence(
+    file: Annotated[UploadFile, File()],
+    source: Annotated[str, Form()],
+    source_ref: Annotated[str, Form()],
+    grade: Annotated[EvidenceGrade, Form()],
+    effective_at: Annotated[str, Form()],
+    principal: Annotated[Principal, Depends(current_principal)],
+    effective_until: Annotated[str | None, Form()] = None,
+    metadata_json: Annotated[str, Form()] = "{}",
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    content_bytes = await file.read(max_bytes + 1)
+    if len(content_bytes) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Evidence file exceeds {max_bytes} bytes")
+    try:
+        metadata = json.loads(metadata_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="metadata_json must be valid JSON") from exc
+    if not isinstance(metadata, dict):
+        raise HTTPException(status_code=422, detail="metadata_json must be a JSON object")
+    return run(
+        lambda: evidence.capture(
+            content=content_bytes,
+            filename=file.filename or "evidence.bin",
+            content_type=file.content_type or "application/octet-stream",
+            source=source,
+            source_ref=source_ref,
+            grade=grade,
+            effective_at=effective_at,
+            effective_until=effective_until,
+            created_by=principal.actor_id,
+            metadata=metadata,
+        )
+    )
+
+
+@app.get("/v1/evidence")
+def list_evidence(limit: int = 100):
+    return [asdict(item) for item in evidence.list(min(max(limit, 1), 500))]
+
+
+@app.get("/v1/evidence/{evidence_id}")
+def get_evidence(evidence_id: str):
+    return run(lambda: evidence.get(evidence_id))
+
+
+@app.get("/v1/evidence/{evidence_id}/verify")
+def verify_evidence(evidence_id: str):
+    return run(lambda: evidence.verify(evidence_id))
+
+
+@app.get("/v1/evidence/{evidence_id}/content")
+def evidence_content(evidence_id: str):
+    def load():
+        content_bytes, record = evidence.content(evidence_id)
+        return Response(
+            content=content_bytes,
+            media_type=record.content_type,
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(record.filename)}"},
+        )
+
+    return run(load)
+
+
+@app.post("/v1/evidence/{evidence_id}/lineage", status_code=201)
+def link_evidence(
+    evidence_id: str,
+    body: LineageLinkInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(lambda: evidence.link(evidence_id=evidence_id, **body.model_dump(), created_by=principal.actor_id))
+
+
+@app.get("/v1/evidence/{evidence_id}/lineage")
+def evidence_lineage(evidence_id: str):
+    return [asdict(item) for item in evidence.lineage(evidence_id)]
 
 
 @app.post("/v1/models/discover")

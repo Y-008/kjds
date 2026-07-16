@@ -7,6 +7,7 @@ $WebSmoke = Join-Path $Runtime ("web-g1-" + [guid]::NewGuid().ToString("N"))
 $DatabaseName = "kjds_g1_smoke"
 $ApiPort = 8010
 $WebPort = 3010
+$EvidenceSmokeFile = Join-Path $Runtime ("g1-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
 $ApiProcess = $null
 $WebProcess = $null
 $PostgresContainer = $null
@@ -86,6 +87,7 @@ $result = [ordered]@{
     api_auth = $false
     kill_switch = $false
     api_database_write = $false
+    evidence_ledger = $false
     web_health = $false
     web_proxy_auth = $false
     cleanup_processes = $false
@@ -127,14 +129,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0004.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0005.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260716_0004"
+    $result.migration = "20260716_0005"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260713_0003")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0004")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260713_0003") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0004") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -203,6 +205,26 @@ try {
     }
     $result.api_database_write = $true
 
+    Set-Content -LiteralPath $EvidenceSmokeFile -Value "G-1 immutable evidence" -NoNewline -Encoding UTF8
+    $evidenceRecord = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence" -Method Post -Headers $headers -Form @{
+        file = Get-Item $EvidenceSmokeFile
+        source = "g1_verification"
+        source_ref = "g1://verification/evidence"
+        grade = "A"
+        effective_at = "2026-07-16T00:00:00+08:00"
+        metadata_json = '{"purpose":"G-1"}'
+    }
+    $verification = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/verify" -Headers $headers
+    $lineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/lineage" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        target_type = "product"
+        target_id = $product.id
+        relationship = "supports"
+    } | ConvertTo-Json)
+    if (-not $verification.valid -or $lineage.to_id -ne $product.id) {
+        throw "Immutable evidence and lineage smoke failed"
+    }
+    $result.evidence_ledger = $true
+
     Write-Output "[G-1] Starting disposable web UI on port $WebPort"
     $env:KJDS_API_URL = "http://127.0.0.1:$ApiPort"
     $WebProcess = Start-Process -FilePath (Get-Command npm.cmd).Source `
@@ -241,6 +263,7 @@ try {
             Remove-Item -LiteralPath $WebSmoke -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
+    Remove-Item -LiteralPath $EvidenceSmokeFile -Force -ErrorAction SilentlyContinue
     $result.cleanup_files = -not (Test-Path $WebSmoke)
     if ($result.status -eq "PASS" -and -not ($result.cleanup_processes -and $result.cleanup_database -and $result.cleanup_files)) {
         $result.status = "FAIL"

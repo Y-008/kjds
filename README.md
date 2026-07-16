@@ -52,6 +52,10 @@ tests/
 - 正式双人审批可用 `KJDS_API_KEYS_JSON` 为不同密钥配置独立 actor 和 role；申请人无法批准自己的高风险动作。
 - 紧急情况可调用 `/v1/system/kill-switch/engage`；开启后所有普通写操作返回 `423`，只有 `admin` 可解除。
 
+## 不可变证据账本
+
+`/v1/evidence` 接收原始文件并计算 SHA-256，同时记录来源、证据等级、业务生效时间、系统记录时间和创建人。证据可链接到商品、订单、结算或其他证据；PostgreSQL 触发器禁止修改和删除账本行。默认单文件上限为 10 MB，可通过 `KJDS_EVIDENCE_MAX_BYTES` 调整。
+
 ## 本地运行
 
 ```powershell
