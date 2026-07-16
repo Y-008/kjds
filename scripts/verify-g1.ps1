@@ -117,6 +117,7 @@ $result = [ordered]@{
     api_database_write = $false
     evidence_ledger = $false
     sourcing_evidence_gate = $false
+    operations_readiness = $false
     passport_evidence_gate = $false
     formal_fact_promotion = $false
     finance_reconciliation = $false
@@ -162,14 +163,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0009.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0010.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260716_0009"
+    $result.migration = "20260716_0010"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0008")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0009")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0008") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0009") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -266,6 +267,8 @@ try {
 
     $offerExternalId = "G1-OFFER-" + [guid]::NewGuid().ToString("N")
     $offerBody = @{
+        product_id = $product.id
+        supplier_ref = "g1-supplier"
         platform = "1688"
         external_id = $offerExternalId
         source_url = "https://detail.1688.com/offer/$offerExternalId.html"
@@ -314,6 +317,20 @@ try {
         throw "Sourcing immutable evidence gate smoke failed"
     }
     $result.sourcing_evidence_gate = $true
+
+    $gateReadiness = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/readiness" -Headers $headers
+    $gateProduct = $gateReadiness.products | Where-Object { $_.product.id -eq $product.id }
+    if (
+        $gateReadiness.status -ne "needs_input" -or
+        $gateReadiness.counts.bound_offers -ne 1 -or
+        $gateProduct.supplier_count -ne 1 -or
+        $gateProduct.offer_count -ne 1 -or
+        $gateProduct.positive_profit_scenario_count -ne 1 -or
+        -not ($gateReadiness.requirements | Where-Object { $_.id -eq "SKU-003" -and -not $_.ready })
+    ) {
+        throw "G0-G1 operating readiness projection smoke failed"
+    }
+    $result.operations_readiness = $true
 
     $passportBodies = @(
         @{

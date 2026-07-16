@@ -24,6 +24,7 @@ from .imports import MAX_IMPORT_BYTES, OzonImportService
 from .intelligence import MarketIntelligenceService
 from .ozon_contracts import contract_catalog
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
+from .readiness import GateReadinessService
 from .repository import InMemoryRepository
 from .security import (
     ApiKeyAuthenticator,
@@ -39,7 +40,7 @@ from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOff
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -61,6 +62,13 @@ finance = FinanceService(engine)
 automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
 sourcing_store = SqlSourcingStore(engine)
 sourcing = SourcingService(sourcing_store, repo, evidence_validator=evidence.require_valid)
+readiness = GateReadinessService(
+    commerce=commerce,
+    sourcing_store=sourcing_store,
+    evidence=evidence,
+    facts=facts,
+    finance=finance,
+)
 authenticator = ApiKeyAuthenticator.from_environment()
 kill_switch = KillSwitchService(engine)
 providers = {
@@ -241,6 +249,8 @@ class RecommendationInput(BaseModel):
 
 
 class SupplierOfferInput(BaseModel):
+    product_id: str = Field(min_length=1)
+    supplier_ref: str = Field(min_length=1, max_length=300)
     platform: SourcePlatform
     external_id: str = Field(min_length=1, max_length=200)
     source_url: str = Field(min_length=8)
@@ -529,6 +539,11 @@ def list_recommendations():
 @app.get("/v1/sourcing/connectors")
 def sourcing_connectors():
     return source_connector_catalog()
+
+
+@app.get("/v1/operations/readiness")
+def operations_readiness():
+    return run(readiness.report)
 
 
 @app.post("/v1/sourcing/offers", status_code=201)

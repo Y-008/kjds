@@ -68,6 +68,9 @@ class MemorySourcingStore:
     def get_scenario(self, scenario_id):
         return self.scenarios[scenario_id]
 
+    def list_scenarios(self, limit=1000):
+        return list(self.scenarios.values())[:limit]
+
     def save_listing_draft(self, draft):
         self.drafts[draft.id] = draft
         return draft
@@ -86,8 +89,11 @@ class SourcingFlowTest(TestCase):
         self.commerce = CommerceService(self.repo, evidence_validator=lambda _: None)
         self.store = MemorySourcingStore()
         self.sourcing = SourcingService(self.store, self.repo, evidence_validator=lambda _: None)
+        self.product = self.commerce.create_product(sku="RU-001", name="Storage box")
         self.offer = self.sourcing.capture_offer(
             SupplierOffer(
+                product_id=self.product.id,
+                supplier_ref="1688-shop-100",
                 platform=SourcePlatform.ALIBABA_1688,
                 external_id="1688-100",
                 source_url="https://detail.1688.com/offer/100.html",
@@ -174,7 +180,7 @@ class SourcingFlowTest(TestCase):
             )
 
     def test_listing_draft_requires_approved_product_passports(self):
-        product = self.commerce.create_product(sku="RU-001", name="Storage box")
+        product = self.product
         result = self.scenario()
         payload = {
             "title": "Контейнер для хранения",
@@ -209,3 +215,30 @@ class SourcingFlowTest(TestCase):
             requested_by="owner",
         )
         self.assertEqual(draft.status, "approval_pending")
+
+    def test_listing_draft_rejects_offer_from_another_product(self):
+        other = self.commerce.create_product(sku="RU-002", name="Other product")
+        result = self.scenario()
+        for kind in PassportType:
+            self.commerce.add_passport(
+                product_id=other.id,
+                kind=kind,
+                facts=PASSPORT_FACTS[kind],
+                evidence=[f"evidence://{kind.value}/other"],
+                approved_by="owner",
+            )
+        self.commerce.validate_product(other.id)
+        with self.assertRaisesRegex(ValueError, "does not belong"):
+            self.sourcing.create_ozon_listing_draft(
+                product_id=other.id,
+                offer_id=self.offer.id,
+                scenario_id=result.id,
+                listing_data={
+                    "title": "Other",
+                    "description": "Other",
+                    "category_id": "123",
+                    "attributes": {},
+                    "images": ["asset://other.jpg"],
+                },
+                requested_by="owner",
+            )

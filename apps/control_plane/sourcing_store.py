@@ -20,13 +20,13 @@ class SqlSourcingStore:
     def save_offer(self, offer: SupplierOffer) -> SupplierOffer:
         statement = text("""
             INSERT INTO source_offers (
-                id, platform, external_id, source_url, title, currency, unit_price_decimal,
+                id, product_id, supplier_ref, platform, external_id, source_url, title, currency, unit_price_decimal,
                 source_to_cny_rate_decimal, min_order_quantity, weight_kg_decimal,
                 length_cm_decimal, width_cm_decimal, height_cm_decimal,
                 domestic_logistics_per_unit_decimal, evidence_ref, attributes_json,
                 media_json, captured_at
             ) VALUES (
-                :id, :platform, :external_id, :source_url, :title, :currency, :unit_price,
+                :id, :product_id, :supplier_ref, :platform, :external_id, :source_url, :title, :currency, :unit_price,
                 :source_to_cny_rate, :moq, :weight_kg, :length_cm, :width_cm, :height_cm,
                 :domestic_logistics, :evidence_ref, CAST(:attributes AS jsonb),
                 CAST(:media AS jsonb), :captured_at
@@ -38,6 +38,8 @@ class SqlSourcingStore:
 
         params = {
             "id": offer.id,
+            "product_id": offer.product_id,
+            "supplier_ref": offer.supplier_ref,
             "platform": offer.platform.value,
             "external_id": offer.external_id,
             "source_url": offer.source_url,
@@ -79,6 +81,8 @@ class SqlSourcingStore:
     @staticmethod
     def _offer_payload(offer: SupplierOffer) -> tuple:
         return (
+            offer.product_id,
+            offer.supplier_ref,
             offer.platform,
             offer.external_id,
             offer.source_url,
@@ -122,6 +126,8 @@ class SqlSourcingStore:
     @staticmethod
     def _offer(row) -> SupplierOffer:
         return SupplierOffer(
+            product_id=row["product_id"],
+            supplier_ref=row["supplier_ref"],
             platform=SourcePlatform(row["platform"]),
             external_id=row["external_id"],
             source_url=row["source_url"],
@@ -199,6 +205,10 @@ class SqlSourcingStore:
             )
         if row is None:
             raise KeyError(f"Unknown profit scenario: {scenario_id}")
+        return self._scenario(row)
+
+    @staticmethod
+    def _scenario(row) -> ProfitScenario:
         inputs = {key: Decimal(value) for key, value in row["inputs_json"].items()}
         return ProfitScenario(
             offer_id=row["offer_id"],
@@ -223,6 +233,18 @@ class SqlSourcingStore:
             id=row["id"],
             created_at=_iso(row["created_at"]),
         )
+
+    def list_scenarios(self, limit: int = 1000) -> list[ProfitScenario]:
+        with self.engine.connect() as connection:
+            rows = (
+                connection.execute(
+                    text("SELECT * FROM profit_scenarios ORDER BY created_at DESC LIMIT :limit"),
+                    {"limit": limit},
+                )
+                .mappings()
+                .all()
+            )
+        return [self._scenario(row) for row in rows]
 
     def save_listing_draft(self, draft: ListingDraft) -> ListingDraft:
         import json

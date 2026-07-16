@@ -50,6 +50,22 @@ type ProductReadiness = {
   passports: PassportReadiness[];
   ready_for_validation: boolean;
 };
+type GateRequirement = {
+  id: string;
+  title: string;
+  ready: boolean;
+  status: "ready_for_review" | "needs_input";
+  current: number;
+  target: number;
+  next_action: string;
+};
+type GateReadiness = {
+  status: "ready_for_review" | "needs_input";
+  g0: "ready_for_review" | "blocked";
+  g1: "ready_for_review" | "blocked";
+  requirements: GateRequirement[];
+  next_actions: string[];
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 
@@ -71,21 +87,24 @@ export default function Home() {
   const [sourceConnectors, setSourceConnectors] = useState<SourceConnector[]>([]);
   const [offers, setOffers] = useState<unknown[]>([]);
   const [skuReadiness, setSkuReadiness] = useState<ProductReadiness[]>([]);
+  const [gateReadiness, setGateReadiness] = useState<GateReadiness | null>(null);
   const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/offers", { cache: "no-store" }),
       fetch("/backend/v1/products", { cache: "no-store" }),
+      fetch("/backend/v1/operations/readiness", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
     if (connectorResponse.ok) setSourceConnectors(await connectorResponse.json());
     if (offersResponse.ok) setOffers(await offersResponse.json());
+    if (gateResponse.ok) setGateReadiness(await gateResponse.json());
     if (productsResponse.ok) {
       const products: { id: string }[] = await productsResponse.json();
       const readiness = await Promise.all(
@@ -170,6 +189,22 @@ export default function Home() {
         </section>
 
         <div className="notice"><Activity size={17} /><span>{notice}</span></div>
+
+        <section className="gate-overview">
+          <div className="gate-overview-head">
+            <div><p className="eyebrow">REALITY GATE</p><h3>G0–G1 真实准入状态</h3></div>
+            <span className={gateReadiness?.status === "ready_for_review" ? "gate ready" : "gate blocked"}>
+              {gateReadiness?.status === "ready_for_review" ? "等待人工放行" : "等待真实输入"}
+            </span>
+          </div>
+          {gateReadiness ? <div className="requirement-grid">
+            {gateReadiness.requirements.map((item) => <article className={item.ready ? "requirement ready" : "requirement"} key={item.id}>
+              <div><span>{item.id}</span><b>{item.current}/{item.target}</b></div>
+              <strong>{item.title}</strong>
+              <small>{item.ready ? "证据条件已满足，仍需阶段门人工复核" : item.next_action}</small>
+            </article>)}
+          </div> : <div className="gate-loading">正在读取阶段门事实…</div>}
+        </section>
 
         <section className="metrics">
           <article><span className="metric-icon green"><CircleDollarSign /></span><div><p>CM3 净利润</p><strong>待导入</strong><small>真实费用齐全后计算</small></div></article>

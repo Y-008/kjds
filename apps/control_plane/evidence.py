@@ -291,6 +291,25 @@ class EvidenceService:
             ).all()
         return [self._edge(row) for row in rows]
 
+    def target_evidence_ids(self, *, target_type: str, target_id: str) -> list[str]:
+        target_type = target_type.strip().lower()
+        target_id = target_id.strip()
+        if not target_type or not target_id:
+            raise ValueError("Target evidence lookup requires target_type and target_id")
+        with Session(self.engine) as session:
+            return list(
+                session.scalars(
+                    select(LineageEdgeRow.from_id)
+                    .where(
+                        LineageEdgeRow.from_type == "evidence",
+                        LineageEdgeRow.to_type == target_type,
+                        LineageEdgeRow.to_id == target_id,
+                    )
+                    .distinct()
+                    .order_by(LineageEdgeRow.from_id)
+                ).all()
+            )
+
     @staticmethod
     def _record(row: EvidenceRecordRow, byte_size: int) -> EvidenceRecord:
         return EvidenceRecord(

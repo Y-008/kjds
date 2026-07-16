@@ -99,3 +99,4 @@ def test_lineage_links_evidence_to_fact_and_other_evidence():
 
     assert fact_edge.to_id == "ord_1001"
     assert {edge.id for edge in service.lineage(source.id)} == {fact_edge.id, derived_edge.id}
+    assert service.target_evidence_ids(target_type="order", target_id="ord_1001") == [source.id]

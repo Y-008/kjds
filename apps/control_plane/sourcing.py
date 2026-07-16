@@ -34,6 +34,8 @@ class SourcePlatform(StrEnum):
 
 @dataclass(slots=True)
 class SupplierOffer:
+    product_id: str
+    supplier_ref: str
     platform: SourcePlatform
     external_id: str
     source_url: str
@@ -121,6 +123,7 @@ class SourcingStore(Protocol):
     def list_offers(self, limit: int = 100) -> list[SupplierOffer]: ...
     def save_scenario(self, scenario: ProfitScenario) -> ProfitScenario: ...
     def get_scenario(self, scenario_id: str) -> ProfitScenario: ...
+    def list_scenarios(self, limit: int = 1000) -> list[ProfitScenario]: ...
     def save_listing_draft(self, draft: ListingDraft) -> ListingDraft: ...
     def attach_listing_approval(self, draft: ListingDraft) -> ListingDraft: ...
     def list_listing_drafts(self, limit: int = 100) -> list[ListingDraft]: ...
@@ -138,6 +141,9 @@ class SourcingService:
         self.evidence_validator = evidence_validator
 
     def capture_offer(self, offer: SupplierOffer) -> SupplierOffer:
+        self.repository.get_product(offer.product_id)
+        if not offer.supplier_ref.strip():
+            raise ValueError("Offer supplier_ref is required")
         if offer.unit_price <= 0 or offer.source_to_cny_rate <= 0:
             raise ValueError("Offer price and FX rate must be positive")
         if offer.min_order_quantity < 1 or offer.weight_kg <= 0:
@@ -226,6 +232,8 @@ class SourcingService:
             raise ValueError("Product must pass all approved passports before listing")
         offer = self.store.get_offer(offer_id)
         scenario = self.store.get_scenario(scenario_id)
+        if offer.product_id != product.id:
+            raise ValueError("Supplier offer does not belong to the requested product")
         if scenario.offer_id != offer.id:
             raise ValueError("Profit scenario does not belong to this supplier offer")
         required = {"title", "description", "category_id", "attributes", "images"}
