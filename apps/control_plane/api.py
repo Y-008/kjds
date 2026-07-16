@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import asdict
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -16,8 +18,10 @@ from .content_growth import ContentGrowthService
 from .database import create_database_engine, database_health
 from .domain import AgentMode, ChargeType, ContentType, PassportType
 from .evidence import EvidenceGrade, EvidenceService
-from .imports import OzonImportService
+from .facts import FactPromotionService
+from .imports import MAX_IMPORT_BYTES, OzonImportService
 from .intelligence import MarketIntelligenceService
+from .ozon_contracts import contract_catalog
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
 from .repository import InMemoryRepository
 from .security import (
@@ -34,7 +38,7 @@ from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOff
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -50,6 +54,7 @@ commerce = CommerceService(repo)
 market = MarketIntelligenceService(repo)
 content = ContentGrowthService(repo)
 imports = OzonImportService(engine)
+facts = FactPromotionService(engine)
 automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
 sourcing_store = SqlSourcingStore(engine)
 sourcing = SourcingService(sourcing_store, repo)
@@ -528,15 +533,77 @@ def product_readiness(product_id: str):
     return run(lambda: commerce.product_readiness(product_id))
 
 
+@app.get("/v1/contracts/ozon")
+def ozon_contracts():
+    return contract_catalog()
+
+
 @app.post("/v1/imports/ozon", status_code=201)
-async def import_ozon(file: Annotated[UploadFile, File()]):
-    content_bytes = await file.read()
-    return run(lambda: imports.import_file(filename=file.filename or "ozon-export", content=content_bytes))
+async def import_ozon(
+    file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+    effective_at: Annotated[str | None, Form()] = None,
+):
+    ensure_role(principal, "operator", "admin")
+    content_bytes = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(content_bytes) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail=f"Import file exceeds {MAX_IMPORT_BYTES} bytes")
+    existing = imports.find_by_content(content_bytes)
+    if existing is not None:
+        return asdict(existing)
+
+    filename = file.filename or "ozon-export"
+    digest = hashlib.sha256(content_bytes).hexdigest()
+    captured_at = effective_at or datetime.now(UTC).isoformat()
+
+    def capture_and_import():
+        source = evidence.capture(
+            content=content_bytes,
+            filename=filename,
+            content_type=file.content_type or "application/octet-stream",
+            source="ozon_export",
+            source_ref=f"ozon-upload://sha256/{digest}",
+            grade=EvidenceGrade.A,
+            effective_at=captured_at,
+            effective_until=None,
+            created_by=principal.actor_id,
+            metadata={"filename": filename, "sha256": digest},
+        )
+        result = imports.import_file(filename=filename, content=content_bytes, evidence_id=source.id)
+        evidence.link(
+            evidence_id=source.id,
+            target_type="import_job",
+            target_id=result.id,
+            relationship="source_for",
+            created_by=principal.actor_id,
+        )
+        return result
+
+    return run(capture_and_import)
 
 
 @app.get("/v1/imports/{import_id}")
 def get_import(import_id: str):
     return run(lambda: imports.get(import_id))
+
+
+@app.post("/v1/imports/{import_id}/promote", status_code=201)
+def promote_import(
+    import_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(lambda: facts.promote(import_id, created_by=principal.actor_id))
+
+
+@app.get("/v1/facts")
+def list_facts(fact_type: str | None = None, limit: int = 100):
+    return run(lambda: facts.list(fact_type=fact_type, limit=min(max(limit, 1), 500)))
+
+
+@app.get("/v1/facts/{fact_id}")
+def get_fact(fact_id: str):
+    return run(lambda: facts.get(fact_id))
 
 
 @app.post("/v1/products/{product_id}/passports", status_code=201)

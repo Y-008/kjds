@@ -27,6 +27,8 @@ apps/control_plane/
   intelligence.py     市场数据和机会评分
   content_growth.py   图片/视频/文案与增长实验
   connectors.py       Ozon/广告/物流/结算连接器协议
+  ozon_contracts.py   Ozon 订单/费用/退货/结算版本化数据合同
+  facts.py            暂存行到不可变正式事实的晋升与血缘
   sourcing.py         全球供货商品、物流利润和上架草稿规则
   source_connectors.py 平台能力目录
   sourcing_store.py   Supabase/PostgreSQL 持久化适配器
@@ -55,6 +57,13 @@ tests/
 ## 不可变证据账本
 
 `/v1/evidence` 接收原始文件并计算 SHA-256，同时记录来源、证据等级、业务生效时间、系统记录时间和创建人。证据可链接到商品、订单、结算或其他证据；PostgreSQL 触发器禁止修改和删除账本行。默认单文件上限为 10 MB，可通过 `KJDS_EVIDENCE_MAX_BYTES` 调整。
+
+## Ozon 数据合同与正式事实
+
+- `GET /v1/contracts/ozon` 返回 `ozon-v1` 订单、费用、退货和结算合同。
+- `POST /v1/imports/ozon` 先把原始 CSV/XLSX 固化为 A 级证据，再写入可诊断暂存区；重复文件按 SHA-256 幂等返回。
+- `POST /v1/imports/{import_id}/promote` 重新校验合同并晋升为不可变正式事实。缺少源证据或整份被拒绝的导入失败关闭；未知 SKU 保留为 `requires_product_mapping`，不会被静默绑定。
+- `GET /v1/facts` 与证据血缘接口可以追溯每条事实的原文件、导入行、记录时间和业务生效时间。
 
 ## 本地运行
 
@@ -90,6 +99,6 @@ uv run python -m pytest
 
 ## 当前成熟度
 
-数据库持久化、Ozon文件导入、工具健康检查、多供货平台标准化、物流利润核算和 Ozon 上架草稿已经接通。默认仍为14天影子模式，高风险写操作不会自动执行。真实平台采集需要对应账号/API权限；浏览器登录、验证码和付费授权必须由账号所有者完成。
+数据库持久化、Ozon 原文件证据化导入、四类版本化数据合同、正式事实晋升、工具健康检查、多供货平台标准化、物流利润核算和 Ozon 上架草稿已经接通。默认仍为14天影子模式，高风险写操作不会自动执行。真实平台采集需要对应账号/API权限；浏览器登录、验证码和付费授权必须由账号所有者完成。
 
 环境规范见 [TOOLCHAIN.md](TOOLCHAIN.md)，环境决策见 [ADR-0001](docs/adr/ADR-0001-development-environment.md)。

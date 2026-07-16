@@ -8,6 +8,7 @@ $DatabaseName = "kjds_g1_smoke"
 $ApiPort = 8010
 $WebPort = 3010
 $EvidenceSmokeFile = Join-Path $Runtime ("g1-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
+$ImportSmokeFile = Join-Path $Runtime ("g1-orders-" + [guid]::NewGuid().ToString("N") + ".csv")
 $ApiProcess = $null
 $WebProcess = $null
 $PostgresContainer = $null
@@ -51,6 +52,33 @@ function Test-HttpOk {
     }
 }
 
+function Get-HttpStatus {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [string]$Method = "Get",
+        [hashtable]$Headers = @{},
+        [string]$ContentType,
+        [string]$Body
+    )
+
+    $parameters = @{
+        Uri = $Url
+        Method = $Method
+        Headers = $Headers
+        UseBasicParsing = $true
+    }
+    if ($PSBoundParameters.ContainsKey("ContentType")) { $parameters.ContentType = $ContentType }
+    if ($PSBoundParameters.ContainsKey("Body")) { $parameters.Body = $Body }
+    try {
+        return [int](Invoke-WebRequest @parameters).StatusCode
+    } catch {
+        if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
+            return [int]$_.Exception.Response.StatusCode
+        }
+        throw
+    }
+}
+
 function Stop-OwnedProcess {
     param($Process)
     if ($null -ne $Process -and -not $Process.HasExited) {
@@ -88,6 +116,7 @@ $result = [ordered]@{
     kill_switch = $false
     api_database_write = $false
     evidence_ledger = $false
+    formal_fact_promotion = $false
     web_health = $false
     web_proxy_auth = $false
     cleanup_processes = $false
@@ -129,14 +158,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0005.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0006.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260716_0005"
+    $result.migration = "20260716_0006"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0004")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0005")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0004") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0005") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -180,19 +209,19 @@ try {
     $sku = "G1-SMOKE-" + (Get-Date -Format "yyyyMMddHHmmss")
     $body = @{ sku = $sku; name = "Disposable G-1 smoke product" } | ConvertTo-Json
     $headers = @{ "X-KJDS-API-Key" = $env:KJDS_API_KEY }
-    $unauthorized = Invoke-WebRequest "http://127.0.0.1:$ApiPort/v1/products" -SkipHttpErrorCheck
-    $invalid = Invoke-WebRequest "http://127.0.0.1:$ApiPort/v1/products" -Headers @{ "X-KJDS-API-Key" = "invalid" } -SkipHttpErrorCheck
-    $authorized = Invoke-WebRequest "http://127.0.0.1:$ApiPort/v1/products" -Headers $headers -SkipHttpErrorCheck
-    if ($unauthorized.StatusCode -ne 401 -or $invalid.StatusCode -ne 403 -or $authorized.StatusCode -ne 200) {
+    $unauthorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products"
+    $invalid = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers @{ "X-KJDS-API-Key" = "invalid" }
+    $authorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers $headers
+    if ($unauthorized -ne 401 -or $invalid -ne 403 -or $authorized -ne 200) {
         throw "API authentication smoke failed"
     }
     $result.api_auth = $true
 
     $switchBody = @{ reason = "G-1 kill switch exercise" } | ConvertTo-Json
     $engaged = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch/engage" -Method Post -Headers $headers -ContentType "application/json" -Body $switchBody
-    $blocked = Invoke-WebRequest "http://127.0.0.1:$ApiPort/v1/products" -Method Post -Headers $headers -ContentType "application/json" -Body $body -SkipHttpErrorCheck
+    $blocked = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Method Post -Headers $headers -ContentType "application/json" -Body $body
     $released = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch/release" -Method Post -Headers $headers -ContentType "application/json" -Body (@{ reason = "G-1 exercise completed" } | ConvertTo-Json)
-    if (-not $engaged.engaged -or $blocked.StatusCode -ne 423 -or $released.engaged) {
+    if (-not $engaged.engaged -or $blocked -ne 423 -or $released.engaged) {
         throw "Kill switch smoke failed"
     }
     $result.kill_switch = $true
@@ -224,6 +253,38 @@ try {
         throw "Immutable evidence and lineage smoke failed"
     }
     $result.evidence_ledger = $true
+
+    $orderExternalId = "G1-ORDER-" + [guid]::NewGuid().ToString("N")
+    @(
+        "order_id;sku;quantity;currency;gross_revenue;effective_at"
+        "$orderExternalId;$sku;2;RUB;1299.50;2026-07-16T10:00:00+03:00"
+    ) | Set-Content -LiteralPath $ImportSmokeFile -Encoding UTF8
+    $import = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/ozon" -Method Post -Headers $headers -Form @{
+        file = Get-Item $ImportSmokeFile
+        effective_at = "2026-07-16T10:00:00+03:00"
+    }
+    $promotion = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/$($import.id)/promote" -Method Post -Headers $headers
+    $formalFacts = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/facts?fact_type=ozon_order" -Headers $headers
+    $promotedFact = $formalFacts | Where-Object natural_key -eq $orderExternalId
+    $factLineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($import.evidence_id)/lineage" -Headers $headers
+    if (
+        $import.record_type -ne "ozon_order" -or
+        $import.accepted_count -ne 1 -or
+        -not $import.evidence_id -or
+        $promotion.promoted_count -ne 1 -or
+        $promotedFact.product_id -ne $product.id -or
+        $promotedFact.resolution_status -ne "resolved" -or
+        -not ($factLineage | Where-Object { $_.to_type -eq "commerce_fact" -and $_.to_id -eq $promotedFact.id })
+    ) {
+        $diagnostic = @{
+            import = $import
+            promotion = $promotion
+            promoted_fact = $promotedFact
+            lineage = $factLineage
+        } | ConvertTo-Json -Depth 8 -Compress
+        throw "Ozon staging-to-formal-fact promotion smoke failed: $diagnostic"
+    }
+    $result.formal_fact_promotion = $true
 
     Write-Output "[G-1] Starting disposable web UI on port $WebPort"
     $env:KJDS_API_URL = "http://127.0.0.1:$ApiPort"
@@ -259,12 +320,21 @@ try {
         $resolvedRuntime = [IO.Path]::GetFullPath($Runtime).TrimEnd("\") + "\"
         $resolvedSmoke = [IO.Path]::GetFullPath($WebSmoke)
         if ($resolvedSmoke.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
-            Remove-Item -LiteralPath (Join-Path $WebSmoke "node_modules") -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $WebSmoke -Recurse -Force -ErrorAction SilentlyContinue
+            $nodeModulesJunction = Join-Path $WebSmoke "node_modules"
+            if (Test-Path $nodeModulesJunction) {
+                [IO.Directory]::Delete($nodeModulesJunction, $false)
+            }
+            if (Test-Path $WebSmoke) {
+                Remove-Item -LiteralPath $WebSmoke -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
     }
     Remove-Item -LiteralPath $EvidenceSmokeFile -Force -ErrorAction SilentlyContinue
-    $result.cleanup_files = -not (Test-Path $WebSmoke)
+    Remove-Item -LiteralPath $ImportSmokeFile -Force -ErrorAction SilentlyContinue
+    $result.cleanup_files =
+        -not (Test-Path $WebSmoke) -and
+        -not (Test-Path $EvidenceSmokeFile) -and
+        -not (Test-Path $ImportSmokeFile)
     if ($result.status -eq "PASS" -and -not ($result.cleanup_processes -and $result.cleanup_database -and $result.cleanup_files)) {
         $result.status = "FAIL"
         $result.cleanup_error = "Disposable verification resources were not fully removed"

@@ -6,7 +6,7 @@ import io
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -15,18 +15,54 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstr
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
+from .evidence import EvidenceRecordRow
+from .ozon_contracts import CONTRACTS, OzonRecordType, detect_record_type, normalize_record
 from .sql_repository import Base
 
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
 MAX_IMPORT_ROWS = 50_000
 
 FIELD_ALIASES = {
-    "external_id": {"external_id", "order_id", "order_number", "номер заказа", "номер отправления"},
+    "external_id": {
+        "external_id",
+        "operation_id",
+        "document_id",
+        "order_id",
+        "order_number",
+        "номер документа",
+        "номер заказа",
+        "номер операции",
+        "номер отправления",
+        "номер возврата",
+    },
     "sku": {"sku", "offer_id", "артикул", "артикул продавца"},
     "quantity": {"quantity", "qty", "количество"},
     "currency": {"currency", "валюта"},
     "gross_revenue": {"gross_revenue", "price", "revenue", "сумма", "цена", "итого"},
     "status": {"status", "статус"},
+    "effective_at": {
+        "effective_at",
+        "created_at",
+        "order_date",
+        "date",
+        "дата",
+        "дата заказа",
+        "дата операции",
+        "дата начисления",
+        "дата выплаты",
+    },
+    "fee_type": {"fee_type", "service", "commission_type", "услуга", "тип начисления"},
+    "amount": {
+        "amount",
+        "fee_amount",
+        "settlement_amount",
+        "refund_amount",
+        "итого",
+        "итого, руб",
+        "сумма выплаты",
+        "сумма операции",
+    },
+    "return_reason": {"return_reason", "reason", "причина возврата"},
 }
 
 
@@ -34,6 +70,7 @@ class ImportJobRow(Base):
     __tablename__ = "import_jobs"
     id: Mapped[str] = mapped_column(String, primary_key=True)
     source: Mapped[str] = mapped_column(String)
+    record_type: Mapped[str] = mapped_column(String)
     filename: Mapped[str] = mapped_column(String)
     sha256: Mapped[str] = mapped_column(String(64), unique=True)
     status: Mapped[str] = mapped_column(String)
@@ -42,6 +79,7 @@ class ImportJobRow(Base):
     rejected_count: Mapped[int] = mapped_column(Integer)
     mapping_json: Mapped[dict[str, str]] = mapped_column(JSON)
     errors_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    evidence_id: Mapped[str | None] = mapped_column(ForeignKey(EvidenceRecordRow.id), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -62,6 +100,7 @@ class ImportDataRow(Base):
 class ImportResult:
     id: str
     source: str
+    record_type: str
     filename: str
     sha256: str
     status: str
@@ -70,6 +109,7 @@ class ImportResult:
     rejected_count: int
     mapping: dict[str, str]
     errors: list[dict[str, Any]]
+    evidence_id: str | None
     created_at: str
     duplicate: bool = False
 
@@ -92,30 +132,14 @@ def _detect_mapping(headers: list[str]) -> dict[str, str]:
     return mapping
 
 
-def _decimal(value: Any) -> str:
-    raw = str(value or "").strip().replace(" ", "").replace(",", ".")
-    try:
-        return str(Decimal(raw))
-    except InvalidOperation as exc:
-        raise ValueError(f"invalid decimal: {value}") from exc
-
-
-def _normalize(raw: dict[str, Any], mapping: dict[str, str]) -> tuple[dict[str, Any], list[str]]:
+def _normalize(
+    raw: dict[str, Any], mapping: dict[str, str], record_type: OzonRecordType
+) -> tuple[dict[str, Any], list[str]]:
     result: dict[str, Any] = {}
-    errors: list[str] = []
     for canonical, header in mapping.items():
         value = raw.get(header)
-        if canonical in {"quantity", "gross_revenue"} and value not in (None, ""):
-            try:
-                result[canonical] = _decimal(value)
-            except ValueError as exc:
-                errors.append(f"{canonical}: {exc}")
-        else:
-            result[canonical] = str(value or "").strip()
-    for required in ("external_id", "sku"):
-        if not result.get(required):
-            errors.append(f"missing {required}")
-    return result, errors
+        result[canonical] = str(value or "").strip()
+    return normalize_record(record_type, result)
 
 
 def _json_value(value: Any) -> Any:
@@ -154,7 +178,13 @@ class OzonImportService:
     def __init__(self, engine) -> None:
         self.engine = engine
 
-    def import_file(self, *, filename: str, content: bytes) -> ImportResult:
+    def find_by_content(self, content: bytes) -> ImportResult | None:
+        digest = hashlib.sha256(content).hexdigest()
+        with Session(self.engine) as session:
+            existing = session.scalar(select(ImportJobRow).where(ImportJobRow.sha256 == digest))
+            return self._result(existing, duplicate=True) if existing else None
+
+    def import_file(self, *, filename: str, content: bytes, evidence_id: str | None = None) -> ImportResult:
         if not content:
             raise ValueError("Import file is empty")
         if len(content) > MAX_IMPORT_BYTES:
@@ -163,24 +193,24 @@ class OzonImportService:
         if extension not in {".csv", ".xlsx"}:
             raise ValueError("Only CSV and XLSX imports are supported")
         digest = hashlib.sha256(content).hexdigest()
-        with Session(self.engine) as session:
-            existing = session.scalar(select(ImportJobRow).where(ImportJobRow.sha256 == digest))
-            if existing:
-                return self._result(existing, duplicate=True)
+        existing = self.find_by_content(content)
+        if existing:
+            return existing
 
         raw_rows = list(_csv_rows(content) if extension == ".csv" else _xlsx_rows(content))
         if len(raw_rows) > MAX_IMPORT_ROWS:
             raise ValueError("Import file exceeds 50,000 rows")
         headers = list(raw_rows[0]) if raw_rows else []
+        record_type = detect_record_type(filename, headers)
         mapping = _detect_mapping(headers)
-        missing_columns = [name for name in ("external_id", "sku") if name not in mapping]
+        missing_columns = [name for name in sorted(CONTRACTS[record_type].required_fields) if name not in mapping]
         file_errors = [{"type": "missing_column", "field": name} for name in missing_columns]
         job_id = new_id("imp")
         accepted = 0
         rejected = 0
         data_rows: list[ImportDataRow] = []
         for row_number, raw in enumerate(raw_rows, start=2):
-            normalized, errors = _normalize(raw, mapping)
+            normalized, errors = _normalize(raw, mapping, record_type)
             accepted += not errors
             rejected += bool(errors)
             data_rows.append(
@@ -188,7 +218,7 @@ class OzonImportService:
                     id=new_id("row"),
                     import_id=job_id,
                     row_number=row_number,
-                    record_type="ozon_order",
+                    record_type=record_type.value,
                     external_id=normalized.get("external_id"),
                     payload_json={str(key): _json_value(value) for key, value in raw.items()},
                     normalized_json=normalized,
@@ -199,6 +229,7 @@ class OzonImportService:
         job = ImportJobRow(
             id=job_id,
             source="ozon-export",
+            record_type=record_type.value,
             filename=Path(filename).name,
             sha256=digest,
             status=status,
@@ -207,10 +238,12 @@ class OzonImportService:
             rejected_count=rejected,
             mapping_json=mapping,
             errors_json=file_errors,
+            evidence_id=evidence_id,
             created_at=datetime.now(UTC),
         )
         with Session(self.engine, expire_on_commit=False) as session, session.begin():
             session.add(job)
+            session.flush()
             session.add_all(data_rows)
         return self._result(job)
 
@@ -226,6 +259,7 @@ class OzonImportService:
         return ImportResult(
             row.id,
             row.source,
+            row.record_type,
             row.filename,
             row.sha256,
             row.status,
@@ -234,6 +268,7 @@ class OzonImportService:
             row.rejected_count,
             row.mapping_json,
             row.errors_json,
+            row.evidence_id,
             row.created_at.isoformat(),
             duplicate,
         )
