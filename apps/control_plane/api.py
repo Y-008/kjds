@@ -40,7 +40,7 @@ from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOff
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.9.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -544,6 +544,53 @@ def sourcing_connectors():
 @app.get("/v1/operations/readiness")
 def operations_readiness():
     return run(readiness.report)
+
+
+@app.post("/v1/operations/gate-evidence", status_code=201)
+async def capture_gate_requirement_evidence(
+    requirement_id: Annotated[str, Form()],
+    effective_at: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    requirement_id = requirement_id.strip().upper()
+    allowed = {
+        "GOV-001": ("approver", "admin"),
+        "OZN-001": ("reviewer", "compliance", "admin"),
+    }
+    roles = allowed.get(requirement_id)
+    if roles is None:
+        raise HTTPException(status_code=422, detail="Unsupported gate requirement")
+    ensure_role(principal, *roles)
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    content_bytes = await file.read(max_bytes + 1)
+    if len(content_bytes) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Evidence file exceeds {max_bytes} bytes")
+    digest = hashlib.sha256(content_bytes).hexdigest()
+
+    def capture_and_link():
+        record = evidence.capture(
+            content=content_bytes,
+            filename=file.filename or f"{requirement_id}-evidence.bin",
+            content_type=file.content_type or "application/octet-stream",
+            source="gate_requirement",
+            source_ref=f"gate://{requirement_id}/sha256/{digest}",
+            grade=EvidenceGrade.A,
+            effective_at=effective_at,
+            effective_until=None,
+            created_by=principal.actor_id,
+            metadata={"requirement_id": requirement_id},
+        )
+        edge = evidence.link(
+            evidence_id=record.id,
+            target_type="gate_requirement",
+            target_id=requirement_id,
+            relationship="satisfies",
+            created_by=principal.actor_id,
+        )
+        return {"evidence": asdict(record), "lineage": asdict(edge)}
+
+    return run(capture_and_link)
 
 
 @app.post("/v1/sourcing/offers", status_code=201)

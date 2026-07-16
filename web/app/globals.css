@@ -11,7 +11,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { cursor: pointer; }
 .shell { min-height: 100vh; display: grid; grid-template-columns: 245px 1fr; }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 24px 16px; background: var(--nav); color: #dce8e2; display: flex; flex-direction: column; }
@@ -61,6 +61,12 @@ h1 { margin: 0; font-size: 25px; }
 .requirement strong { display: block; margin-top: 7px; font-size: 10px; }
 .requirement small { display: -webkit-box; overflow: hidden; margin-top: 4px; color: #8a9690; font-size: 8px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .gate-loading { padding: 15px; border-radius: 9px; background: #f7f9f8; color: #8a9690; font-size: 10px; text-align: center; }
+.gate-evidence-upload { display: grid; grid-template-columns: 1fr 210px minmax(180px, 1fr) 100px; align-items: center; gap: 9px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e7ebe8; }
+.gate-evidence-upload > div { display: flex; flex-direction: column; gap: 2px; }
+.gate-evidence-upload strong { font-size: 10px; }.gate-evidence-upload small { color: #88938d; font-size: 8px; }
+.gate-evidence-upload select, .gate-evidence-upload input { min-width: 0; padding: 8px 9px; border: 1px solid #dce4df; border-radius: 8px; background: #fff; color: #53615a; font-size: 9px; }
+.gate-evidence-upload input::file-selector-button { margin-right: 7px; border: 0; background: transparent; color: #226f53; font-size: 9px; font-weight: 700; }
+.gate-evidence-upload button { padding: 9px; border: 0; border-radius: 8px; background: #176f51; color: #fff; font-size: 9px; font-weight: 800; }.gate-evidence-upload button:disabled { opacity: .5; }
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; margin-bottom: 14px; }
 .metrics article { display: flex; align-items: center; gap: 13px; padding: 17px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); }
 .metric-icon { flex: 0 0 38px; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; }
@@ -102,5 +108,5 @@ h1 { margin: 0; font-size: 25px; }
 .platform-chips > span { display: flex; flex-direction: column; gap: 2px; min-width: 78px; padding: 8px 10px; border: 1px solid #e2e9e5; border-radius: 9px; background: #fafcfb; color: #29483b; font-size: 10px; font-weight: 800; text-transform: uppercase; }
 .platform-chips small { color: #8a9992; font-size: 7px; font-weight: 500; text-transform: none; }
 
-@media (max-width: 1050px) { .shell { grid-template-columns: 74px 1fr; }.brand div:last-child, nav span, nav svg:last-child, .sidebar-status div { display: none; }.brand { padding-inline: 2px; }.sidebar-status { justify-content: center; }.hero { grid-template-columns: 1fr; }.metrics { grid-template-columns: repeat(2, 1fr); }.requirement-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 720px) { .shell { display: block; }.sidebar { position: static; width: 100%; height: auto; flex-direction: row; align-items: center; overflow-x: auto; }.brand { padding: 0 12px 0 0; }.sidebar nav { display: flex; }.sidebar nav button { width: 44px; }.sidebar-status { display: none; }.workspace { padding: 20px 14px 50px; }.topbar { align-items: flex-end; }.hero { padding: 23px; }.metrics, .grid, .requirement-grid { grid-template-columns: 1fr; }.agents { grid-row: auto; } }
+@media (max-width: 1050px) { .shell { grid-template-columns: 74px 1fr; }.brand div:last-child, nav span, nav svg:last-child, .sidebar-status div { display: none; }.brand { padding-inline: 2px; }.sidebar-status { justify-content: center; }.hero { grid-template-columns: 1fr; }.metrics { grid-template-columns: repeat(2, 1fr); }.requirement-grid { grid-template-columns: repeat(2, 1fr); }.gate-evidence-upload { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) { .shell { display: block; }.sidebar { position: static; width: 100%; height: auto; flex-direction: row; align-items: center; overflow-x: auto; }.brand { padding: 0 12px 0 0; }.sidebar nav { display: flex; }.sidebar nav button { width: 44px; }.sidebar-status { display: none; }.workspace { padding: 20px 14px 50px; }.topbar { align-items: flex-end; }.hero { padding: 23px; }.metrics, .grid, .requirement-grid, .gate-evidence-upload { grid-template-columns: 1fr; }.agents { grid-row: auto; } }

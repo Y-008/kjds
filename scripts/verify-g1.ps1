@@ -265,6 +265,14 @@ try {
     }
     $result.evidence_ledger = $true
 
+    foreach ($requirementId in @("GOV-001", "OZN-001")) {
+        Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/gate-evidence" -Method Post -Headers $headers -Form @{
+            file = Get-Item $EvidenceSmokeFile
+            requirement_id = $requirementId
+            effective_at = "2026-07-16T00:00:00+08:00"
+        } | Out-Null
+    }
+
     $offerExternalId = "G1-OFFER-" + [guid]::NewGuid().ToString("N")
     $offerBody = @{
         product_id = $product.id
@@ -326,6 +334,8 @@ try {
         $gateProduct.supplier_count -ne 1 -or
         $gateProduct.offer_count -ne 1 -or
         $gateProduct.positive_profit_scenario_count -ne 1 -or
+        -not ($gateReadiness.requirements | Where-Object { $_.id -eq "GOV-001" -and $_.ready }) -or
+        -not ($gateReadiness.requirements | Where-Object { $_.id -eq "OZN-001" -and $_.ready }) -or
         -not ($gateReadiness.requirements | Where-Object { $_.id -eq "SKU-003" -and -not $_.ready })
     ) {
         throw "G0-G1 operating readiness projection smoke failed"

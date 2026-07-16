@@ -89,6 +89,7 @@ export default function Home() {
   const [skuReadiness, setSkuReadiness] = useState<ProductReadiness[]>([]);
   const [gateReadiness, setGateReadiness] = useState<GateReadiness | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [gateUploading, setGateUploading] = useState(false);
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
@@ -143,6 +144,33 @@ export default function Home() {
       setNotice("无法连接后端，请检查服务状态");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function uploadGateEvidence(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const file = (form.elements.namedItem("gate_file") as HTMLInputElement).files?.[0];
+    const requirement = (form.elements.namedItem("requirement_id") as HTMLSelectElement).value;
+    if (!file || !requirement) return;
+    setGateUploading(true);
+    setNotice("正在固化并校验阶段门证据…");
+    const body = new FormData();
+    body.append("file", file);
+    body.append("requirement_id", requirement);
+    body.append("effective_at", new Date().toISOString());
+    try {
+      const response = await fetch("/backend/v1/operations/gate-evidence", { method: "POST", body });
+      const result = await response.json();
+      setNotice(response.ok ? `${requirement} 证据已固化并进入阶段门` : result.detail ?? "证据提交失败");
+      if (response.ok) {
+        form.reset();
+        await load();
+      }
+    } catch {
+      setNotice("无法提交阶段门证据，请检查服务状态");
+    } finally {
+      setGateUploading(false);
     }
   }
 
@@ -204,6 +232,16 @@ export default function Home() {
               <small>{item.ready ? "证据条件已满足，仍需阶段门人工复核" : item.next_action}</small>
             </article>)}
           </div> : <div className="gate-loading">正在读取阶段门事实…</div>}
+          <form className="gate-evidence-upload" onSubmit={uploadGateEvidence}>
+            <div><strong>补充阶段门证据</strong><small>原文件将哈希固化并自动链接，不覆盖历史。</small></div>
+            <select name="requirement_id" aria-label="阶段门证据类型" defaultValue="" required>
+              <option value="" disabled>选择证据类型</option>
+              <option value="GOV-001">负责人、审批人与风险预算</option>
+              <option value="OZN-001">Ozon 账户、权限与收款路径</option>
+            </select>
+            <input name="gate_file" aria-label="阶段门证据文件" type="file" required />
+            <button disabled={gateUploading}>{gateUploading ? "正在固化…" : "提交证据"}</button>
+          </form>
         </section>
 
         <section className="metrics">
