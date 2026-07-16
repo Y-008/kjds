@@ -5,8 +5,9 @@ from dataclasses import asdict
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from .automation import AutomationService, RiskLevel
 from .content_growth import ContentGrowthService
@@ -16,13 +17,21 @@ from .imports import OzonImportService
 from .intelligence import MarketIntelligenceService
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
 from .repository import InMemoryRepository
+from .security import (
+    ApiKeyAuthenticator,
+    AuthenticationFailure,
+    KillSwitchService,
+    Principal,
+    WritesDisabled,
+    require_any_role,
+)
 from .services import CommerceService
 from .source_connectors import source_connector_catalog
 from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOffer
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -41,6 +50,8 @@ imports = OzonImportService(engine)
 automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
 sourcing_store = SqlSourcingStore(engine)
 sourcing = SourcingService(sourcing_store, repo)
+authenticator = ApiKeyAuthenticator.from_environment()
+kill_switch = KillSwitchService(engine)
 providers = {
     "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
     "comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189")),
@@ -50,6 +61,49 @@ providers = {
         os.getenv("FIRECRAWL_API_KEY") or None,
     ),
 }
+
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+KILL_SWITCH_CONTROL_PATHS = {
+    "/v1/system/kill-switch/engage",
+    "/v1/system/kill-switch/release",
+}
+
+
+@app.middleware("http")
+async def enforce_control_plane_security(request: Request, call_next):
+    if request.url.path.startswith("/v1/"):
+        try:
+            request.state.principal = authenticator.authenticate(request.headers.get("X-KJDS-API-Key"))
+        except AuthenticationFailure as exc:
+            return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+
+        if request.method in WRITE_METHODS and request.url.path not in KILL_SWITCH_CONTROL_PATHS:
+            if not request.state.principal.has_any_role("operator", "reviewer", "compliance", "approver", "admin"):
+                return JSONResponse(status_code=403, content={"detail": "Authenticated actor has no write role"})
+            try:
+                kill_switch.ensure_writes_allowed()
+            except WritesDisabled as exc:
+                return JSONResponse(status_code=423, content={"detail": str(exc)})
+            except Exception:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "Write safety state is unavailable; writes fail closed"},
+                )
+    return await call_next(request)
+
+
+def current_principal(request: Request) -> Principal:
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Authenticated identity is required")
+    return principal
+
+
+def ensure_role(principal: Principal, *roles: str) -> None:
+    try:
+        require_any_role(principal, *roles)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 def run(call):
@@ -70,10 +124,11 @@ class ProductInput(BaseModel):
 
 
 class PassportInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     kind: PassportType
     facts: dict[str, Any]
     evidence: list[str]
-    approved_by: str | None = None
 
 
 class OrderInput(BaseModel):
@@ -139,25 +194,28 @@ class ExperimentInput(BaseModel):
 
 
 class ApprovalInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     action: str
     resource_type: str
     resource_id: str
-    requested_by: str
     payload: dict[str, Any]
 
 
 class ApprovalDecisionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     approved: bool
-    decided_by: str
-    reason: str
+    reason: str = Field(min_length=1)
 
 
 class AgentTaskInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     agent: str
     mode: AgentMode
     task_type: str
     input_data: dict[str, Any]
-    requested_by: str
     idempotency_key: str
 
 
@@ -205,11 +263,18 @@ class ProfitScenarioInput(BaseModel):
 
 
 class OzonListingDraftInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     product_id: str
     offer_id: str
     scenario_id: str
-    requested_by: str = Field(min_length=1, max_length=200)
     listing_data: dict[str, Any]
+
+
+class KillSwitchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=1000)
 
 
 @app.get("/health")
@@ -217,10 +282,12 @@ def health() -> dict:
     try:
         database = database_health()
         events = repo.event_count()
+        write_safety = asdict(kill_switch.current())
         status = "ok"
     except Exception as exc:
         database = {"status": "error", "detail": type(exc).__name__}
         events = None
+        write_safety = {"engaged": None, "detail": "unavailable"}
         status = "degraded"
     return {
         "status": status,
@@ -228,6 +295,10 @@ def health() -> dict:
         "version": APP_VERSION,
         "database": database,
         "events": events,
+        "security": {
+            "api_identity_configured": authenticator.configured,
+            "write_safety": write_safety,
+        },
     }
 
 
@@ -238,6 +309,7 @@ def version() -> dict:
         "version": APP_VERSION,
         "database_provider": os.getenv("KJDS_DATABASE_PROVIDER", "local-postgres"),
         "shadow_mode": automation.shadow_mode,
+        "api_identity_configured": authenticator.configured,
     }
 
 
@@ -254,6 +326,23 @@ def ready() -> dict:
 @app.get("/v1/integrations/health")
 def integration_health() -> dict:
     return {name: asdict(provider.healthcheck()) for name, provider in providers.items()}
+
+
+@app.get("/v1/system/kill-switch")
+def kill_switch_state():
+    return asdict(kill_switch.current())
+
+
+@app.post("/v1/system/kill-switch/engage")
+def engage_kill_switch(body: KillSwitchInput, principal: Annotated[Principal, Depends(current_principal)]):
+    ensure_role(principal, "risk", "admin")
+    return asdict(kill_switch.set_state(engaged=True, reason=body.reason, actor_id=principal.actor_id))
+
+
+@app.post("/v1/system/kill-switch/release")
+def release_kill_switch(body: KillSwitchInput, principal: Annotated[Principal, Depends(current_principal)]):
+    ensure_role(principal, "admin")
+    return asdict(kill_switch.set_state(engaged=False, reason=body.reason, actor_id=principal.actor_id))
 
 
 @app.post("/v1/models/discover")
@@ -300,14 +389,19 @@ def calculate_sourcing_profit(body: ProfitScenarioInput):
 
 
 @app.post("/v1/listings/ozon/drafts", status_code=201)
-def create_ozon_listing_draft(body: OzonListingDraftInput):
+def create_ozon_listing_draft(
+    body: OzonListingDraftInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+
     def create():
-        draft = sourcing.create_ozon_listing_draft(**body.model_dump())
+        draft = sourcing.create_ozon_listing_draft(**body.model_dump(), requested_by=principal.actor_id)
         approval = commerce.request_approval(
             action="listing.publish",
             resource_type="listing_draft",
             resource_id=draft.id,
-            requested_by=body.requested_by,
+            requested_by=principal.actor_id,
             payload={
                 "target_platform": "OZON",
                 "product_id": body.product_id,
@@ -353,8 +447,22 @@ def get_import(import_id: str):
 
 
 @app.post("/v1/products/{product_id}/passports", status_code=201)
-def add_passport(product_id: str, body: PassportInput):
-    return run(lambda: commerce.add_passport(product_id=product_id, **body.model_dump()))
+def add_passport(
+    product_id: str,
+    body: PassportInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    decision = body.facts.get("decision")
+    reviewed = decision in {"approved", "rejected", "blocked"}
+    if reviewed:
+        ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(
+        lambda: commerce.add_passport(
+            product_id=product_id,
+            **body.model_dump(),
+            approved_by=principal.actor_id if reviewed else None,
+        )
+    )
 
 
 @app.post("/v1/products/{product_id}/validate")
@@ -413,18 +521,25 @@ def profit(order_id: str):
 
 
 @app.post("/v1/approvals", status_code=201)
-def request_approval(body: ApprovalInput):
-    return run(lambda: commerce.request_approval(**body.model_dump()))
+def request_approval(body: ApprovalInput, principal: Annotated[Principal, Depends(current_principal)]):
+    ensure_role(principal, "operator", "admin")
+    return run(lambda: commerce.request_approval(**body.model_dump(), requested_by=principal.actor_id))
 
 
 @app.post("/v1/approvals/{approval_id}/decision")
-def decide_approval(approval_id: str, body: ApprovalDecisionInput):
-    return run(lambda: commerce.decide_approval(approval_id, **body.model_dump()))
+def decide_approval(
+    approval_id: str,
+    body: ApprovalDecisionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "approver", "admin")
+    return run(lambda: commerce.decide_approval(approval_id, **body.model_dump(), decided_by=principal.actor_id))
 
 
 @app.post("/v1/agent-tasks", status_code=201)
-def submit_agent_task(body: AgentTaskInput):
-    return run(lambda: commerce.submit_agent_task(**body.model_dump()))
+def submit_agent_task(body: AgentTaskInput, principal: Annotated[Principal, Depends(current_principal)]):
+    ensure_role(principal, "operator", "admin")
+    return run(lambda: commerce.submit_agent_task(**body.model_dump(), requested_by=principal.actor_id))
 
 
 @app.get("/v1/events")

@@ -18,7 +18,7 @@ do {
 if (-not $healthy) { throw "PostgreSQL did not become healthy within 90 seconds." }
 
 $env:KJDS_DATABASE_URL = "postgresql+psycopg://hermes:hermes_dev@localhost:5432/hermes"
-uv run alembic upgrade head
+uv run python -m alembic upgrade head
 uv run ruff check .
-uv run pytest
+uv run python -m pytest
 Write-Output "Hermes bootstrap complete."

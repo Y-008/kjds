@@ -26,7 +26,7 @@ function Get-ListeningProcess([int]$Port) {
 function Test-ApiFingerprint {
     try {
         $version = Invoke-RestMethod "http://127.0.0.1:8000/version" -TimeoutSec 3
-        return $version.service -eq "kjds-control-plane" -and $version.version -eq "0.2.0"
+        return $version.service -eq "kjds-control-plane" -and $version.version -eq "0.3.0"
     } catch { return $false }
 }
 
@@ -44,10 +44,15 @@ function Stop-StaleKjdsProcess([int]$Port, [string]$ExpectedMarker) {
 }
 
 $databaseProvider = Get-Setting "KJDS_DATABASE_PROVIDER" "local-postgres"
+$apiKey = Get-Setting "KJDS_API_KEY" ""
+if (-not $apiKey -or $apiKey -like "replace-*") {
+    throw "KJDS_API_KEY must be configured in .env before KJDS can start."
+}
+$env:KJDS_API_KEY = $apiKey
 if ($databaseProvider -ne "supabase") {
     docker compose up -d postgres
 }
-uv run alembic upgrade head
+uv run python -m alembic upgrade head
 
 if (-not (Test-LocalPort 11434)) {
     $ollama = (Get-Command ollama -ErrorAction Stop).Source

@@ -15,7 +15,7 @@ done
 
 docker compose exec -T postgres pg_isready -U hermes -d hermes
 export KJDS_DATABASE_URL="postgresql+psycopg://hermes:hermes_dev@localhost:5432/hermes"
-uv run alembic upgrade head
+uv run python -m alembic upgrade head
 uv run ruff check .
-uv run pytest
+uv run python -m pytest
 echo "Hermes bootstrap complete."

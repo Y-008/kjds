@@ -83,8 +83,11 @@ $result = [ordered]@{
     tests = $false
     web_build = $false
     api_health = $false
+    api_auth = $false
+    kill_switch = $false
     api_database_write = $false
     web_health = $false
+    web_proxy_auth = $false
     cleanup_processes = $false
     cleanup_database = $false
     cleanup_files = $false
@@ -118,17 +121,20 @@ try {
     $env:KJDS_DATABASE_PROVIDER = "local-postgres"
     $env:KJDS_REPOSITORY = "postgres"
     $env:KJDS_SHADOW_MODE = "true"
+    $env:KJDS_API_KEY = "g1-smoke-" + [guid]::NewGuid().ToString("N")
+    $env:KJDS_API_ACTOR = "g1-verifier"
+    $env:KJDS_API_ROLES = "operator,reviewer,approver,risk,admin"
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260713_0003.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0004.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260713_0003"
+    $result.migration = "20260716_0004"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260712_0002")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260713_0003")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260712_0002") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260713_0003") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -164,16 +170,34 @@ try {
     Wait-Until -Description "G-1 API" -Condition { Test-HttpOk "http://127.0.0.1:$ApiPort/health/ready" }
 
     $health = Invoke-RestMethod "http://127.0.0.1:$ApiPort/health/ready" -TimeoutSec 5
-    if ($health.status -ne "ok" -or $health.database.status -ne "ok") {
+    if ($health.status -ne "ok" -or $health.database.status -ne "ok" -or -not $health.security.api_identity_configured) {
         throw "API health did not confirm PostgreSQL readiness"
     }
     $result.api_health = $true
 
     $sku = "G1-SMOKE-" + (Get-Date -Format "yyyyMMddHHmmss")
     $body = @{ sku = $sku; name = "Disposable G-1 smoke product" } | ConvertTo-Json
-    $product = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products" -Method Post -ContentType "application/json" -Body $body
-    $readiness = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products/$($product.id)/readiness"
-    $events = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/events"
+    $headers = @{ "X-KJDS-API-Key" = $env:KJDS_API_KEY }
+    $unauthorized = Invoke-WebRequest "http://127.0.0.1:$ApiPort/v1/products" -SkipHttpErrorCheck
+    $invalid = Invoke-WebRequest "http://127.0.0.1:$ApiPort/v1/products" -Headers @{ "X-KJDS-API-Key" = "invalid" } -SkipHttpErrorCheck
+    $authorized = Invoke-WebRequest "http://127.0.0.1:$ApiPort/v1/products" -Headers $headers -SkipHttpErrorCheck
+    if ($unauthorized.StatusCode -ne 401 -or $invalid.StatusCode -ne 403 -or $authorized.StatusCode -ne 200) {
+        throw "API authentication smoke failed"
+    }
+    $result.api_auth = $true
+
+    $switchBody = @{ reason = "G-1 kill switch exercise" } | ConvertTo-Json
+    $engaged = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch/engage" -Method Post -Headers $headers -ContentType "application/json" -Body $switchBody
+    $blocked = Invoke-WebRequest "http://127.0.0.1:$ApiPort/v1/products" -Method Post -Headers $headers -ContentType "application/json" -Body $body -SkipHttpErrorCheck
+    $released = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch/release" -Method Post -Headers $headers -ContentType "application/json" -Body (@{ reason = "G-1 exercise completed" } | ConvertTo-Json)
+    if (-not $engaged.engaged -or $blocked.StatusCode -ne 423 -or $released.engaged) {
+        throw "Kill switch smoke failed"
+    }
+    $result.kill_switch = $true
+
+    $product = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products" -Method Post -Headers $headers -ContentType "application/json" -Body $body
+    $readiness = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products/$($product.id)/readiness" -Headers $headers
+    $events = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/events" -Headers $headers
     if ($readiness.ready_for_validation -ne $false -or -not ($events | Where-Object aggregate_id -eq $product.id)) {
         throw "API write/read/event smoke failed"
     }
@@ -190,6 +214,9 @@ try {
     $webResponse = Invoke-WebRequest "http://127.0.0.1:$WebPort" -UseBasicParsing -TimeoutSec 5
     if ($webResponse.Content -notmatch "KJDS") { throw "Web UI response did not contain the KJDS fingerprint" }
     $result.web_health = $true
+    $proxyResponse = Invoke-WebRequest "http://127.0.0.1:$WebPort/backend/v1/products" -UseBasicParsing -TimeoutSec 5
+    if ($proxyResponse.StatusCode -ne 200) { throw "Web server-side API proxy authentication failed" }
+    $result.web_proxy_auth = $true
 
     $result.status = "PASS"
 } catch {

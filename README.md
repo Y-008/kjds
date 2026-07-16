@@ -41,9 +41,16 @@ tests/
 1. 在 Supabase 新建项目，进入 **Connect**，复制 Session pooler 连接串（端口 5432）。
 2. 复制 `.env.example` 为 `.env`。
 3. 将连接串协议从 `postgres://` 改为 `postgresql+psycopg://`，并保留 `sslmode=require`。
-4. 运行 `uv run alembic upgrade head`。
+4. 运行 `uv run python -m alembic upgrade head`。
 
 不要把 `.env`、数据库密码、Ozon API Key 或 service role key 发给 AI，也不要提交到 Git。
+
+## API 身份与紧急停止
+
+- 未配置 `KJDS_API_KEY` 时，所有 `/v1` 请求以失败关闭方式拒绝。
+- 前端由 Next.js 服务端代理注入密钥，浏览器不保存 API 密钥。
+- 正式双人审批可用 `KJDS_API_KEYS_JSON` 为不同密钥配置独立 actor 和 role；申请人无法批准自己的高风险动作。
+- 紧急情况可调用 `/v1/system/kill-switch/engage`；开启后所有普通写操作返回 `423`，只有 `admin` 可解除。
 
 ## 本地运行
 
@@ -66,7 +73,7 @@ docker compose up --build
 
 ```powershell
 uv run ruff check .
-uv run pytest
+uv run python -m pytest
 ```
 
 完整 G-1 验证（临时 PostgreSQL 迁移回放、API/DB/Web smoke、测试和构建）：

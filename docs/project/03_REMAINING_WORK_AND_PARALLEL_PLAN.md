@@ -17,12 +17,12 @@
 
 | ID | Gate | 任务 | Owner | 验收 | 依赖 | 状态 |
 |---|---|---|---|---|---|---|
-| BAS-001 | G-1 | 审阅并分层冻结当前工作区 | 工程负责人 | 可回滚提交；无不明来源改动 | 无 | NOT_STARTED |
-| BAS-002 | G-1 | PostgreSQL 迁移与回滚验证 | 工程负责人 | 迁移到 0003；upgrade/downgrade 证据 | BAS-001 | NOT_STARTED |
-| BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | NOT_STARTED |
-| BAS-004 | G-1 | 环境状态自动生成 | 工程负责人 | 不再依赖过时静态 PASS 文档 | BAS-003 | NOT_STARTED |
-| SEC-001 | G-1 | API 身份认证 | 工程负责人 | `KJDS_API_KEY` 或正式身份层生效；未授权为 401/403 | BAS-003 | NOT_STARTED |
-| SEC-002 | G0 | 审批身份、Kill Switch 与审计 | 工程+经营 | 申请/批准不可伪造；紧急停止可验证 | SEC-001 | NOT_STARTED |
+| BAS-001 | G-1 | 审阅并分层冻结当前工作区 | 工程负责人 | 可回滚提交；无不明来源改动 | 无 | DONE |
+| BAS-002 | G-1 | PostgreSQL 迁移与回滚验证 | 工程负责人 | 迁移到 0004；upgrade/downgrade 证据 | BAS-001 | DONE |
+| BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |
+| BAS-004 | G-1 | 环境状态自动生成 | 工程负责人 | 不再依赖过时静态 PASS 文档 | BAS-003 | DONE |
+| SEC-001 | G-1 | API 身份认证 | 工程负责人 | `KJDS_API_KEY` 或正式身份层生效；未授权为 401/403 | BAS-003 | DONE |
+| SEC-002 | G0 | 审批身份、Kill Switch 与审计 | 工程+经营 | 申请/批准不可伪造；紧急停止可验证 | SEC-001 | DONE |
 | SKU-001 | G0 | 确认三个真实候选 SKU | 商品负责人 | 每个 SKU 有稳定 ID、来源和红线结论 | Owner/RACI | BLOCKED |
 | SKU-002 | G1 | 三类 Passport 与证据包 | 商品/合规 | 3×3 Passport 完整且人工批准 | SKU-001 | BLOCKED |
 | SKU-003 | G1 | 报价、样品、包装和物流实测 | 商品/供应链 | 每 SKU 三报价；重量尺寸与包装有实测 | SKU-001 | BLOCKED |
@@ -59,4 +59,3 @@
 - 发现跨窗口 Schema 变更时暂停实现，先提交 ADR/数据合同。
 - 每日整合只做交叉引用、冲突消解和验收检查，不追加新愿景。
 - 每周从 P0 删除不再提高当前 Gate 通过率的任务。
-

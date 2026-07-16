@@ -28,8 +28,8 @@
 ```powershell
 .\scripts\bootstrap.ps1
 .\scripts\dev.ps1
-uv run alembic current
-uv run pytest
+uv run python -m alembic current
+uv run python -m pytest
 uv run ruff check .
 docker compose down
 ```
