@@ -23,6 +23,11 @@ services:
       KJDS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hermes}:${POSTGRES_PASSWORD:-hermes_dev}@postgres:5432/${POSTGRES_DB:-hermes}
       KJDS_ENVIRONMENT: development
       KJDS_API_KEY: ${KJDS_API_KEY:-change-me}
+      KJDS_COMFYUI_URL: ${KJDS_COMFYUI_URL:-http://host.docker.internal:8189}
+      KJDS_OLLAMA_URL: ${KJDS_OLLAMA_URL:-http://host.docker.internal:11434}
+      KJDS_N8N_URL: ${KJDS_N8N_URL:-http://host.docker.internal:5678}
+      FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

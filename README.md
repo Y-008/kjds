@@ -1,6 +1,6 @@
 # KJDS — AI 跨境电商控制平面
 
-这是整体架构的第一版可运行骨架。工程基线固定为 Python 3.12、uv、PostgreSQL 17、Alembic 和 Ruff，覆盖：
+这是面向俄罗斯市场的 AI 跨境电商经营系统。生产数据平台采用 Supabase PostgreSQL，本机 PostgreSQL 保留作开发和离线备用。系统当前覆盖：
 
 - 市场原始观察、来源证据和可复算机会评分；
 - Product / Compliance / Quality Passport；
@@ -10,6 +10,9 @@
 - 高风险动作双人审批；
 - 受模式和幂等约束的 Agent 任务；
 - 稳定的领域事件与外部连接器协议。
+- 1688、淘宝、天猫、京东、拼多多、Alibaba、AliExpress、Amazon、Temu、Shopify 和 WooCommerce 的统一供货连接器目录；
+- 采购价、国内运费、国际物流、包装、关税、尾程、平台费、广告与退货准备金的单品 CM3 和保本价；
+- 通过产品护照、正 CM3 和双人审批门禁生成 Ozon 上架草稿。
 
 整体边界见 [架构说明](docs/architecture.md)，经营执行见 [90 天执行总纲](Ozon_90天执行总纲.md)。
 
@@ -24,11 +27,23 @@ apps/control_plane/
   intelligence.py     市场数据和机会评分
   content_growth.py   图片/视频/文案与增长实验
   connectors.py       Ozon/广告/物流/结算连接器协议
+  sourcing.py         全球供货商品、物流利润和上架草稿规则
+  source_connectors.py 平台能力目录
+  sourcing_store.py   Supabase/PostgreSQL 持久化适配器
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
   test_core.py        核心业务约束测试
 ```
+
+## Supabase 配置
+
+1. 在 Supabase 新建项目，进入 **Connect**，复制 Session pooler 连接串（端口 5432）。
+2. 复制 `.env.example` 为 `.env`。
+3. 将连接串协议从 `postgres://` 改为 `postgresql+psycopg://`，并保留 `sslmode=require`。
+4. 运行 `uv run alembic upgrade head`。
+
+不要把 `.env`、数据库密码、Ozon API Key 或 service role key 发给 AI，也不要提交到 Git。
 
 ## 本地运行
 
@@ -56,6 +71,6 @@ uv run pytest
 
 ## 当前成熟度
 
-这是架构底座和首条业务纵切，不是生产系统。PostgreSQL、Alembic 和健康检查已经接通，但领域读写当前仍使用内存仓储，重启后业务数据会清空；下一增量是实现 SQLAlchemy Repository 与事务 Outbox，不改变现有领域服务和 API。生产前还必须加入身份认证、密钥托管、备份恢复、真实平台连接器和监控告警。
+数据库持久化、Ozon文件导入、工具健康检查、多供货平台标准化、物流利润核算和 Ozon 上架草稿已经接通。默认仍为14天影子模式，高风险写操作不会自动执行。真实平台采集需要对应账号/API权限；浏览器登录、验证码和付费授权必须由账号所有者完成。
 
 环境规范见 [TOOLCHAIN.md](TOOLCHAIN.md)，环境决策见 [ADR-0001](docs/adr/ADR-0001-development-environment.md)。
