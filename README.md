@@ -69,6 +69,8 @@ tests/
 
 `POST /v1/intake/sku-episodes` 与经营看板的“候选 SKU 一站式录入”会同时建立商品身份、Product / Compliance / Quality Passport 草稿、三份不可变原始证据及血缘。重复提交相同 SKU 与文件会恢复既有对象，不增加虚假版本；同一 SKU 更换商品身份会被拒绝。录入结果始终是待人工审核草稿，不会自动批准合规、采购或上架。
 
+`GET /v1/passport-reviews` 返回当前待审核队列；`POST /v1/products/{product_id}/passports/{kind}/review` 只允许审核角色提交批准、拒绝或阻断结论。审核会创建不可变新版本，使用预期版本防止覆盖并发修改，阻断或拒绝必须填写原因，重复提交同一结论可安全恢复原结果。
+
 ## Ozon 数据合同与正式事实
 
 - `GET /v1/contracts/ozon` 返回 `ozon-v1` 订单、费用、退货和结算合同。

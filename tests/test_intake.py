@@ -105,3 +105,63 @@ def test_sku_episode_rejects_identity_conflict_on_retry():
         assert "different product name" in str(exc)
     else:
         raise AssertionError("Expected SKU identity conflict")
+
+
+def test_passport_review_queue_and_decision_are_versioned_and_idempotent():
+    repo, _, intake = make_service()
+    result = intake.ingest(
+        sku="RU-001",
+        name="Storage box",
+        effective_at="2026-07-16T00:00:00+08:00",
+        payloads=payloads(),
+        created_by="operator-1",
+    )
+    commerce = intake.commerce
+    assert len(commerce.passport_review_queue()) == 3
+
+    reviewed = commerce.review_passport(
+        product_id=result["product"]["id"],
+        kind=PassportType.PRODUCT,
+        expected_version=1,
+        decision="approved",
+        review_notes="Facts and source file checked",
+        reviewed_by="reviewer-1",
+    )
+    retry = commerce.review_passport(
+        product_id=result["product"]["id"],
+        kind=PassportType.PRODUCT,
+        expected_version=1,
+        decision="approved",
+        review_notes="Facts and source file checked",
+        reviewed_by="reviewer-1",
+    )
+
+    assert retry.id == reviewed.id
+    assert reviewed.version == 2
+    assert reviewed.approved_by == "reviewer-1"
+    assert len(commerce.passport_review_queue()) == 2
+    assert repo.latest_passports(result["product"]["id"])[PassportType.PRODUCT].facts["decision"] == "approved"
+
+
+def test_blocking_passport_requires_review_notes():
+    _, _, intake = make_service()
+    result = intake.ingest(
+        sku="RU-001",
+        name="Storage box",
+        effective_at="2026-07-16T00:00:00+08:00",
+        payloads=payloads(),
+        created_by="operator-1",
+    )
+    try:
+        intake.commerce.review_passport(
+            product_id=result["product"]["id"],
+            kind=PassportType.COMPLIANCE,
+            expected_version=1,
+            decision="blocked",
+            review_notes="",
+            reviewed_by="reviewer-1",
+        )
+    except ValueError as exc:
+        assert "requires notes" in str(exc)
+    else:
+        raise AssertionError("Expected review notes requirement")

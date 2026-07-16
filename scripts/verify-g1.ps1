@@ -122,6 +122,7 @@ $result = [ordered]@{
     api_database_write = $false
     evidence_ledger = $false
     sku_episode_intake = $false
+    passport_human_review = $false
     sourcing_evidence_gate = $false
     operations_readiness = $false
     passport_evidence_gate = $false
@@ -319,6 +320,27 @@ try {
         throw "Idempotent SKU episode intake smoke failed"
     }
     $result.sku_episode_intake = $true
+
+    $reviewQueue = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/passport-reviews" -Headers $headers
+    $productReview = $reviewQueue | Where-Object { $_.product.id -eq $episode.product.id -and $_.passport.kind -eq "product" }
+    $reviewBody = @{
+        expected_version = $productReview.passport.version
+        decision = "approved"
+        review_notes = "G-1 reviewer verified the source evidence"
+    } | ConvertTo-Json
+    $reviewedPassport = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products/$($episode.product.id)/passports/product/review" -Method Post -Headers $headers -ContentType "application/json" -Body $reviewBody
+    $reviewRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products/$($episode.product.id)/passports/product/review" -Method Post -Headers $headers -ContentType "application/json" -Body $reviewBody
+    $reviewQueueAfter = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/passport-reviews" -Headers $headers
+    if (
+        $reviewQueue.Count -lt 3 -or
+        $reviewedPassport.id -ne $reviewRetry.id -or
+        $reviewedPassport.version -ne 2 -or
+        -not $reviewedPassport.approved_by -or
+        @($reviewQueueAfter | Where-Object { $_.product.id -eq $episode.product.id }).Count -ne 2
+    ) {
+        throw "Passport human review queue or idempotent decision smoke failed"
+    }
+    $result.passport_human_review = $true
 
     $offerExternalId = "G1-OFFER-" + [guid]::NewGuid().ToString("N")
     $offerBody = @{

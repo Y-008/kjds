@@ -50,6 +50,18 @@ type ProductReadiness = {
   passports: PassportReadiness[];
   ready_for_validation: boolean;
 };
+type PassportReview = {
+  product: { id: string; sku: string; name: string };
+  passport: {
+    id: string;
+    kind: "product" | "compliance" | "quality";
+    version: number;
+    facts: Record<string, unknown>;
+    evidence: string[];
+    missing_fields: string[];
+    created_at: string;
+  };
+};
 type GateRequirement = {
   id: string;
   title: string;
@@ -87,26 +99,31 @@ export default function Home() {
   const [sourceConnectors, setSourceConnectors] = useState<SourceConnector[]>([]);
   const [offers, setOffers] = useState<unknown[]>([]);
   const [skuReadiness, setSkuReadiness] = useState<ProductReadiness[]>([]);
+  const [passportReviews, setPassportReviews] = useState<PassportReview[]>([]);
   const [gateReadiness, setGateReadiness] = useState<GateReadiness | null>(null);
   const [uploading, setUploading] = useState(false);
   const [gateUploading, setGateUploading] = useState(false);
   const [skuUploading, setSkuUploading] = useState(false);
+  const [reviewingKey, setReviewingKey] = useState<string | null>(null);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/offers", { cache: "no-store" }),
       fetch("/backend/v1/products", { cache: "no-store" }),
       fetch("/backend/v1/operations/readiness", { cache: "no-store" }),
+      fetch("/backend/v1/passport-reviews", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
     if (connectorResponse.ok) setSourceConnectors(await connectorResponse.json());
     if (offersResponse.ok) setOffers(await offersResponse.json());
     if (gateResponse.ok) setGateReadiness(await gateResponse.json());
+    if (reviewResponse.ok) setPassportReviews(await reviewResponse.json());
     if (productsResponse.ok) {
       const products: { id: string }[] = await productsResponse.json();
       const readiness = await Promise.all(
@@ -223,6 +240,34 @@ export default function Home() {
     }
   }
 
+  async function reviewPassport(item: PassportReview, decision: "approved" | "blocked") {
+    const key = item.passport.id;
+    const notes = (reviewNotes[key] ?? "").trim();
+    if (decision === "blocked" && !notes) {
+      setNotice("阻断 Passport 必须填写明确原因");
+      return;
+    }
+    setReviewingKey(key);
+    setNotice(`正在记录 ${item.product.sku} 的人工审核结论…`);
+    try {
+      const response = await fetch(
+        `/backend/v1/products/${item.product.id}/passports/${item.passport.kind}/review`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expected_version: item.passport.version, decision, review_notes: notes }),
+        },
+      );
+      const result = await response.json();
+      setNotice(response.ok ? `${item.product.sku} · ${passportLabels[item.passport.kind]} 已${decision === "approved" ? "批准" : "阻断"}` : result.detail ?? "审核提交失败");
+      if (response.ok) await load();
+    } catch {
+      setNotice("无法提交审核结论，请检查服务状态");
+    } finally {
+      setReviewingKey(null);
+    }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
 
@@ -330,6 +375,30 @@ export default function Home() {
             </div>
             <div className="intake-submit"><p>提交只建立可追溯草稿，不代表合规批准、采购授权或上架放行。</p><button disabled={skuUploading}>{skuUploading ? "正在建立…" : "建立 SKU Episode"}</button></div>
           </form>
+        </section>
+
+        <section className="passport-review-panel">
+          <div className="panel-title">
+            <div><p className="eyebrow">HUMAN REVIEW</p><h3>Passport 人工审核</h3></div>
+            <span className={passportReviews.length ? "badge" : "gate ready"}>{passportReviews.length ? `${passportReviews.length} 项待审` : "队列已清空"}</span>
+          </div>
+          {passportReviews.length ? <div className="review-grid">{passportReviews.map((item) => {
+            const key = item.passport.id;
+            const busy = reviewingKey === key;
+            return <article className="review-card" key={key}>
+              <div className="review-head">
+                <div><strong>{item.product.sku}</strong><small>{item.product.name}</small></div>
+                <span>{passportLabels[item.passport.kind]} · V{item.passport.version}</span>
+              </div>
+              <div className="fact-list">{Object.entries(item.passport.facts).filter(([name]) => name !== "decision").map(([name, value]) => <div key={name}><span>{name}</span><b>{typeof value === "object" ? JSON.stringify(value) : String(value)}</b></div>)}</div>
+              <div className="review-evidence"><ShieldCheck size={14} /><span>{item.passport.evidence.length} 份不可变证据</span>{item.passport.missing_fields.length ? <b>缺少 {item.passport.missing_fields.join("、")}</b> : <b>必填事实完整</b>}</div>
+              <label>审核说明<textarea value={reviewNotes[key] ?? ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [key]: event.target.value }))} placeholder="记录核查依据；阻断时必须填写原因" /></label>
+              <div className="review-actions">
+                <button className="reject" disabled={busy} onClick={() => reviewPassport(item, "blocked")}>阻断并退回</button>
+                <button className="approve" disabled={busy || item.passport.missing_fields.length > 0} onClick={() => reviewPassport(item, "approved")}>{busy ? "提交中…" : "批准 Passport"}</button>
+              </div>
+            </article>;
+          })}</div> : <div className="empty"><CheckCircle2 size={25} /><strong>没有待审核 Passport</strong><p>新的 SKU Episode 提交后会自动进入这里。</p></div>}
         </section>
 
         <section className="metrics">

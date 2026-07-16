@@ -99,6 +99,66 @@ class CommerceService:
     def list_products(self) -> list[Product]:
         return self.repo.list_products()
 
+    def passport_review_queue(self) -> list[dict]:
+        queue = []
+        for product in self.repo.list_products():
+            for kind, passport in self.repo.latest_passports(product.id).items():
+                if passport.approved_by:
+                    continue
+                queue.append(
+                    {
+                        "product": {"id": product.id, "sku": product.sku, "name": product.name},
+                        "passport": {
+                            "id": passport.id,
+                            "kind": kind.value,
+                            "version": passport.version,
+                            "facts": passport.facts,
+                            "evidence": passport.evidence,
+                            "missing_fields": passport.missing_required_facts,
+                            "created_at": passport.created_at,
+                        },
+                    }
+                )
+        return sorted(queue, key=lambda item: item["passport"]["created_at"])
+
+    def review_passport(
+        self,
+        *,
+        product_id: str,
+        kind: PassportType,
+        expected_version: int,
+        decision: str,
+        review_notes: str,
+        reviewed_by: str,
+    ) -> Passport:
+        if decision not in {"approved", "rejected", "blocked"}:
+            raise ValueError("Passport review decision must be approved, rejected, or blocked")
+        review_notes = review_notes.strip()
+        if decision in {"rejected", "blocked"} and not review_notes:
+            raise ValueError("Blocked or rejected passport review requires notes")
+        passport = self.repo.latest_passports(product_id).get(kind)
+        if passport is None:
+            raise ValueError(f"No {kind.value} passport exists for review")
+        reviewed_facts = dict(passport.facts)
+        reviewed_facts.update({"decision": decision, "review_notes": review_notes})
+        if passport.version != expected_version:
+            if (
+                passport.version == expected_version + 1
+                and passport.approved_by == reviewed_by
+                and passport.facts == reviewed_facts
+            ):
+                return passport
+            raise ValueError("Passport review is stale; reload the latest version")
+        if passport.approved_by:
+            raise ValueError("Reviewed passport versions are immutable")
+        return self.add_passport(
+            product_id=product_id,
+            kind=kind,
+            facts=reviewed_facts,
+            evidence=passport.evidence,
+            approved_by=reviewed_by,
+        )
+
     def product_readiness(self, product_id: str) -> dict:
         product = self.repo.get_product(product_id)
         passports = self.repo.latest_passports(product_id)

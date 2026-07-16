@@ -41,7 +41,7 @@ from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOff
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.10.0"
+APP_VERSION = "0.11.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -150,6 +150,14 @@ class PassportInput(BaseModel):
     kind: PassportType
     facts: dict[str, Any]
     evidence: list[str]
+
+
+class PassportReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int = Field(ge=1)
+    decision: str
+    review_notes: str = Field(default="", max_length=2000)
 
 
 class OrderInput(BaseModel):
@@ -751,6 +759,30 @@ def list_products():
 @app.get("/v1/products/{product_id}/readiness")
 def product_readiness(product_id: str):
     return run(lambda: commerce.product_readiness(product_id))
+
+
+@app.get("/v1/passport-reviews")
+def passport_review_queue(principal: Annotated[Principal, Depends(current_principal)]):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(commerce.passport_review_queue)
+
+
+@app.post("/v1/products/{product_id}/passports/{kind}/review", status_code=201)
+def review_passport(
+    product_id: str,
+    kind: PassportType,
+    body: PassportReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(
+        lambda: commerce.review_passport(
+            product_id=product_id,
+            kind=kind,
+            reviewed_by=principal.actor_id,
+            **body.model_dump(),
+        )
+    )
 
 
 @app.get("/v1/contracts/ozon")
