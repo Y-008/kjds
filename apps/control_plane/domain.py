@@ -22,6 +22,51 @@ class PassportType(StrEnum):
     QUALITY = "quality"
 
 
+PASSPORT_REQUIRED_FACTS: dict[PassportType, frozenset[str]] = {
+    PassportType.PRODUCT: frozenset(
+        {
+            "decision",
+            "material",
+            "intended_use",
+            "country_of_origin",
+            "weight_kg",
+            "dimensions_cm",
+        }
+    ),
+    PassportType.COMPLIANCE: frozenset(
+        {
+            "decision",
+            "hs_code",
+            "eaeu_rules",
+            "eac_requirement",
+            "chestny_znak_requirement",
+            "russian_labeling",
+            "ip_status",
+            "transport_restrictions",
+            "sellability",
+        }
+    ),
+    PassportType.QUALITY: frozenset(
+        {
+            "decision",
+            "golden_sample_ref",
+            "inspection_plan",
+            "packaging_test",
+        }
+    ),
+}
+
+
+def _fact_is_present(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set, dict)):
+        return bool(value)
+    return True
+
+
 class ProductStatus(StrEnum):
     CANDIDATE = "candidate"
     VALIDATED = "validated"
@@ -133,8 +178,21 @@ class Passport:
     created_at: str = field(default_factory=utc_now)
 
     @property
+    def missing_required_facts(self) -> list[str]:
+        return sorted(key for key in PASSPORT_REQUIRED_FACTS[self.kind] if not _fact_is_present(self.facts.get(key)))
+
+    @property
     def is_approved(self) -> bool:
-        return bool(self.approved_by and self.evidence)
+        return bool(
+            self.approved_by
+            and self.evidence
+            and self.facts.get("decision") == "approved"
+            and not self.missing_required_facts
+        )
+
+    @property
+    def is_blocked(self) -> bool:
+        return bool(self.approved_by and self.evidence and self.facts.get("decision") in {"rejected", "blocked"})
 
 
 @dataclass(slots=True)

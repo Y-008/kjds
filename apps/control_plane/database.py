@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import os
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+
+load_dotenv()
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://hermes:hermes_dev@localhost:5432/hermes"
 

@@ -3,13 +3,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 from .domain import MarketObservation, OpportunityInsight
-from .repository import InMemoryRepository
+from .repository import Repository
 
 
 class MarketIntelligenceService:
     """Turns source-attributed observations into reproducible opportunity scores."""
 
-    def __init__(self, repository: InMemoryRepository) -> None:
+    def __init__(self, repository: Repository) -> None:
         self.repo = repository
 
     def ingest(

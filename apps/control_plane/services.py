@@ -6,6 +6,7 @@ from .domain import (
     CM1_COSTS,
     CM2_COSTS,
     CM3_COSTS,
+    PASSPORT_REQUIRED_FACTS,
     AgentMode,
     AgentTask,
     Approval,
@@ -19,7 +20,7 @@ from .domain import (
     ProductStatus,
     ProfitSnapshot,
 )
-from .repository import InMemoryRepository
+from .repository import Repository
 
 HIGH_RISK_ACTIONS = {
     "listing.publish",
@@ -41,7 +42,7 @@ AGENT_POLICIES: dict[str, set[AgentMode]] = {
 
 
 class CommerceService:
-    def __init__(self, repository: InMemoryRepository) -> None:
+    def __init__(self, repository: Repository) -> None:
         self.repo = repository
 
     def create_product(self, *, sku: str, name: str) -> Product:
@@ -59,6 +60,14 @@ class CommerceService:
         approved_by: str | None,
     ) -> Passport:
         self.repo.get_product(product_id)
+        facts = dict(facts)
+        evidence = [item.strip() for item in evidence if item.strip()]
+        decision = facts.get("decision")
+        if approved_by:
+            if decision not in {"approved", "rejected", "blocked"}:
+                raise ValueError("Reviewed passport decision must be approved, rejected, or blocked")
+            if not evidence:
+                raise ValueError("Reviewed passport requires evidence")
         previous = self.repo.latest_passports(product_id).get(kind)
         passport = Passport(
             product_id=product_id,
@@ -68,9 +77,63 @@ class CommerceService:
             evidence=evidence,
             approved_by=approved_by,
         )
+        if approved_by and decision == "approved" and passport.missing_required_facts:
+            raise ValueError(
+                f"Approved {kind.value} passport missing required facts: {', '.join(passport.missing_required_facts)}"
+            )
         self.repo.add_passport(passport)
         self.repo.append_event("passport.recorded", product_id, {"kind": kind, "version": passport.version})
         return passport
+
+    def list_products(self) -> list[Product]:
+        return self.repo.list_products()
+
+    def product_readiness(self, product_id: str) -> dict:
+        product = self.repo.get_product(product_id)
+        passports = self.repo.latest_passports(product_id)
+        checks = []
+        for kind in PassportType:
+            passport = passports.get(kind)
+            if passport is None:
+                checks.append(
+                    {
+                        "kind": kind.value,
+                        "status": "missing",
+                        "version": None,
+                        "missing_fields": sorted(PASSPORT_REQUIRED_FACTS[kind]),
+                        "evidence_count": 0,
+                        "approved_by": None,
+                    }
+                )
+                continue
+            if passport.is_approved:
+                status = "approved"
+            elif passport.is_blocked:
+                status = "blocked"
+            elif passport.facts.get("decision") == "approved" and not passport.approved_by:
+                status = "awaiting_approval"
+            else:
+                status = "draft"
+            checks.append(
+                {
+                    "kind": kind.value,
+                    "status": status,
+                    "version": passport.version,
+                    "missing_fields": passport.missing_required_facts,
+                    "evidence_count": len(passport.evidence),
+                    "approved_by": passport.approved_by,
+                }
+            )
+        return {
+            "product": {
+                "id": product.id,
+                "sku": product.sku,
+                "name": product.name,
+                "status": product.status.value,
+            },
+            "passports": checks,
+            "ready_for_validation": all(item["status"] == "approved" for item in checks),
+        }
 
     def validate_product(self, product_id: str) -> Product:
         product = self.repo.get_product(product_id)
@@ -79,6 +142,7 @@ class CommerceService:
         if missing:
             raise ValueError(f"Approved passports required: {', '.join(missing)}")
         product.status = ProductStatus.VALIDATED
+        self.repo.save_product(product)
         self.repo.append_event("product.validated", product.id, {})
         return product
 
@@ -174,6 +238,7 @@ class CommerceService:
         approval.status = ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
         approval.decided_by = decided_by
         approval.decision_reason = reason
+        self.repo.save_approval(approval)
         self.repo.append_event("approval.decided", approval.id, {"status": approval.status})
         return approval
 

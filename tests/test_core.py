@@ -7,6 +7,34 @@ from apps.control_plane.intelligence import MarketIntelligenceService
 from apps.control_plane.repository import InMemoryRepository
 from apps.control_plane.services import CommerceService
 
+PASSPORT_FACTS = {
+    PassportType.PRODUCT: {
+        "decision": "approved",
+        "material": "polypropylene",
+        "intended_use": "household storage",
+        "country_of_origin": "CN",
+        "weight_kg": "0.5",
+        "dimensions_cm": {"length": 30, "width": 20, "height": 10},
+    },
+    PassportType.COMPLIANCE: {
+        "decision": "approved",
+        "hs_code": "3924.90",
+        "eaeu_rules": ["reviewed: not in regulated scope"],
+        "eac_requirement": "not_required_after_review",
+        "chestny_znak_requirement": "not_required_after_review",
+        "russian_labeling": "required",
+        "ip_status": "cleared",
+        "transport_restrictions": "none_identified",
+        "sellability": "sellable",
+    },
+    PassportType.QUALITY: {
+        "decision": "approved",
+        "golden_sample_ref": "sample://TEST-001/golden",
+        "inspection_plan": ["dimensions", "material", "appearance"],
+        "packaging_test": "passed",
+    },
+}
+
 
 class CoreFlowTest(TestCase):
     def setUp(self):
@@ -21,7 +49,7 @@ class CoreFlowTest(TestCase):
             self.commerce.add_passport(
                 product_id=self.product.id,
                 kind=kind,
-                facts={"verified": True, "kind": kind.value},
+                facts=PASSPORT_FACTS[kind],
                 evidence=[f"evidence://{kind.value}"],
                 approved_by="owner@example.com",
             )
@@ -29,6 +57,32 @@ class CoreFlowTest(TestCase):
     def test_product_cannot_validate_without_all_passports(self):
         with self.assertRaisesRegex(ValueError, "Approved passports required"):
             self.commerce.validate_product(self.product.id)
+
+    def test_approved_passport_requires_complete_gate_facts(self):
+        with self.assertRaisesRegex(ValueError, "missing required facts"):
+            self.commerce.add_passport(
+                product_id=self.product.id,
+                kind=PassportType.COMPLIANCE,
+                facts={"decision": "approved", "hs_code": "3924.90"},
+                evidence=["review://compliance/1"],
+                approved_by="compliance-owner",
+            )
+
+        readiness = self.commerce.product_readiness(self.product.id)
+        self.assertFalse(readiness["ready_for_validation"])
+        self.assertEqual({item["status"] for item in readiness["passports"]}, {"missing"})
+
+    def test_rejected_compliance_passport_blocks_validation(self):
+        self.commerce.add_passport(
+            product_id=self.product.id,
+            kind=PassportType.COMPLIANCE,
+            facts={"decision": "rejected", "sellability": "blocked"},
+            evidence=["review://compliance/rejection"],
+            approved_by="compliance-owner",
+        )
+        readiness = self.commerce.product_readiness(self.product.id)
+        compliance = next(item for item in readiness["passports"] if item["kind"] == "compliance")
+        self.assertEqual(compliance["status"], "blocked")
 
     def test_market_observations_produce_traceable_score(self):
         row = self.market.ingest(

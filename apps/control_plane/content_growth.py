@@ -3,13 +3,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 from .domain import ContentAsset, ContentStatus, ContentType, ExperimentStatus, GrowthExperiment
-from .repository import InMemoryRepository
+from .repository import Repository
 
 REQUIRED_QA = {"factual_grounding", "policy", "localization", "ip_rights", "brand"}
 
 
 class ContentGrowthService:
-    def __init__(self, repository: InMemoryRepository) -> None:
+    def __init__(self, repository: Repository) -> None:
         self.repo = repository
 
     def create_content_brief(
@@ -37,6 +37,7 @@ class ContentGrowthService:
             raise ValueError("Generated content must have an artifact reference")
         asset.artifact_ref = artifact_ref
         asset.status = ContentStatus.GENERATED
+        self.repo.save_content_asset(asset)
         self.repo.append_event("content.generated", asset.id, {"artifact_ref": artifact_ref})
         return asset
 
@@ -45,6 +46,7 @@ class ContentGrowthService:
         checked = {item.get("check") for item in checks if item.get("passed") is True}
         asset.qa_results = checks
         asset.status = ContentStatus.APPROVED if REQUIRED_QA.issubset(checked) else ContentStatus.QA_FAILED
+        self.repo.save_content_asset(asset)
         self.repo.append_event("content.reviewed", asset.id, {"status": asset.status})
         return asset
 
@@ -77,7 +79,7 @@ class ContentGrowthService:
             raise ValueError("Only draft experiments can start")
         approved_assets = [
             item
-            for item in self.repo.content_assets.values()
+            for item in self.repo.content_assets_for_product(experiment.product_id)
             if item.product_id == experiment.product_id
             and item.id in experiment.variants
             and item.status == ContentStatus.APPROVED
@@ -85,5 +87,6 @@ class ContentGrowthService:
         if len(approved_assets) != len(experiment.variants):
             raise ValueError("All experiment variants must be approved content assets")
         experiment.status = ExperimentStatus.RUNNING
+        self.repo.save_experiment(experiment)
         self.repo.append_event("experiment.started", experiment.id, {})
         return experiment

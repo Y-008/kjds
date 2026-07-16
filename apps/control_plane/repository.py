@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Protocol
 
 from .domain import (
     AgentTask,
@@ -15,6 +16,36 @@ from .domain import (
     PassportType,
     Product,
 )
+
+
+class Repository(Protocol):
+    def add_product(self, product: Product) -> Product: ...
+    def get_product(self, product_id: str) -> Product: ...
+    def list_products(self) -> list[Product]: ...
+    def save_product(self, product: Product) -> Product: ...
+    def add_passport(self, passport: Passport) -> Passport: ...
+    def latest_passports(self, product_id: str) -> dict[PassportType, Passport]: ...
+    def add_order(self, order: Order) -> Order: ...
+    def get_order(self, order_id: str) -> Order: ...
+    def add_charge(self, charge: Charge) -> Charge: ...
+    def charges_for_order(self, order_id: str) -> Iterable[Charge]: ...
+    def add_approval(self, approval: Approval) -> Approval: ...
+    def get_approval(self, approval_id: str) -> Approval: ...
+    def save_approval(self, approval: Approval) -> Approval: ...
+    def add_agent_task(self, task: AgentTask) -> AgentTask: ...
+    def append_event(self, event_type: str, aggregate_id: str, payload: dict) -> None: ...
+    def event_count(self) -> int: ...
+    def events_after(self, sequence: int) -> list[dict]: ...
+    def add_observation(self, observation: MarketObservation) -> MarketObservation: ...
+    def observations_for(self, market: str, category: str, metric: str | None = None) -> list[MarketObservation]: ...
+    def add_opportunity(self, opportunity: OpportunityInsight) -> OpportunityInsight: ...
+    def add_content_asset(self, asset: ContentAsset) -> ContentAsset: ...
+    def get_content_asset(self, asset_id: str) -> ContentAsset: ...
+    def save_content_asset(self, asset: ContentAsset) -> ContentAsset: ...
+    def content_assets_for_product(self, product_id: str) -> list[ContentAsset]: ...
+    def add_experiment(self, experiment: GrowthExperiment) -> GrowthExperiment: ...
+    def get_experiment(self, experiment_id: str) -> GrowthExperiment: ...
+    def save_experiment(self, experiment: GrowthExperiment) -> GrowthExperiment: ...
 
 
 class InMemoryRepository:
@@ -45,6 +76,13 @@ class InMemoryRepository:
             return self.products[product_id]
         except KeyError as exc:
             raise KeyError(f"Unknown product: {product_id}") from exc
+
+    def list_products(self) -> list[Product]:
+        return sorted(self.products.values(), key=lambda item: item.created_at)
+
+    def save_product(self, product: Product) -> Product:
+        self.products[product.id] = product
+        return product
 
     def add_passport(self, passport: Passport) -> Passport:
         self.passports[passport.id] = passport
@@ -102,6 +140,12 @@ class InMemoryRepository:
             {"sequence": len(self.events) + 1, "type": event_type, "aggregate_id": aggregate_id, "payload": payload}
         )
 
+    def event_count(self) -> int:
+        return len(self.events)
+
+    def events_after(self, sequence: int) -> list[dict]:
+        return [event for event in self.events if event["sequence"] > sequence]
+
     def add_observation(self, observation: MarketObservation) -> MarketObservation:
         self.market_observations[observation.id] = observation
         return observation
@@ -127,6 +171,13 @@ class InMemoryRepository:
         except KeyError as exc:
             raise KeyError(f"Unknown content asset: {asset_id}") from exc
 
+    def save_content_asset(self, asset: ContentAsset) -> ContentAsset:
+        self.content_assets[asset.id] = asset
+        return asset
+
+    def content_assets_for_product(self, product_id: str) -> list[ContentAsset]:
+        return [item for item in self.content_assets.values() if item.product_id == product_id]
+
     def add_experiment(self, experiment: GrowthExperiment) -> GrowthExperiment:
         self.experiments[experiment.id] = experiment
         return experiment
@@ -136,3 +187,11 @@ class InMemoryRepository:
             return self.experiments[experiment_id]
         except KeyError as exc:
             raise KeyError(f"Unknown experiment: {experiment_id}") from exc
+
+    def save_experiment(self, experiment: GrowthExperiment) -> GrowthExperiment:
+        self.experiments[experiment.id] = experiment
+        return experiment
+
+    def save_approval(self, approval: Approval) -> Approval:
+        self.approvals[approval.id] = approval
+        return approval
