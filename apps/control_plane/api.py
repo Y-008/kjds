@@ -19,6 +19,7 @@ from .database import create_database_engine, database_health
 from .domain import AgentMode, ChargeType, ContentType, PassportType
 from .evidence import EvidenceGrade, EvidenceService
 from .facts import FactPromotionService
+from .finance import CashPlanStatus, FeeSignRule, FinanceEntryKind, FinanceService
 from .imports import MAX_IMPORT_BYTES, OzonImportService
 from .intelligence import MarketIntelligenceService
 from .ozon_contracts import contract_catalog
@@ -38,7 +39,7 @@ from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOff
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -55,6 +56,7 @@ market = MarketIntelligenceService(repo)
 content = ContentGrowthService(repo)
 imports = OzonImportService(engine)
 facts = FactPromotionService(engine)
+finance = FinanceService(engine)
 automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
 sourcing_store = SqlSourcingStore(engine)
 sourcing = SourcingService(sourcing_store, repo)
@@ -292,6 +294,66 @@ class LineageLinkInput(BaseModel):
     target_type: str = Field(min_length=1, max_length=100)
     target_id: str = Field(min_length=1, max_length=300)
     relationship: str = Field(min_length=1, max_length=100)
+
+
+class FeeMappingInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(min_length=1, max_length=80)
+    raw_code: str = Field(min_length=1, max_length=300)
+    canonical_type: ChargeType
+    sign_rule: FeeSignRule
+    effective_from: str
+    effective_until: str | None = None
+    evidence_id: str = Field(min_length=1)
+
+
+class FxRateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_currency: str
+    quote_currency: str = "CNY"
+    rate: Decimal
+    effective_at: str
+    source: str = Field(min_length=1, max_length=200)
+    evidence_id: str = Field(min_length=1)
+
+
+class FinanceEntryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entry_kind: FinanceEntryKind
+    source: str = Field(min_length=1, max_length=100)
+    source_ref: str = Field(min_length=1, max_length=500)
+    reconciliation_key: str = Field(min_length=1, max_length=300)
+    raw_fee_code: str | None = None
+    amount: Decimal
+    currency: str
+    effective_at: str
+    evidence_id: str = Field(min_length=1)
+    review_required: bool = False
+
+
+class ReconciliationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    quote_currency: str = "CNY"
+    fx_source: str = Field(min_length=1, max_length=200)
+    tolerance_ratio: Decimal = Decimal("0.003")
+
+
+class CashPlanItemInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(min_length=1, max_length=100)
+    source_ref: str = Field(min_length=1, max_length=500)
+    category: str = Field(min_length=1, max_length=100)
+    amount: Decimal
+    currency: str
+    expected_at: str
+    probability: Decimal
+    status: CashPlanStatus
+    evidence_id: str = Field(min_length=1)
 
 
 @app.get("/health")
@@ -604,6 +666,107 @@ def list_facts(fact_type: str | None = None, limit: int = 100):
 @app.get("/v1/facts/{fact_id}")
 def get_fact(fact_id: str):
     return run(lambda: facts.get(fact_id))
+
+
+@app.post("/v1/finance/fee-mappings", status_code=201)
+def register_fee_mapping(
+    body: FeeMappingInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(lambda: finance.register_fee_mapping(**body.model_dump(), approved_by=principal.actor_id))
+
+
+@app.get("/v1/finance/fee-mappings")
+def list_fee_mappings(provider: str | None = None):
+    return run(lambda: finance.list_fee_mappings(provider=provider))
+
+
+@app.post("/v1/finance/fx-rates", status_code=201)
+def add_fx_rate(
+    body: FxRateInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(lambda: finance.add_fx_rate(**body.model_dump(), created_by=principal.actor_id))
+
+
+@app.get("/v1/finance/fx-rates")
+def list_fx_rates(base_currency: str | None = None):
+    return run(lambda: finance.list_fx_rates(base_currency=base_currency))
+
+
+@app.post("/v1/finance/facts/{fact_id}/ingest", status_code=201)
+def ingest_finance_fact(
+    fact_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(lambda: finance.ingest_fact(fact_id, created_by=principal.actor_id))
+
+
+@app.post("/v1/finance/entries", status_code=201)
+def record_finance_entry(
+    body: FinanceEntryInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(lambda: finance.record_entry(**body.model_dump(), created_by=principal.actor_id))
+
+
+@app.get("/v1/finance/entries")
+def list_finance_entries(
+    reconciliation_key: str | None = None,
+    entry_kind: FinanceEntryKind | None = None,
+):
+    return run(lambda: finance.list_entries(reconciliation_key=reconciliation_key, entry_kind=entry_kind))
+
+
+@app.get("/v1/finance/unknown-fees")
+def list_unknown_fees(provider: str = "ozon"):
+    return run(lambda: finance.unknown_fee_entries(provider=provider))
+
+
+@app.post("/v1/finance/reconciliations/{reconciliation_key}", status_code=201)
+def reconcile_finance(
+    reconciliation_key: str,
+    body: ReconciliationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(
+        lambda: finance.reconcile(
+            reconciliation_key,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/finance/cash-plan", status_code=201)
+def add_cash_plan_item(
+    body: CashPlanItemInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(lambda: finance.add_cash_plan_item(**body.model_dump(), created_by=principal.actor_id))
+
+
+@app.get("/v1/finance/cash-forecast")
+def cash_forecast(
+    start_at: str,
+    opening_balance: Decimal,
+    fx_source: str,
+    quote_currency: str = "CNY",
+):
+    return run(
+        lambda: finance.cash_forecast(
+            start_at=start_at,
+            opening_balance=opening_balance,
+            quote_currency=quote_currency,
+            fx_source=fx_source,
+        )
+    )
 
 
 @app.post("/v1/products/{product_id}/passports", status_code=201)

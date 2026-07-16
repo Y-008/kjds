@@ -117,6 +117,8 @@ $result = [ordered]@{
     api_database_write = $false
     evidence_ledger = $false
     formal_fact_promotion = $false
+    finance_reconciliation = $false
+    cash_forecast = $false
     web_health = $false
     web_proxy_auth = $false
     cleanup_processes = $false
@@ -158,14 +160,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0006.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0007.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260716_0006"
+    $result.migration = "20260716_0007"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0005")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0006")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0005") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0006") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -285,6 +287,76 @@ try {
         throw "Ozon staging-to-formal-fact promotion smoke failed: $diagnostic"
     }
     $result.formal_fact_promotion = $true
+
+    $feeMappingBody = @{
+        provider = "ozon"
+        raw_code = "g1_service"
+        canonical_type = "platform_fee"
+        sign_rule = "absolute_outflow"
+        effective_from = "2026-07-01T00:00:00+00:00"
+        evidence_id = $evidenceRecord.id
+    } | ConvertTo-Json
+    $feeMapping = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/fee-mappings" -Method Post -Headers $headers -ContentType "application/json" -Body $feeMappingBody
+    $fxBody = @{
+        base_currency = "RUB"
+        quote_currency = "CNY"
+        rate = 0.08
+        effective_at = "2026-07-01T00:00:00+00:00"
+        source = "g1-fx"
+        evidence_id = $evidenceRecord.id
+    } | ConvertTo-Json
+    $fxRate = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/fx-rates" -Method Post -Headers $headers -ContentType "application/json" -Body $fxBody
+    $orderEntry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/facts/$($promotedFact.id)/ingest" -Method Post -Headers $headers
+    foreach ($entry in @(
+        @{ entry_kind = "platform_fee"; source_ref = "g1-fee"; raw_fee_code = "g1_service"; amount = 99.5 },
+        @{ entry_kind = "platform_settlement"; source_ref = "g1-settlement"; amount = 1200 },
+        @{ entry_kind = "bank_receipt"; source_ref = "g1-bank"; amount = 1200 }
+    )) {
+        $entryBody = @{
+            entry_kind = $entry.entry_kind
+            source = "g1_verification"
+            source_ref = "$($entry.source_ref)-$orderExternalId"
+            reconciliation_key = $orderExternalId
+            amount = $entry.amount
+            currency = "RUB"
+            effective_at = "2026-07-16T10:00:00+03:00"
+            evidence_id = $evidenceRecord.id
+        }
+        if ($entry.raw_fee_code) { $entryBody.raw_fee_code = $entry.raw_fee_code }
+        Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/entries" -Method Post -Headers $headers -ContentType "application/json" -Body ($entryBody | ConvertTo-Json) | Out-Null
+    }
+    $reconciliation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/reconciliations/$orderExternalId" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        quote_currency = "CNY"
+        fx_source = "g1-fx"
+        tolerance_ratio = 0.003
+    } | ConvertTo-Json)
+    if (
+        $feeMapping.raw_code -ne "g1_service" -or
+        $fxRate.base_currency -ne "RUB" -or
+        $orderEntry.entry_kind -ne "order_receivable" -or
+        $reconciliation.status -ne "matched" -or
+        $reconciliation.snapshot.unknown_fees.Count -ne 0
+    ) {
+        throw "Evidence-backed finance reconciliation smoke failed"
+    }
+    $result.finance_reconciliation = $true
+
+    $cashPlan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/cash-plan" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        source = "g1_verification"
+        source_ref = "g1-cash-$orderExternalId"
+        category = "inventory"
+        amount = -100
+        currency = "RUB"
+        expected_at = "2026-07-17T00:00:00+00:00"
+        probability = 1
+        status = "committed"
+        evidence_id = $evidenceRecord.id
+    } | ConvertTo-Json)
+    $cashForecast = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/cash-forecast?start_at=2026-07-16T00%3A00%3A00%2B00%3A00&opening_balance=100&fx_source=g1-fx&quote_currency=CNY" -Headers $headers
+    if ($cashPlan.status -ne "committed" -or $cashForecast.status -ne "ready" -or $cashForecast.weeks.Count -ne 13) {
+        throw "13-week cash forecast smoke failed"
+    }
+    $result.cash_forecast = $true
 
     Write-Output "[G-1] Starting disposable web UI on port $WebPort"
     $env:KJDS_API_URL = "http://127.0.0.1:$ApiPort"
