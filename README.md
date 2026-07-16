@@ -69,6 +69,14 @@ uv run ruff check .
 uv run pytest
 ```
 
+完整 G-1 验证（临时 PostgreSQL 迁移回放、API/DB/Web smoke、测试和构建）：
+
+```powershell
+.\scripts\verify-g1.ps1
+```
+
+实时结果保存在 `.runtime/G1_VERIFICATION.json`。
+
 ## 当前成熟度
 
 数据库持久化、Ozon文件导入、工具健康检查、多供货平台标准化、物流利润核算和 Ozon 上架草稿已经接通。默认仍为14天影子模式，高风险写操作不会自动执行。真实平台采集需要对应账号/API权限；浏览器登录、验证码和付费授权必须由账号所有者完成。

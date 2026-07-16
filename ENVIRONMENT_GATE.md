@@ -1,36 +1,17 @@
-# Hermes Environment Gate
+# KJDS G-1 Environment Gate
 
-复核日期：2026-07-11
+这个文件不再保存会过期的手工 `PASS` 结论。G-1 状态必须由当前工作区的实时验证脚本产生：
 
-| 闸门 | 状态 | 证据 |
-|---|---|---|
-| Git 仓库初始化 | PASS | `main` 分支，基线提交 `83346aa` |
-| Git 工作区干净 | PASS | 基线提交后无未提交文件 |
-| 项目 Python 隔离 | PASS | `.venv` 使用 Python 3.12.10 |
-| 依赖锁存在 | PASS | `uv.lock` 已生成 |
-| Docker 可用 | PASS | Docker Server 与 Compose 正常 |
-| PostgreSQL 健康 | PASS | PostgreSQL 17 容器 healthy |
-| 迁移可执行 | PASS | Alembic `20260711_0001 (head)` |
-| API 健康检查 | PASS | `/health` 返回 API 与 database 状态 ok |
-| 测试通过 | PASS | pytest 5/5 |
-| Lint 通过 | PASS | Ruff 无错误 |
-| 未提交真实密钥 | PASS | 仅保留 `.env.example` 和开发占位值 |
-| Bootstrap 已文档化 | PASS | Windows/Bash bootstrap 与 dev 脚本齐备 |
-| Compose 配置 | PASS | API + PostgreSQL 配置可解析 |
-| 干净容器重建 | PASS | Python 3.12-slim 从锁文件构建，迁移和 `/health` 通过 |
-
-当前已验证命令：
-
-```text
-uv sync --extra dev
-docker compose up -d postgres
-uv run alembic upgrade head
-uv run ruff check .
-uv run pytest
-uv run uvicorn apps.control_plane.api:app
-GET /health
+```powershell
+.\scripts\verify-g1.ps1
 ```
 
-**Environment Gate：PASS。**
+脚本会使用一个专用的临时 PostgreSQL 数据库，并验证：
 
-工程基线已经建立，可以进入下一阶段；领域持久化仍需从内存 Repository 迁移到 PostgreSQL，这是业务实现增量，不再是环境阻塞项。
+- Alembic 全新升级、回滚和重新升级；
+- Ruff 与全部 Python 测试；
+- Next.js 生产构建；
+- FastAPI 和 PostgreSQL 的真实读写及事件落库；
+- Web 冷启动和页面指纹。
+
+机器可读结果写入 `.runtime/G1_VERIFICATION.json`，该目录不进入 Git。只有当最新报告为 `PASS`，且报告中的 `git_commit` 与当前提交一致时，才能宣告 G-1 工程验证通过。
