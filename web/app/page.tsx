@@ -184,6 +184,14 @@ type CausalPolicy = {
   releases: Array<{ id: string; stage_index: number; stage: { name: string; max_exposure_fraction: string }; automatic_promotion: boolean; outcome: null | { verdict: string; observation_count: number; incremental_value: string; guardrail_breached: boolean } }>;
   proposed_by: string; usable: boolean; validity_status: string; execution_eligible: boolean; automatic_execution: boolean;
 };
+type PolicyShadowBatch = {
+  id: string; policy_id: string; release_id: string; evaluation_ids: string[]; context_count: number;
+  matched_count: number; fallback_count: number; zero_exposure: boolean; execution_eligible: boolean; created_at: string;
+};
+type PolicyActivationHandoff = {
+  id: string; policy_id: string; release_id: string; approval_id: string; approval_status: string;
+  validity_status: string; activation_eligible: boolean; execution_eligible: boolean; created_at: string;
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -241,6 +249,8 @@ export default function Home() {
   const [causalExperimentReviews, setCausalExperimentReviews] = useState<Record<string, CausalExperimentReview[]>>({});
   const [causalKnowledge, setCausalKnowledge] = useState<CausalKnowledgeEntry[]>([]);
   const [causalPolicies, setCausalPolicies] = useState<CausalPolicy[]>([]);
+  const [policyShadowBatches, setPolicyShadowBatches] = useState<PolicyShadowBatch[]>([]);
+  const [policyActivationHandoffs, setPolicyActivationHandoffs] = useState<PolicyActivationHandoff[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -256,7 +266,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -277,6 +287,8 @@ export default function Home() {
       fetch("/backend/v1/causal-experiments", { cache: "no-store" }),
       fetch("/backend/v1/causal-knowledge", { cache: "no-store" }),
       fetch("/backend/v1/causal-policies", { cache: "no-store" }),
+      fetch("/backend/v1/causal-policy-shadow-batches", { cache: "no-store" }),
+      fetch("/backend/v1/causal-policy-activation-handoffs", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -320,6 +332,8 @@ export default function Home() {
     }
     if (causalKnowledgeResponse.ok) setCausalKnowledge(await causalKnowledgeResponse.json());
     if (causalPolicyResponse.ok) setCausalPolicies(await causalPolicyResponse.json());
+    if (policyShadowResponse.ok) setPolicyShadowBatches(await policyShadowResponse.json());
+    if (policyHandoffResponse.ok) setPolicyActivationHandoffs(await policyHandoffResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -914,6 +928,40 @@ export default function Home() {
     finally { setLifecycleBusy(null); }
   }
 
+  async function runPolicyShadowBatch(event: FormEvent<HTMLFormElement>, policy: CausalPolicy, releaseId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const coverDays = value("policy_shadow_cover_days").split(/[，,\s]+/).map(Number).filter(Number.isFinite);
+    const body = {
+      batch_key: `manual-${Date.now()}`,
+      contexts: coverDays.map((days) => ({ ...policy.applicability, inventory_cover_days: days })),
+      observed_at: new Date().toISOString(),
+      evidence_ids: [value("policy_shadow_evidence")],
+    };
+    setLifecycleBusy(`policy-shadow:${releaseId}`); setNotice("正在记录零暴露影子判断；不会修改价格、广告、库存或平台数据…");
+    try {
+      const response = await fetch(`/backend/v1/causal-policy-releases/${releaseId}/shadow-batches`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `影子批次已固化：${result.matched_count} 条命中、${result.fallback_count} 条退回，真实暴露为 0。` : result.detail ?? "影子批次失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法记录影子批次，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function requestPolicyActivation(event: FormEvent<HTMLFormElement>, policy: CausalPolicy, releaseId: string, batch: PolicyShadowBatch) {
+    event.preventDefault();
+    const evidenceId = (event.currentTarget.elements.namedItem("policy_handoff_evidence") as HTMLSelectElement).value;
+    setLifecycleBusy(`policy-handoff:${releaseId}`); setNotice("正在将阶段激活建议移交独立审批；不会直接执行…");
+    try {
+      const response = await fetch(`/backend/v1/causal-policy-releases/${releaseId}/activation-handoff`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ evaluation_ids: batch.evaluation_ids, evidence_ids: [evidenceId] }) });
+      const result = await response.json();
+      setNotice(response.ok ? `已进入审批中心：${result.approval_id}。即使批准，也仍需独立执行适配器。` : result.detail ?? "审批交接失败");
+      if (response.ok) await load();
+    } catch { setNotice(`无法提交 ${policy.title} 的阶段交接`); }
+    finally { setLifecycleBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
@@ -1181,13 +1229,20 @@ export default function Home() {
             {causalPolicies.length ? <div className="policy-grid">{causalPolicies.map((policy) => {
               const acceptedReview = policy.reviews.find((item) => item.verdict === "accepted");
               const latestRelease = policy.releases[policy.releases.length - 1];
+              const shadowRelease = policy.releases.find((item) => item.stage.max_exposure_fraction === "0");
+              const shadowBatch = [...policyShadowBatches].reverse().find((item) => item.policy_id === policy.id && item.release_id === shadowRelease?.id);
+              const activationHandoff = policyActivationHandoffs.find((item) => item.policy_id === policy.id);
               const canReleaseNext = acceptedReview && policy.usable && policy.releases.length < policy.rollout_stages.length && (!latestRelease || latestRelease.outcome?.verdict === "passed");
               return <article className={policy.usable ? "policy-card" : "policy-card invalid"} key={policy.id}>
                 <div className="policy-card-head"><div><strong>{policy.title}</strong><small>{policy.validity_status} · 来源知识 {policy.knowledge_ids.length} 条</small></div><span className={policy.usable ? "gate ready" : "gate blocked"}>{policy.usable ? "可评估" : "已冻结"}</span></div>
                 <p>{policy.objective}</p><div className="policy-condition"><b>当</b>{policy.conditions.map((item) => <span key={`${item.field}:${item.operator}`}>{item.field} {item.operator} {String(item.value)}</span>)}<b>建议</b><span>{policy.action.type}</span></div>
                 {!policy.reviews.length && <form className="policy-review-form" onSubmit={(event) => reviewCausalPolicy(event, policy)}><select name="policy_review_verdict" defaultValue="accepted"><option value="accepted">接受策略合同</option><option value="needs_revision">退回修改</option><option value="rejected">拒绝</option></select><textarea name="policy_review_rationale" placeholder="条件、护栏、退回和阶段门审查" required /><textarea name="policy_review_counterarguments" placeholder="至少一个反方意见" required /><select name="policy_review_evidence" defaultValue="" required><option value="">复核证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button>固化策略复核</button></form>}
                 {canReleaseNext && <form className="policy-release-form" onSubmit={(event) => releaseCausalPolicyStage(event, policy, acceptedReview.id)}><strong>下一阶段：{policy.rollout_stages[policy.releases.length].name} · 最大暴露 {(Number(policy.rollout_stages[policy.releases.length].max_exposure_fraction) * 100).toFixed(0)}%</strong><input name="policy_release_rationale" placeholder="批准理由" required /><select name="policy_release_evidence" defaultValue="" required><option value="">阶段批准证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button>人工批准该阶段</button></form>}
+                {shadowRelease && !shadowRelease.outcome && <form className="policy-outcome-form" onSubmit={(event) => runPolicyShadowBatch(event, policy, shadowRelease.id)}><strong>运行零暴露影子批次</strong><p>粘贴实际库存覆盖天数，用逗号分隔；仅记录策略会如何判断，不修改任何经营数据。</p><input name="policy_shadow_cover_days" placeholder="例如：60, 52, 47, 31（最多100条）" required /><select name="policy_shadow_evidence" defaultValue="" required><option value="">选择本批数据证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `policy-shadow:${shadowRelease.id}`}>固化影子批次</button></form>}
+                {shadowBatch && <div className="knowledge-status usable"><strong>影子批次 {shadowBatch.context_count} 条</strong><span>命中 {shadowBatch.matched_count} · 退回 {shadowBatch.fallback_count} · 暴露 0%</span><b>执行权：无</b></div>}
                 {latestRelease && !latestRelease.outcome && <form className="policy-outcome-form" onSubmit={(event) => recordCausalPolicyOutcome(event, policy, latestRelease.id)}><strong>回填 {latestRelease.stage.name} 真实结果</strong><div className="lifecycle-triple"><select name="policy_outcome_verdict" defaultValue="passed"><option value="passed">通过</option><option value="failed">失败</option><option value="inconclusive">不确定</option></select><input name="policy_outcome_count" type="number" min="0" placeholder="观察数" required /><input name="policy_outcome_value" type="number" step="0.0001" placeholder="单位增量" required /></div><select name="policy_outcome_guardrail" defaultValue="false"><option value="false">护栏未越线</option><option value="true">护栏已越线</option></select><textarea name="policy_outcome_notes" placeholder="真实结果说明" required /><select name="policy_outcome_evidence" defaultValue="" required><option value="">结果证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button>固化阶段结果</button></form>}
+                {latestRelease && latestRelease.stage.max_exposure_fraction !== "0" && shadowBatch && !activationHandoff && <form className="policy-release-form" onSubmit={(event) => requestPolicyActivation(event, policy, latestRelease.id, shadowBatch)}><strong>移交阶段激活审批</strong><p>只创建独立审批事项；批准后仍不会直接操作平台。</p><select name="policy_handoff_evidence" defaultValue="" required><option value="">选择交接证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `policy-handoff:${latestRelease.id}`}>送入审批中心</button></form>}
+                {activationHandoff && <div className={activationHandoff.validity_status === "active" ? "knowledge-status usable" : "knowledge-status invalid"}><strong>审批 {activationHandoff.approval_status}</strong><span>{activationHandoff.validity_status} · {activationHandoff.activation_eligible ? "可进入执行设计" : "不可激活"}</span><b>自动执行：禁止</b></div>}
                 <div className="policy-stages">{policy.rollout_stages.map((stage, index) => { const release = policy.releases.find((item) => item.stage_index === index); return <span className={release?.outcome?.verdict === "passed" ? "passed" : release ? "released" : ""} key={stage.name}>{stage.name}<b>{(Number(stage.max_exposure_fraction) * 100).toFixed(0)}%</b></span>; })}</div>
                 <footer><span>条件不满足：{policy.fallback_action.type}</span><b>自动执行：禁止</b></footer>
               </article>;

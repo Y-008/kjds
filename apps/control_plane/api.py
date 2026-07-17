@@ -41,6 +41,7 @@ from .imports import MAX_IMPORT_BYTES, OzonImportService
 from .intake import PassportEvidencePayload, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .ozon_contracts import contract_catalog
+from .policy_shadow import PolicyShadowService
 from .procurement import ProcurementService
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
 from .readiness import GateReadinessService
@@ -60,7 +61,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.19.0"
+APP_VERSION = "0.20.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -95,6 +96,12 @@ causal_policies = CausalPolicyService(
     evidence=evidence,
 )
 commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
+policy_shadow = PolicyShadowService(
+    engine=engine,
+    policies=causal_policies,
+    evidence=evidence,
+    commerce=commerce,
+)
 intake = SkuEpisodeIntakeService(commerce=commerce, evidence=evidence)
 market = MarketIntelligenceService(repo)
 content = ContentGrowthService(repo)
@@ -641,6 +648,31 @@ class CausalPolicyContextInput(BaseModel):
     context: dict[str, Any]
 
 
+class PolicyEvaluationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    context: dict[str, Any]
+    observed_at: str
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class PolicyShadowBatchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batch_key: str = Field(min_length=1, max_length=300)
+    contexts: list[dict[str, Any]] = Field(min_length=1, max_length=100)
+    observed_at: str
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class PolicyActivationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evaluation_ids: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
 class FeeMappingInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1178,6 +1210,7 @@ def record_causal_policy_stage_outcome(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "admin")
+    run(lambda: policy_shadow.validate_stage_outcome(release_id, body.observation_count))
     return run(
         lambda: causal_policies.record_stage_outcome(
             release_id,
@@ -1195,6 +1228,77 @@ def evaluate_causal_policy_context(
 ):
     ensure_role(principal, "operator", "reviewer", "approver", "admin")
     return run(lambda: causal_policies.evaluate_context(policy_id, body.context))
+
+
+@app.post("/v1/causal-policy-releases/{release_id}/evaluations", status_code=201)
+def record_causal_policy_evaluation(
+    release_id: str,
+    body: PolicyEvaluationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: policy_shadow.record_evaluation(
+            release_id,
+            **body.model_dump(),
+            evaluated_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/causal-policy-releases/{release_id}/shadow-batches", status_code=201)
+def run_causal_policy_shadow_batch(
+    release_id: str,
+    body: PolicyShadowBatchInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: policy_shadow.run_shadow_batch(
+            release_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/causal-policy-evaluations")
+def list_causal_policy_evaluations(policy_id: str | None = None):
+    return run(lambda: policy_shadow.list_evaluations(policy_id))
+
+
+@app.get("/v1/causal-policy-shadow-batches")
+def list_causal_policy_shadow_batches(policy_id: str | None = None):
+    return run(lambda: policy_shadow.list_batches(policy_id))
+
+
+@app.post(
+    "/v1/causal-policy-releases/{release_id}/activation-handoff",
+    status_code=201,
+)
+def request_causal_policy_activation(
+    release_id: str,
+    body: PolicyActivationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: policy_shadow.request_activation(
+            release_id,
+            **body.model_dump(),
+            requested_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/causal-policy-activation-handoffs")
+def list_causal_policy_activation_handoffs():
+    return run(policy_shadow.list_handoffs)
+
+
+@app.get("/v1/causal-policy-activation-handoffs/{handoff_id}")
+def get_causal_policy_activation_handoff(handoff_id: str):
+    return run(lambda: policy_shadow.get_handoff(handoff_id))
 
 
 @app.post("/v1/models/discover")

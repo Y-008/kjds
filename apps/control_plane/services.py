@@ -24,6 +24,7 @@ from .domain import (
 from .repository import Repository
 
 HIGH_RISK_ACTIONS = {
+    "causal_policy.activate_stage",
     "listing.publish",
     "procurement.place_order",
     "advertising.increase_budget_large",

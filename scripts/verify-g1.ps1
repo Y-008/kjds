@@ -132,6 +132,9 @@ $result = [ordered]@{
     causal_knowledge_registry = $false
     causal_policy_compiler = $false
     controlled_policy_rollout = $false
+    causal_policy_evaluation_ledger = $false
+    causal_policy_shadow_batch = $false
+    causal_policy_approval_handoff = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -192,14 +195,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0017.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0018.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0017"
+    $result.migration = "20260717_0018"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0016")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0017")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0016") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0017") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -608,6 +611,35 @@ try {
         rationale = "Must fail before shadow outcome"
         evidence_ids = @($evidenceRecord.id)
     } | ConvertTo-Json -Depth 4)
+    $shadowContexts = @()
+    foreach ($index in 0..19) {
+        $shadowContexts += @{
+            platform = "Ozon"
+            country = "RU"
+            category = "G1-smoke"
+            population = "eligible-visitors"
+            inventory_cover_days = $(if ($index -lt 12) { 60 } else { 30 })
+        }
+    }
+    $shadowBatchBody = @{
+        batch_key = "g1-shadow-batch"
+        contexts = $shadowContexts
+        observed_at = "2026-07-20T00:00:00+00:00"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 6
+    $shadowBatch = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-releases/$($shadowRelease.id)/shadow-batches" -Method Post -Headers $headers -ContentType "application/json" -Body $shadowBatchBody
+    $shadowBatchRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-releases/$($shadowRelease.id)/shadow-batches" -Method Post -Headers $headers -ContentType "application/json" -Body $shadowBatchBody
+    $result.causal_policy_evaluation_ledger = ($shadowBatch.evaluation_ids.Count -eq 20)
+    $result.causal_policy_shadow_batch = (
+        $shadowBatch.id -eq $shadowBatchRetry.id -and
+        $shadowBatch.zero_exposure -eq $true -and
+        $shadowBatch.matched_count -eq 12 -and
+        $shadowBatch.fallback_count -eq 8 -and
+        $shadowBatch.execution_eligible -eq $false
+    )
+    if (-not $result.causal_policy_evaluation_ledger -or -not $result.causal_policy_shadow_batch) {
+        throw "Immutable policy evaluation and zero-exposure shadow batch smoke failed"
+    }
     $shadowOutcome = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-releases/$($shadowRelease.id)/outcome" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         verdict = "passed"
         observation_count = 20
@@ -622,6 +654,19 @@ try {
         rationale = "Previous immutable outcome met all promotion gates"
         evidence_ids = @($evidenceRecord.id)
     } | ConvertTo-Json -Depth 4)
+    $activationHandoff = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-releases/$($limitedRelease.id)/activation-handoff" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        evaluation_ids = @($shadowBatch.evaluation_ids)
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $selfActivationApproval = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/approvals/$($activationHandoff.approval_id)/decision" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        approved = $true
+        reason = "Self approval must fail"
+    } | ConvertTo-Json)
+    $approvedActivation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/approvals/$($activationHandoff.approval_id)/decision" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        approved = $true
+        reason = "Independent evidence and guardrail review passed"
+    } | ConvertTo-Json)
+    $approvedHandoff = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-activation-handoffs/$($activationHandoff.id)" -Headers $headers
     if (
         $policyReview.verdict -ne "accepted" -or
         $shadowRelease.stage.max_exposure_fraction -ne "0" -or
@@ -629,11 +674,17 @@ try {
         $prematureLimitedRelease -ne 422 -or
         $shadowOutcome.verdict -ne "passed" -or
         $limitedRelease.stage.max_exposure_fraction -ne "0.1" -or
-        $limitedRelease.automatic_promotion -ne $false
+        $limitedRelease.automatic_promotion -ne $false -or
+        $activationHandoff.approval_status -ne "pending" -or
+        $selfActivationApproval -ne 422 -or
+        $approvedActivation.status -ne "approved" -or
+        $approvedHandoff.activation_eligible -ne $true -or
+        $approvedHandoff.execution_eligible -ne $false
     ) {
         throw "Controlled conditional policy rollout smoke failed"
     }
     $result.controlled_policy_rollout = $true
+    $result.causal_policy_approval_handoff = $true
     $breachedGuardrail = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         metric = "refund_rate"
         value = 0.11
@@ -648,6 +699,7 @@ try {
     $breachedEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/evaluation" -Headers $headers
     $invalidatedKnowledge = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-knowledge/$($causalKnowledgeEntry.id)" -Headers $headers
     $invalidatedPolicy = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policies/$($causalPolicy.id)" -Headers $headers
+    $invalidatedHandoff = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-activation-handoffs/$($activationHandoff.id)" -Headers $headers
     if (
         $breachedGuardrail.status -ne "breached" -or
         $blockedAssignment -ne 422 -or
@@ -658,7 +710,9 @@ try {
         $invalidatedKnowledge.validity_status -ne "source_experiment_invalidated" -or
         $invalidatedKnowledge.usable -ne $false -or
         $invalidatedPolicy.validity_status -ne "source_knowledge_invalidated" -or
-        $invalidatedPolicy.usable -ne $false
+        $invalidatedPolicy.usable -ne $false -or
+        $invalidatedHandoff.validity_status -ne "source_policy_invalidated" -or
+        $invalidatedHandoff.activation_eligible -ne $false
     ) {
         throw "Causal experiment stop-loss and guardrail freeze smoke failed"
     }

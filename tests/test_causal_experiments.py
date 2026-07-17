@@ -16,6 +16,9 @@ from apps.control_plane.causal_policies import CausalPolicyService
 from apps.control_plane.decision_contracts import DecisionContractService
 from apps.control_plane.decision_lifecycle import DecisionLifecycleService
 from apps.control_plane.evidence import EvidenceGrade, EvidenceService
+from apps.control_plane.policy_shadow import PolicyShadowService
+from apps.control_plane.repository import InMemoryRepository
+from apps.control_plane.services import CommerceService
 from apps.control_plane.sql_repository import Base
 
 
@@ -885,6 +888,64 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     )
     assert shadow["stage"]["max_exposure_fraction"] == "0"
     assert shadow["execution_eligible"] is False
+    commerce = CommerceService(
+        InMemoryRepository(),
+        evidence_validator=evidence.require_valid,
+    )
+    shadow_service = PolicyShadowService(
+        engine=engine,
+        policies=policies,
+        evidence=evidence,
+        commerce=commerce,
+    )
+    with pytest.raises(ValueError, match="preregistered number"):
+        shadow_service.validate_stage_outcome(shadow["id"], 20)
+    contexts = [
+        {**applicability, "inventory_cover_days": 60 if index < 12 else 30}
+        for index in range(20)
+    ]
+    batch = shadow_service.run_shadow_batch(
+        shadow["id"],
+        batch_key="shadow-2026-07-17",
+        contexts=contexts,
+        observed_at="2026-07-17T12:00:00+00:00",
+        evidence_ids=[source.id],
+        created_by="shadow-operator",
+    )
+    assert batch["zero_exposure"] is True
+    assert batch["execution_eligible"] is False
+    assert batch["matched_count"] == 12
+    assert batch["fallback_count"] == 8
+    shadow_service.validate_stage_outcome(shadow["id"], 20)
+    with pytest.raises(ValueError, match="must equal"):
+        shadow_service.validate_stage_outcome(shadow["id"], 19)
+    assert (
+        shadow_service.run_shadow_batch(
+            shadow["id"],
+            batch_key="shadow-2026-07-17",
+            contexts=contexts,
+            observed_at="2026-07-17T12:00:00+00:00",
+            evidence_ids=[source.id],
+            created_by="shadow-operator",
+        )["id"]
+        == batch["id"]
+    )
+    with pytest.raises(ValueError, match="Sensitive field"):
+        shadow_service.record_evaluation(
+            shadow["id"],
+            idempotency_key="sensitive-context",
+            context={**applicability, "customer_email": "forbidden@example.com"},
+            observed_at="2026-07-17T12:00:00+00:00",
+            evidence_ids=[source.id],
+            evaluated_by="shadow-operator",
+        )
+    with pytest.raises(ValueError, match="zero-exposure shadow stage"):
+        shadow_service.request_activation(
+            shadow["id"],
+            evaluation_ids=batch["evaluation_ids"],
+            evidence_ids=[source.id],
+            requested_by="activation-requester",
+        )
     with pytest.raises(ValueError, match="needs a recorded outcome"):
         policies.release_stage(
             policy["id"],
@@ -915,6 +976,31 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     )
     assert limited["stage"]["max_exposure_fraction"] == "0.1"
     assert limited["automatic_promotion"] is False
+    handoff = shadow_service.request_activation(
+        limited["id"],
+        evaluation_ids=batch["evaluation_ids"],
+        evidence_ids=[source.id],
+        requested_by="activation-requester",
+    )
+    assert handoff["approval_status"] == "pending"
+    assert handoff["activation_eligible"] is False
+    assert handoff["execution_eligible"] is False
+    with pytest.raises(ValueError, match="Requester cannot approve"):
+        commerce.decide_approval(
+            handoff["approval_id"],
+            approved=True,
+            decided_by="activation-requester",
+            reason="自批必须失败",
+        )
+    commerce.decide_approval(
+        handoff["approval_id"],
+        approved=True,
+        decided_by="independent-approver",
+        reason="证据和影子批次通过独立复核",
+    )
+    approved_handoff = shadow_service.get_handoff(handoff["id"])
+    assert approved_handoff["activation_eligible"] is True
+    assert approved_handoff["execution_eligible"] is False
 
     experiments.record_safety_check(
         protocol["id"],
@@ -926,6 +1012,9 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     )
     invalidated = policies.get(policy["id"])
     assert invalidated["validity_status"] == "source_knowledge_invalidated"
+    invalidated_handoff = shadow_service.get_handoff(handoff["id"])
+    assert invalidated_handoff["validity_status"] == "source_policy_invalidated"
+    assert invalidated_handoff["activation_eligible"] is False
     after_invalidation = policies.evaluate_context(
         policy["id"],
         {**applicability, "inventory_cover_days": 60},

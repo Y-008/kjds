@@ -39,6 +39,7 @@ apps/control_plane/
   causal_experiments.py 因果实验预注册、稳定分流、结果账与 SRM 门禁
   causal_knowledge.py 实验独立复核、适用边界、复现关系与因果知识账
   causal_policies.py 有效知识到条件策略、影子阶段和逐级放量合同
+  policy_shadow.py 不可变策略评估、零暴露影子批次与独立审批交接
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -128,6 +129,14 @@ tests/
 策略提出者不能自审；接受复核后，另一名审批者才能调用 `/v1/causal-policies/{id}/releases` 批准当前阶段。阶段不得跳过，后续阶段必须等上一阶段的不可变结果达到最小观察数、最小增量价值且未越过护栏。即使全部条件满足，系统也只形成受控阶段合同：`execution_eligible=false`、`automatic_execution=false`、`automatic_promotion=false`。真实执行仍需未来单独的执行适配器、预算审批和平台权限门禁。
 
 策略会持续反查来源知识。一旦任一知识失效，策略立即变为 `source_knowledge_invalidated`；上下文评估返回退回动作而非候选动作。这样企业学习可以进入条件化策略，但错误或过期知识不会继续静默驱动经营。
+
+## 策略评估账、影子运行与审批交接
+
+`POST /v1/causal-policy-releases/{id}/evaluations` 把每一次条件判断连同策略快照、去敏后的结构化上下文、结果、证据和观察时间写入不可变事件账。同一发布阶段和幂等键不能改写历史；上下文禁止客户、邮箱、电话、地址、令牌和密钥等敏感字段，单条限制为 100 个字段和 64 KiB。
+
+零暴露阶段通过 `/v1/causal-policy-releases/{id}/shadow-batches` 批量回放真实经营上下文。批次只记录“命中候选建议”或“退回不行动”，固定 `zero_exposure=true`、`execution_eligible=false`。影子阶段结果的观察数必须与不可变评估账完全一致并达到预注册门槛，不能靠手工填写观察数跳过影子运行。
+
+进入非零暴露阶段后，`/v1/causal-policy-releases/{id}/activation-handoff` 只会生成高风险审批事项。请求者不能自批；审批通过也只返回 `activation_eligible=true`，始终保持 `execution_eligible=false` 和 `automatic_execution=false`。任何来源知识失效或策略快照变化都会让既有交接动态变为不可激活，后续执行适配器必须再次核验该状态。
 
 ## Ozon 数据合同与正式事实
 
