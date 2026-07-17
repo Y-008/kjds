@@ -160,26 +160,48 @@ def start(experiments, protocol_id, evidence_id):
 
 def populate_ready_experiment(experiments, protocol_id, evidence_id, unit_prefix="knowledge"):
     start(experiments, protocol_id, evidence_id)
-    counts = {"control": 0, "treatment": 0}
+    with Session(experiments.engine) as session:
+        protocol_row = session.get(ExperimentProtocolRow, protocol_id)
+        assert protocol_row is not None
+        seed = protocol_row.assignment_seed
+    selected = {"control": [], "treatment": []}
     for index in range(500):
-        assignment = experiments.assign(
-            protocol_id,
-            unit_key=f"{unit_prefix}-{index}",
-            assigned_at="2026-07-19T00:00:00+00:00",
-        )
-        variant = assignment["variant_id"]
-        if counts[variant] >= 10:
-            continue
-        experiments.observe(
-            assignment["id"],
-            value=Decimal("100") if variant == "control" else Decimal("110"),
-            observed_at="2026-07-26T00:00:00+00:00",
-            evidence_id=evidence_id,
-            created_by="finance-1",
-        )
-        counts[variant] += 1
-        if counts == {"control": 10, "treatment": 10}:
+        unit_key = f"{unit_prefix}-{index}"
+        bucket = int(
+            hmac.new(
+                seed.encode(),
+                f"variant:{unit_key}".encode(),
+                hashlib.sha256,
+            ).hexdigest(),
+            16,
+        ) / (2**256)
+        variant = "control" if bucket < 0.5 else "treatment"
+        if len(selected[variant]) < 10:
+            selected[variant].append(unit_key)
+        if all(len(items) == 10 for items in selected.values()):
             break
+    assert all(len(items) == 10 for items in selected.values())
+    counts = {"control": 0, "treatment": 0}
+    for expected_variant, unit_keys in selected.items():
+        for unit_key in unit_keys:
+            assignment = experiments.assign(
+                protocol_id,
+                unit_key=unit_key,
+                assigned_at="2026-07-19T00:00:00+00:00",
+            )
+            assert assignment["variant_id"] == expected_variant
+            experiments.observe(
+                assignment["id"],
+                value=(
+                    Decimal("100")
+                    if expected_variant == "control"
+                    else Decimal("110")
+                ),
+                observed_at="2026-07-26T00:00:00+00:00",
+                evidence_id=evidence_id,
+                created_by="finance-1",
+            )
+            counts[expected_variant] += 1
     assert counts == {"control": 10, "treatment": 10}
     assert experiments.evaluate(protocol_id)["review_eligible"] is True
 
