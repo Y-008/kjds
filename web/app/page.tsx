@@ -207,6 +207,14 @@ type LimitedExecutionCommand = {
   receipt: null | { outcome: string; mutation_applied: boolean; rollback_command_id: string | null };
   platform_write_performed: boolean;
 };
+type ExecutionObservationWindow = {
+  id: string; command_id: string; plan_id: string; policy_id: string;
+  primary_metric: string; baseline: Record<string, string>;
+  guardrails: Array<{ metric: string; direction: "min" | "max"; threshold: string }>;
+  required_observations: number; starts_at: string; ends_at: string; status: string;
+  observations: Array<{ id: string; metric: string; value: string; observed_at: string; guardrail_breached: boolean; rollback_command_id: string | null }>;
+  automatic_policy_promotion: boolean;
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -268,6 +276,7 @@ export default function Home() {
   const [policyActivationHandoffs, setPolicyActivationHandoffs] = useState<PolicyActivationHandoff[]>([]);
   const [governedExecutionPlans, setGovernedExecutionPlans] = useState<GovernedExecutionPlan[]>([]);
   const [limitedExecutionCommands, setLimitedExecutionCommands] = useState<LimitedExecutionCommand[]>([]);
+  const [executionObservationWindows, setExecutionObservationWindows] = useState<ExecutionObservationWindow[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -283,7 +292,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -308,6 +317,7 @@ export default function Home() {
       fetch("/backend/v1/causal-policy-activation-handoffs", { cache: "no-store" }),
       fetch("/backend/v1/governed-execution-plans", { cache: "no-store" }),
       fetch("/backend/v1/limited-execution-commands", { cache: "no-store" }),
+      fetch("/backend/v1/execution-observation-windows", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -355,6 +365,7 @@ export default function Home() {
     if (policyHandoffResponse.ok) setPolicyActivationHandoffs(await policyHandoffResponse.json());
     if (executionPlanResponse.ok) setGovernedExecutionPlans(await executionPlanResponse.json());
     if (executionCommandResponse.ok) setLimitedExecutionCommands(await executionCommandResponse.json());
+    if (executionObservationResponse.ok) setExecutionObservationWindows(await executionObservationResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -1031,6 +1042,45 @@ export default function Home() {
     finally { setLifecycleBusy(null); }
   }
 
+  async function createObservationWindow(event: FormEvent<HTMLFormElement>, command: LimitedExecutionCommand) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const primaryMetric = value("observation_primary_metric");
+    const guardrailMetric = value("observation_guardrail_metric");
+    const body = {
+      primary_metric: primaryMetric,
+      baseline: { [primaryMetric]: value("observation_primary_baseline"), [guardrailMetric]: value("observation_guardrail_baseline") },
+      required_observations: Number(value("observation_required_count")),
+      starts_at: new Date(value("observation_starts_at")).toISOString(),
+      ends_at: new Date(value("observation_ends_at")).toISOString(),
+      evidence_ids: [value("observation_evidence")],
+    };
+    setLifecycleBusy(`observation-window:${command.id}`); setNotice("正在固化执行后指标、基线、护栏和观察期限…");
+    try {
+      const response = await fetch(`/backend/v1/limited-execution-commands/${command.id}/observation-window`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `观察合同 ${result.id} 已固化；结果只用于评估，不会自动放大策略。` : result.detail ?? "观察合同建立失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法建立执行后观察合同，请检查时间、证据和服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function recordExecutionObservation(event: FormEvent<HTMLFormElement>, window: ExecutionObservationWindow) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const body = { metric: value("observed_metric"), value: value("observed_value"), observed_at: new Date(value("observed_at")).toISOString(), evidence_ids: [value("observed_evidence")] };
+    setLifecycleBusy(`observation:${window.id}`); setNotice("正在写入不可变结果并核对预注册护栏…");
+    try {
+      const response = await fetch(`/backend/v1/execution-observation-windows/${window.id}/observations`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? (result.guardrail_breached ? `护栏已越界：补偿命令 ${result.rollback_command_id} 已排队，全部写操作已冻结，等待人工确认后执行回滚。` : "结果已记录，护栏正常，继续观察。") : result.detail ?? "结果记录失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法记录执行后结果，请检查指标、时间和服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
@@ -1303,6 +1353,7 @@ export default function Home() {
               const activationHandoff = policyActivationHandoffs.find((item) => item.policy_id === policy.id);
               const executionPlan = governedExecutionPlans.find((item) => item.policy_id === policy.id);
               const executionCommand = limitedExecutionCommands.find((item) => item.plan_id === executionPlan?.id && item.command_kind === "execute");
+              const observationWindow = executionObservationWindows.find((item) => item.command_id === executionCommand?.id);
               const canReleaseNext = acceptedReview && policy.usable && policy.releases.length < policy.rollout_stages.length && (!latestRelease || latestRelease.outcome?.verdict === "passed");
               return <article className={policy.usable ? "policy-card" : "policy-card invalid"} key={policy.id}>
                 <div className="policy-card-head"><div><strong>{policy.title}</strong><small>{policy.validity_status} · 来源知识 {policy.knowledge_ids.length} 条</small></div><span className={policy.usable ? "gate ready" : "gate blocked"}>{policy.usable ? "可评估" : "已冻结"}</span></div>
@@ -1319,6 +1370,9 @@ export default function Home() {
                 {executionPlan && !executionPlan.dry_run && <form className="policy-release-form" onSubmit={(event) => dryRunExecutionPlan(event, executionPlan)}><strong>执行前预演</strong><p>重新读取平台状态后填写快照指纹；与计划前置状态不一致将失败并要求重建计划。</p><input name="dry_run_state_hash" minLength={64} maxLength={64} defaultValue={executionPlan.precondition_state_hash} required /><select name="dry_run_evidence" defaultValue="" required><option value="">选择最新平台快照证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `execution-dry-run:${executionPlan.id}`}>只做预演</button></form>}
                 {executionPlan?.ready_for_executor && executionPlan.live_execution_supported && !executionCommand && <div className="policy-release-form"><strong>受限执行队列</strong><p>默认全局关闭。启用后仍由专用执行器按状态指纹领取，网页不会直接调用 Ozon。</p><button type="button" disabled={lifecycleBusy === `execution-queue:${executionPlan.id}`} onClick={() => queueLimitedExecution(executionPlan)}>进入受限队列</button></div>}
                 {executionCommand && <div className={executionCommand.status === "succeeded" ? "knowledge-status usable" : "knowledge-status invalid"}><strong>{executionCommand.command_kind === "rollback" ? "回滚" : "执行"}命令 {executionCommand.status}</strong><span>{executionCommand.claimed_by ? `执行器 ${executionCommand.claimed_by}` : "等待专用执行器领取"}</span><b>远端写入：{executionCommand.platform_write_performed ? "已由回执确认" : "未确认"}</b></div>}
+                {executionCommand?.status === "succeeded" && executionCommand.platform_write_performed && !observationWindow && <form className="policy-outcome-form" onSubmit={(event) => createObservationWindow(event, executionCommand)}><strong>固化执行后观察合同</strong><p>预先锁定利润指标、退款护栏、基线和期限。超过护栏会先排队补偿并冻结写操作，不会自动继续放量。</p><div className="lifecycle-pair"><input name="observation_primary_metric" defaultValue="contribution_profit_per_visitor" aria-label="主要结果指标" required /><input name="observation_primary_baseline" defaultValue="0" type="number" step="0.0001" aria-label="主要指标基线" required /></div><div className="lifecycle-pair"><input name="observation_guardrail_metric" defaultValue={policy.guardrails[0]?.metric ?? "refund_rate"} aria-label="护栏指标" required /><input name="observation_guardrail_baseline" defaultValue="0" type="number" step="0.0001" aria-label="护栏基线" required /></div><input name="observation_required_count" defaultValue="2" type="number" min="1" max="10000" aria-label="最少观察数" required /><div className="lifecycle-pair"><input name="observation_starts_at" type="datetime-local" aria-label="观察开始时间" required /><input name="observation_ends_at" type="datetime-local" aria-label="观察结束时间" required /></div><select name="observation_evidence" defaultValue="" required><option value="">选择基线证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `observation-window:${executionCommand.id}`}>锁定观察合同</button></form>}
+                {observationWindow && <div className={observationWindow.status === "guardrail_breached" ? "knowledge-status invalid" : "knowledge-status usable"}><strong>执行后观察：{observationWindow.status}</strong><span>{observationWindow.primary_metric} · 已记录 {observationWindow.observations.length}/{observationWindow.required_observations}</span><b>{observationWindow.status === "guardrail_breached" ? "补偿已排队，写操作冻结" : "自动策略晋级：禁止"}</b></div>}
+                {observationWindow?.status === "monitoring" && <form className="policy-outcome-form" onSubmit={(event) => recordExecutionObservation(event, observationWindow)}><strong>上报真实经营结果</strong><p>只能填写合同内的主指标或护栏指标；记录一经提交不可修改。</p><select name="observed_metric" defaultValue={observationWindow.primary_metric} required><option value={observationWindow.primary_metric}>{observationWindow.primary_metric}</option>{observationWindow.guardrails.map((guardrail) => <option value={guardrail.metric} key={guardrail.metric}>{guardrail.metric}（{guardrail.direction} {guardrail.threshold}）</option>)}</select><input name="observed_value" type="number" step="0.0001" placeholder="实际结果" required /><input name="observed_at" type="datetime-local" aria-label="结果发生时间" required /><select name="observed_evidence" defaultValue="" required><option value="">选择结果证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `observation:${observationWindow.id}`}>记录并核对护栏</button></form>}
                 <div className="policy-stages">{policy.rollout_stages.map((stage, index) => { const release = policy.releases.find((item) => item.stage_index === index); return <span className={release?.outcome?.verdict === "passed" ? "passed" : release ? "released" : ""} key={stage.name}>{stage.name}<b>{(Number(stage.max_exposure_fraction) * 100).toFixed(0)}%</b></span>; })}</div>
                 <footer><span>条件不满足：{policy.fallback_action.type}</span><b>自动执行：禁止</b></footer>
               </article>;

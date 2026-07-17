@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -19,6 +20,7 @@ from apps.control_plane.evidence import EvidenceGrade, EvidenceService
 from apps.control_plane.execution_plans import ExecutionPlanService
 from apps.control_plane.limited_executor import LimitedExecutorService
 from apps.control_plane.policy_shadow import PolicyShadowService
+from apps.control_plane.post_execution import PostExecutionService
 from apps.control_plane.repository import InMemoryRepository
 from apps.control_plane.services import CommerceService
 from apps.control_plane.sql_repository import Base
@@ -47,9 +49,21 @@ def setup_services():
 
 
 class OpenKillSwitch:
-    @staticmethod
-    def ensure_writes_allowed() -> None:
-        return None
+    def __init__(self):
+        self.engaged = False
+        self.reason = None
+
+    def ensure_writes_allowed(self) -> None:
+        if self.engaged:
+            raise PermissionError(self.reason)
+
+    def current(self):
+        return SimpleNamespace(engaged=self.engaged, reason=self.reason)
+
+    def set_state(self, *, engaged: bool, reason: str, actor_id: str):
+        self.engaged = engaged
+        self.reason = reason
+        return SimpleNamespace(engaged=engaged, reason=reason, actor_id=actor_id)
 
 
 def capture(evidence: EvidenceService, ref: str):
@@ -1073,11 +1087,12 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     ready_plan = execution_plans.get(plan["id"])
     assert ready_plan["ready_for_executor"] is True
     assert ready_plan["execution_eligible"] is False
+    execution_kill_switch = OpenKillSwitch()
     executor = LimitedExecutorService(
         engine=engine,
         execution_plans=execution_plans,
         evidence=evidence,
-        kill_switch=OpenKillSwitch(),
+        kill_switch=execution_kill_switch,
         enabled=False,
     )
     with pytest.raises(ValueError, match="global execution gate"):
@@ -1106,9 +1121,58 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     )
     assert receipt["outcome"] == "succeeded"
     assert executor.get(command["id"])["platform_write_performed"] is True
-    rollback = executor.request_rollback(command["id"], requested_by="risk-operator")
+    post_execution = PostExecutionService(
+        engine=engine,
+        limited_executor=executor,
+        execution_plans=execution_plans,
+        policies=policies,
+        evidence=evidence,
+        kill_switch=execution_kill_switch,
+    )
+    window = post_execution.create_window(
+        command["id"],
+        primary_metric="contribution_profit_per_visitor",
+        baseline={"contribution_profit_per_visitor": "10", "refund_rate": "0.04"},
+        required_observations=2,
+        starts_at="2026-07-17T00:00:00+00:00",
+        ends_at="2026-07-18T00:00:00+00:00",
+        evidence_ids=[source.id],
+        created_by="monitor-owner",
+    )
+    safe_observation = post_execution.observe(
+        window["id"],
+        metric="contribution_profit_per_visitor",
+        value="12",
+        observed_at="2026-07-17T12:00:00+00:00",
+        evidence_ids=[source.id],
+        created_by="monitor-worker",
+    )
+    assert safe_observation["guardrail_breached"] is False
+    breach = post_execution.observe(
+        window["id"],
+        metric="refund_rate",
+        value="0.11",
+        observed_at="2026-07-17T13:00:00+00:00",
+        evidence_ids=[source.id],
+        created_by="monitor-worker",
+    )
+    assert breach["guardrail_breached"] is True
+    assert execution_kill_switch.engaged is True
+    evaluation = post_execution.evaluate(
+        window["id"],
+        as_of="2026-07-19T00:00:00+00:00",
+    )
+    assert evaluation["status"] == "guardrail_breached"
+    assert evaluation["rollback_queued"] is True
+    assert evaluation["automatic_policy_promotion"] is False
+    rollback = executor.get(breach["rollback_command_id"])
     assert rollback["command_kind"] == "rollback"
     assert rollback["expected_state_hash"] == resulting_hash
+    execution_kill_switch.set_state(
+        engaged=False,
+        reason="人工确认后仅放行补偿回滚",
+        actor_id="risk-operator",
+    )
     executor.claim(
         rollback["id"],
         current_state_hash=resulting_hash,

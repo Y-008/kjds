@@ -141,6 +141,9 @@ $result = [ordered]@{
     limited_execution_command = $false
     limited_execution_receipt = $false
     compensating_rollback = $false
+    post_execution_observation_contract = $false
+    post_execution_guardrail_freeze = $false
+    post_execution_rollback_trigger = $false
     ozon_worker_contract_test = $false
     ozon_credential_isolation = $false
     sku_episode_intake = $false
@@ -195,6 +198,7 @@ try {
     $ApproverApiKey = "g1-approver-" + [guid]::NewGuid().ToString("N")
     $KnowledgeApiKey = "g1-knowledge-" + [guid]::NewGuid().ToString("N")
     $ExecutorApiKey = "g1-executor-" + [guid]::NewGuid().ToString("N")
+    $MonitorApiKey = "g1-monitor-" + [guid]::NewGuid().ToString("N")
     $env:KJDS_API_ACTOR = "g1-verifier"
     $env:KJDS_API_ROLES = "operator,reviewer,approver,risk,admin"
     $ApiCredentials = @{}
@@ -202,18 +206,19 @@ try {
     $ApiCredentials[$ApproverApiKey] = @{ actor = "g1-independent-approver"; roles = @("reviewer", "approver") }
     $ApiCredentials[$KnowledgeApiKey] = @{ actor = "g1-knowledge-publisher"; roles = @("approver") }
     $ApiCredentials[$ExecutorApiKey] = @{ actor = "g1-ozon-worker"; roles = @("executor") }
+    $ApiCredentials[$MonitorApiKey] = @{ actor = "g1-monitor-worker"; roles = @("monitor") }
     $env:KJDS_API_KEYS_JSON = $ApiCredentials | ConvertTo-Json -Compress
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0020.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0021.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0020"
+    $result.migration = "20260717_0021"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0019")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0020")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0019") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0020") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -268,6 +273,7 @@ try {
     $approverHeaders = @{ "X-KJDS-API-Key" = $ApproverApiKey }
     $knowledgeHeaders = @{ "X-KJDS-API-Key" = $KnowledgeApiKey }
     $executorHeaders = @{ "X-KJDS-API-Key" = $ExecutorApiKey }
+    $monitorHeaders = @{ "X-KJDS-API-Key" = $MonitorApiKey }
     $unauthorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products"
     $invalid = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers @{ "X-KJDS-API-Key" = "invalid" }
     $authorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers $headers
@@ -722,7 +728,32 @@ try {
         error_detail = $null
         evidence_ids = @($evidenceRecord.id)
     } | ConvertTo-Json -Depth 4)
-    $rollbackCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($limitedCommand.id)/rollback" -Method Post -Headers $headers
+    $observationWindow = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($limitedCommand.id)/observation-window" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        primary_metric = "contribution_profit_per_visitor"
+        baseline = @{ contribution_profit_per_visitor = 10; refund_rate = 0.04 }
+        required_observations = 2
+        starts_at = "2026-07-17T00:00:00+00:00"
+        ends_at = "2026-07-18T00:00:00+00:00"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $safeObservation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/execution-observation-windows/$($observationWindow.id)/observations" -Method Post -Headers $monitorHeaders -ContentType "application/json" -Body (@{
+        metric = "contribution_profit_per_visitor"
+        value = 12
+        observed_at = "2026-07-17T12:00:00+00:00"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $guardrailObservation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/execution-observation-windows/$($observationWindow.id)/observations" -Method Post -Headers $monitorHeaders -ContentType "application/json" -Body (@{
+        metric = "refund_rate"
+        value = 0.11
+        observed_at = "2026-07-17T13:00:00+00:00"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $observationEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/execution-observation-windows/$($observationWindow.id)/evaluation?as_of=2026-07-19T00:00:00%2B00:00" -Headers $headers
+    $postExecutionSwitch = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch" -Headers $headers
+    $rollbackCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($guardrailObservation.rollback_command_id)" -Headers $headers
+    $postExecutionRelease = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch/release" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        reason = "G-1 verified guardrail freeze; allow only the queued compensation test"
+    } | ConvertTo-Json)
     $claimedRollback = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($rollbackCommand.id)/claim" -Method Post -Headers $executorHeaders -ContentType "application/json" -Body (@{
         current_state_hash = $resultingExecutionHash
         lease_seconds = 120
@@ -786,6 +817,23 @@ try {
         $executionReceipt.outcome -eq "succeeded" -and
         $executionReceipt.mutation_applied -eq $true
     )
+    $result.post_execution_observation_contract = (
+        $observationWindow.command_id -eq $limitedCommand.id -and
+        $observationWindow.immutable_contract -eq $true -and
+        $safeObservation.guardrail_breached -eq $false -and
+        $observationWindow.automatic_policy_promotion -eq $false
+    )
+    $result.post_execution_guardrail_freeze = (
+        $guardrailObservation.guardrail_breached -eq $true -and
+        $observationEvaluation.status -eq "guardrail_breached" -and
+        $observationEvaluation.kill_switch_engaged -eq $true -and
+        $postExecutionSwitch.engaged -eq $true -and
+        $postExecutionRelease.engaged -eq $false
+    )
+    $result.post_execution_rollback_trigger = (
+        $guardrailObservation.rollback_command_id -eq $rollbackCommand.id -and
+        $observationEvaluation.rollback_queued -eq $true
+    )
     $result.compensating_rollback = (
         $rollbackCommand.command_kind -eq "rollback" -and
         $rollbackCommand.expected_state_hash -eq $resultingExecutionHash -and
@@ -795,9 +843,12 @@ try {
     if (
         -not $result.limited_execution_command -or
         -not $result.limited_execution_receipt -or
+        -not $result.post_execution_observation_contract -or
+        -not $result.post_execution_guardrail_freeze -or
+        -not $result.post_execution_rollback_trigger -or
         -not $result.compensating_rollback
     ) {
-        throw "Limited execution command, receipt, and rollback smoke failed"
+        throw "Limited execution, post-execution guardrail, and rollback smoke failed"
     }
     $breachedGuardrail = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         metric = "refund_rate"

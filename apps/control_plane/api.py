@@ -44,6 +44,7 @@ from .intelligence import MarketIntelligenceService
 from .limited_executor import LimitedExecutorService
 from .ozon_contracts import contract_catalog
 from .policy_shadow import PolicyShadowService
+from .post_execution import PostExecutionService
 from .procurement import ProcurementService
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
 from .readiness import GateReadinessService
@@ -63,7 +64,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.22.0"
+APP_VERSION = "0.23.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -144,6 +145,14 @@ limited_executor = LimitedExecutorService(
     kill_switch=kill_switch,
     enabled=os.getenv("KJDS_LIMITED_EXECUTION_ENABLED", "false").lower() == "true",
 )
+post_execution = PostExecutionService(
+    engine=engine,
+    limited_executor=limited_executor,
+    execution_plans=execution_plans,
+    policies=causal_policies,
+    evidence=evidence,
+    kill_switch=kill_switch,
+)
 providers = {
     "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
     "comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189")),
@@ -177,6 +186,7 @@ async def enforce_control_plane_security(request: Request, call_next):
                 "approver",
                 "risk",
                 "executor",
+                "monitor",
                 "admin",
             ):
                 return JSONResponse(status_code=403, content={"detail": "Authenticated actor has no write role"})
@@ -732,6 +742,26 @@ class LimitedExecutionReceiptInput(BaseModel):
     mutation_applied: bool
     error_code: str | None = Field(default=None, max_length=300)
     error_detail: str | None = Field(default=None, max_length=5000)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class ExecutionObservationWindowInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    primary_metric: str = Field(min_length=1, max_length=300)
+    baseline: dict[str, Decimal]
+    required_observations: int = Field(ge=1, le=10000)
+    starts_at: str
+    ends_at: str
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class ExecutionMetricObservationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: str = Field(min_length=1, max_length=300)
+    value: Decimal
+    observed_at: str
     evidence_ids: list[str] = Field(min_length=1)
 
 
@@ -1476,6 +1506,59 @@ def request_limited_execution_rollback(
             requested_by=principal.actor_id,
         )
     )
+
+
+@app.post(
+    "/v1/limited-execution-commands/{command_id}/observation-window",
+    status_code=201,
+)
+def create_execution_observation_window(
+    command_id: str,
+    body: ExecutionObservationWindowInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: post_execution.create_window(
+            command_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/execution-observation-windows")
+def list_execution_observation_windows():
+    return run(post_execution.list_windows)
+
+
+@app.get("/v1/execution-observation-windows/{window_id}")
+def get_execution_observation_window(window_id: str):
+    return run(lambda: post_execution.get_window(window_id))
+
+
+@app.post(
+    "/v1/execution-observation-windows/{window_id}/observations",
+    status_code=201,
+)
+def record_execution_metric_observation(
+    window_id: str,
+    body: ExecutionMetricObservationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "monitor", "operator", "admin")
+    return run(
+        lambda: post_execution.observe(
+            window_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/execution-observation-windows/{window_id}/evaluation")
+def evaluate_execution_observation_window(window_id: str, as_of: str | None = None):
+    return run(lambda: post_execution.evaluate(window_id, as_of=as_of))
 
 
 @app.post("/v1/models/discover")
