@@ -135,6 +135,9 @@ $result = [ordered]@{
     causal_policy_evaluation_ledger = $false
     causal_policy_shadow_batch = $false
     causal_policy_approval_handoff = $false
+    governed_execution_plan = $false
+    governed_execution_dry_run = $false
+    governed_execution_dual_control = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -195,14 +198,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0018.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0019.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0018"
+    $result.migration = "20260717_0019"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0017")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0018")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0017") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0018") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -667,6 +670,31 @@ try {
         reason = "Independent evidence and guardrail review passed"
     } | ConvertTo-Json)
     $approvedHandoff = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-activation-handoffs/$($activationHandoff.id)" -Headers $headers
+    $executionStateHash = "a" * 64
+    $executionPlanBody = @{
+        idempotency_key = "g1-listing-draft-plan"
+        adapter_id = "ozon.listing.draft.v1"
+        target = @{ listing_id = "g1-ozon-listing" }
+        precondition_state_hash = $executionStateHash
+        intended_patch = @{ title = "G-1 validated candidate title" }
+        rollback_patch = @{ title = "G-1 current title" }
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 5
+    $executionPlan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-activation-handoffs/$($activationHandoff.id)/execution-plans" -Method Post -Headers $headers -ContentType "application/json" -Body $executionPlanBody
+    $executionPlanRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-activation-handoffs/$($activationHandoff.id)/execution-plans" -Method Post -Headers $headers -ContentType "application/json" -Body $executionPlanBody
+    $executionDryRun = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governed-execution-plans/$($executionPlan.id)/dry-run" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        current_state_hash = $executionStateHash
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json)
+    $selfExecutionApproval = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/approvals/$($executionPlan.approval_id)/decision" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        approved = $true
+        reason = "Execution planner cannot self approve"
+    } | ConvertTo-Json)
+    $approvedExecution = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/approvals/$($executionPlan.approval_id)/decision" -Method Post -Headers $knowledgeHeaders -ContentType "application/json" -Body (@{
+        approved = $true
+        reason = "Independent target, snapshot, patch, and rollback review passed"
+    } | ConvertTo-Json)
+    $readyExecutionPlan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governed-execution-plans/$($executionPlan.id)" -Headers $headers
     if (
         $policyReview.verdict -ne "accepted" -or
         $shadowRelease.stage.max_exposure_fraction -ne "0" -or
@@ -685,6 +713,28 @@ try {
     }
     $result.controlled_policy_rollout = $true
     $result.causal_policy_approval_handoff = $true
+    $result.governed_execution_plan = (
+        $executionPlan.id -eq $executionPlanRetry.id -and
+        $executionPlan.live_execution_supported -eq $false -and
+        $executionPlan.execution_eligible -eq $false
+    )
+    $result.governed_execution_dry_run = (
+        $executionDryRun.passed -eq $true -and
+        $executionDryRun.platform_write_performed -eq $false
+    )
+    $result.governed_execution_dual_control = (
+        $selfExecutionApproval -eq 422 -and
+        $approvedExecution.status -eq "approved" -and
+        $readyExecutionPlan.ready_for_executor -eq $true -and
+        $readyExecutionPlan.execution_eligible -eq $false
+    )
+    if (
+        -not $result.governed_execution_plan -or
+        -not $result.governed_execution_dry_run -or
+        -not $result.governed_execution_dual_control
+    ) {
+        throw "Governed reversible execution planning smoke failed"
+    }
     $breachedGuardrail = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         metric = "refund_rate"
         value = 0.11
@@ -700,6 +750,7 @@ try {
     $invalidatedKnowledge = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-knowledge/$($causalKnowledgeEntry.id)" -Headers $headers
     $invalidatedPolicy = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policies/$($causalPolicy.id)" -Headers $headers
     $invalidatedHandoff = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-activation-handoffs/$($activationHandoff.id)" -Headers $headers
+    $invalidatedExecutionPlan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governed-execution-plans/$($executionPlan.id)" -Headers $headers
     if (
         $breachedGuardrail.status -ne "breached" -or
         $blockedAssignment -ne 422 -or
@@ -712,7 +763,9 @@ try {
         $invalidatedPolicy.validity_status -ne "source_knowledge_invalidated" -or
         $invalidatedPolicy.usable -ne $false -or
         $invalidatedHandoff.validity_status -ne "source_policy_invalidated" -or
-        $invalidatedHandoff.activation_eligible -ne $false
+        $invalidatedHandoff.activation_eligible -ne $false -or
+        $invalidatedExecutionPlan.ready_for_executor -ne $false -or
+        $invalidatedExecutionPlan.handoff_validity_status -ne "source_policy_invalidated"
     ) {
         throw "Causal experiment stop-loss and guardrail freeze smoke failed"
     }

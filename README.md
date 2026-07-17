@@ -40,6 +40,7 @@ apps/control_plane/
   causal_knowledge.py 实验独立复核、适用边界、复现关系与因果知识账
   causal_policies.py 有效知识到条件策略、影子阶段和逐级放量合同
   policy_shadow.py 不可变策略评估、零暴露影子批次与独立审批交接
+  execution_plans.py 目标绑定、前置快照、回滚合同、执行审批与零写入预演
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -137,6 +138,14 @@ tests/
 零暴露阶段通过 `/v1/causal-policy-releases/{id}/shadow-batches` 批量回放真实经营上下文。批次只记录“命中候选建议”或“退回不行动”，固定 `zero_exposure=true`、`execution_eligible=false`。影子阶段结果的观察数必须与不可变评估账完全一致并达到预注册门槛，不能靠手工填写观察数跳过影子运行。
 
 进入非零暴露阶段后，`/v1/causal-policy-releases/{id}/activation-handoff` 只会生成高风险审批事项。请求者不能自批；审批通过也只返回 `activation_eligible=true`，始终保持 `execution_eligible=false` 和 `automatic_execution=false`。任何来源知识失效或策略快照变化都会让既有交接动态变为不可激活，后续执行适配器必须再次核验该状态。
+
+## 可逆执行计划与零写入预演
+
+阶段激活审批与具体平台操作是两项不同授权。只有仍然有效且已经独立批准的阶段交接，才能调用 `/v1/causal-policy-activation-handoffs/{id}/execution-plans`。计划必须选择能力白名单中的适配器，绑定具体目标、当前平台状态 SHA-256、拟修改字段、完整回滚字段和证据；计划本身不可修改，同一幂等键不能偷换内容。
+
+当前首个适配器 `ozon.listing.draft.v1` 仅接受 Listing 草稿的标题、描述、属性和图片字段，并固定 `live_execution_supported=false`。建立计划会产生第二个高风险审批事项 `platform_execution.execute_plan`，申请人不能批准自己的具体执行计划。
+
+`POST /v1/governed-execution-plans/{id}/dry-run` 会再次核对阶段交接仍有效、当前状态与前置快照一致、回滚合同存在且实时写入仍被禁用。预演凭证不可覆盖，并明确返回 `platform_write_performed=false`。只有预演通过、具体执行审批通过且来源知识仍有效时，计划才会显示 `ready_for_executor=true`；当前依旧固定 `execution_eligible=false`，等待后续具备幂等写入和自动回滚能力的受限执行器。
 
 ## Ozon 数据合同与正式事实
 

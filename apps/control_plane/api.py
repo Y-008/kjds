@@ -35,6 +35,7 @@ from .decision_lifecycle import (
 )
 from .domain import AgentMode, ChargeType, ContentType, PassportType
 from .evidence import EvidenceGrade, EvidenceService
+from .execution_plans import ExecutionPlanService
 from .facts import FactPromotionService
 from .finance import CashPlanStatus, FeeSignRule, FinanceEntryKind, FinanceService
 from .imports import MAX_IMPORT_BYTES, OzonImportService
@@ -61,7 +62,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.20.0"
+APP_VERSION = "0.21.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -98,6 +99,13 @@ causal_policies = CausalPolicyService(
 commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
 policy_shadow = PolicyShadowService(
     engine=engine,
+    policies=causal_policies,
+    evidence=evidence,
+    commerce=commerce,
+)
+execution_plans = ExecutionPlanService(
+    engine=engine,
+    policy_shadow=policy_shadow,
     policies=causal_policies,
     evidence=evidence,
     commerce=commerce,
@@ -670,6 +678,25 @@ class PolicyActivationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     evaluation_ids: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class GovernedExecutionPlanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    adapter_id: str = Field(min_length=1, max_length=200)
+    target: dict[str, Any]
+    precondition_state_hash: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+    intended_patch: dict[str, Any]
+    rollback_patch: dict[str, Any]
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class GovernedExecutionDryRunInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_state_hash: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
     evidence_ids: list[str] = Field(min_length=1)
 
 
@@ -1299,6 +1326,56 @@ def list_causal_policy_activation_handoffs():
 @app.get("/v1/causal-policy-activation-handoffs/{handoff_id}")
 def get_causal_policy_activation_handoff(handoff_id: str):
     return run(lambda: policy_shadow.get_handoff(handoff_id))
+
+
+@app.get("/v1/governed-execution-adapters")
+def list_governed_execution_adapters():
+    return execution_plans.adapters()
+
+
+@app.post(
+    "/v1/causal-policy-activation-handoffs/{handoff_id}/execution-plans",
+    status_code=201,
+)
+def create_governed_execution_plan(
+    handoff_id: str,
+    body: GovernedExecutionPlanInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: execution_plans.create(
+            handoff_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/governed-execution-plans")
+def list_governed_execution_plans():
+    return run(execution_plans.list)
+
+
+@app.get("/v1/governed-execution-plans/{plan_id}")
+def get_governed_execution_plan(plan_id: str):
+    return run(lambda: execution_plans.get(plan_id))
+
+
+@app.post("/v1/governed-execution-plans/{plan_id}/dry-run", status_code=201)
+def dry_run_governed_execution_plan(
+    plan_id: str,
+    body: GovernedExecutionDryRunInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: execution_plans.dry_run(
+            plan_id,
+            **body.model_dump(),
+            performed_by=principal.actor_id,
+        )
+    )
 
 
 @app.post("/v1/models/discover")

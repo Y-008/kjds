@@ -16,6 +16,7 @@ from apps.control_plane.causal_policies import CausalPolicyService
 from apps.control_plane.decision_contracts import DecisionContractService
 from apps.control_plane.decision_lifecycle import DecisionLifecycleService
 from apps.control_plane.evidence import EvidenceGrade, EvidenceService
+from apps.control_plane.execution_plans import ExecutionPlanService
 from apps.control_plane.policy_shadow import PolicyShadowService
 from apps.control_plane.repository import InMemoryRepository
 from apps.control_plane.services import CommerceService
@@ -1001,6 +1002,66 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     approved_handoff = shadow_service.get_handoff(handoff["id"])
     assert approved_handoff["activation_eligible"] is True
     assert approved_handoff["execution_eligible"] is False
+    execution_plans = ExecutionPlanService(
+        engine=engine,
+        policy_shadow=shadow_service,
+        policies=policies,
+        evidence=evidence,
+        commerce=commerce,
+    )
+    state_hash = "a" * 64
+    plan = execution_plans.create(
+        handoff["id"],
+        idempotency_key="listing-draft-001",
+        adapter_id="ozon.listing.draft.v1",
+        target={"listing_id": "ozon-listing-001"},
+        precondition_state_hash=state_hash,
+        intended_patch={"title": "已验证候选标题"},
+        rollback_patch={"title": "当前线上标题"},
+        evidence_ids=[source.id],
+        created_by="execution-planner",
+    )
+    assert plan["approval_status"] == "pending"
+    assert plan["live_execution_supported"] is False
+    assert plan["execution_eligible"] is False
+    assert (
+        execution_plans.create(
+            handoff["id"],
+            idempotency_key="listing-draft-001",
+            adapter_id="ozon.listing.draft.v1",
+            target={"listing_id": "ozon-listing-001"},
+            precondition_state_hash=state_hash,
+            intended_patch={"title": "已验证候选标题"},
+            rollback_patch={"title": "当前线上标题"},
+            evidence_ids=[source.id],
+            created_by="execution-planner",
+        )["id"]
+        == plan["id"]
+    )
+    dry_run = execution_plans.dry_run(
+        plan["id"],
+        current_state_hash=state_hash,
+        evidence_ids=[source.id],
+        performed_by="dry-run-operator",
+    )
+    assert dry_run["passed"] is True
+    assert dry_run["platform_write_performed"] is False
+    with pytest.raises(ValueError, match="Requester cannot approve"):
+        commerce.decide_approval(
+            plan["approval_id"],
+            approved=True,
+            decided_by="execution-planner",
+            reason="执行计划不能自批",
+        )
+    commerce.decide_approval(
+        plan["approval_id"],
+        approved=True,
+        decided_by="execution-approver",
+        reason="目标、前置快照和回滚合同通过独立复核",
+    )
+    ready_plan = execution_plans.get(plan["id"])
+    assert ready_plan["ready_for_executor"] is True
+    assert ready_plan["execution_eligible"] is False
 
     experiments.record_safety_check(
         protocol["id"],
@@ -1015,6 +1076,9 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     invalidated_handoff = shadow_service.get_handoff(handoff["id"])
     assert invalidated_handoff["validity_status"] == "source_policy_invalidated"
     assert invalidated_handoff["activation_eligible"] is False
+    invalidated_plan = execution_plans.get(plan["id"])
+    assert invalidated_plan["ready_for_executor"] is False
+    assert invalidated_plan["handoff_validity_status"] == "source_policy_invalidated"
     after_invalidation = policies.evaluate_context(
         policy["id"],
         {**applicability, "inventory_cover_days": 60},
