@@ -145,6 +145,10 @@ $result = [ordered]@{
     post_execution_guardrail_freeze = $false
     post_execution_rollback_trigger = $false
     capability_economic_ledger = $false
+    operational_incident_auto_open = $false
+    recovery_checklist = $false
+    recovery_dual_control = $false
+    recovery_drill = $false
     ozon_worker_contract_test = $false
     ozon_credential_isolation = $false
     sku_episode_intake = $false
@@ -212,14 +216,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0022.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0023.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0022"
+    $result.migration = "20260717_0023"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0021")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0022")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0021") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0022") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -752,8 +756,40 @@ try {
     $observationEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/execution-observation-windows/$($observationWindow.id)/evaluation?as_of=2026-07-19T00:00:00%2B00:00" -Headers $headers
     $postExecutionSwitch = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch" -Headers $headers
     $rollbackCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($guardrailObservation.rollback_command_id)" -Headers $headers
+    $incident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($guardrailObservation.incident_id)" -Headers $headers
+    $claimedIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($incident.id)/claim" -Method Post -Headers $headers
+    $recoveryChecks = @(
+        "remote_state_reconciled",
+        "rollback_confirmed_or_not_required",
+        "data_reconciled",
+        "credentials_rotated_or_not_required",
+        "monitoring_restored"
+    )
+    foreach ($check in $recoveryChecks) {
+        $checkedIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($incident.id)/checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+            check = $check
+            passed = $true
+            notes = "G-1 verified $check while production writes remained frozen"
+            evidence_ids = @($evidenceRecord.id)
+        } | ConvertTo-Json -Depth 4)
+    }
+    $pendingIncidentReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($incident.id)/review-request" -Method Post -Headers $headers
+    $selfIncidentReview = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($incident.id)/review" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        accepted = $true
+        rationale = "Self review must be rejected"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $reviewedIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($incident.id)/review" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        accepted = $true
+        rationale = "Independent reviewer confirmed every recovery check"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $prematureIncidentClose = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($incident.id)/close" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        notes = "Closure must fail while the kill switch remains engaged"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
     $postExecutionRelease = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch/release" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
-        reason = "G-1 verified guardrail freeze; allow only the queued compensation test"
+        reason = "G-1 independent recovery review passed; allow queued compensation only"
     } | ConvertTo-Json)
     $claimedRollback = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($rollbackCommand.id)/claim" -Method Post -Headers $executorHeaders -ContentType "application/json" -Body (@{
         current_state_hash = $resultingExecutionHash
@@ -766,6 +802,40 @@ try {
         mutation_applied = $true
         error_code = $null
         error_detail = $null
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $closedIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($incident.id)/close" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        notes = "Compensating rollback confirmed and incident history preserved"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $drillIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        idempotency_key = "g1-quarterly-recovery-drill"
+        mode = "drill"
+        severity = "high"
+        trigger_type = "simulated_ozon_api_outage"
+        source_type = $null
+        source_id = $null
+        summary = "G-1 simulated Ozon API outage recovery drill"
+        impact = @("simulated:ozon-worker")
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $claimedDrill = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($drillIncident.id)/claim" -Method Post -Headers $headers
+    foreach ($check in $recoveryChecks) {
+        $checkedDrill = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($drillIncident.id)/checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+            check = $check
+            passed = $true
+            notes = "G-1 drill verified $check without production mutation"
+            evidence_ids = @($evidenceRecord.id)
+        } | ConvertTo-Json -Depth 4)
+    }
+    $pendingDrillReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($drillIncident.id)/review-request" -Method Post -Headers $headers
+    $reviewedDrill = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($drillIncident.id)/review" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        accepted = $true
+        rationale = "Independent reviewer accepted the recovery drill"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $closedDrill = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($drillIncident.id)/close" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        notes = "Drill completed without engaging production kill switch"
         evidence_ids = @($evidenceRecord.id)
     } | ConvertTo-Json -Depth 4)
     $capabilityAssessment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/execution-observation-windows/$($observationWindow.id)/capability-economics" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
@@ -854,6 +924,32 @@ try {
         $capabilitySummaries[0].governance_recommendation -eq "restrict_and_review" -and
         $capabilitySummaries[0].automatic_authority_change -eq $false
     )
+    $result.operational_incident_auto_open = (
+        $guardrailObservation.incident_id -eq $incident.id -and
+        $incident.trigger_type -eq "post_execution_guardrail_breached" -and
+        $incident.status -eq "contained" -and
+        $incident.automatic_release -eq $false
+    )
+    $result.recovery_checklist = (
+        $claimedIncident.status -eq "recovering" -and
+        @($checkedIncident.checks.PSObject.Properties).Count -eq 5 -and
+        $pendingIncidentReview.status -eq "pending_review"
+    )
+    $result.recovery_dual_control = (
+        $selfIncidentReview -eq 422 -and
+        $reviewedIncident.status -eq "ready_for_release" -and
+        $prematureIncidentClose -eq 422 -and
+        $closedIncident.status -eq "closed"
+    )
+    $result.recovery_drill = (
+        $drillIncident.mode -eq "drill" -and
+        $claimedDrill.status -eq "recovering" -and
+        @($checkedDrill.checks.PSObject.Properties).Count -eq 5 -and
+        $pendingDrillReview.status -eq "pending_review" -and
+        $reviewedDrill.status -eq "ready_for_release" -and
+        $closedDrill.status -eq "closed" -and
+        $closedDrill.kill_switch_engaged -eq $false
+    )
     $result.compensating_rollback = (
         $rollbackCommand.command_kind -eq "rollback" -and
         $rollbackCommand.expected_state_hash -eq $resultingExecutionHash -and
@@ -867,9 +963,13 @@ try {
         -not $result.post_execution_guardrail_freeze -or
         -not $result.post_execution_rollback_trigger -or
         -not $result.capability_economic_ledger -or
+        -not $result.operational_incident_auto_open -or
+        -not $result.recovery_checklist -or
+        -not $result.recovery_dual_control -or
+        -not $result.recovery_drill -or
         -not $result.compensating_rollback
     ) {
-        throw "Limited execution, post-execution guardrail, and rollback smoke failed"
+        throw "Limited execution, incident recovery, drill, and rollback smoke failed"
     }
     $breachedGuardrail = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         metric = "refund_rate"

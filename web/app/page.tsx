@@ -222,6 +222,13 @@ type CapabilityEconomicAssessment = {
   human_review_cost: string; incident_loss: string; maintenance_cost: string;
   net_value: string; currency: string; automatic_authority_change: boolean;
 };
+type OperationalIncident = {
+  id: string; mode: "live" | "drill"; severity: string; trigger_type: string;
+  source_type: string | null; source_id: string | null; summary: string; impact: string[];
+  status: string; owner_id: string | null; review_status: string | null; opened_by: string;
+  checks: Record<string, { check: string; passed: boolean; notes: string }>;
+  required_checks: string[]; kill_switch_engaged: boolean; automatic_release: boolean;
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -285,6 +292,7 @@ export default function Home() {
   const [limitedExecutionCommands, setLimitedExecutionCommands] = useState<LimitedExecutionCommand[]>([]);
   const [executionObservationWindows, setExecutionObservationWindows] = useState<ExecutionObservationWindow[]>([]);
   const [capabilityEconomicAssessments, setCapabilityEconomicAssessments] = useState<CapabilityEconomicAssessment[]>([]);
+  const [operationalIncidents, setOperationalIncidents] = useState<OperationalIncident[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -300,7 +308,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -327,6 +335,7 @@ export default function Home() {
       fetch("/backend/v1/limited-execution-commands", { cache: "no-store" }),
       fetch("/backend/v1/execution-observation-windows", { cache: "no-store" }),
       fetch("/backend/v1/capability-economic-assessments", { cache: "no-store" }),
+      fetch("/backend/v1/operational-incidents", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -376,6 +385,7 @@ export default function Home() {
     if (executionCommandResponse.ok) setLimitedExecutionCommands(await executionCommandResponse.json());
     if (executionObservationResponse.ok) setExecutionObservationWindows(await executionObservationResponse.json());
     if (capabilityEconomicsResponse.ok) setCapabilityEconomicAssessments(await capabilityEconomicsResponse.json());
+    if (operationalIncidentsResponse.ok) setOperationalIncidents(await operationalIncidentsResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -1085,7 +1095,7 @@ export default function Home() {
     try {
       const response = await fetch(`/backend/v1/execution-observation-windows/${window.id}/observations`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json();
-      setNotice(response.ok ? (result.guardrail_breached ? `护栏已越界：补偿命令 ${result.rollback_command_id} 已排队，全部写操作已冻结，等待人工确认后执行回滚。` : "结果已记录，护栏正常，继续观察。") : result.detail ?? "结果记录失败");
+      setNotice(response.ok ? (result.guardrail_breached ? `护栏已越界：事故 ${result.incident_id} 已登记，补偿命令 ${result.rollback_command_id} 已排队，全部写操作已冻结。` : "结果已记录，护栏正常，继续观察。") : result.detail ?? "结果记录失败");
       if (response.ok) { form.reset(); await load(); }
     } catch { setNotice("无法记录执行后结果，请检查指标、时间和服务状态"); }
     finally { setLifecycleBusy(null); }
@@ -1108,6 +1118,72 @@ export default function Home() {
       setNotice(response.ok ? `能力净价值：${result.net_value} ${result.currency}。该结果只形成治理建议，不会自动改变权限。` : result.detail ?? "能力损益核算失败");
       if (response.ok) { form.reset(); await load(); }
     } catch { setNotice("无法完成能力损益核算，请检查观察是否结束及证据是否有效"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function claimIncident(incident: OperationalIncident) {
+    setLifecycleBusy(`incident-claim:${incident.id}`); setNotice("正在登记事故恢复负责人…");
+    try {
+      const response = await fetch(`/backend/v1/operational-incidents/${incident.id}/claim`, { method: "POST" });
+      const result = await response.json(); setNotice(response.ok ? `事故 ${result.id} 已进入人工恢复。` : result.detail ?? "事故领取失败");
+      if (response.ok) await load();
+    } catch { setNotice("无法领取事故，请检查身份与服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function recordIncidentCheck(event: FormEvent<HTMLFormElement>, incident: OperationalIncident) {
+    event.preventDefault(); const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    setLifecycleBusy(`incident-check:${incident.id}`); setNotice("正在固化恢复检查证据…");
+    try {
+      const response = await fetch(`/backend/v1/operational-incidents/${incident.id}/checks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ check: value("incident_check"), passed: true, notes: value("incident_check_notes"), evidence_ids: [value("incident_check_evidence")] }) });
+      const result = await response.json(); setNotice(response.ok ? "恢复检查已记录，历史不可覆盖。" : result.detail ?? "恢复检查失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法记录恢复检查，请确认当前身份是事故负责人"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function submitIncidentReview(incident: OperationalIncident) {
+    setLifecycleBusy(`incident-submit:${incident.id}`); setNotice("正在核对五项恢复条件并申请独立复核…");
+    try {
+      const response = await fetch(`/backend/v1/operational-incidents/${incident.id}/review-request`, { method: "POST" });
+      const result = await response.json(); setNotice(response.ok ? "恢复方案已送交独立复核；熔断仍保持。" : result.detail ?? "提交复核失败");
+      if (response.ok) await load();
+    } catch { setNotice("无法提交恢复复核"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function reviewIncident(event: FormEvent<HTMLFormElement>, incident: OperationalIncident) {
+    event.preventDefault(); const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    setLifecycleBusy(`incident-review:${incident.id}`); setNotice("正在执行独立恢复复核…");
+    try {
+      const response = await fetch(`/backend/v1/operational-incidents/${incident.id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accepted: value("incident_review_verdict") === "accepted", rationale: value("incident_review_rationale"), evidence_ids: [value("incident_review_evidence")] }) });
+      const result = await response.json(); setNotice(response.ok ? (result.review_status === "accepted" ? "独立复核通过；仍需管理员单独解除熔断。" : "复核未通过，已退回继续恢复。") : result.detail ?? "事故复核失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法完成独立复核，请确认复核者不是事故发起人或负责人"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function releaseIncidentFreeze(incident: OperationalIncident) {
+    setLifecycleBusy(`incident-release:${incident.id}`); setNotice("正在请求管理员明确解除写入熔断…");
+    try {
+      const response = await fetch("/backend/v1/system/kill-switch/release", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: `Incident ${incident.id} independently reviewed; controlled recovery release` }) });
+      const result = await response.json(); setNotice(response.ok ? "熔断已由管理员解除；事故仍需另行关闭。" : result.detail ?? "熔断解除失败");
+      if (response.ok) await load();
+    } catch { setNotice("无法解除熔断，请确认管理员身份"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function closeIncident(event: FormEvent<HTMLFormElement>, incident: OperationalIncident) {
+    event.preventDefault(); const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    setLifecycleBusy(`incident-close:${incident.id}`); setNotice("正在固化事故关闭证据…");
+    try {
+      const response = await fetch(`/backend/v1/operational-incidents/${incident.id}/close`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes: value("incident_close_notes"), evidence_ids: [value("incident_close_evidence")] }) });
+      const result = await response.json(); setNotice(response.ok ? `事故 ${result.id} 已关闭，完整恢复历史已保留。` : result.detail ?? "事故关闭失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法关闭事故，请检查熔断状态和关闭证据"); }
     finally { setLifecycleBusy(null); }
   }
 
@@ -1385,6 +1461,7 @@ export default function Home() {
               const executionCommand = limitedExecutionCommands.find((item) => item.plan_id === executionPlan?.id && item.command_kind === "execute");
               const observationWindow = executionObservationWindows.find((item) => item.command_id === executionCommand?.id);
               const capabilityAssessment = capabilityEconomicAssessments.find((item) => item.window_id === observationWindow?.id);
+              const operationalIncident = operationalIncidents.find((item) => item.impact.includes(`observation_window:${observationWindow?.id}`));
               const canReleaseNext = acceptedReview && policy.usable && policy.releases.length < policy.rollout_stages.length && (!latestRelease || latestRelease.outcome?.verdict === "passed");
               return <article className={policy.usable ? "policy-card" : "policy-card invalid"} key={policy.id}>
                 <div className="policy-card-head"><div><strong>{policy.title}</strong><small>{policy.validity_status} · 来源知识 {policy.knowledge_ids.length} 条</small></div><span className={policy.usable ? "gate ready" : "gate blocked"}>{policy.usable ? "可评估" : "已冻结"}</span></div>
@@ -1406,6 +1483,12 @@ export default function Home() {
                 {observationWindow?.evaluation.status === "monitoring" && <form className="policy-outcome-form" onSubmit={(event) => recordExecutionObservation(event, observationWindow)}><strong>上报真实经营结果</strong><p>只能填写合同内的主指标或护栏指标；记录一经提交不可修改。</p><select name="observed_metric" defaultValue={observationWindow.primary_metric} required><option value={observationWindow.primary_metric}>{observationWindow.primary_metric}</option>{observationWindow.guardrails.map((guardrail) => <option value={guardrail.metric} key={guardrail.metric}>{guardrail.metric}（{guardrail.direction} {guardrail.threshold}）</option>)}</select><input name="observed_value" type="number" step="0.0001" placeholder="实际结果" required /><input name="observed_at" type="datetime-local" aria-label="结果发生时间" required /><select name="observed_evidence" defaultValue="" required><option value="">选择结果证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `observation:${observationWindow.id}`}>记录并核对护栏</button></form>}
                 {observationWindow && ["passed", "guardrail_breached"].includes(observationWindow.evaluation.status) && !capabilityAssessment && <form className="policy-outcome-form" onSubmit={(event) => assessCapabilityEconomics(event, observationWindow)}><strong>核算这项能力是否值得保留</strong><p>把实际增量、避免损失、模型费、人工审核、事故损失和维护成本放在同一本账里。金额必须由证据支持。</p><div className="lifecycle-pair"><input name="economics_realized_value" type="number" step="0.01" placeholder="实际增量（可为负）" required /><input name="economics_avoided_loss" type="number" min="0" step="0.01" defaultValue="0" placeholder="避免损失" required /></div><div className="lifecycle-pair"><input name="economics_model_cost" type="number" min="0" step="0.01" defaultValue="0" placeholder="模型与计算成本" required /><input name="economics_review_cost" type="number" min="0" step="0.01" defaultValue="0" placeholder="人工审核成本" required /></div><div className="lifecycle-pair"><input name="economics_incident_loss" type="number" min="0" step="0.01" defaultValue="0" placeholder="事故损失" required /><input name="economics_maintenance_cost" type="number" min="0" step="0.01" defaultValue="0" placeholder="维护成本" required /></div><div className="lifecycle-pair"><input name="economics_currency" defaultValue="CNY" minLength={3} maxLength={3} aria-label="币种" required /><input name="economics_as_of" type="datetime-local" aria-label="核算时间" required /></div><select name="economics_evidence" defaultValue="" required><option value="">选择损益证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `capability-economics:${observationWindow.id}`}>固化能力损益</button></form>}
                 {capabilityAssessment && <div className={Number(capabilityAssessment.net_value) > 0 && capabilityAssessment.outcome_status !== "guardrail_breached" ? "knowledge-status usable" : "knowledge-status invalid"}><strong>能力净价值 {capabilityAssessment.net_value} {capabilityAssessment.currency}</strong><span>增量 {capabilityAssessment.realized_incremental_value} · 避免损失 {capabilityAssessment.avoided_loss} · 事故损失 {capabilityAssessment.incident_loss}</span><b>自动权限变更：禁止</b></div>}
+                {operationalIncident && <div className={operationalIncident.status === "closed" ? "knowledge-status usable" : "knowledge-status invalid"}><strong>{operationalIncident.mode === "drill" ? "恢复演练" : "生产事故"}：{operationalIncident.status}</strong><span>{operationalIncident.summary} · {Object.keys(operationalIncident.checks).length}/{operationalIncident.required_checks.length} 项恢复检查</span><b>熔断：{operationalIncident.kill_switch_engaged ? "保持" : "已解除"} · 自动解除：禁止</b></div>}
+                {operationalIncident && !operationalIncident.owner_id && <button type="button" disabled={lifecycleBusy === `incident-claim:${operationalIncident.id}`} onClick={() => claimIncident(operationalIncident)}>领取事故恢复责任</button>}
+                {operationalIncident?.status === "recovering" && <form className="policy-outcome-form" onSubmit={(event) => recordIncidentCheck(event, operationalIncident)}><strong>恢复检查表</strong><p>远端状态、回滚、数据、凭证和监控必须逐项提供证据，不能一键全部通过。</p><select name="incident_check" defaultValue="" required><option value="">选择待确认项目</option>{operationalIncident.required_checks.filter((check) => !operationalIncident.checks[check]?.passed).map((check) => <option value={check} key={check}>{check}</option>)}</select><input name="incident_check_notes" placeholder="核对方法与结果" required /><select name="incident_check_evidence" defaultValue="" required><option value="">选择恢复证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `incident-check:${operationalIncident.id}`}>记录本项检查</button>{operationalIncident.required_checks.every((check) => operationalIncident.checks[check]?.passed) && <button type="button" disabled={lifecycleBusy === `incident-submit:${operationalIncident.id}`} onClick={() => submitIncidentReview(operationalIncident)}>提交独立复核</button>}</form>}
+                {operationalIncident?.status === "pending_review" && <form className="policy-outcome-form" onSubmit={(event) => reviewIncident(event, operationalIncident)}><strong>独立恢复复核</strong><p>复核者不能是事故发起人或恢复负责人；通过也不会自动解除熔断。</p><select name="incident_review_verdict" defaultValue="" required><option value="">选择复核结论</option><option value="accepted">接受恢复</option><option value="rejected">退回继续处理</option></select><input name="incident_review_rationale" placeholder="独立复核理由" required /><select name="incident_review_evidence" defaultValue="" required><option value="">选择复核证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `incident-review:${operationalIncident.id}`}>提交独立复核</button></form>}
+                {operationalIncident?.status === "ready_for_release" && operationalIncident.kill_switch_engaged && <div className="policy-release-form"><strong>管理员解除熔断</strong><p>只有独立复核通过后才显示；解除熔断与关闭事故是两个独立动作。</p><button type="button" disabled={lifecycleBusy === `incident-release:${operationalIncident.id}`} onClick={() => releaseIncidentFreeze(operationalIncident)}>明确解除熔断</button></div>}
+                {operationalIncident?.status === "ready_for_release" && !operationalIncident.kill_switch_engaged && <form className="policy-outcome-form" onSubmit={(event) => closeIncident(event, operationalIncident)}><strong>关闭事故</strong><input name="incident_close_notes" placeholder="关闭结论与后续行动" required /><select name="incident_close_evidence" defaultValue="" required><option value="">选择关闭证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `incident-close:${operationalIncident.id}`}>固化并关闭事故</button></form>}
                 <div className="policy-stages">{policy.rollout_stages.map((stage, index) => { const release = policy.releases.find((item) => item.stage_index === index); return <span className={release?.outcome?.verdict === "passed" ? "passed" : release ? "released" : ""} key={stage.name}>{stage.name}<b>{(Number(stage.max_exposure_fraction) * 100).toFixed(0)}%</b></span>; })}</div>
                 <footer><span>条件不满足：{policy.fallback_action.type}</span><b>自动执行：禁止</b></footer>
               </article>;

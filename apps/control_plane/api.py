@@ -40,6 +40,7 @@ from .execution_plans import ExecutionPlanService
 from .facts import FactPromotionService
 from .finance import CashPlanStatus, FeeSignRule, FinanceEntryKind, FinanceService
 from .imports import MAX_IMPORT_BYTES, OzonImportService
+from .incident_recovery import IncidentRecoveryService
 from .intake import PassportEvidencePayload, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .limited_executor import LimitedExecutorService
@@ -65,7 +66,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.24.0"
+APP_VERSION = "0.25.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -160,6 +161,11 @@ capability_economics = CapabilityEconomicsService(
     execution_plans=execution_plans,
     evidence=evidence,
 )
+incident_recovery = IncidentRecoveryService(
+    engine=engine,
+    evidence=evidence,
+    kill_switch=kill_switch,
+)
 providers = {
     "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
     "comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189")),
@@ -177,6 +183,10 @@ KILL_SWITCH_CONTROL_PATHS = {
 }
 
 
+def is_write_safety_control_path(path: str) -> bool:
+    return path in KILL_SWITCH_CONTROL_PATHS or path.startswith("/v1/operational-incidents")
+
+
 @app.middleware("http")
 async def enforce_control_plane_security(request: Request, call_next):
     if request.url.path.startswith("/v1/"):
@@ -185,7 +195,7 @@ async def enforce_control_plane_security(request: Request, call_next):
         except AuthenticationFailure as exc:
             return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
-        if request.method in WRITE_METHODS and request.url.path not in KILL_SWITCH_CONTROL_PATHS:
+        if request.method in WRITE_METHODS and not is_write_safety_control_path(request.url.path):
             if not request.state.principal.has_any_role(
                 "operator",
                 "reviewer",
@@ -784,6 +794,50 @@ class CapabilityEconomicAssessmentInput(BaseModel):
     currency: str = Field(min_length=3, max_length=3)
     evidence_ids: list[str] = Field(min_length=1)
     as_of: str | None = None
+
+
+class OperationalIncidentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    mode: Literal["live", "drill"]
+    severity: Literal["critical", "high", "medium", "low"]
+    trigger_type: str = Field(min_length=1, max_length=300)
+    source_type: str | None = Field(default=None, max_length=300)
+    source_id: str | None = Field(default=None, max_length=500)
+    summary: str = Field(min_length=1, max_length=5000)
+    impact: list[str] = Field(min_length=1, max_length=100)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class IncidentRecoveryCheckInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    check: Literal[
+        "remote_state_reconciled",
+        "rollback_confirmed_or_not_required",
+        "data_reconciled",
+        "credentials_rotated_or_not_required",
+        "monitoring_restored",
+    ]
+    passed: bool
+    notes: str = Field(min_length=1, max_length=5000)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class IncidentRecoveryReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: bool
+    rationale: str = Field(min_length=1, max_length=5000)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class IncidentClosureInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    notes: str = Field(min_length=1, max_length=5000)
+    evidence_ids: list[str] = Field(min_length=1)
 
 
 class FeeMappingInput(BaseModel):
@@ -1568,13 +1622,35 @@ def record_execution_metric_observation(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "monitor", "operator", "admin")
-    return run(
-        lambda: post_execution.observe(
+
+    def record_and_open_incident():
+        result = post_execution.observe(
             window_id,
             **body.model_dump(),
             created_by=principal.actor_id,
         )
-    )
+        if not result["guardrail_breached"]:
+            return result
+        window = post_execution.get_window(window_id)
+        incident = incident_recovery.open(
+            idempotency_key=f"post-execution-guardrail:{result['id']}",
+            mode="live",
+            severity="critical",
+            trigger_type="post_execution_guardrail_breached",
+            source_type="execution_metric_observation",
+            source_id=result["id"],
+            summary=f"Post-execution guardrail breached: {result['metric']}",
+            impact=[
+                f"observation_window:{window_id}",
+                f"execution_command:{window['command_id']}",
+                f"execution_plan:{window['plan_id']}",
+            ],
+            evidence_ids=body.evidence_ids,
+            opened_by="post-execution-guardrail",
+        )
+        return {**result, "incident_id": incident["id"]}
+
+    return run(record_and_open_incident)
 
 
 @app.get("/v1/execution-observation-windows/{window_id}/evaluation")
@@ -1609,6 +1685,96 @@ def list_capability_economic_assessments():
 @app.get("/v1/capability-economic-summaries")
 def list_capability_economic_summaries():
     return run(capability_economics.summaries)
+
+
+@app.post("/v1/operational-incidents", status_code=201)
+def open_operational_incident(
+    body: OperationalIncidentInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "risk", "admin")
+    return run(
+        lambda: incident_recovery.open(
+            **body.model_dump(),
+            opened_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/operational-incidents")
+def list_operational_incidents():
+    return run(incident_recovery.list)
+
+
+@app.get("/v1/operational-incidents/{incident_id}")
+def get_operational_incident(incident_id: str):
+    return run(lambda: incident_recovery.get(incident_id))
+
+
+@app.post("/v1/operational-incidents/{incident_id}/claim")
+def claim_operational_incident(
+    incident_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "risk", "admin")
+    return run(lambda: incident_recovery.claim(incident_id, actor_id=principal.actor_id))
+
+
+@app.post("/v1/operational-incidents/{incident_id}/checks", status_code=201)
+def record_operational_incident_check(
+    incident_id: str,
+    body: IncidentRecoveryCheckInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "risk", "admin")
+    return run(
+        lambda: incident_recovery.record_check(
+            incident_id,
+            **body.model_dump(),
+            actor_id=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/operational-incidents/{incident_id}/review-request")
+def request_operational_incident_review(
+    incident_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "risk", "admin")
+    return run(lambda: incident_recovery.submit_review(incident_id, actor_id=principal.actor_id))
+
+
+@app.post("/v1/operational-incidents/{incident_id}/review", status_code=201)
+def review_operational_incident(
+    incident_id: str,
+    body: IncidentRecoveryReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "risk", "admin")
+    return run(
+        lambda: incident_recovery.review(
+            incident_id,
+            **body.model_dump(),
+            actor_id=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/operational-incidents/{incident_id}/close")
+def close_operational_incident(
+    incident_id: str,
+    body: IncidentClosureInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "admin")
+    return run(
+        lambda: incident_recovery.close(
+            incident_id,
+            **body.model_dump(),
+            actor_id=principal.actor_id,
+        )
+    )
 
 
 @app.post("/v1/models/discover")
