@@ -36,6 +36,7 @@ apps/control_plane/
   procurement.py      样品采购状态机、供应商实绩与备用方案
   decision_contracts.py 版本化交互模式与不可变决策合同
   decision_lifecycle.py 分权分析、独立复核、正式决定、结果与校准
+  causal_experiments.py 因果实验预注册、稳定分流、结果账与 SRM 门禁
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -87,6 +88,16 @@ tests/
 分析就绪后，`POST /v1/decision-contracts/{id}/analyses` 要求结论、置信度、注册方案、预测指标、点预测、上下界、到期日和证据；分析提交者不能复核自己的产物。`POST /v1/decision-analyses/{id}/reviews` 记录不可变独立复核，重大风险需要两名接受结论的复核者，且最终决策人必须与分析者、复核者分离。正式决定仍固定为无执行权，真实执行必须另走既有审批链。
 
 采纳或受控实验的决定到期后，`POST /v1/decision-resolutions/{id}/outcome` 才允许用证据回填真实值，不能提前填报或覆盖历史。`GET /v1/decision-calibration` 按指标与单位返回平均绝对误差、平均绝对百分比误差和预测区间命中率，使系统用实际成败校准，而不是按文本流畅度评价 Agent。
+
+## 因果实验门禁
+
+只有正式决定为 `experiment` 的决议才能调用 `POST /v1/decision-resolutions/{id}/experiment`。协议会一次性锁定可证伪假设、唯一主指标、随机化单位、干扰集群、两组分配比例、目标样本、最小有意义效果、预算、止损线、时间窗口、结果观察期、护栏和证据；同一决议不能事后更换协议。
+
+实验启动、暂停、恢复、停止和完成均通过 `/v1/causal-experiments/{id}/events` 追加证据事件。分流使用服务端私密种子与 HMAC：相同业务单位稳定进入同一组，数据库只保存不可逆哈希，不保存原始用户、订单或会话标识。主指标结果同样只能追加一次，不能覆盖。
+
+预算支出、累计损失和预注册护栏通过 `/v1/causal-experiments/{id}/safety-checks` 形成不可变安全读数。任何一次读数越线都会锁存为安全事故：系统阻止新增分流，结果状态变为 `safety_breach`，后续较低读数不能自动清除事故或恢复实验。
+
+`GET /v1/causal-experiments/{id}/evaluation` 会先检查安全门和样本比例异常（SRM），再计算两组摘要、绝对/相对处理效应和 95% 区间。安全越线和 SRM 异常都会阻断解释；样本充分且质量门通过也只返回 `ready_for_independent_review`。接口固定输出 `decision_eligible=false` 和 `automatic_rollout=false`，因此实验报告不能绕过独立复核与后续正式决策。
 
 ## Ozon 数据合同与正式事实
 

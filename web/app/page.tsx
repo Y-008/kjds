@@ -134,6 +134,26 @@ type DecisionReview = { id: string; analysis_id: string; verdict: string; ration
 type DecisionResolution = { id: string; contract_id: string; analysis_id: string; disposition: string; rationale: string; conditions: string[]; decided_by: string; execution_eligible: boolean; created_at: string };
 type DecisionOutcome = { id: string; resolution_id: string; metric: string; predicted_value: string; interval_low: string; interval_high: string; actual_value: string; unit: string; signed_error: string; absolute_error: string; interval_covered: boolean; observed_at: string; evidence_ids: string[]; notes: string; recorded_by: string; created_at: string };
 type DecisionCalibration = { metric: string; unit: string; outcome_count: number; mean_absolute_error: string; mean_absolute_percentage_error: string | null; interval_coverage: string };
+type CausalExperiment = {
+  id: string; resolution_id: string; hypothesis: string; primary_metric: string;
+  randomization_unit: string; interference_cluster: string | null;
+  variants: Array<{ id: string; label: string; allocation: string; control: boolean }>;
+  target_sample_size: number; minimum_detectable_effect: string;
+  budget_cap_amount: string; stop_loss_amount: string; currency: string;
+  start_at: string; end_at: string; outcome_window_days: number;
+  guardrails: Array<{ metric: string; direction: string; threshold: string }>;
+  evidence_ids: string[]; status: string;
+  events: Array<{ id: string; event_type: string; effective_at: string }>;
+};
+type ExperimentEvaluation = {
+  protocol_id: string; status: string; review_eligible: boolean; decision_eligible: boolean;
+  automatic_rollout: boolean; assignment_count: number; observed_count: number;
+  target_sample_size: number; sample_ratio_p_value: string; sample_ratio_mismatch: boolean;
+  safety_gate_breached: boolean;
+  safety_checks: Array<{ id: string; metric: string; value: string; threshold: string; status: string; observed_at: string }>;
+  treatment_effect: null | { absolute_effect: string; relative_effect: string | null; confidence_interval_95: string[] };
+  interpretation: string;
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -186,6 +206,8 @@ export default function Home() {
   const [decisionResolutions, setDecisionResolutions] = useState<DecisionResolution[]>([]);
   const [decisionOutcomes, setDecisionOutcomes] = useState<DecisionOutcome[]>([]);
   const [decisionCalibration, setDecisionCalibration] = useState<DecisionCalibration[]>([]);
+  const [causalExperiments, setCausalExperiments] = useState<CausalExperiment[]>([]);
+  const [experimentEvaluations, setExperimentEvaluations] = useState<Record<string, ExperimentEvaluation>>({});
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -201,7 +223,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -219,6 +241,7 @@ export default function Home() {
       fetch("/backend/v1/decision-resolutions", { cache: "no-store" }),
       fetch("/backend/v1/decision-outcomes", { cache: "no-store" }),
       fetch("/backend/v1/decision-calibration", { cache: "no-store" }),
+      fetch("/backend/v1/causal-experiments", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -244,6 +267,17 @@ export default function Home() {
     if (resolutionResponse.ok) setDecisionResolutions(await resolutionResponse.json());
     if (outcomeResponse.ok) setDecisionOutcomes(await outcomeResponse.json());
     if (calibrationResponse.ok) setDecisionCalibration(await calibrationResponse.json());
+    if (experimentResponse.ok) {
+      const rows: CausalExperiment[] = await experimentResponse.json();
+      setCausalExperiments(rows);
+      const evaluations = await Promise.all(rows.map(async (item) => {
+        const response = await fetch(`/backend/v1/causal-experiments/${item.id}/evaluation`, { cache: "no-store" });
+        return [item.id, response.ok ? await response.json() as ExperimentEvaluation : null] as const;
+      }));
+      const indexed: Record<string, ExperimentEvaluation> = {};
+      evaluations.forEach(([id, evaluation]) => { if (evaluation) indexed[id] = evaluation; });
+      setExperimentEvaluations(indexed);
+    }
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -648,6 +682,67 @@ export default function Home() {
     finally { setLifecycleBusy(null); }
   }
 
+  async function registerCausalExperiment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+    const resolutionId = value("experiment_resolution_id");
+    const startAt = value("experiment_start_at");
+    const endAt = value("experiment_end_at");
+    const body = {
+      hypothesis: value("experiment_hypothesis"), primary_metric: value("experiment_metric"),
+      randomization_unit: value("experiment_unit"), interference_cluster: value("experiment_cluster") || null,
+      variants: [
+        { id: "control", label: value("experiment_control_label"), allocation: "0.5", control: true },
+        { id: "treatment", label: value("experiment_treatment_label"), allocation: "0.5", control: false },
+      ],
+      target_sample_size: Number(value("experiment_sample_size")), minimum_detectable_effect: value("experiment_mde"),
+      budget_cap_amount: value("experiment_budget"), stop_loss_amount: value("experiment_stop_loss"),
+      currency: value("experiment_currency"), start_at: new Date(startAt).toISOString(), end_at: new Date(endAt).toISOString(),
+      outcome_window_days: Number(value("experiment_outcome_days")),
+      guardrails: [{ metric: value("experiment_guardrail_metric"), direction: "max", threshold: value("experiment_guardrail_threshold") }],
+      evidence_ids: [value("experiment_evidence")],
+    };
+    setLifecycleBusy("experiment-register"); setNotice("正在固化实验假设、分流、预算、止损线和质量门禁…");
+    try {
+      const response = await fetch(`/backend/v1/decision-resolutions/${resolutionId}/experiment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `实验协议 ${result.id} 已预注册；启动前仍需人工批准。` : result.detail ?? "实验预注册失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法预注册实验，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function transitionCausalExperiment(event: FormEvent<HTMLFormElement>, protocol: CausalExperiment, eventType: "started" | "paused" | "resumed" | "stopped" | "completed") {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const body = { event_type: eventType, effective_at: new Date().toISOString(), evidence_id: value("experiment_event_evidence"), reason: value("experiment_event_reason") };
+    setLifecycleBusy(protocol.id); setNotice(`正在记录实验生命周期事件：${eventType}…`);
+    try {
+      const response = await fetch(`/backend/v1/causal-experiments/${protocol.id}/events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `实验状态已更新为 ${result.status}；没有触发自动放量。` : result.detail ?? "实验状态更新失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法更新实验状态，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function recordExperimentSafety(event: FormEvent<HTMLFormElement>, protocol: CausalExperiment) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const body = { metric: value("safety_metric"), value: value("safety_value"), observed_at: new Date().toISOString(), evidence_id: value("safety_evidence") };
+    setLifecycleBusy(`safety:${protocol.id}`); setNotice("正在记录预算、损失或护栏读数…");
+    try {
+      const response = await fetch(`/backend/v1/causal-experiments/${protocol.id}/safety-checks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `${result.metric}：${result.status === "breached" ? "已越线，后续分流冻结" : "仍在限制内"}` : result.detail ?? "安全读数提交失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法记录实验安全读数，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
@@ -655,6 +750,7 @@ export default function Home() {
   const selectedProfile = interactionProfiles.find((item) => item.id === selectedProfileId);
   const selectedAnalysisContract = decisionContracts.find((item) => item.id === selectedAnalysisContractId);
   const analysisOptions = Array.isArray(selectedAnalysisContract?.input.options) ? selectedAnalysisContract.input.options as Array<{ id?: string; label?: string }> : [];
+  const experimentResolutions = decisionResolutions.filter((item) => item.disposition === "experiment" && !causalExperiments.some((experiment) => experiment.resolution_id === item.id));
 
   return (
     <main className="shell">
@@ -813,6 +909,53 @@ export default function Home() {
                 </article>;
               }) : <div className="empty"><Clock3 size={24} /><strong>还没有待回填决定</strong><p>正式采纳或实验后，系统才建立结果回填任务。</p></div>}
               {decisionCalibration.map((item) => <div className="calibration-card" key={`${item.metric}:${item.unit}`}><strong>{item.metric}</strong><span>平均绝对误差 {item.mean_absolute_error} {item.unit}</span><b>区间命中率 {(Number(item.interval_coverage) * 100).toFixed(0)}%</b></div>)}
+            </div>
+          </div>
+        </section>
+
+        <section className="causal-experiment-panel">
+          <div className="panel-title">
+            <div><p className="eyebrow">CAUSAL EXPERIMENT GATE</p><h3>预注册 → 稳定分流 → SRM 检查 → 独立复核</h3></div>
+            <span className="gate ready">实验结果永不自动放量</span>
+          </div>
+          <div className="procurement-guardrail"><FlaskConical size={17} /><p><strong>先锁定假设与停止条件，再看结果。</strong><span>分流密钥不出系统，原始用户标识不入库；样本比例异常会直接阻断解释。</span></p></div>
+          <div className="causal-experiment-layout">
+            <form className="experiment-register-form" onSubmit={registerCausalExperiment}>
+              <strong>登记一项受控实验</strong>
+              <label>试验型正式决议<select name="experiment_resolution_id" required><option value="">选择尚未登记的决议</option>{experimentResolutions.map((item) => <option value={item.id} key={item.id}>{item.id} · {item.rationale}</option>)}</select></label>
+              <label className="wide">可证伪假设<textarea name="experiment_hypothesis" placeholder="例如：新版详情页将每访客贡献利润提高至少 5 CNY" required /></label>
+              <div className="lifecycle-pair"><label>唯一主指标<input name="experiment_metric" defaultValue="cm3_per_visitor" required /></label><label>随机化单位<input name="experiment_unit" defaultValue="visitor" required /></label></div>
+              <label>干扰集群<input name="experiment_cluster" defaultValue="product_family" placeholder="避免相似 SKU 互相污染" /></label>
+              <div className="lifecycle-pair"><label>对照组<input name="experiment_control_label" defaultValue="现行策略" required /></label><label>实验组<input name="experiment_treatment_label" defaultValue="候选策略" required /></label></div>
+              <div className="lifecycle-triple"><label>目标样本<input name="experiment_sample_size" type="number" min="20" defaultValue="100" required /></label><label>最小有意义效果<input name="experiment_mde" type="number" min="0.0001" step="0.0001" defaultValue="5" required /></label><label>结果观察天数<input name="experiment_outcome_days" type="number" min="0" max="365" defaultValue="30" required /></label></div>
+              <div className="lifecycle-triple"><label>实验预算<input name="experiment_budget" type="number" min="0.01" step="0.01" required /></label><label>止损线<input name="experiment_stop_loss" type="number" min="0.01" step="0.01" required /></label><label>币种<input name="experiment_currency" defaultValue="CNY" maxLength={3} required /></label></div>
+              <div className="lifecycle-pair"><label>开始时间<input name="experiment_start_at" type="datetime-local" required /></label><label>结束时间<input name="experiment_end_at" type="datetime-local" required /></label></div>
+              <div className="lifecycle-pair"><label>护栏指标<input name="experiment_guardrail_metric" defaultValue="refund_rate" required /></label><label>最大阈值<input name="experiment_guardrail_threshold" type="number" step="0.0001" defaultValue="0.1" required /></label></div>
+              <label>预注册证据<select name="experiment_evidence" defaultValue="" required><option value="">选择原始证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select></label>
+              <button disabled={lifecycleBusy === "experiment-register" || !experimentResolutions.length}>{lifecycleBusy === "experiment-register" ? "正在固化…" : "固化实验协议"}</button>
+            </form>
+            <div className="experiment-register-list">
+              {causalExperiments.length ? causalExperiments.map((experiment) => {
+                const evaluation = experimentEvaluations[experiment.id];
+                const nextEvent = experiment.status === "registered" ? "started" : experiment.status === "running" ? "paused" : experiment.status === "paused" ? "resumed" : null;
+                return <article className="experiment-card" key={experiment.id}>
+                  <div className="experiment-card-head"><div><strong>{experiment.hypothesis}</strong><small>{experiment.primary_metric} · {experiment.randomization_unit} · 50/50</small></div><span className={evaluation?.sample_ratio_mismatch ? "gate blocked" : "gate ready"}>{experiment.status}</span></div>
+                  <div className="experiment-facts"><span>样本 <b>{evaluation?.observed_count ?? 0}/{experiment.target_sample_size}</b></span><span>分流 <b>{evaluation?.assignment_count ?? 0}</b></span><span>SRM <b>{evaluation?.sample_ratio_mismatch ? "阻断" : "通过"}</b></span><span>安全门 <b>{evaluation?.safety_gate_breached ? "冻结" : "通过"}</b></span></div>
+                  <p>{evaluation?.interpretation === "SAFETY_BREACH_FREEZES_ASSIGNMENT" ? "预算、止损或护栏已越线，后续分流已冻结。" : evaluation?.interpretation === "SRM_BLOCKS_DECISION" ? "样本比例异常，禁止解释和决策。" : evaluation?.review_eligible ? `效果 ${evaluation.treatment_effect?.absolute_effect ?? "-"}，已达到独立复核条件。` : "继续收集预注册样本，不允许提前挑选赢家。"}</p>
+                  {experiment.status === "running" && <form className="experiment-safety-form" onSubmit={(event) => recordExperimentSafety(event, experiment)}>
+                    <select name="safety_metric" defaultValue="budget_spend_amount"><option value="budget_spend_amount">累计实验支出</option><option value="cumulative_loss_amount">累计实验损失</option>{experiment.guardrails.map((item) => <option value={item.metric} key={item.metric}>{item.metric}</option>)}</select>
+                    <input name="safety_value" type="number" step="0.0001" placeholder="当前读数" required />
+                    <select name="safety_evidence" defaultValue="" required><option value="">读数证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select>
+                    <button disabled={lifecycleBusy === `safety:${experiment.id}`}>记录安全读数</button>
+                  </form>}
+                  {nextEvent && <form className="experiment-event-form" onSubmit={(event) => transitionCausalExperiment(event, experiment, nextEvent)}>
+                    <input name="experiment_event_reason" placeholder={nextEvent === "started" ? "启动前检查结论" : nextEvent === "paused" ? "暂停原因" : "恢复原因"} required />
+                    <select name="experiment_event_evidence" defaultValue="" required><option value="">选择事件证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select>
+                    <button disabled={lifecycleBusy === experiment.id}>{nextEvent === "started" ? "人工批准启动" : nextEvent === "paused" ? "暂停实验" : "恢复实验"}</button>
+                  </form>}
+                  <footer><span>预算 {experiment.budget_cap_amount} {experiment.currency}</span><span>止损 {experiment.stop_loss_amount}</span><b>自动放量：禁止</b></footer>
+                </article>;
+              }) : <div className="empty"><FlaskConical size={25} /><strong>还没有预注册实验</strong><p>先完成分析、独立复核和“受控实验”正式决议。</p></div>}
             </div>
           </div>
         </section>

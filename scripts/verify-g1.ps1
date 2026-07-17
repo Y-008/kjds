@@ -125,6 +125,8 @@ $result = [ordered]@{
     decision_contract_compiler = $false
     decision_lifecycle = $false
     decision_calibration = $false
+    causal_experiment_preregistration = $false
+    causal_experiment_quality_gate = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -183,14 +185,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0013.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0014.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0013"
+    $result.migration = "20260717_0014"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0012")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0013")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0012") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0013") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -404,6 +406,113 @@ try {
         throw "Decision forecast calibration smoke failed"
     }
     $result.decision_calibration = $true
+
+    $experimentBody = @{
+        hypothesis = "The controlled treatment improves contribution profit per visitor"
+        primary_metric = "cm3_per_visitor"
+        randomization_unit = "visitor"
+        interference_cluster = "product_family"
+        variants = @(
+            @{ id = "control"; label = "Current experience"; allocation = 0.5; control = $true },
+            @{ id = "treatment"; label = "Candidate experience"; allocation = 0.5; control = $false }
+        )
+        target_sample_size = 20
+        minimum_detectable_effect = 5
+        budget_cap_amount = 1000
+        stop_loss_amount = 300
+        currency = "CNY"
+        start_at = "2026-07-19T00:00:00+00:00"
+        end_at = "2026-07-21T00:00:00+00:00"
+        outcome_window_days = 7
+        guardrails = @(
+            @{ metric = "refund_rate"; direction = "max"; threshold = 0.1 }
+        )
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 7
+    $experiment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-resolutions/$($resolution.id)/experiment" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body $experimentBody
+    $experimentRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-resolutions/$($resolution.id)/experiment" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body $experimentBody
+    if (
+        $experiment.id -ne $experimentRetry.id -or
+        $experiment.status -ne "registered" -or
+        $null -ne $experiment.assignment_seed -or
+        $experiment.target_sample_size -ne 20
+    ) {
+        throw "Immutable causal experiment preregistration smoke failed"
+    }
+    $result.causal_experiment_preregistration = $true
+
+    $startBody = @{
+        event_type = "started"
+        effective_at = "2026-07-19T00:00:00+00:00"
+        evidence_id = $evidenceRecord.id
+        reason = "G-1 preregistration and guardrail review passed"
+    } | ConvertTo-Json
+    $startedExperiment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/events" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body $startBody
+    $startRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/events" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body $startBody
+    if ($startedExperiment.status -ne "running" -or $startRetry.events.Count -ne 1) {
+        throw "Causal experiment lifecycle idempotency smoke failed"
+    }
+    $safeBudgetCheck = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        metric = "budget_spend_amount"
+        value = 900
+        observed_at = "2026-07-19T01:00:00+00:00"
+        evidence_id = $evidenceRecord.id
+    } | ConvertTo-Json)
+    if ($safeBudgetCheck.status -ne "within_limit") {
+        throw "Causal experiment budget safety check smoke failed"
+    }
+
+    $observedCounts = @{ control = 0; treatment = 0 }
+    for ($index = 0; $index -lt 100 -and ($observedCounts.control -lt 10 -or $observedCounts.treatment -lt 10); $index++) {
+        $assignment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/assignments" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+            unit_key = "g1-visitor-$index"
+            assigned_at = "2026-07-20T00:00:00+00:00"
+        } | ConvertTo-Json)
+        $variant = [string]$assignment.variant_id
+        if ($observedCounts[$variant] -ge 10) { continue }
+        $value = if ($variant -eq "control") { 100 + $observedCounts[$variant] % 2 } else { 110 + $observedCounts[$variant] % 2 }
+        Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiment-assignments/$($assignment.id)/observation" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+            value = $value
+            observed_at = "2026-07-22T00:00:00+00:00"
+            evidence_id = $evidenceRecord.id
+        } | ConvertTo-Json) | Out-Null
+        $observedCounts[$variant]++
+    }
+    $experimentEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/evaluation" -Headers $headers
+    if (
+        $observedCounts.control -ne 10 -or
+        $observedCounts.treatment -ne 10 -or
+        $experimentEvaluation.status -ne "ready_for_independent_review" -or
+        $experimentEvaluation.review_eligible -ne $true -or
+        $experimentEvaluation.decision_eligible -ne $false -or
+        $experimentEvaluation.automatic_rollout -ne $false -or
+        $experimentEvaluation.sample_ratio_mismatch -ne $false -or
+        [decimal]$experimentEvaluation.treatment_effect.absolute_effect -ne 10
+    ) {
+        throw "Causal experiment assignment, SRM, and review gate smoke failed"
+    }
+    $breachedGuardrail = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        metric = "refund_rate"
+        value = 0.11
+        observed_at = "2026-07-22T01:00:00+00:00"
+        evidence_id = $evidenceRecord.id
+    } | ConvertTo-Json)
+    $blockedAssignment = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/assignments" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        unit_key = "g1-visitor-after-safety-breach"
+        assigned_at = "2026-07-20T00:00:00+00:00"
+    } | ConvertTo-Json)
+    $breachedEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/evaluation" -Headers $headers
+    if (
+        $breachedGuardrail.status -ne "breached" -or
+        $blockedAssignment -ne 422 -or
+        $breachedEvaluation.status -ne "safety_breach" -or
+        $breachedEvaluation.safety_gate_breached -ne $true -or
+        $breachedEvaluation.review_eligible -ne $false -or
+        $breachedEvaluation.automatic_rollout -ne $false
+    ) {
+        throw "Causal experiment stop-loss and guardrail freeze smoke failed"
+    }
+    $result.causal_experiment_quality_gate = $true
 
     foreach ($requirementId in @("GOV-001", "OZN-001")) {
         Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/gate-evidence" -Method Post -Headers $headers -Form @{

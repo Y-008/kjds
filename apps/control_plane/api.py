@@ -6,7 +6,7 @@ import os
 from dataclasses import asdict
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .automation import AutomationService, RiskLevel
+from .causal_experiments import CausalExperimentService, ExperimentEvent
 from .content_growth import ContentGrowthService
 from .database import create_database_engine, database_health
 from .decision_contracts import DecisionContractService
@@ -50,7 +51,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.15.0"
+APP_VERSION = "0.16.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -67,6 +68,11 @@ decision_contracts = DecisionContractService(engine=engine, evidence=evidence)
 decision_lifecycle = DecisionLifecycleService(
     engine=engine,
     contracts=decision_contracts,
+    evidence=evidence,
+)
+causal_experiments = CausalExperimentService(
+    engine=engine,
+    decisions=decision_lifecycle,
     evidence=evidence,
 )
 commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
@@ -420,6 +426,76 @@ class DecisionOutcomeInput(BaseModel):
     notes: str = Field(min_length=1, max_length=10000)
 
 
+class ExperimentVariantInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=300)
+    allocation: Decimal = Field(gt=0, le=1)
+    control: bool
+
+
+class ExperimentGuardrailInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: str = Field(min_length=1, max_length=200)
+    direction: Literal["min", "max"]
+    threshold: Decimal
+
+
+class CausalExperimentProtocolInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    hypothesis: str = Field(min_length=1, max_length=10000)
+    primary_metric: str = Field(min_length=1, max_length=200)
+    randomization_unit: str = Field(min_length=1, max_length=100)
+    interference_cluster: str | None = Field(default=None, max_length=100)
+    variants: list[ExperimentVariantInput] = Field(min_length=2, max_length=2)
+    target_sample_size: int = Field(ge=20)
+    minimum_detectable_effect: Decimal = Field(gt=0)
+    budget_cap_amount: Decimal = Field(gt=0)
+    stop_loss_amount: Decimal = Field(gt=0)
+    currency: str = Field(min_length=3, max_length=3)
+    start_at: str
+    end_at: str
+    outcome_window_days: int = Field(default=30, ge=0, le=365)
+    guardrails: list[ExperimentGuardrailInput] = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class ExperimentTransitionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: ExperimentEvent
+    effective_at: str
+    evidence_id: str = Field(min_length=1)
+    reason: str = Field(min_length=1, max_length=10000)
+
+
+class ExperimentAssignmentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    unit_key: str = Field(min_length=1, max_length=1000)
+    assigned_at: str
+
+
+class ExperimentObservationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: Decimal
+    observed_at: str
+    evidence_id: str = Field(min_length=1)
+
+
+class ExperimentSafetyCheckInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: str = Field(min_length=1, max_length=200)
+    value: Decimal
+    observed_at: str
+    evidence_id: str = Field(min_length=1)
+
+
 class FeeMappingInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -750,6 +826,101 @@ def list_decision_outcomes():
 @app.get("/v1/decision-calibration")
 def decision_calibration():
     return decision_lifecycle.calibration()
+
+
+@app.post(
+    "/v1/decision-resolutions/{resolution_id}/experiment",
+    status_code=201,
+)
+def register_causal_experiment(
+    resolution_id: str,
+    body: CausalExperimentProtocolInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "approver", "admin")
+    return run(
+        lambda: causal_experiments.register(
+            resolution_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/causal-experiments")
+def list_causal_experiments():
+    return causal_experiments.list()
+
+
+@app.get("/v1/causal-experiments/{protocol_id}")
+def get_causal_experiment(protocol_id: str):
+    return run(lambda: causal_experiments.get(protocol_id))
+
+
+@app.get("/v1/causal-experiments/{protocol_id}/evaluation")
+def evaluate_causal_experiment(protocol_id: str):
+    return run(lambda: causal_experiments.evaluate(protocol_id))
+
+
+@app.post("/v1/causal-experiments/{protocol_id}/events", status_code=201)
+def transition_causal_experiment(
+    protocol_id: str,
+    body: ExperimentTransitionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "approver", "admin")
+    return run(
+        lambda: causal_experiments.transition(
+            protocol_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/causal-experiments/{protocol_id}/assignments", status_code=201)
+def assign_causal_experiment(
+    protocol_id: str,
+    body: ExperimentAssignmentInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(lambda: causal_experiments.assign(protocol_id, **body.model_dump()))
+
+
+@app.post(
+    "/v1/causal-experiment-assignments/{assignment_id}/observation",
+    status_code=201,
+)
+def observe_causal_experiment(
+    assignment_id: str,
+    body: ExperimentObservationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: causal_experiments.observe(
+            assignment_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/causal-experiments/{protocol_id}/safety-checks", status_code=201)
+def record_causal_experiment_safety(
+    protocol_id: str,
+    body: ExperimentSafetyCheckInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: causal_experiments.record_safety_check(
+            protocol_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
 
 
 @app.post("/v1/models/discover")
