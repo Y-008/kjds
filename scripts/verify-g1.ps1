@@ -207,7 +207,7 @@ try {
     $pythonFiles = @(
         git ls-files -- "*.py"
         Get-ChildItem (Join-Path $Root "migrations\versions") -Filter "*.py" -File |
-            ForEach-Object { [IO.Path]::GetRelativePath($Root, $_.FullName) }
+            ForEach-Object { $_.FullName.Substring($Root.Length + 1) }
     ) | Sort-Object -Unique
     Invoke-External -Command uv -Arguments (@("run", "ruff", "check") + $pythonFiles)
     $result.lint = $true
