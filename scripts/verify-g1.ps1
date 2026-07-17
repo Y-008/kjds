@@ -144,6 +144,7 @@ $result = [ordered]@{
     post_execution_observation_contract = $false
     post_execution_guardrail_freeze = $false
     post_execution_rollback_trigger = $false
+    capability_economic_ledger = $false
     ozon_worker_contract_test = $false
     ozon_credential_isolation = $false
     sku_episode_intake = $false
@@ -211,14 +212,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0021.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0022.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0021"
+    $result.migration = "20260717_0022"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0020")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0021")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0020") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0021") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -767,6 +768,18 @@ try {
         error_detail = $null
         evidence_ids = @($evidenceRecord.id)
     } | ConvertTo-Json -Depth 4)
+    $capabilityAssessment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/execution-observation-windows/$($observationWindow.id)/capability-economics" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        realized_incremental_value = -20
+        avoided_loss = 5
+        model_compute_cost = 1
+        human_review_cost = 2
+        incident_loss = 10
+        maintenance_cost = 1
+        currency = "CNY"
+        evidence_ids = @($evidenceRecord.id)
+        as_of = "2026-07-19T00:00:00+00:00"
+    } | ConvertTo-Json -Depth 4)
+    $capabilitySummaries = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/capability-economic-summaries" -Headers $headers
     if (
         $policyReview.verdict -ne "accepted" -or
         $shadowRelease.stage.max_exposure_fraction -ne "0" -or
@@ -834,6 +847,13 @@ try {
         $guardrailObservation.rollback_command_id -eq $rollbackCommand.id -and
         $observationEvaluation.rollback_queued -eq $true
     )
+    $result.capability_economic_ledger = (
+        [decimal]$capabilityAssessment.net_value -eq -29 -and
+        $capabilityAssessment.automatic_authority_change -eq $false -and
+        $capabilitySummaries.Count -eq 1 -and
+        $capabilitySummaries[0].governance_recommendation -eq "restrict_and_review" -and
+        $capabilitySummaries[0].automatic_authority_change -eq $false
+    )
     $result.compensating_rollback = (
         $rollbackCommand.command_kind -eq "rollback" -and
         $rollbackCommand.expected_state_hash -eq $resultingExecutionHash -and
@@ -846,6 +866,7 @@ try {
         -not $result.post_execution_observation_contract -or
         -not $result.post_execution_guardrail_freeze -or
         -not $result.post_execution_rollback_trigger -or
+        -not $result.capability_economic_ledger -or
         -not $result.compensating_rollback
     ) {
         throw "Limited execution, post-execution guardrail, and rollback smoke failed"

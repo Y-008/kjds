@@ -44,6 +44,7 @@ apps/control_plane/
   limited_executor.py 默认关闭的命令队列、领取租约、平台回执与补偿回滚状态机
   ozon_worker.py 隔离 Seller API 凭证、读取真实状态、异步导入确认与回执上报
   post_execution.py 执行后观察合同、不可变指标、护栏冻结与补偿触发
+  capability_economics.py 能力增量、避免损失、运行成本、事故损失与治理建议
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -163,6 +164,8 @@ tests/
 只有已确认成功且确实产生平台变更的执行命令，才能通过 `/v1/limited-execution-commands/{id}/observation-window` 固化一次不可变观察合同。合同会在看见结果前锁定主要经营指标、各护栏指标的基线、最少观察数、开始与结束时间以及证据；缺少任一策略护栏的基线就不能开始。结果只能由合同内指标在预注册时间窗中追加，不能覆盖历史，也不会自动晋级策略。
 
 当新结果越过 `max` 或 `min` 护栏时，系统先根据原执行回执中的变更后状态指纹生成补偿命令，再将观察窗口标记为 `guardrail_breached` 并开启全局熔断。此时平台写操作和补偿命令领取都失败关闭；风险负责人必须检查证据并由管理员明确解除熔断，专用执行器随后才能按状态指纹领取已排队的回滚。这样自动化只负责及时止损和准备可审计补偿，不会在异常状态下自行连续写平台。
+
+观察结束或护栏越界后，独立复核者可通过 `/v1/execution-observation-windows/{id}/capability-economics` 固化一次能力损益：实际增量价值与避免损失，减去模型计算、人工审核、事故和维护成本。每个观察窗口只能有一份不可变核算并必须引用证据；按执行适配器和币种汇总后，系统只给出“继续观察、限制复核或考虑淘汰”的治理建议，固定 `automatic_authority_change=false`，不会因为一次盈利或亏损自动扩权、停权或改写知识。
 
 ## 隔离的 Ozon Seller API Worker
 

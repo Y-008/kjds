@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from apps.control_plane.capability_economics import CapabilityEconomicsService
 from apps.control_plane.causal_experiments import (
     CausalExperimentService,
     ExperimentProtocolRow,
@@ -1190,6 +1191,39 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
         recorded_by="ozon-worker",
     )
     assert rollback_receipt["outcome"] == "succeeded"
+    capability_economics = CapabilityEconomicsService(
+        engine=engine,
+        post_execution=post_execution,
+        execution_plans=execution_plans,
+        evidence=evidence,
+    )
+    capability_assessment = capability_economics.assess(
+        window["id"],
+        realized_incremental_value="-20",
+        avoided_loss="5",
+        model_compute_cost="1",
+        human_review_cost="2",
+        incident_loss="10",
+        maintenance_cost="1",
+        currency="CNY",
+        evidence_ids=[source.id],
+        assessed_by="finance-controller",
+        as_of="2026-07-19T00:00:00+00:00",
+    )
+    assert Decimal(capability_assessment["net_value"]) == Decimal("-29")
+    assert capability_assessment["automatic_authority_change"] is False
+    assert capability_economics.summaries() == [
+        {
+            "adapter_id": "ozon.product.import.v3",
+            "currency": "CNY",
+            "assessment_count": 1,
+            "profitable_count": 0,
+            "guardrail_breach_count": 1,
+            "total_net_value": "-29.000000000000",
+            "governance_recommendation": "restrict_and_review",
+            "automatic_authority_change": False,
+        }
+    ]
     compensation_plan = execution_plans.create(
         handoff["id"],
         idempotency_key="listing-draft-compensation",

@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .automation import AutomationService, RiskLevel
+from .capability_economics import CapabilityEconomicsService
 from .causal_experiments import CausalExperimentService, ExperimentEvent
 from .causal_knowledge import (
     CausalKnowledgeService,
@@ -64,7 +65,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.23.0"
+APP_VERSION = "0.24.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -152,6 +153,12 @@ post_execution = PostExecutionService(
     policies=causal_policies,
     evidence=evidence,
     kill_switch=kill_switch,
+)
+capability_economics = CapabilityEconomicsService(
+    engine=engine,
+    post_execution=post_execution,
+    execution_plans=execution_plans,
+    evidence=evidence,
 )
 providers = {
     "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
@@ -763,6 +770,20 @@ class ExecutionMetricObservationInput(BaseModel):
     value: Decimal
     observed_at: str
     evidence_ids: list[str] = Field(min_length=1)
+
+
+class CapabilityEconomicAssessmentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    realized_incremental_value: Decimal
+    avoided_loss: Decimal = Field(ge=0)
+    model_compute_cost: Decimal = Field(ge=0)
+    human_review_cost: Decimal = Field(ge=0)
+    incident_loss: Decimal = Field(ge=0)
+    maintenance_cost: Decimal = Field(ge=0)
+    currency: str = Field(min_length=3, max_length=3)
+    evidence_ids: list[str] = Field(min_length=1)
+    as_of: str | None = None
 
 
 class FeeMappingInput(BaseModel):
@@ -1559,6 +1580,35 @@ def record_execution_metric_observation(
 @app.get("/v1/execution-observation-windows/{window_id}/evaluation")
 def evaluate_execution_observation_window(window_id: str, as_of: str | None = None):
     return run(lambda: post_execution.evaluate(window_id, as_of=as_of))
+
+
+@app.post(
+    "/v1/execution-observation-windows/{window_id}/capability-economics",
+    status_code=201,
+)
+def assess_execution_capability_economics(
+    window_id: str,
+    body: CapabilityEconomicAssessmentInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "risk", "admin")
+    return run(
+        lambda: capability_economics.assess(
+            window_id,
+            **body.model_dump(),
+            assessed_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/capability-economic-assessments")
+def list_capability_economic_assessments():
+    return run(capability_economics.list)
+
+
+@app.get("/v1/capability-economic-summaries")
+def list_capability_economic_summaries():
+    return run(capability_economics.summaries)
 
 
 @app.post("/v1/models/discover")

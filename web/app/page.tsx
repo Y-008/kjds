@@ -213,7 +213,14 @@ type ExecutionObservationWindow = {
   guardrails: Array<{ metric: string; direction: "min" | "max"; threshold: string }>;
   required_observations: number; starts_at: string; ends_at: string; status: string;
   observations: Array<{ id: string; metric: string; value: string; observed_at: string; guardrail_breached: boolean; rollback_command_id: string | null }>;
+  evaluation: { status: string; rollback_queued: boolean; kill_switch_engaged: boolean };
   automatic_policy_promotion: boolean;
+};
+type CapabilityEconomicAssessment = {
+  id: string; window_id: string; adapter_id: string; outcome_status: string;
+  realized_incremental_value: string; avoided_loss: string; model_compute_cost: string;
+  human_review_cost: string; incident_loss: string; maintenance_cost: string;
+  net_value: string; currency: string; automatic_authority_change: boolean;
 };
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
@@ -277,6 +284,7 @@ export default function Home() {
   const [governedExecutionPlans, setGovernedExecutionPlans] = useState<GovernedExecutionPlan[]>([]);
   const [limitedExecutionCommands, setLimitedExecutionCommands] = useState<LimitedExecutionCommand[]>([]);
   const [executionObservationWindows, setExecutionObservationWindows] = useState<ExecutionObservationWindow[]>([]);
+  const [capabilityEconomicAssessments, setCapabilityEconomicAssessments] = useState<CapabilityEconomicAssessment[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -292,7 +300,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -318,6 +326,7 @@ export default function Home() {
       fetch("/backend/v1/governed-execution-plans", { cache: "no-store" }),
       fetch("/backend/v1/limited-execution-commands", { cache: "no-store" }),
       fetch("/backend/v1/execution-observation-windows", { cache: "no-store" }),
+      fetch("/backend/v1/capability-economic-assessments", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -366,6 +375,7 @@ export default function Home() {
     if (executionPlanResponse.ok) setGovernedExecutionPlans(await executionPlanResponse.json());
     if (executionCommandResponse.ok) setLimitedExecutionCommands(await executionCommandResponse.json());
     if (executionObservationResponse.ok) setExecutionObservationWindows(await executionObservationResponse.json());
+    if (capabilityEconomicsResponse.ok) setCapabilityEconomicAssessments(await capabilityEconomicsResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -1081,6 +1091,26 @@ export default function Home() {
     finally { setLifecycleBusy(null); }
   }
 
+  async function assessCapabilityEconomics(event: FormEvent<HTMLFormElement>, window: ExecutionObservationWindow) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const body = {
+      realized_incremental_value: value("economics_realized_value"), avoided_loss: value("economics_avoided_loss"),
+      model_compute_cost: value("economics_model_cost"), human_review_cost: value("economics_review_cost"),
+      incident_loss: value("economics_incident_loss"), maintenance_cost: value("economics_maintenance_cost"),
+      currency: value("economics_currency"), evidence_ids: [value("economics_evidence")], as_of: new Date(value("economics_as_of")).toISOString(),
+    };
+    setLifecycleBusy(`capability-economics:${window.id}`); setNotice("正在核算能力的真实增量、避免损失和全部成本…");
+    try {
+      const response = await fetch(`/backend/v1/execution-observation-windows/${window.id}/capability-economics`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `能力净价值：${result.net_value} ${result.currency}。该结果只形成治理建议，不会自动改变权限。` : result.detail ?? "能力损益核算失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法完成能力损益核算，请检查观察是否结束及证据是否有效"); }
+    finally { setLifecycleBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
@@ -1354,6 +1384,7 @@ export default function Home() {
               const executionPlan = governedExecutionPlans.find((item) => item.policy_id === policy.id);
               const executionCommand = limitedExecutionCommands.find((item) => item.plan_id === executionPlan?.id && item.command_kind === "execute");
               const observationWindow = executionObservationWindows.find((item) => item.command_id === executionCommand?.id);
+              const capabilityAssessment = capabilityEconomicAssessments.find((item) => item.window_id === observationWindow?.id);
               const canReleaseNext = acceptedReview && policy.usable && policy.releases.length < policy.rollout_stages.length && (!latestRelease || latestRelease.outcome?.verdict === "passed");
               return <article className={policy.usable ? "policy-card" : "policy-card invalid"} key={policy.id}>
                 <div className="policy-card-head"><div><strong>{policy.title}</strong><small>{policy.validity_status} · 来源知识 {policy.knowledge_ids.length} 条</small></div><span className={policy.usable ? "gate ready" : "gate blocked"}>{policy.usable ? "可评估" : "已冻结"}</span></div>
@@ -1371,8 +1402,10 @@ export default function Home() {
                 {executionPlan?.ready_for_executor && executionPlan.live_execution_supported && !executionCommand && <div className="policy-release-form"><strong>受限执行队列</strong><p>默认全局关闭。启用后仍由专用执行器按状态指纹领取，网页不会直接调用 Ozon。</p><button type="button" disabled={lifecycleBusy === `execution-queue:${executionPlan.id}`} onClick={() => queueLimitedExecution(executionPlan)}>进入受限队列</button></div>}
                 {executionCommand && <div className={executionCommand.status === "succeeded" ? "knowledge-status usable" : "knowledge-status invalid"}><strong>{executionCommand.command_kind === "rollback" ? "回滚" : "执行"}命令 {executionCommand.status}</strong><span>{executionCommand.claimed_by ? `执行器 ${executionCommand.claimed_by}` : "等待专用执行器领取"}</span><b>远端写入：{executionCommand.platform_write_performed ? "已由回执确认" : "未确认"}</b></div>}
                 {executionCommand?.status === "succeeded" && executionCommand.platform_write_performed && !observationWindow && <form className="policy-outcome-form" onSubmit={(event) => createObservationWindow(event, executionCommand)}><strong>固化执行后观察合同</strong><p>预先锁定利润指标、退款护栏、基线和期限。超过护栏会先排队补偿并冻结写操作，不会自动继续放量。</p><div className="lifecycle-pair"><input name="observation_primary_metric" defaultValue="contribution_profit_per_visitor" aria-label="主要结果指标" required /><input name="observation_primary_baseline" defaultValue="0" type="number" step="0.0001" aria-label="主要指标基线" required /></div><div className="lifecycle-pair"><input name="observation_guardrail_metric" defaultValue={policy.guardrails[0]?.metric ?? "refund_rate"} aria-label="护栏指标" required /><input name="observation_guardrail_baseline" defaultValue="0" type="number" step="0.0001" aria-label="护栏基线" required /></div><input name="observation_required_count" defaultValue="2" type="number" min="1" max="10000" aria-label="最少观察数" required /><div className="lifecycle-pair"><input name="observation_starts_at" type="datetime-local" aria-label="观察开始时间" required /><input name="observation_ends_at" type="datetime-local" aria-label="观察结束时间" required /></div><select name="observation_evidence" defaultValue="" required><option value="">选择基线证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `observation-window:${executionCommand.id}`}>锁定观察合同</button></form>}
-                {observationWindow && <div className={observationWindow.status === "guardrail_breached" ? "knowledge-status invalid" : "knowledge-status usable"}><strong>执行后观察：{observationWindow.status}</strong><span>{observationWindow.primary_metric} · 已记录 {observationWindow.observations.length}/{observationWindow.required_observations}</span><b>{observationWindow.status === "guardrail_breached" ? "补偿已排队，写操作冻结" : "自动策略晋级：禁止"}</b></div>}
-                {observationWindow?.status === "monitoring" && <form className="policy-outcome-form" onSubmit={(event) => recordExecutionObservation(event, observationWindow)}><strong>上报真实经营结果</strong><p>只能填写合同内的主指标或护栏指标；记录一经提交不可修改。</p><select name="observed_metric" defaultValue={observationWindow.primary_metric} required><option value={observationWindow.primary_metric}>{observationWindow.primary_metric}</option>{observationWindow.guardrails.map((guardrail) => <option value={guardrail.metric} key={guardrail.metric}>{guardrail.metric}（{guardrail.direction} {guardrail.threshold}）</option>)}</select><input name="observed_value" type="number" step="0.0001" placeholder="实际结果" required /><input name="observed_at" type="datetime-local" aria-label="结果发生时间" required /><select name="observed_evidence" defaultValue="" required><option value="">选择结果证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `observation:${observationWindow.id}`}>记录并核对护栏</button></form>}
+                {observationWindow && <div className={observationWindow.evaluation.status === "guardrail_breached" ? "knowledge-status invalid" : "knowledge-status usable"}><strong>执行后观察：{observationWindow.evaluation.status}</strong><span>{observationWindow.primary_metric} · 已记录 {observationWindow.observations.length}/{observationWindow.required_observations}</span><b>{observationWindow.evaluation.status === "guardrail_breached" ? "补偿已排队，写操作冻结" : "自动策略晋级：禁止"}</b></div>}
+                {observationWindow?.evaluation.status === "monitoring" && <form className="policy-outcome-form" onSubmit={(event) => recordExecutionObservation(event, observationWindow)}><strong>上报真实经营结果</strong><p>只能填写合同内的主指标或护栏指标；记录一经提交不可修改。</p><select name="observed_metric" defaultValue={observationWindow.primary_metric} required><option value={observationWindow.primary_metric}>{observationWindow.primary_metric}</option>{observationWindow.guardrails.map((guardrail) => <option value={guardrail.metric} key={guardrail.metric}>{guardrail.metric}（{guardrail.direction} {guardrail.threshold}）</option>)}</select><input name="observed_value" type="number" step="0.0001" placeholder="实际结果" required /><input name="observed_at" type="datetime-local" aria-label="结果发生时间" required /><select name="observed_evidence" defaultValue="" required><option value="">选择结果证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `observation:${observationWindow.id}`}>记录并核对护栏</button></form>}
+                {observationWindow && ["passed", "guardrail_breached"].includes(observationWindow.evaluation.status) && !capabilityAssessment && <form className="policy-outcome-form" onSubmit={(event) => assessCapabilityEconomics(event, observationWindow)}><strong>核算这项能力是否值得保留</strong><p>把实际增量、避免损失、模型费、人工审核、事故损失和维护成本放在同一本账里。金额必须由证据支持。</p><div className="lifecycle-pair"><input name="economics_realized_value" type="number" step="0.01" placeholder="实际增量（可为负）" required /><input name="economics_avoided_loss" type="number" min="0" step="0.01" defaultValue="0" placeholder="避免损失" required /></div><div className="lifecycle-pair"><input name="economics_model_cost" type="number" min="0" step="0.01" defaultValue="0" placeholder="模型与计算成本" required /><input name="economics_review_cost" type="number" min="0" step="0.01" defaultValue="0" placeholder="人工审核成本" required /></div><div className="lifecycle-pair"><input name="economics_incident_loss" type="number" min="0" step="0.01" defaultValue="0" placeholder="事故损失" required /><input name="economics_maintenance_cost" type="number" min="0" step="0.01" defaultValue="0" placeholder="维护成本" required /></div><div className="lifecycle-pair"><input name="economics_currency" defaultValue="CNY" minLength={3} maxLength={3} aria-label="币种" required /><input name="economics_as_of" type="datetime-local" aria-label="核算时间" required /></div><select name="economics_evidence" defaultValue="" required><option value="">选择损益证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `capability-economics:${observationWindow.id}`}>固化能力损益</button></form>}
+                {capabilityAssessment && <div className={Number(capabilityAssessment.net_value) > 0 && capabilityAssessment.outcome_status !== "guardrail_breached" ? "knowledge-status usable" : "knowledge-status invalid"}><strong>能力净价值 {capabilityAssessment.net_value} {capabilityAssessment.currency}</strong><span>增量 {capabilityAssessment.realized_incremental_value} · 避免损失 {capabilityAssessment.avoided_loss} · 事故损失 {capabilityAssessment.incident_loss}</span><b>自动权限变更：禁止</b></div>}
                 <div className="policy-stages">{policy.rollout_stages.map((stage, index) => { const release = policy.releases.find((item) => item.stage_index === index); return <span className={release?.outcome?.verdict === "passed" ? "passed" : release ? "released" : ""} key={stage.name}>{stage.name}<b>{(Number(stage.max_exposure_fraction) * 100).toFixed(0)}%</b></span>; })}</div>
                 <footer><span>条件不满足：{policy.fallback_action.type}</span><b>自动执行：禁止</b></footer>
               </article>;

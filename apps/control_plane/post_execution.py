@@ -312,7 +312,10 @@ class PostExecutionService:
                     )
                 )
             )
-        return [self.get_window(item_id) for item_id in ids]
+        return [
+            {**self.get_window(item_id), "evaluation": self.evaluate(item_id)}
+            for item_id in ids
+        ]
 
     def get_window(self, window_id: str) -> dict[str, Any]:
         with Session(self.engine) as session:
