@@ -99,7 +99,14 @@ def experiment_resolution(contracts, decisions, evidence_id):
     )
 
 
-def register(experiments, resolution_id, evidence_id):
+def register(
+    experiments,
+    resolution_id,
+    evidence_id,
+    *,
+    stratification_keys=None,
+    effect_metrics=None,
+):
     return experiments.register(
         resolution_id,
         hypothesis="新版详情页提高每访客贡献利润",
@@ -131,6 +138,8 @@ def register(experiments, resolution_id, evidence_id):
         guardrails=[
             {"metric": "refund_rate", "direction": "max", "threshold": "0.1"}
         ],
+        stratification_keys=stratification_keys or [],
+        effect_metrics=effect_metrics or [],
         evidence_ids=[evidence_id],
         created_by="experiment-owner",
     )
@@ -417,6 +426,154 @@ def test_budget_stop_loss_and_guardrails_freeze_new_assignments():
             evidence_id=source.id,
             created_by="operator-1",
         )
+
+
+def test_preregistered_segments_and_full_value_model_prevent_local_optimization():
+    _, evidence, contracts, decisions, experiments = setup_services()
+    source = capture(evidence, "value-model")
+    resolution = experiment_resolution(contracts, decisions, source.id)
+    protocol = register(
+        experiments,
+        resolution["id"],
+        source.id,
+        stratification_keys=["country_tier"],
+        effect_metrics=[
+            {
+                "metric": "cannibalized_cm3",
+                "role": "cannibalization",
+                "multiplier": "-1",
+                "required": True,
+            },
+            {
+                "metric": "refund_cost_30d",
+                "role": "long_term_cost",
+                "multiplier": "-1",
+                "required": True,
+            },
+        ],
+    )
+    start(experiments, protocol["id"], source.id)
+    counts = {
+        (variant, tier): 0
+        for variant in ("control", "treatment")
+        for tier in ("tier_1", "tier_2")
+    }
+    first_assignment = None
+    for index in range(500):
+        tier = "tier_1" if index % 2 == 0 else "tier_2"
+        assignment = experiments.assign(
+            protocol["id"],
+            unit_key=f"segmented-visitor-{index}",
+            assigned_at="2026-07-19T00:00:00+00:00",
+            strata={"country_tier": tier},
+        )
+        if first_assignment is None:
+            first_assignment = assignment
+        key = (assignment["variant_id"], tier)
+        if counts[key] >= 5:
+            continue
+        if assignment["variant_id"] == "control":
+            primary_value = Decimal("100")
+            cannibalization = Decimal("0")
+            long_term_cost = Decimal("0")
+        else:
+            primary_value = Decimal("120") if tier == "tier_1" else Decimal("110")
+            cannibalization = Decimal("5")
+            long_term_cost = Decimal("2")
+        for metric, value in (
+            ("cm3_per_visitor", primary_value),
+            ("cannibalized_cm3", cannibalization),
+            ("refund_cost_30d", long_term_cost),
+        ):
+            experiments.observe(
+                assignment["id"],
+                metric=metric,
+                value=value,
+                observed_at="2026-07-26T00:00:00+00:00",
+                evidence_id=source.id,
+                created_by="finance-1",
+            )
+        counts[key] += 1
+        if all(value == 5 for value in counts.values()):
+            break
+
+    assert all(value == 5 for value in counts.values())
+    assert first_assignment is not None
+    with pytest.raises(ValueError, match="immutable strata"):
+        experiments.assign(
+            protocol["id"],
+            unit_key="segmented-visitor-0",
+            assigned_at="2026-07-20T00:00:00+00:00",
+            strata={"country_tier": "changed_after_assignment"},
+        )
+
+    result = experiments.evaluate(protocol["id"])
+    assert result["status"] == "ready_for_independent_review"
+    assert result["missing_required_metrics"] == []
+    assert Decimal(result["treatment_effect"]["absolute_effect"]) == Decimal("15")
+    assert Decimal(result["incremental_value_per_unit"]) == Decimal("8")
+    metric_effects = {
+        item["metric"]: Decimal(item["effect"]["absolute_effect"])
+        for item in result["effect_metric_results"]
+    }
+    assert metric_effects == {
+        "cm3_per_visitor": Decimal("15"),
+        "cannibalized_cm3": Decimal("5"),
+        "refund_cost_30d": Decimal("2"),
+    }
+    strata = result["heterogeneous_effects"][0]
+    assert strata["key"] == "country_tier"
+    segment_effects = {
+        item["value"]: Decimal(item["effect"]["absolute_effect"])
+        for item in strata["segments"]
+    }
+    assert segment_effects == {"tier_1": Decimal("20"), "tier_2": Decimal("10")}
+
+
+def test_missing_required_long_term_metric_blocks_review():
+    _, evidence, contracts, decisions, experiments = setup_services()
+    source = capture(evidence, "incomplete-value-model")
+    resolution = experiment_resolution(contracts, decisions, source.id)
+    protocol = register(
+        experiments,
+        resolution["id"],
+        source.id,
+        effect_metrics=[
+            {
+                "metric": "refund_cost_30d",
+                "role": "long_term_cost",
+                "multiplier": "-1",
+                "required": True,
+            }
+        ],
+    )
+    start(experiments, protocol["id"], source.id)
+    counts = {"control": 0, "treatment": 0}
+    for index in range(200):
+        assignment = experiments.assign(
+            protocol["id"],
+            unit_key=f"long-term-pending-{index}",
+            assigned_at="2026-07-19T00:00:00+00:00",
+        )
+        variant = assignment["variant_id"]
+        if counts[variant] >= 10:
+            continue
+        experiments.observe(
+            assignment["id"],
+            value=Decimal("100") if variant == "control" else Decimal("110"),
+            observed_at="2026-07-20T00:00:00+00:00",
+            evidence_id=source.id,
+            created_by="finance-1",
+        )
+        counts[variant] += 1
+        if counts == {"control": 10, "treatment": 10}:
+            break
+
+    result = experiments.evaluate(protocol["id"])
+    assert result["status"] == "incomplete_value_model"
+    assert result["review_eligible"] is False
+    assert result["missing_required_metrics"] == ["refund_cost_30d"]
+    assert result["incremental_value_per_unit"] is None
 
 
 def test_registration_rejects_unsafe_or_ambiguous_protocols():

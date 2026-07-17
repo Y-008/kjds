@@ -56,6 +56,8 @@ class ExperimentProtocolRow(Base):
     end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     outcome_window_days: Mapped[int] = mapped_column(Integer, nullable=False)
     guardrails_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    stratification_keys_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    effect_metrics_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     assignment_seed: Mapped[str] = mapped_column(String(64), nullable=False)
     evidence_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     created_by: Mapped[str] = mapped_column(String, nullable=False)
@@ -102,6 +104,7 @@ class ExperimentAssignmentRow(Base):
     )
     unit_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     variant_id: Mapped[str] = mapped_column(String, nullable=False)
+    strata_json: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -176,6 +179,8 @@ class CausalExperimentService:
         created_by: str,
         interference_cluster: str | None = None,
         outcome_window_days: int = 30,
+        stratification_keys: list[str] | None = None,
+        effect_metrics: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         resolution = self.decisions.get_resolution(resolution_id)
         if resolution["disposition"] != "experiment":
@@ -205,6 +210,10 @@ class CausalExperimentService:
             raise ValueError("Outcome window must be between 0 and 365 days")
         evidence_ids = self._evidence(evidence_ids)
         guardrails = self._guardrails(guardrails)
+        stratification_keys = self._stratification_keys(stratification_keys or [])
+        effect_metrics = self._effect_metric_contract(
+            primary_metric, effect_metrics or []
+        )
         interference_cluster = (
             interference_cluster.strip().lower() if interference_cluster else None
         )
@@ -224,6 +233,8 @@ class CausalExperimentService:
             "end_at": end.isoformat(),
             "outcome_window_days": outcome_window_days,
             "guardrails": guardrails,
+            "stratification_keys": stratification_keys,
+            "effect_metrics": effect_metrics,
             "evidence_ids": evidence_ids,
             "created_by": created_by,
         }
@@ -267,6 +278,8 @@ class CausalExperimentService:
                     end_at=end,
                     outcome_window_days=outcome_window_days,
                     guardrails_json=guardrails,
+                    stratification_keys_json=stratification_keys,
+                    effect_metrics_json=effect_metrics,
                     assignment_seed=secrets.token_hex(32),
                     evidence_json=evidence_ids,
                     created_by=created_by,
@@ -373,6 +386,7 @@ class CausalExperimentService:
         *,
         unit_key: str,
         assigned_at: str,
+        strata: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         with Session(self.engine) as lookup_session:
             protocol_row = lookup_session.get(ExperimentProtocolRow, protocol_id)
@@ -384,6 +398,7 @@ class CausalExperimentService:
         if not unit_key:
             raise ValueError("Randomization unit key is required")
         assigned = self._datetime(assigned_at, "assigned_at")
+        strata = self._strata(protocol["stratification_keys"], strata or {})
         unit_hash = hmac.new(
             seed.encode(),
             unit_key.encode(),
@@ -397,6 +412,8 @@ class CausalExperimentService:
                 )
             )
             if existing is not None:
+                if existing.strata_json != strata:
+                    raise ValueError("Randomization unit already has immutable strata")
                 return self._assignment(existing)
             if protocol["status"] != "running":
                 raise ValueError("Experiment assignments require running status")
@@ -436,6 +453,7 @@ class CausalExperimentService:
                 protocol_id=protocol_id,
                 unit_hash=unit_hash,
                 variant_id=chosen,
+                strata_json=strata,
                 assigned_at=assigned,
             )
             session.add(row)
@@ -450,6 +468,7 @@ class CausalExperimentService:
         observed_at: str,
         evidence_id: str,
         created_by: str,
+        metric: str | None = None,
     ) -> dict[str, Any]:
         assignment = self.get_assignment(assignment_id)
         protocol = self.get(assignment["protocol_id"])
@@ -464,7 +483,10 @@ class CausalExperimentService:
         created_by = created_by.strip()
         if not created_by:
             raise ValueError("Observation recording identity is required")
-        metric = protocol["primary_metric"]
+        metric = (metric or protocol["primary_metric"]).strip()
+        allowed_metrics = {item["metric"] for item in protocol["effect_metrics"]}
+        if metric not in allowed_metrics:
+            raise ValueError("Metric is not part of the preregistered effect model")
         numeric_value = Decimal(value)
         canonical = {
             "assignment_id": assignment_id,
@@ -634,22 +656,65 @@ class CausalExperimentService:
         srm_p_value = math.erfc(math.sqrt(float(chi_square) / 2)) if total_assignments else 1.0
 
         assignment_variants = {item.id: item.variant_id for item in assignments}
-        values = {
-            variant["id"]: [
-                Decimal(item.value_decimal)
-                for item in observations
-                if assignment_variants.get(item.assignment_id) == variant["id"]
-            ]
-            for variant in protocol["variants"]
-        }
-        summaries = {
-            variant["id"]: self._summary(values[variant["id"]])
-            for variant in protocol["variants"]
-        }
         control = next(item for item in protocol["variants"] if item["control"])
         treatment = next(item for item in protocol["variants"] if not item["control"])
-        effect = self._effect(values[control["id"]], values[treatment["id"]])
-        observed_count = len(observations)
+        metric_results = []
+        missing_required_metrics = []
+        for metric_contract in protocol["effect_metrics"]:
+            metric = metric_contract["metric"]
+            metric_values = {
+                variant["id"]: [
+                    Decimal(item.value_decimal)
+                    for item in observations
+                    if item.metric == metric
+                    and assignment_variants.get(item.assignment_id) == variant["id"]
+                ]
+                for variant in protocol["variants"]
+            }
+            metric_summaries = {
+                variant["id"]: self._summary(metric_values[variant["id"]])
+                for variant in protocol["variants"]
+            }
+            metric_effect = self._effect(
+                metric_values[control["id"]], metric_values[treatment["id"]]
+            )
+            metric_observed = sum(len(items) for items in metric_values.values())
+            if metric_contract["required"] and (
+                metric_observed < protocol["target_sample_size"]
+                or metric_effect is None
+            ):
+                missing_required_metrics.append(metric)
+            metric_results.append(
+                {
+                    **metric_contract,
+                    "observed_count": metric_observed,
+                    "variant_summaries": metric_summaries,
+                    "effect": metric_effect,
+                }
+            )
+        primary_result = next(
+            item for item in metric_results if item["role"] == "primary"
+        )
+        effect = primary_result["effect"]
+        observed_count = primary_result["observed_count"]
+        incremental_value = None
+        if not missing_required_metrics:
+            incremental_value = sum(
+                (
+                    Decimal(item["effect"]["absolute_effect"])
+                    * Decimal(item["multiplier"])
+                )
+                for item in metric_results
+                if item["required"] and item["effect"] is not None
+            )
+        heterogeneous_effects = self._heterogeneous_effects(
+            assignments=assignments,
+            observations=observations,
+            metric=protocol["primary_metric"],
+            stratification_keys=protocol["stratification_keys"],
+            control_id=control["id"],
+            treatment_id=treatment["id"],
+        )
         safety_breaches = [item for item in safety_checks if item.status == "breached"]
         if safety_breaches:
             status = "safety_breach"
@@ -659,6 +724,8 @@ class CausalExperimentService:
             status = "insufficient_samples"
         elif effect is None:
             status = "insufficient_variance"
+        elif missing_required_metrics:
+            status = "incomplete_value_model"
         else:
             status = "ready_for_independent_review"
         return {
@@ -676,8 +743,14 @@ class CausalExperimentService:
             "sample_ratio_mismatch": total_assignments >= 20 and srm_p_value < 0.01,
             "safety_gate_breached": bool(safety_breaches),
             "safety_checks": [self._safety_check(item) for item in safety_checks],
-            "variant_summaries": summaries,
+            "variant_summaries": primary_result["variant_summaries"],
             "treatment_effect": effect,
+            "effect_metric_results": metric_results,
+            "missing_required_metrics": missing_required_metrics,
+            "incremental_value_per_unit": (
+                str(incremental_value) if incremental_value is not None else None
+            ),
+            "heterogeneous_effects": heterogeneous_effects,
             "minimum_detectable_effect": protocol["minimum_detectable_effect"],
             "guardrails": protocol["guardrails"],
             "interpretation": (
@@ -786,6 +859,75 @@ class CausalExperimentService:
         if sum(1 for item in result if item["control"]) != 1:
             raise ValueError("Exactly one variant must be the control")
         return result
+
+    @staticmethod
+    def _stratification_keys(values: list[str]) -> list[str]:
+        result = []
+        for value in values:
+            key = value.strip().lower()
+            if not key:
+                continue
+            if key in result:
+                raise ValueError("Stratification keys must be unique")
+            result.append(key)
+        if len(result) > 3:
+            raise ValueError("At most three preregistered stratification keys are allowed")
+        return result
+
+    @staticmethod
+    def _effect_metric_contract(
+        primary_metric: str, values: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        result = [
+            {
+                "metric": primary_metric,
+                "role": "primary",
+                "multiplier": "1",
+                "required": True,
+            }
+        ]
+        allowed_roles = {
+            "cannibalization",
+            "long_term_cost",
+            "long_term_value",
+            "secondary",
+        }
+        for item in values:
+            metric = str(item.get("metric", "")).strip()
+            role = str(item.get("role", "")).strip().lower()
+            multiplier = Decimal(str(item.get("multiplier", "0")))
+            required_value = item.get("required", True)
+            if not metric or role not in allowed_roles or multiplier == 0:
+                raise ValueError(
+                    "Effect metric requires metric, supported role, and non-zero multiplier"
+                )
+            if not isinstance(required_value, bool):
+                raise ValueError("Effect metric required flag must be boolean")
+            if metric in {row["metric"] for row in result}:
+                raise ValueError("Effect metrics must be unique")
+            if role in {"cannibalization", "long_term_cost"} and multiplier >= 0:
+                raise ValueError("Cost and cannibalization multipliers must be negative")
+            if role == "long_term_value" and multiplier <= 0:
+                raise ValueError("Long-term value multiplier must be positive")
+            result.append(
+                {
+                    "metric": metric,
+                    "role": role,
+                    "multiplier": str(multiplier),
+                    "required": required_value,
+                }
+            )
+        return result
+
+    @staticmethod
+    def _strata(keys: list[str], values: dict[str, str]) -> dict[str, str]:
+        normalized = {
+            str(key).strip().lower(): str(value).strip()
+            for key, value in values.items()
+        }
+        if set(normalized) != set(keys) or any(not value for value in normalized.values()):
+            raise ValueError("Assignment strata must exactly match preregistered keys")
+        return {key: normalized[key] for key in keys}
 
     @staticmethod
     def _guardrails(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -901,6 +1043,60 @@ class CausalExperimentService:
             "method": "two_arm_welch_normal_approximation",
         }
 
+    @classmethod
+    def _heterogeneous_effects(
+        cls,
+        *,
+        assignments: list[ExperimentAssignmentRow],
+        observations: list[ExperimentObservationRow],
+        metric: str,
+        stratification_keys: list[str],
+        control_id: str,
+        treatment_id: str,
+    ) -> list[dict[str, Any]]:
+        observed = {
+            item.assignment_id: Decimal(item.value_decimal)
+            for item in observations
+            if item.metric == metric
+        }
+        result = []
+        for key in stratification_keys:
+            values = sorted(
+                {
+                    item.strata_json[key]
+                    for item in assignments
+                    if key in item.strata_json
+                }
+            )
+            segments = []
+            for value in values:
+                control_values = [
+                    observed[item.id]
+                    for item in assignments
+                    if item.variant_id == control_id
+                    and item.strata_json.get(key) == value
+                    and item.id in observed
+                ]
+                treatment_values = [
+                    observed[item.id]
+                    for item in assignments
+                    if item.variant_id == treatment_id
+                    and item.strata_json.get(key) == value
+                    and item.id in observed
+                ]
+                effect = cls._effect(control_values, treatment_values)
+                segments.append(
+                    {
+                        "value": value,
+                        "control_count": len(control_values),
+                        "treatment_count": len(treatment_values),
+                        "effect": effect,
+                        "estimable": effect is not None,
+                    }
+                )
+            result.append({"key": key, "segments": segments})
+        return result
+
     def _link_many(self, evidence_ids: list[str], target_type: str, target_id: str, actor: str) -> None:
         for evidence_id in evidence_ids:
             self.evidence.link(
@@ -935,6 +1131,16 @@ class CausalExperimentService:
             "end_at": cls._iso(row.end_at),
             "outcome_window_days": row.outcome_window_days,
             "guardrails": row.guardrails_json,
+            "stratification_keys": row.stratification_keys_json,
+            "effect_metrics": row.effect_metrics_json
+            or [
+                {
+                    "metric": row.primary_metric,
+                    "role": "primary",
+                    "multiplier": "1",
+                    "required": True,
+                }
+            ],
             "evidence_ids": row.evidence_json,
             "status": status,
             "events": [cls._event(item) for item in events or []],
@@ -962,6 +1168,7 @@ class CausalExperimentService:
             "protocol_id": row.protocol_id,
             "unit_hash": row.unit_hash,
             "variant_id": row.variant_id,
+            "strata": row.strata_json,
             "assigned_at": cls._iso(row.assigned_at),
         }
 

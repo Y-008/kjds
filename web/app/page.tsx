@@ -142,6 +142,8 @@ type CausalExperiment = {
   budget_cap_amount: string; stop_loss_amount: string; currency: string;
   start_at: string; end_at: string; outcome_window_days: number;
   guardrails: Array<{ metric: string; direction: string; threshold: string }>;
+  stratification_keys: string[];
+  effect_metrics: Array<{ metric: string; role: string; multiplier: string; required: boolean }>;
   evidence_ids: string[]; status: string;
   events: Array<{ id: string; event_type: string; effective_at: string }>;
 };
@@ -152,6 +154,9 @@ type ExperimentEvaluation = {
   safety_gate_breached: boolean;
   safety_checks: Array<{ id: string; metric: string; value: string; threshold: string; status: string; observed_at: string }>;
   treatment_effect: null | { absolute_effect: string; relative_effect: string | null; confidence_interval_95: string[] };
+  incremental_value_per_unit: string | null;
+  missing_required_metrics: string[];
+  heterogeneous_effects: Array<{ key: string; segments: Array<{ value: string; estimable: boolean; effect: null | { absolute_effect: string } }> }>;
   interpretation: string;
 };
 
@@ -689,6 +694,9 @@ export default function Home() {
     const resolutionId = value("experiment_resolution_id");
     const startAt = value("experiment_start_at");
     const endAt = value("experiment_end_at");
+    const effectMetrics = [];
+    if (value("experiment_cannibalization_metric")) effectMetrics.push({ metric: value("experiment_cannibalization_metric"), role: "cannibalization", multiplier: "-1", required: true });
+    if (value("experiment_long_term_cost_metric")) effectMetrics.push({ metric: value("experiment_long_term_cost_metric"), role: "long_term_cost", multiplier: "-1", required: true });
     const body = {
       hypothesis: value("experiment_hypothesis"), primary_metric: value("experiment_metric"),
       randomization_unit: value("experiment_unit"), interference_cluster: value("experiment_cluster") || null,
@@ -701,6 +709,7 @@ export default function Home() {
       currency: value("experiment_currency"), start_at: new Date(startAt).toISOString(), end_at: new Date(endAt).toISOString(),
       outcome_window_days: Number(value("experiment_outcome_days")),
       guardrails: [{ metric: value("experiment_guardrail_metric"), direction: "max", threshold: value("experiment_guardrail_threshold") }],
+      stratification_keys: [value("experiment_segment_key")].filter(Boolean), effect_metrics: effectMetrics,
       evidence_ids: [value("experiment_evidence")],
     };
     setLifecycleBusy("experiment-register"); setNotice("正在固化实验假设、分流、预算、止损线和质量门禁…");
@@ -925,7 +934,8 @@ export default function Home() {
               <label>试验型正式决议<select name="experiment_resolution_id" required><option value="">选择尚未登记的决议</option>{experimentResolutions.map((item) => <option value={item.id} key={item.id}>{item.id} · {item.rationale}</option>)}</select></label>
               <label className="wide">可证伪假设<textarea name="experiment_hypothesis" placeholder="例如：新版详情页将每访客贡献利润提高至少 5 CNY" required /></label>
               <div className="lifecycle-pair"><label>唯一主指标<input name="experiment_metric" defaultValue="cm3_per_visitor" required /></label><label>随机化单位<input name="experiment_unit" defaultValue="visitor" required /></label></div>
-              <label>干扰集群<input name="experiment_cluster" defaultValue="product_family" placeholder="避免相似 SKU 互相污染" /></label>
+              <div className="lifecycle-pair"><label>干扰集群<input name="experiment_cluster" defaultValue="product_family" placeholder="避免相似 SKU 互相污染" /></label><label>预注册分层字段<input name="experiment_segment_key" placeholder="例如 country_tier；可留空" /></label></div>
+              <div className="lifecycle-pair"><label>内部蚕食成本指标<input name="experiment_cannibalization_metric" placeholder="例如 cannibalized_cm3；可留空" /></label><label>长期成本指标<input name="experiment_long_term_cost_metric" placeholder="例如 refund_cost_30d；可留空" /></label></div>
               <div className="lifecycle-pair"><label>对照组<input name="experiment_control_label" defaultValue="现行策略" required /></label><label>实验组<input name="experiment_treatment_label" defaultValue="候选策略" required /></label></div>
               <div className="lifecycle-triple"><label>目标样本<input name="experiment_sample_size" type="number" min="20" defaultValue="100" required /></label><label>最小有意义效果<input name="experiment_mde" type="number" min="0.0001" step="0.0001" defaultValue="5" required /></label><label>结果观察天数<input name="experiment_outcome_days" type="number" min="0" max="365" defaultValue="30" required /></label></div>
               <div className="lifecycle-triple"><label>实验预算<input name="experiment_budget" type="number" min="0.01" step="0.01" required /></label><label>止损线<input name="experiment_stop_loss" type="number" min="0.01" step="0.01" required /></label><label>币种<input name="experiment_currency" defaultValue="CNY" maxLength={3} required /></label></div>
@@ -941,7 +951,7 @@ export default function Home() {
                 return <article className="experiment-card" key={experiment.id}>
                   <div className="experiment-card-head"><div><strong>{experiment.hypothesis}</strong><small>{experiment.primary_metric} · {experiment.randomization_unit} · 50/50</small></div><span className={evaluation?.sample_ratio_mismatch ? "gate blocked" : "gate ready"}>{experiment.status}</span></div>
                   <div className="experiment-facts"><span>样本 <b>{evaluation?.observed_count ?? 0}/{experiment.target_sample_size}</b></span><span>分流 <b>{evaluation?.assignment_count ?? 0}</b></span><span>SRM <b>{evaluation?.sample_ratio_mismatch ? "阻断" : "通过"}</b></span><span>安全门 <b>{evaluation?.safety_gate_breached ? "冻结" : "通过"}</b></span></div>
-                  <p>{evaluation?.interpretation === "SAFETY_BREACH_FREEZES_ASSIGNMENT" ? "预算、止损或护栏已越线，后续分流已冻结。" : evaluation?.interpretation === "SRM_BLOCKS_DECISION" ? "样本比例异常，禁止解释和决策。" : evaluation?.review_eligible ? `效果 ${evaluation.treatment_effect?.absolute_effect ?? "-"}，已达到独立复核条件。` : "继续收集预注册样本，不允许提前挑选赢家。"}</p>
+                  <p>{evaluation?.interpretation === "SAFETY_BREACH_FREEZES_ASSIGNMENT" ? "预算、止损或护栏已越线，后续分流已冻结。" : evaluation?.interpretation === "SRM_BLOCKS_DECISION" ? "样本比例异常，禁止解释和决策。" : evaluation?.missing_required_metrics.length ? `仍缺长期/蚕食结果：${evaluation.missing_required_metrics.join("、")}` : evaluation?.review_eligible ? `净增量 ${evaluation.incremental_value_per_unit ?? evaluation.treatment_effect?.absolute_effect ?? "-"}/单位，已达到独立复核条件。` : "继续收集预注册样本，不允许提前挑选赢家。"}</p>
                   {experiment.status === "running" && <form className="experiment-safety-form" onSubmit={(event) => recordExperimentSafety(event, experiment)}>
                     <select name="safety_metric" defaultValue="budget_spend_amount"><option value="budget_spend_amount">累计实验支出</option><option value="cumulative_loss_amount">累计实验损失</option>{experiment.guardrails.map((item) => <option value={item.metric} key={item.metric}>{item.metric}</option>)}</select>
                     <input name="safety_value" type="number" step="0.0001" placeholder="当前读数" required />

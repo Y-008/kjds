@@ -127,6 +127,7 @@ $result = [ordered]@{
     decision_calibration = $false
     causal_experiment_preregistration = $false
     causal_experiment_quality_gate = $false
+    causal_experiment_value_model = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -185,14 +186,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0014.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0015.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0014"
+    $result.migration = "20260717_0015"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0013")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0014")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0013") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0014") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -427,6 +428,11 @@ try {
         guardrails = @(
             @{ metric = "refund_rate"; direction = "max"; threshold = 0.1 }
         )
+        stratification_keys = @("country_tier")
+        effect_metrics = @(
+            @{ metric = "cannibalized_cm3"; role = "cannibalization"; multiplier = -1; required = $true },
+            @{ metric = "refund_cost_30d"; role = "long_term_cost"; multiplier = -1; required = $true }
+        )
         evidence_ids = @($evidenceRecord.id)
     } | ConvertTo-Json -Depth 7
     $experiment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-resolutions/$($resolution.id)/experiment" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body $experimentBody
@@ -435,7 +441,9 @@ try {
         $experiment.id -ne $experimentRetry.id -or
         $experiment.status -ne "registered" -or
         $null -ne $experiment.assignment_seed -or
-        $experiment.target_sample_size -ne 20
+        $experiment.target_sample_size -ne 20 -or
+        $experiment.stratification_keys[0] -ne "country_tier" -or
+        $experiment.effect_metrics.Count -ne 3
     ) {
         throw "Immutable causal experiment preregistration smoke failed"
     }
@@ -464,9 +472,11 @@ try {
 
     $observedCounts = @{ control = 0; treatment = 0 }
     for ($index = 0; $index -lt 100 -and ($observedCounts.control -lt 10 -or $observedCounts.treatment -lt 10); $index++) {
+        $countryTier = if ($index % 2 -eq 0) { "tier_1" } else { "tier_2" }
         $assignment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/assignments" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
             unit_key = "g1-visitor-$index"
             assigned_at = "2026-07-20T00:00:00+00:00"
+            strata = @{ country_tier = $countryTier }
         } | ConvertTo-Json)
         $variant = [string]$assignment.variant_id
         if ($observedCounts[$variant] -ge 10) { continue }
@@ -476,6 +486,17 @@ try {
             observed_at = "2026-07-22T00:00:00+00:00"
             evidence_id = $evidenceRecord.id
         } | ConvertTo-Json) | Out-Null
+        foreach ($effectObservation in @(
+            @{ metric = "cannibalized_cm3"; value = $(if ($variant -eq "control") { 0 } else { 5 }) },
+            @{ metric = "refund_cost_30d"; value = $(if ($variant -eq "control") { 0 } else { 2 }) }
+        )) {
+            Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiment-assignments/$($assignment.id)/observation" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+                metric = $effectObservation.metric
+                value = $effectObservation.value
+                observed_at = "2026-07-22T00:00:00+00:00"
+                evidence_id = $evidenceRecord.id
+            } | ConvertTo-Json) | Out-Null
+        }
         $observedCounts[$variant]++
     }
     $experimentEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/evaluation" -Headers $headers
@@ -487,10 +508,14 @@ try {
         $experimentEvaluation.decision_eligible -ne $false -or
         $experimentEvaluation.automatic_rollout -ne $false -or
         $experimentEvaluation.sample_ratio_mismatch -ne $false -or
-        [decimal]$experimentEvaluation.treatment_effect.absolute_effect -ne 10
+        [decimal]$experimentEvaluation.treatment_effect.absolute_effect -ne 10 -or
+        [decimal]$experimentEvaluation.incremental_value_per_unit -ne 3 -or
+        $experimentEvaluation.missing_required_metrics.Count -ne 0 -or
+        $experimentEvaluation.heterogeneous_effects[0].key -ne "country_tier"
     ) {
         throw "Causal experiment assignment, SRM, and review gate smoke failed"
     }
+    $result.causal_experiment_value_model = $true
     $breachedGuardrail = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         metric = "refund_rate"
         value = 0.11
@@ -500,6 +525,7 @@ try {
     $blockedAssignment = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/assignments" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         unit_key = "g1-visitor-after-safety-breach"
         assigned_at = "2026-07-20T00:00:00+00:00"
+        strata = @{ country_tier = "tier_1" }
     } | ConvertTo-Json)
     $breachedEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/evaluation" -Headers $headers
     if (

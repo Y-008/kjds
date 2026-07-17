@@ -51,7 +51,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.16.0"
+APP_VERSION = "0.17.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -443,6 +443,20 @@ class ExperimentGuardrailInput(BaseModel):
     threshold: Decimal
 
 
+class ExperimentEffectMetricInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: str = Field(min_length=1, max_length=200)
+    role: Literal[
+        "cannibalization",
+        "long_term_cost",
+        "long_term_value",
+        "secondary",
+    ]
+    multiplier: Decimal
+    required: bool = True
+
+
 class CausalExperimentProtocolInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -460,6 +474,8 @@ class CausalExperimentProtocolInput(BaseModel):
     end_at: str
     outcome_window_days: int = Field(default=30, ge=0, le=365)
     guardrails: list[ExperimentGuardrailInput] = Field(min_length=1)
+    stratification_keys: list[str] = Field(default_factory=list, max_length=3)
+    effect_metrics: list[ExperimentEffectMetricInput] = Field(default_factory=list)
     evidence_ids: list[str] = Field(min_length=1)
 
 
@@ -477,6 +493,7 @@ class ExperimentAssignmentInput(BaseModel):
 
     unit_key: str = Field(min_length=1, max_length=1000)
     assigned_at: str
+    strata: dict[str, str] = Field(default_factory=dict)
 
 
 class ExperimentObservationInput(BaseModel):
@@ -485,6 +502,7 @@ class ExperimentObservationInput(BaseModel):
     value: Decimal
     observed_at: str
     evidence_id: str = Field(min_length=1)
+    metric: str | None = Field(default=None, max_length=200)
 
 
 class ExperimentSafetyCheckInput(BaseModel):
