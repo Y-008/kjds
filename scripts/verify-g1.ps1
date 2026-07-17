@@ -128,6 +128,8 @@ $result = [ordered]@{
     causal_experiment_preregistration = $false
     causal_experiment_quality_gate = $false
     causal_experiment_value_model = $false
+    causal_experiment_independent_review = $false
+    causal_knowledge_registry = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -177,23 +179,25 @@ try {
     $env:KJDS_SHADOW_MODE = "true"
     $env:KJDS_API_KEY = "g1-smoke-" + [guid]::NewGuid().ToString("N")
     $ApproverApiKey = "g1-approver-" + [guid]::NewGuid().ToString("N")
+    $KnowledgeApiKey = "g1-knowledge-" + [guid]::NewGuid().ToString("N")
     $env:KJDS_API_ACTOR = "g1-verifier"
     $env:KJDS_API_ROLES = "operator,reviewer,approver,risk,admin"
     $ApiCredentials = @{}
     $ApiCredentials[$env:KJDS_API_KEY] = @{ actor = "g1-verifier"; roles = @("operator", "reviewer", "admin") }
     $ApiCredentials[$ApproverApiKey] = @{ actor = "g1-independent-approver"; roles = @("reviewer", "approver") }
+    $ApiCredentials[$KnowledgeApiKey] = @{ actor = "g1-knowledge-publisher"; roles = @("approver") }
     $env:KJDS_API_KEYS_JSON = $ApiCredentials | ConvertTo-Json -Compress
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0015.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0016.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0015"
+    $result.migration = "20260717_0016"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0014")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0015")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0014") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0015") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -244,6 +248,7 @@ try {
     $body = @{ sku = $sku; name = "Disposable G-1 smoke product" } | ConvertTo-Json
     $headers = @{ "X-KJDS-API-Key" = $env:KJDS_API_KEY }
     $approverHeaders = @{ "X-KJDS-API-Key" = $ApproverApiKey }
+    $knowledgeHeaders = @{ "X-KJDS-API-Key" = $KnowledgeApiKey }
     $unauthorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products"
     $invalid = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers @{ "X-KJDS-API-Key" = "invalid" }
     $authorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers $headers
@@ -516,6 +521,45 @@ try {
         throw "Causal experiment assignment, SRM, and review gate smoke failed"
     }
     $result.causal_experiment_value_model = $true
+    $selfExperimentReview = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/reviews" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        verdict = "accepted"
+        rationale = "The experiment owner must not self-review"
+        method_assessment = "Preregistered randomized design"
+        data_quality_assessment = "SRM and completeness checks passed"
+        counterarguments = @("Platform feedback may explain part of the effect")
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $causalReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/reviews" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        verdict = "accepted"
+        rationale = "Independent review accepts only the preregistered scope"
+        method_assessment = "Randomization, interference boundary, and estimator are acceptable"
+        data_quality_assessment = "No SRM and all required value metrics are complete"
+        counterarguments = @("Platform feedback may explain part of the effect")
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    if ($selfExperimentReview -ne 422 -or $causalReview.verdict -ne "accepted" -or $causalReview.immutable -ne $true) {
+        throw "Causal experiment independent review smoke failed"
+    }
+    $result.causal_experiment_independent_review = $true
+    $causalKnowledgeEntry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/knowledge" -Method Post -Headers $knowledgeHeaders -ContentType "application/json" -Body (@{
+        review_id = $causalReview.id
+        claim = "The bounded treatment raises contribution margin per eligible visitor"
+        mechanism = "Clearer value communication reduces comprehension cost and improves qualified conversion"
+        applicability = @{ platform = "Ozon"; country = "RU"; category = "G1-smoke"; population = "eligible-visitors" }
+        falsification_conditions = @("A later independent replication reverses direction", "Any preregistered safety guardrail breaches")
+        evidence_ids = @($evidenceRecord.id)
+        valid_from = "2026-07-17T00:00:00+00:00"
+        reevaluate_at = "2027-07-17T00:00:00+00:00"
+    } | ConvertTo-Json -Depth 5)
+    if (
+        $causalKnowledgeEntry.validity_status -ne "active" -or
+        $causalKnowledgeEntry.knowledge_strength -ne "provisional" -or
+        $causalKnowledgeEntry.usable -ne $true -or
+        $causalKnowledgeEntry.execution_eligible -ne $false -or
+        $causalKnowledgeEntry.automatic_rollout -ne $false
+    ) {
+        throw "Causal knowledge publication gate smoke failed"
+    }
     $breachedGuardrail = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         metric = "refund_rate"
         value = 0.11
@@ -528,17 +572,21 @@ try {
         strata = @{ country_tier = "tier_1" }
     } | ConvertTo-Json)
     $breachedEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/evaluation" -Headers $headers
+    $invalidatedKnowledge = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-knowledge/$($causalKnowledgeEntry.id)" -Headers $headers
     if (
         $breachedGuardrail.status -ne "breached" -or
         $blockedAssignment -ne 422 -or
         $breachedEvaluation.status -ne "safety_breach" -or
         $breachedEvaluation.safety_gate_breached -ne $true -or
         $breachedEvaluation.review_eligible -ne $false -or
-        $breachedEvaluation.automatic_rollout -ne $false
+        $breachedEvaluation.automatic_rollout -ne $false -or
+        $invalidatedKnowledge.validity_status -ne "source_experiment_invalidated" -or
+        $invalidatedKnowledge.usable -ne $false
     ) {
         throw "Causal experiment stop-loss and guardrail freeze smoke failed"
     }
     $result.causal_experiment_quality_gate = $true
+    $result.causal_knowledge_registry = $true
 
     foreach ($requirementId in @("GOV-001", "OZN-001")) {
         Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/gate-evidence" -Method Post -Headers $headers -Form @{

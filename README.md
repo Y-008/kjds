@@ -37,6 +37,7 @@ apps/control_plane/
   decision_contracts.py 版本化交互模式与不可变决策合同
   decision_lifecycle.py 分权分析、独立复核、正式决定、结果与校准
   causal_experiments.py 因果实验预注册、稳定分流、结果账与 SRM 门禁
+  causal_knowledge.py 实验独立复核、适用边界、复现关系与因果知识账
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -110,6 +111,14 @@ tests/
 ```
 
 缺少任何必需的蚕食或长期结果时，评估状态为 `incomplete_value_model`，不能进入独立复核。这样一个实验 SKU 的增长不能掩盖同店商品损失、退款或后续价值下降。
+
+## 因果知识账与复现门禁
+
+达到 `ready_for_independent_review` 不是“结论成立”。另一身份必须通过 `POST /v1/causal-experiments/{id}/reviews` 固化方法审查、数据质量审查、替代解释、证据与 `accepted / needs_replication / rejected` 结论；实验负责人不能复核自己的实验，同一复核人也不能覆盖已提交的审查。
+
+只有当前仍通过安全门和质量门、且独立复核为 `accepted` 的实验，才能通过 `POST /v1/causal-experiments/{id}/knowledge` 登记知识。登记时必须明确因果主张、作用机制、平台/国家/品类/人群边界、反证条件、生效时间和最晚复验时间。知识发布者必须与实验负责人、复核人分离，条目不可修改；需要调整时必须用新的实验、复核和条目留下完整历史。
+
+`GET /v1/causal-knowledge` 会动态核验来源实验。后续新增样本改变评估、出现 SRM、安全护栏越线或超过复验期限时，原知识分别变为 `source_evaluation_changed`、`source_experiment_invalidated` 或 `expired`，仍保留审计记录但不再可用。独立实验可显式登记复现关系：相同边界的有效复现把根知识从 `provisional` 升级为 `replicated`；不同边界只标记为 `portable_candidate`，永不宣称“普遍有效”。所有知识固定 `execution_eligible=false`、`automatic_rollout=false`，只能成为后续条件策略的证据输入。
 
 ## Ozon 数据合同与正式事实
 

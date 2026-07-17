@@ -11,6 +11,7 @@ from apps.control_plane.causal_experiments import (
     CausalExperimentService,
     ExperimentProtocolRow,
 )
+from apps.control_plane.causal_knowledge import CausalKnowledgeService
 from apps.control_plane.decision_contracts import DecisionContractService
 from apps.control_plane.decision_lifecycle import DecisionLifecycleService
 from apps.control_plane.evidence import EvidenceGrade, EvidenceService
@@ -53,10 +54,10 @@ def capture(evidence: EvidenceService, ref: str):
     )
 
 
-def experiment_resolution(contracts, decisions, evidence_id):
+def experiment_resolution(contracts, decisions, evidence_id, objective_suffix=""):
     contract = contracts.create(
         profile="/x10think",
-        objective="验证新版详情页是否提高每访客贡献利润",
+        objective=f"验证新版详情页是否提高每访客贡献利润{objective_suffix}",
         decision_domain="listing",
         risk_level="high",
         maximum_loss_amount=Decimal("1000"),
@@ -154,6 +155,32 @@ def start(experiments, protocol_id, evidence_id):
         reason="预注册检查完成",
         created_by="approver-3",
     )
+
+
+def populate_ready_experiment(experiments, protocol_id, evidence_id, unit_prefix="knowledge"):
+    start(experiments, protocol_id, evidence_id)
+    counts = {"control": 0, "treatment": 0}
+    for index in range(500):
+        assignment = experiments.assign(
+            protocol_id,
+            unit_key=f"{unit_prefix}-{index}",
+            assigned_at="2026-07-19T00:00:00+00:00",
+        )
+        variant = assignment["variant_id"]
+        if counts[variant] >= 10:
+            continue
+        experiments.observe(
+            assignment["id"],
+            value=Decimal("100") if variant == "control" else Decimal("110"),
+            observed_at="2026-07-26T00:00:00+00:00",
+            evidence_id=evidence_id,
+            created_by="finance-1",
+        )
+        counts[variant] += 1
+        if counts == {"control": 10, "treatment": 10}:
+            break
+    assert counts == {"control": 10, "treatment": 10}
+    assert experiments.evaluate(protocol_id)["review_eligible"] is True
 
 
 def test_protocol_is_immutable_idempotent_and_seed_is_private():
@@ -574,6 +601,159 @@ def test_missing_required_long_term_metric_blocks_review():
     assert result["review_eligible"] is False
     assert result["missing_required_metrics"] == ["refund_cost_30d"]
     assert result["incremental_value_per_unit"] is None
+
+
+def test_causal_knowledge_requires_independent_review_and_invalidates_on_new_risk():
+    engine, evidence, contracts, decisions, experiments = setup_services()
+    knowledge = CausalKnowledgeService(
+        engine=engine,
+        experiments=experiments,
+        evidence=evidence,
+    )
+    source = capture(evidence, "causal-knowledge")
+    resolution = experiment_resolution(contracts, decisions, source.id, "-knowledge")
+    protocol = register(experiments, resolution["id"], source.id)
+    populate_ready_experiment(experiments, protocol["id"], source.id)
+
+    with pytest.raises(ValueError, match="owner cannot independently review"):
+        knowledge.review_experiment(
+            protocol["id"],
+            verdict="accepted",
+            rationale="结果支持预注册假设",
+            method_assessment="随机化与干扰边界可接受",
+            data_quality_assessment="样本比例和数据完整性通过",
+            counterarguments=["可能存在平台算法的迟滞放大"],
+            evidence_ids=[source.id],
+            reviewed_by="experiment-owner",
+        )
+
+    review = knowledge.review_experiment(
+        protocol["id"],
+        verdict="accepted",
+        rationale="结果支持预注册假设，但只适用于登记范围",
+        method_assessment="随机化、样本比例和干扰边界可接受",
+        data_quality_assessment="主指标样本完整且无SRM",
+        counterarguments=["平台算法反馈可能解释部分效果"],
+        evidence_ids=[source.id],
+        reviewed_by="causal-reviewer-1",
+    )
+    retry = knowledge.review_experiment(
+        protocol["id"],
+        verdict="accepted",
+        rationale="结果支持预注册假设，但只适用于登记范围",
+        method_assessment="随机化、样本比例和干扰边界可接受",
+        data_quality_assessment="主指标样本完整且无SRM",
+        counterarguments=["平台算法反馈可能解释部分效果"],
+        evidence_ids=[source.id],
+        reviewed_by="causal-reviewer-1",
+    )
+    assert retry["id"] == review["id"]
+    assert review["immutable"] is True
+
+    entry = knowledge.publish(
+        protocol["id"],
+        review_id=review["id"],
+        claim="新版详情页提高每访客贡献利润",
+        mechanism="更清晰的价值表达降低理解成本并提高合格转化",
+        applicability={
+            "platform": "Ozon",
+            "country": "RU",
+            "category": "test-category",
+            "population": "eligible-visitors",
+        },
+        falsification_conditions=[
+            "后续复现实验效果方向相反",
+            "任何预注册安全护栏被突破",
+        ],
+        evidence_ids=[source.id],
+        valid_from="2026-07-17T00:00:00+00:00",
+        reevaluate_at="2027-07-17T00:00:00+00:00",
+        created_by="knowledge-approver-1",
+    )
+    assert entry["validity_status"] == "active"
+    assert entry["usable"] is True
+    assert entry["knowledge_strength"] == "provisional"
+    assert entry["execution_eligible"] is False
+    assert entry["automatic_rollout"] is False
+
+    experiments.record_safety_check(
+        protocol["id"],
+        metric="refund_rate",
+        value=Decimal("0.11"),
+        observed_at="2026-07-27T00:00:00+00:00",
+        evidence_id=source.id,
+        created_by="risk-1",
+    )
+    invalidated = knowledge.get(entry["id"])
+    assert invalidated["validity_status"] == "source_experiment_invalidated"
+    assert invalidated["usable"] is False
+    assert knowledge.list(usable_only=True) == []
+
+
+def test_independent_replication_upgrades_strength_without_granting_execution_rights():
+    engine, evidence, contracts, decisions, experiments = setup_services()
+    knowledge = CausalKnowledgeService(
+        engine=engine,
+        experiments=experiments,
+        evidence=evidence,
+    )
+    source = capture(evidence, "causal-replication")
+    applicability = {
+        "platform": "Ozon",
+        "country": "RU",
+        "category": "test-category",
+        "population": "eligible-visitors",
+    }
+    published = []
+    for index in (1, 2):
+        resolution = experiment_resolution(
+            contracts,
+            decisions,
+            source.id,
+            f"-replication-{index}",
+        )
+        protocol = register(experiments, resolution["id"], source.id)
+        populate_ready_experiment(
+            experiments,
+            protocol["id"],
+            source.id,
+            unit_prefix=f"replication-{index}",
+        )
+        review = knowledge.review_experiment(
+            protocol["id"],
+            verdict="accepted",
+            rationale="独立实验支持相同方向的效果",
+            method_assessment="预注册随机实验设计通过",
+            data_quality_assessment="无SRM且指标完整",
+            counterarguments=["季节性仍可能限制结论迁移"],
+            evidence_ids=[source.id],
+            reviewed_by=f"causal-reviewer-{index}",
+        )
+        published.append(
+            knowledge.publish(
+                protocol["id"],
+                review_id=review["id"],
+                claim="新版详情页提高每访客贡献利润",
+                mechanism="更清晰的价值表达降低理解成本并提高合格转化",
+                applicability=applicability,
+                falsification_conditions=["复现实验效果方向相反"],
+                evidence_ids=[source.id],
+                valid_from="2026-07-17T00:00:00+00:00",
+                reevaluate_at="2027-07-17T00:00:00+00:00",
+                created_by=f"knowledge-approver-{index}",
+                replicates_knowledge_id=published[0]["id"] if published else None,
+                replication_rationale=(
+                    "以独立协议在相同适用范围复现" if published else None
+                ),
+            )
+        )
+
+    root = knowledge.get(published[0]["id"])
+    replication = knowledge.get(published[1]["id"])
+    assert root["knowledge_strength"] == "replicated"
+    assert root["usable_replication_count"] == 1
+    assert replication["replication_of"]["source_knowledge_id"] == root["id"]
+    assert root["execution_eligible"] is False
 
 
 def test_registration_rejects_unsafe_or_ambiguous_protocols():

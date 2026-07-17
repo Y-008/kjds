@@ -15,6 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .automation import AutomationService, RiskLevel
 from .causal_experiments import CausalExperimentService, ExperimentEvent
+from .causal_knowledge import (
+    CausalKnowledgeService,
+    ExperimentReviewVerdict,
+)
 from .content_growth import ContentGrowthService
 from .database import create_database_engine, database_health
 from .decision_contracts import DecisionContractService
@@ -51,7 +55,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.17.0"
+APP_VERSION = "0.18.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -73,6 +77,11 @@ decision_lifecycle = DecisionLifecycleService(
 causal_experiments = CausalExperimentService(
     engine=engine,
     decisions=decision_lifecycle,
+    evidence=evidence,
+)
+causal_knowledge = CausalKnowledgeService(
+    engine=engine,
+    experiments=causal_experiments,
     evidence=evidence,
 )
 commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
@@ -514,6 +523,32 @@ class ExperimentSafetyCheckInput(BaseModel):
     evidence_id: str = Field(min_length=1)
 
 
+class CausalExperimentReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: ExperimentReviewVerdict
+    rationale: str = Field(min_length=1, max_length=10000)
+    method_assessment: str = Field(min_length=1, max_length=10000)
+    data_quality_assessment: str = Field(min_length=1, max_length=10000)
+    counterarguments: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class CausalKnowledgeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    review_id: str = Field(min_length=1)
+    claim: str = Field(min_length=1, max_length=10000)
+    mechanism: str = Field(min_length=1, max_length=10000)
+    applicability: dict[str, Any]
+    falsification_conditions: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+    valid_from: str
+    reevaluate_at: str
+    replicates_knowledge_id: str | None = None
+    replication_rationale: str | None = Field(default=None, max_length=10000)
+
+
 class FeeMappingInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -939,6 +974,53 @@ def record_causal_experiment_safety(
             created_by=principal.actor_id,
         )
     )
+
+
+@app.post("/v1/causal-experiments/{protocol_id}/reviews", status_code=201)
+def review_causal_experiment(
+    protocol_id: str,
+    body: CausalExperimentReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(
+        lambda: causal_knowledge.review_experiment(
+            protocol_id,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/causal-experiments/{protocol_id}/reviews")
+def list_causal_experiment_reviews(protocol_id: str):
+    return run(lambda: causal_knowledge.list_reviews(protocol_id))
+
+
+@app.post("/v1/causal-experiments/{protocol_id}/knowledge", status_code=201)
+def publish_causal_knowledge(
+    protocol_id: str,
+    body: CausalKnowledgeInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "approver", "admin")
+    return run(
+        lambda: causal_knowledge.publish(
+            protocol_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/causal-knowledge")
+def list_causal_knowledge(usable_only: bool = False):
+    return causal_knowledge.list(usable_only=usable_only)
+
+
+@app.get("/v1/causal-knowledge/{knowledge_id}")
+def get_causal_knowledge(knowledge_id: str):
+    return run(lambda: causal_knowledge.get(knowledge_id))
 
 
 @app.post("/v1/models/discover")

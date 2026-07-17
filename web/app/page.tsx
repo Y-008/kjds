@@ -159,6 +159,20 @@ type ExperimentEvaluation = {
   heterogeneous_effects: Array<{ key: string; segments: Array<{ value: string; estimable: boolean; effect: null | { absolute_effect: string } }> }>;
   interpretation: string;
 };
+type CausalExperimentReview = {
+  id: string; protocol_id: string; evaluation_hash: string; verdict: string; rationale: string;
+  method_assessment: string; data_quality_assessment: string; counterarguments: string[];
+  evidence_ids: string[]; reviewed_by: string; created_at: string; immutable: boolean;
+};
+type CausalKnowledgeEntry = {
+  id: string; protocol_id: string; review_id: string; claim: string; mechanism: string;
+  applicability: Record<string, unknown>; falsification_conditions: string[];
+  effect_snapshot: { primary_metric: string; incremental_value_per_unit: string | null };
+  evidence_ids: string[]; valid_from: string; reevaluate_at: string; validity_status: string;
+  usable: boolean; knowledge_strength: string; execution_eligible: boolean; automatic_rollout: boolean;
+  replication_of: null | { source_knowledge_id: string; scope_relation: string };
+  replications: Array<{ replication_knowledge_id: string; scope_relation: string }>;
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -213,6 +227,8 @@ export default function Home() {
   const [decisionCalibration, setDecisionCalibration] = useState<DecisionCalibration[]>([]);
   const [causalExperiments, setCausalExperiments] = useState<CausalExperiment[]>([]);
   const [experimentEvaluations, setExperimentEvaluations] = useState<Record<string, ExperimentEvaluation>>({});
+  const [causalExperimentReviews, setCausalExperimentReviews] = useState<Record<string, CausalExperimentReview[]>>({});
+  const [causalKnowledge, setCausalKnowledge] = useState<CausalKnowledgeEntry[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -228,7 +244,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -247,6 +263,7 @@ export default function Home() {
       fetch("/backend/v1/decision-outcomes", { cache: "no-store" }),
       fetch("/backend/v1/decision-calibration", { cache: "no-store" }),
       fetch("/backend/v1/causal-experiments", { cache: "no-store" }),
+      fetch("/backend/v1/causal-knowledge", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -282,7 +299,13 @@ export default function Home() {
       const indexed: Record<string, ExperimentEvaluation> = {};
       evaluations.forEach(([id, evaluation]) => { if (evaluation) indexed[id] = evaluation; });
       setExperimentEvaluations(indexed);
+      const reviews = await Promise.all(rows.map(async (item) => {
+        const response = await fetch(`/backend/v1/causal-experiments/${item.id}/reviews`, { cache: "no-store" });
+        return [item.id, response.ok ? await response.json() as CausalExperimentReview[] : []] as const;
+      }));
+      setCausalExperimentReviews(Object.fromEntries(reviews));
     }
+    if (causalKnowledgeResponse.ok) setCausalKnowledge(await causalKnowledgeResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -752,6 +775,59 @@ export default function Home() {
     finally { setLifecycleBusy(null); }
   }
 
+  async function reviewCausalExperiment(event: FormEvent<HTMLFormElement>, protocol: CausalExperiment) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const body = {
+      verdict: value("causal_review_verdict"),
+      rationale: value("causal_review_rationale"),
+      method_assessment: value("causal_review_method"),
+      data_quality_assessment: value("causal_review_data"),
+      counterarguments: value("causal_review_counterarguments").split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+      evidence_ids: [value("causal_review_evidence")],
+    };
+    setLifecycleBusy(`causal-review:${protocol.id}`); setNotice("正在固化独立因果复核；复核人与实验负责人必须不同…");
+    try {
+      const response = await fetch(`/backend/v1/causal-experiments/${protocol.id}/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `独立复核已固化：${result.verdict}。只有 accepted 才能进入知识登记。` : result.detail ?? "因果复核提交失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法提交因果复核，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function publishCausalKnowledge(event: FormEvent<HTMLFormElement>, protocol: CausalExperiment, reviewId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const validFrom = value("knowledge_valid_from");
+    const reevaluateAt = value("knowledge_reevaluate_at");
+    const replicationId = value("knowledge_replication_source");
+    const body = {
+      review_id: reviewId,
+      claim: value("knowledge_claim"),
+      mechanism: value("knowledge_mechanism"),
+      applicability: {
+        platform: value("knowledge_platform"), country: value("knowledge_country"),
+        category: value("knowledge_category"), population: value("knowledge_population"),
+      },
+      falsification_conditions: value("knowledge_falsification").split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+      evidence_ids: [value("knowledge_evidence")],
+      valid_from: new Date(validFrom).toISOString(), reevaluate_at: new Date(reevaluateAt).toISOString(),
+      replicates_knowledge_id: replicationId || null,
+      replication_rationale: replicationId ? value("knowledge_replication_rationale") : null,
+    };
+    setLifecycleBusy(`causal-knowledge:${protocol.id}`); setNotice("正在登记适用边界、反证条件与复验期限…");
+    try {
+      const response = await fetch(`/backend/v1/causal-experiments/${protocol.id}/knowledge`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `因果知识 ${result.id} 已登记为 ${result.knowledge_strength}；仍无经营执行权。` : result.detail ?? "因果知识登记失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法登记因果知识，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
@@ -947,11 +1023,38 @@ export default function Home() {
             <div className="experiment-register-list">
               {causalExperiments.length ? causalExperiments.map((experiment) => {
                 const evaluation = experimentEvaluations[experiment.id];
+                const experimentReviews = causalExperimentReviews[experiment.id] ?? [];
+                const acceptedReview = experimentReviews.find((item) => item.verdict === "accepted");
+                const knowledgeEntry = causalKnowledge.find((item) => item.protocol_id === experiment.id);
                 const nextEvent = experiment.status === "registered" ? "started" : experiment.status === "running" ? "paused" : experiment.status === "paused" ? "resumed" : null;
                 return <article className="experiment-card" key={experiment.id}>
                   <div className="experiment-card-head"><div><strong>{experiment.hypothesis}</strong><small>{experiment.primary_metric} · {experiment.randomization_unit} · 50/50</small></div><span className={evaluation?.sample_ratio_mismatch ? "gate blocked" : "gate ready"}>{experiment.status}</span></div>
                   <div className="experiment-facts"><span>样本 <b>{evaluation?.observed_count ?? 0}/{experiment.target_sample_size}</b></span><span>分流 <b>{evaluation?.assignment_count ?? 0}</b></span><span>SRM <b>{evaluation?.sample_ratio_mismatch ? "阻断" : "通过"}</b></span><span>安全门 <b>{evaluation?.safety_gate_breached ? "冻结" : "通过"}</b></span></div>
                   <p>{evaluation?.interpretation === "SAFETY_BREACH_FREEZES_ASSIGNMENT" ? "预算、止损或护栏已越线，后续分流已冻结。" : evaluation?.interpretation === "SRM_BLOCKS_DECISION" ? "样本比例异常，禁止解释和决策。" : evaluation?.missing_required_metrics.length ? `仍缺长期/蚕食结果：${evaluation.missing_required_metrics.join("、")}` : evaluation?.review_eligible ? `净增量 ${evaluation.incremental_value_per_unit ?? evaluation.treatment_effect?.absolute_effect ?? "-"}/单位，已达到独立复核条件。` : "继续收集预注册样本，不允许提前挑选赢家。"}</p>
+                  {evaluation?.review_eligible && !experimentReviews.length && <form className="causal-review-form" onSubmit={(event) => reviewCausalExperiment(event, experiment)}>
+                    <strong>独立复核实验结论</strong>
+                    <select name="causal_review_verdict" defaultValue="accepted"><option value="accepted">接受为待登记知识</option><option value="needs_replication">必须先复现</option><option value="rejected">拒绝结论</option></select>
+                    <textarea name="causal_review_rationale" placeholder="复核结论与适用限制" required />
+                    <textarea name="causal_review_method" placeholder="随机化、干扰、样本与估计方法审查" required />
+                    <textarea name="causal_review_data" placeholder="SRM、缺失、异常、币种和长期窗口审查" required />
+                    <textarea name="causal_review_counterarguments" placeholder="至少写一个替代解释或反方意见，每行一条" required />
+                    <select name="causal_review_evidence" defaultValue="" required><option value="">选择复核证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select>
+                    <button disabled={lifecycleBusy === `causal-review:${experiment.id}`}>固化独立复核</button>
+                  </form>}
+                  {acceptedReview && !knowledgeEntry && evaluation?.review_eligible && <form className="causal-knowledge-form" onSubmit={(event) => publishCausalKnowledge(event, experiment, acceptedReview.id)}>
+                    <strong>把复核结论登记成有边界的知识</strong>
+                    <textarea name="knowledge_claim" defaultValue={experiment.hypothesis} required />
+                    <textarea name="knowledge_mechanism" placeholder="为什么有效：动作 → 中介机制 → 结果" required />
+                    <div className="lifecycle-pair"><label>平台<input name="knowledge_platform" defaultValue="Ozon" required /></label><label>国家<input name="knowledge_country" defaultValue="RU" required /></label></div>
+                    <div className="lifecycle-pair"><label>品类<input name="knowledge_category" placeholder="精确到可迁移边界" required /></label><label>适用人群<input name="knowledge_population" placeholder="例如 eligible-visitors" required /></label></div>
+                    <textarea name="knowledge_falsification" placeholder="什么证据出现时必须推翻或暂停使用，每行一条" required />
+                    <div className="lifecycle-pair"><label>生效时间<input name="knowledge_valid_from" type="datetime-local" required /></label><label>最晚复验时间<input name="knowledge_reevaluate_at" type="datetime-local" required /></label></div>
+                    <select name="knowledge_replication_source" defaultValue=""><option value="">不是复现实验</option>{causalKnowledge.filter((item) => item.usable && item.protocol_id !== experiment.id).map((item) => <option value={item.id} key={item.id}>复现：{item.claim}</option>)}</select>
+                    <input name="knowledge_replication_rationale" placeholder="若为复现，说明独立协议和范围关系" />
+                    <select name="knowledge_evidence" defaultValue="" required><option value="">选择知识证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select>
+                    <button disabled={lifecycleBusy === `causal-knowledge:${experiment.id}`}>登记不可变知识</button>
+                  </form>}
+                  {knowledgeEntry && <div className={knowledgeEntry.usable ? "knowledge-status usable" : "knowledge-status invalid"}><strong>{knowledgeEntry.knowledge_strength}</strong><span>{knowledgeEntry.validity_status} · {knowledgeEntry.usable ? "可供后续策略引用" : "禁止继续引用"}</span><b>执行权：无</b></div>}
                   {experiment.status === "running" && <form className="experiment-safety-form" onSubmit={(event) => recordExperimentSafety(event, experiment)}>
                     <select name="safety_metric" defaultValue="budget_spend_amount"><option value="budget_spend_amount">累计实验支出</option><option value="cumulative_loss_amount">累计实验损失</option>{experiment.guardrails.map((item) => <option value={item.metric} key={item.metric}>{item.metric}</option>)}</select>
                     <input name="safety_value" type="number" step="0.0001" placeholder="当前读数" required />
@@ -967,6 +1070,15 @@ export default function Home() {
                 </article>;
               }) : <div className="empty"><FlaskConical size={25} /><strong>还没有预注册实验</strong><p>先完成分析、独立复核和“受控实验”正式决议。</p></div>}
             </div>
+          </div>
+          <div className="causal-knowledge-registry">
+            <div className="panel-title"><div><p className="eyebrow">CAUSAL KNOWLEDGE REGISTRY</p><h3>企业因果知识账</h3></div><span className="badge">{causalKnowledge.filter((item) => item.usable).length} 条当前可用</span></div>
+            {causalKnowledge.length ? <div className="knowledge-grid">{causalKnowledge.map((item) => <article className={item.usable ? "knowledge-card" : "knowledge-card invalid"} key={item.id}>
+              <div><span>{item.knowledge_strength}</span><b>{item.validity_status}</b></div>
+              <strong>{item.claim}</strong><p>{item.mechanism}</p>
+              <small>{String(item.applicability.platform)} · {String(item.applicability.country)} · {String(item.applicability.category)} · {String(item.applicability.population)}</small>
+              <footer><span>最晚复验 {new Date(item.reevaluate_at).toLocaleDateString("zh-CN")}</span><b>不会自动执行</b></footer>
+            </article>)}</div> : <div className="empty"><BrainCircuit size={24} /><strong>还没有通过复核的因果知识</strong><p>实验完成后先独立复核，再登记适用边界和失效时间。</p></div>}
           </div>
         </section>
 
