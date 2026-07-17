@@ -38,6 +38,7 @@ apps/control_plane/
   decision_lifecycle.py 分权分析、独立复核、正式决定、结果与校准
   causal_experiments.py 因果实验预注册、稳定分流、结果账与 SRM 门禁
   causal_knowledge.py 实验独立复核、适用边界、复现关系与因果知识账
+  causal_policies.py 有效知识到条件策略、影子阶段和逐级放量合同
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -119,6 +120,14 @@ tests/
 只有当前仍通过安全门和质量门、且独立复核为 `accepted` 的实验，才能通过 `POST /v1/causal-experiments/{id}/knowledge` 登记知识。登记时必须明确因果主张、作用机制、平台/国家/品类/人群边界、反证条件、生效时间和最晚复验时间。知识发布者必须与实验负责人、复核人分离，条目不可修改；需要调整时必须用新的实验、复核和条目留下完整历史。
 
 `GET /v1/causal-knowledge` 会动态核验来源实验。后续新增样本改变评估、出现 SRM、安全护栏越线或超过复验期限时，原知识分别变为 `source_evaluation_changed`、`source_experiment_invalidated` 或 `expired`，仍保留审计记录但不再可用。独立实验可显式登记复现关系：相同边界的有效复现把根知识从 `provisional` 升级为 `replicated`；不同边界只标记为 `portable_candidate`，永不宣称“普遍有效”。所有知识固定 `execution_eligible=false`、`automatic_rollout=false`，只能成为后续条件策略的证据输入。
+
+## 条件策略与逐级放量合同
+
+`POST /v1/causal-policies` 只能引用当前 `usable=true` 的因果知识，策略的平台、国家、品类和人群必须与知识边界完全一致。策略使用结构化条件（`eq / neq / gt / gte / lt / lte / in / not_in`），不接受可执行代码；动作和退回动作只能使用 `recommend_*` 类型，并强制登记护栏和至少两个严格递增的阶段。第一阶段必须是暴露比例为零的 `shadow`，避免从单次实验直接跳到真实全量。
+
+策略提出者不能自审；接受复核后，另一名审批者才能调用 `/v1/causal-policies/{id}/releases` 批准当前阶段。阶段不得跳过，后续阶段必须等上一阶段的不可变结果达到最小观察数、最小增量价值且未越过护栏。即使全部条件满足，系统也只形成受控阶段合同：`execution_eligible=false`、`automatic_execution=false`、`automatic_promotion=false`。真实执行仍需未来单独的执行适配器、预算审批和平台权限门禁。
+
+策略会持续反查来源知识。一旦任一知识失效，策略立即变为 `source_knowledge_invalidated`；上下文评估返回退回动作而非候选动作。这样企业学习可以进入条件化策略，但错误或过期知识不会继续静默驱动经营。
 
 ## Ozon 数据合同与正式事实
 

@@ -12,6 +12,7 @@ from apps.control_plane.causal_experiments import (
     ExperimentProtocolRow,
 )
 from apps.control_plane.causal_knowledge import CausalKnowledgeService
+from apps.control_plane.causal_policies import CausalPolicyService
 from apps.control_plane.decision_contracts import DecisionContractService
 from apps.control_plane.decision_lifecycle import DecisionLifecycleService
 from apps.control_plane.evidence import EvidenceGrade, EvidenceService
@@ -754,6 +755,161 @@ def test_independent_replication_upgrades_strength_without_granting_execution_ri
     assert root["usable_replication_count"] == 1
     assert replication["replication_of"]["source_knowledge_id"] == root["id"]
     assert root["execution_eligible"] is False
+
+
+def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_gates():
+    engine, evidence, contracts, decisions, experiments = setup_services()
+    knowledge = CausalKnowledgeService(
+        engine=engine,
+        experiments=experiments,
+        evidence=evidence,
+    )
+    policies = CausalPolicyService(
+        engine=engine,
+        knowledge=knowledge,
+        evidence=evidence,
+    )
+    source = capture(evidence, "causal-policy")
+    resolution = experiment_resolution(contracts, decisions, source.id, "-policy")
+    protocol = register(experiments, resolution["id"], source.id)
+    populate_ready_experiment(experiments, protocol["id"], source.id, "policy")
+    experiment_review = knowledge.review_experiment(
+        protocol["id"],
+        verdict="accepted",
+        rationale="独立实验支持有限范围内的策略候选",
+        method_assessment="预注册随机实验设计通过",
+        data_quality_assessment="样本和SRM质量门通过",
+        counterarguments=["库存状态改变时效果可能不成立"],
+        evidence_ids=[source.id],
+        reviewed_by="causal-reviewer",
+    )
+    applicability = {
+        "platform": "Ozon",
+        "country": "RU",
+        "category": "test-category",
+        "population": "eligible-visitors",
+    }
+    entry = knowledge.publish(
+        protocol["id"],
+        review_id=experiment_review["id"],
+        claim="新版详情页提高每访客贡献利润",
+        mechanism="更清晰的价值表达降低理解成本并提高合格转化",
+        applicability=applicability,
+        falsification_conditions=["安全护栏越线", "独立复现方向相反"],
+        evidence_ids=[source.id],
+        valid_from="2026-07-17T00:00:00+00:00",
+        reevaluate_at="2027-07-17T00:00:00+00:00",
+        created_by="knowledge-publisher",
+    )
+
+    policy = policies.propose(
+        title="库存充足时建议使用已验证详情页",
+        objective="只在适用边界和库存安全条件内建议候选页面",
+        knowledge_ids=[entry["id"]],
+        applicability=applicability,
+        conditions=[{"field": "inventory_cover_days", "operator": "gte", "value": 45}],
+        action={"type": "recommend_listing_change", "parameters": {"variant": "treatment"}},
+        guardrails=[{"metric": "refund_rate", "direction": "max", "threshold": "0.1"}],
+        fallback_action={"type": "recommend_no_action", "parameters": {"reason": "conditions_not_met"}},
+        rollout_stages=[
+            {
+                "name": "shadow",
+                "max_exposure_fraction": "0",
+                "minimum_observation_count": 20,
+                "minimum_incremental_value": "0",
+            },
+            {
+                "name": "limited_10_percent",
+                "max_exposure_fraction": "0.1",
+                "minimum_observation_count": 100,
+                "minimum_incremental_value": "3",
+            },
+        ],
+        evidence_ids=[source.id],
+        proposed_by="policy-proposer",
+    )
+    matched = policies.evaluate_context(
+        policy["id"],
+        {**applicability, "inventory_cover_days": 60},
+    )
+    assert matched["matched"] is True
+    assert matched["recommendation"]["type"] == "recommend_listing_change"
+    assert matched["execution_eligible"] is False
+
+    with pytest.raises(ValueError, match="proposer cannot independently review"):
+        policies.review(
+            policy["id"],
+            verdict="accepted",
+            rationale="自审必须失败",
+            counterarguments=["风险"],
+            evidence_ids=[source.id],
+            reviewed_by="policy-proposer",
+        )
+    policy_review = policies.review(
+        policy["id"],
+        verdict="accepted",
+        rationale="条件、退回动作和护栏均明确",
+        counterarguments=["平台流量结构变化可能使知识失效"],
+        evidence_ids=[source.id],
+        reviewed_by="policy-reviewer",
+    )
+    shadow = policies.release_stage(
+        policy["id"],
+        review_id=policy_review["id"],
+        stage_index=0,
+        rationale="先进入零暴露影子观察",
+        evidence_ids=[source.id],
+        approved_by="policy-approver",
+    )
+    assert shadow["stage"]["max_exposure_fraction"] == "0"
+    assert shadow["execution_eligible"] is False
+    with pytest.raises(ValueError, match="needs a recorded outcome"):
+        policies.release_stage(
+            policy["id"],
+            review_id=policy_review["id"],
+            stage_index=1,
+            rationale="不可跳过结果门",
+            evidence_ids=[source.id],
+            approved_by="policy-approver",
+        )
+    outcome = policies.record_stage_outcome(
+        shadow["id"],
+        verdict="passed",
+        observation_count=20,
+        incremental_value=Decimal("3"),
+        guardrail_breached=False,
+        notes="影子阶段没有安全异常，结果达到门槛",
+        evidence_ids=[source.id],
+        recorded_by="outcome-recorder",
+    )
+    assert outcome["verdict"] == "passed"
+    limited = policies.release_stage(
+        policy["id"],
+        review_id=policy_review["id"],
+        stage_index=1,
+        rationale="上一阶段结果达到预注册晋级门槛",
+        evidence_ids=[source.id],
+        approved_by="policy-approver",
+    )
+    assert limited["stage"]["max_exposure_fraction"] == "0.1"
+    assert limited["automatic_promotion"] is False
+
+    experiments.record_safety_check(
+        protocol["id"],
+        metric="refund_rate",
+        value=Decimal("0.11"),
+        observed_at="2026-07-27T00:00:00+00:00",
+        evidence_id=source.id,
+        created_by="risk-1",
+    )
+    invalidated = policies.get(policy["id"])
+    assert invalidated["validity_status"] == "source_knowledge_invalidated"
+    after_invalidation = policies.evaluate_context(
+        policy["id"],
+        {**applicability, "inventory_cover_days": 60},
+    )
+    assert after_invalidation["matched"] is False
+    assert after_invalidation["recommendation"]["type"] == "recommend_no_action"
 
 
 def test_registration_rejects_unsafe_or_ambiguous_protocols():

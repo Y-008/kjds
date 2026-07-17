@@ -173,6 +173,17 @@ type CausalKnowledgeEntry = {
   replication_of: null | { source_knowledge_id: string; scope_relation: string };
   replications: Array<{ replication_knowledge_id: string; scope_relation: string }>;
 };
+type CausalPolicy = {
+  id: string; title: string; objective: string; knowledge_ids: string[]; applicability: Record<string, unknown>;
+  conditions: Array<{ field: string; operator: string; value: unknown }>;
+  action: { type: string; parameters: Record<string, unknown> };
+  fallback_action: { type: string; parameters: Record<string, unknown> };
+  guardrails: Array<{ metric: string; direction: string; threshold: string }>;
+  rollout_stages: Array<{ name: string; max_exposure_fraction: string; minimum_observation_count: number; minimum_incremental_value: string }>;
+  reviews: Array<{ id: string; verdict: string; rationale: string; reviewed_by: string }>;
+  releases: Array<{ id: string; stage_index: number; stage: { name: string; max_exposure_fraction: string }; automatic_promotion: boolean; outcome: null | { verdict: string; observation_count: number; incremental_value: string; guardrail_breached: boolean } }>;
+  proposed_by: string; usable: boolean; validity_status: string; execution_eligible: boolean; automatic_execution: boolean;
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -229,6 +240,7 @@ export default function Home() {
   const [experimentEvaluations, setExperimentEvaluations] = useState<Record<string, ExperimentEvaluation>>({});
   const [causalExperimentReviews, setCausalExperimentReviews] = useState<Record<string, CausalExperimentReview[]>>({});
   const [causalKnowledge, setCausalKnowledge] = useState<CausalKnowledgeEntry[]>([]);
+  const [causalPolicies, setCausalPolicies] = useState<CausalPolicy[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -244,7 +256,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -264,6 +276,7 @@ export default function Home() {
       fetch("/backend/v1/decision-calibration", { cache: "no-store" }),
       fetch("/backend/v1/causal-experiments", { cache: "no-store" }),
       fetch("/backend/v1/causal-knowledge", { cache: "no-store" }),
+      fetch("/backend/v1/causal-policies", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -306,6 +319,7 @@ export default function Home() {
       setCausalExperimentReviews(Object.fromEntries(reviews));
     }
     if (causalKnowledgeResponse.ok) setCausalKnowledge(await causalKnowledgeResponse.json());
+    if (causalPolicyResponse.ok) setCausalPolicies(await causalPolicyResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -828,6 +842,78 @@ export default function Home() {
     finally { setLifecycleBusy(null); }
   }
 
+  async function proposeCausalPolicy(event: FormEvent<HTMLFormElement>, entry: CausalKnowledgeEntry) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const body = {
+      title: value("policy_title"), objective: value("policy_objective"), knowledge_ids: [entry.id], applicability: entry.applicability,
+      conditions: [{ field: value("policy_condition_field"), operator: value("policy_condition_operator"), value: value("policy_condition_value") }],
+      action: { type: value("policy_action_type"), parameters: { variant: value("policy_action_variant") } },
+      guardrails: [{ metric: value("policy_guardrail_metric"), direction: "max", threshold: value("policy_guardrail_threshold") }],
+      fallback_action: { type: "recommend_no_action", parameters: { reason: "conditions_or_knowledge_not_valid" } },
+      rollout_stages: [
+        { name: "shadow", max_exposure_fraction: "0", minimum_observation_count: Number(value("policy_shadow_samples")), minimum_incremental_value: value("policy_shadow_value") },
+        { name: "limited", max_exposure_fraction: value("policy_limited_fraction"), minimum_observation_count: Number(value("policy_limited_samples")), minimum_incremental_value: value("policy_limited_value") },
+      ],
+      evidence_ids: [value("policy_evidence")],
+    };
+    setLifecycleBusy(`policy-propose:${entry.id}`); setNotice("正在把有效知识编译为条件、护栏、退回动作和分阶段门槛…");
+    try {
+      const response = await fetch("/backend/v1/causal-policies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `条件策略 ${result.id} 已固化；需要另一身份复核，当前无执行权。` : result.detail ?? "策略建立失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法建立条件策略，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function reviewCausalPolicy(event: FormEvent<HTMLFormElement>, policy: CausalPolicy) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const body = { verdict: value("policy_review_verdict"), rationale: value("policy_review_rationale"), counterarguments: value("policy_review_counterarguments").split(/\r?\n/).map((item) => item.trim()).filter(Boolean), evidence_ids: [value("policy_review_evidence")] };
+    setLifecycleBusy(`policy-review:${policy.id}`); setNotice("正在固化条件策略独立复核…");
+    try {
+      const response = await fetch(`/backend/v1/causal-policies/${policy.id}/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `策略复核已记录：${result.verdict}。` : result.detail ?? "策略复核失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法提交策略复核，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function releaseCausalPolicyStage(event: FormEvent<HTMLFormElement>, policy: CausalPolicy, reviewId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const stageIndex = policy.releases.length;
+    const body = { review_id: reviewId, stage_index: stageIndex, rationale: value("policy_release_rationale"), evidence_ids: [value("policy_release_evidence")] };
+    setLifecycleBusy(`policy-release:${policy.id}`); setNotice(`正在审批 ${policy.rollout_stages[stageIndex]?.name ?? "下一"} 阶段；不会自动晋级…`);
+    try {
+      const response = await fetch(`/backend/v1/causal-policies/${policy.id}/releases`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `阶段 ${result.stage.name} 已批准为受控合同；仍未获得执行权。` : result.detail ?? "阶段审批失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法审批策略阶段，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function recordCausalPolicyOutcome(event: FormEvent<HTMLFormElement>, policy: CausalPolicy, releaseId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const body = { verdict: value("policy_outcome_verdict"), observation_count: Number(value("policy_outcome_count")), incremental_value: value("policy_outcome_value"), guardrail_breached: value("policy_outcome_guardrail") === "true", notes: value("policy_outcome_notes"), evidence_ids: [value("policy_outcome_evidence")] };
+    setLifecycleBusy(`policy-outcome:${releaseId}`); setNotice("正在回填本阶段真实结果和护栏状态…");
+    try {
+      const response = await fetch(`/backend/v1/causal-policy-releases/${releaseId}/outcome`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `阶段结果已固化：${result.verdict}；系统不会自行晋级。` : result.detail ?? "阶段结果回填失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法回填阶段结果，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
@@ -1077,8 +1163,35 @@ export default function Home() {
               <div><span>{item.knowledge_strength}</span><b>{item.validity_status}</b></div>
               <strong>{item.claim}</strong><p>{item.mechanism}</p>
               <small>{String(item.applicability.platform)} · {String(item.applicability.country)} · {String(item.applicability.category)} · {String(item.applicability.population)}</small>
+              {item.usable && !causalPolicies.some((policy) => policy.knowledge_ids.includes(item.id)) && <details><summary>编译为条件策略</summary><form className="causal-policy-form" onSubmit={(event) => proposeCausalPolicy(event, item)}>
+                <input name="policy_title" placeholder="策略名称" required /><textarea name="policy_objective" placeholder="策略要解决的决策问题" required />
+                <div className="lifecycle-triple"><input name="policy_condition_field" defaultValue="inventory_cover_days" aria-label="条件字段" required /><select name="policy_condition_operator" defaultValue="gte" aria-label="条件比较"><option value="gte">不低于</option><option value="lte">不高于</option><option value="eq">等于</option></select><input name="policy_condition_value" defaultValue="45" aria-label="条件值" required /></div>
+                <div className="lifecycle-pair"><select name="policy_action_type" defaultValue="recommend_listing_change"><option value="recommend_listing_change">建议切换详情页</option><option value="recommend_no_action">建议保持不动</option></select><input name="policy_action_variant" defaultValue="treatment" aria-label="候选方案" required /></div>
+                <div className="lifecycle-pair"><input name="policy_guardrail_metric" defaultValue="refund_rate" aria-label="护栏指标" required /><input name="policy_guardrail_threshold" defaultValue="0.1" type="number" step="0.0001" aria-label="护栏阈值" required /></div>
+                <div className="lifecycle-pair"><input name="policy_shadow_samples" defaultValue="20" type="number" min="0" aria-label="影子阶段最小样本" required /><input name="policy_shadow_value" defaultValue="0" type="number" step="0.0001" aria-label="影子阶段最小增量" required /></div>
+                <div className="lifecycle-triple"><input name="policy_limited_fraction" defaultValue="0.1" type="number" min="0.0001" max="1" step="0.0001" aria-label="有限放量比例" required /><input name="policy_limited_samples" defaultValue="100" type="number" min="1" aria-label="有限阶段最小样本" required /><input name="policy_limited_value" defaultValue="3" type="number" step="0.0001" aria-label="有限阶段最小增量" required /></div>
+                <select name="policy_evidence" defaultValue="" required><option value="">选择策略证据</option>{evidenceRecords.map((evidenceItem) => <option value={evidenceItem.id} key={evidenceItem.id}>{evidenceItem.grade} · {evidenceItem.filename}</option>)}</select>
+                <button disabled={lifecycleBusy === `policy-propose:${item.id}`}>固化条件策略</button>
+              </form></details>}
               <footer><span>最晚复验 {new Date(item.reevaluate_at).toLocaleDateString("zh-CN")}</span><b>不会自动执行</b></footer>
             </article>)}</div> : <div className="empty"><BrainCircuit size={24} /><strong>还没有通过复核的因果知识</strong><p>实验完成后先独立复核，再登记适用边界和失效时间。</p></div>}
+          </div>
+          <div className="causal-policy-registry">
+            <div className="panel-title"><div><p className="eyebrow">CONDITIONAL POLICY GATE</p><h3>条件策略与分阶段晋级</h3></div><span className="gate ready">影子 → 有限；逐级人工批准</span></div>
+            {causalPolicies.length ? <div className="policy-grid">{causalPolicies.map((policy) => {
+              const acceptedReview = policy.reviews.find((item) => item.verdict === "accepted");
+              const latestRelease = policy.releases[policy.releases.length - 1];
+              const canReleaseNext = acceptedReview && policy.usable && policy.releases.length < policy.rollout_stages.length && (!latestRelease || latestRelease.outcome?.verdict === "passed");
+              return <article className={policy.usable ? "policy-card" : "policy-card invalid"} key={policy.id}>
+                <div className="policy-card-head"><div><strong>{policy.title}</strong><small>{policy.validity_status} · 来源知识 {policy.knowledge_ids.length} 条</small></div><span className={policy.usable ? "gate ready" : "gate blocked"}>{policy.usable ? "可评估" : "已冻结"}</span></div>
+                <p>{policy.objective}</p><div className="policy-condition"><b>当</b>{policy.conditions.map((item) => <span key={`${item.field}:${item.operator}`}>{item.field} {item.operator} {String(item.value)}</span>)}<b>建议</b><span>{policy.action.type}</span></div>
+                {!policy.reviews.length && <form className="policy-review-form" onSubmit={(event) => reviewCausalPolicy(event, policy)}><select name="policy_review_verdict" defaultValue="accepted"><option value="accepted">接受策略合同</option><option value="needs_revision">退回修改</option><option value="rejected">拒绝</option></select><textarea name="policy_review_rationale" placeholder="条件、护栏、退回和阶段门审查" required /><textarea name="policy_review_counterarguments" placeholder="至少一个反方意见" required /><select name="policy_review_evidence" defaultValue="" required><option value="">复核证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button>固化策略复核</button></form>}
+                {canReleaseNext && <form className="policy-release-form" onSubmit={(event) => releaseCausalPolicyStage(event, policy, acceptedReview.id)}><strong>下一阶段：{policy.rollout_stages[policy.releases.length].name} · 最大暴露 {(Number(policy.rollout_stages[policy.releases.length].max_exposure_fraction) * 100).toFixed(0)}%</strong><input name="policy_release_rationale" placeholder="批准理由" required /><select name="policy_release_evidence" defaultValue="" required><option value="">阶段批准证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button>人工批准该阶段</button></form>}
+                {latestRelease && !latestRelease.outcome && <form className="policy-outcome-form" onSubmit={(event) => recordCausalPolicyOutcome(event, policy, latestRelease.id)}><strong>回填 {latestRelease.stage.name} 真实结果</strong><div className="lifecycle-triple"><select name="policy_outcome_verdict" defaultValue="passed"><option value="passed">通过</option><option value="failed">失败</option><option value="inconclusive">不确定</option></select><input name="policy_outcome_count" type="number" min="0" placeholder="观察数" required /><input name="policy_outcome_value" type="number" step="0.0001" placeholder="单位增量" required /></div><select name="policy_outcome_guardrail" defaultValue="false"><option value="false">护栏未越线</option><option value="true">护栏已越线</option></select><textarea name="policy_outcome_notes" placeholder="真实结果说明" required /><select name="policy_outcome_evidence" defaultValue="" required><option value="">结果证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button>固化阶段结果</button></form>}
+                <div className="policy-stages">{policy.rollout_stages.map((stage, index) => { const release = policy.releases.find((item) => item.stage_index === index); return <span className={release?.outcome?.verdict === "passed" ? "passed" : release ? "released" : ""} key={stage.name}>{stage.name}<b>{(Number(stage.max_exposure_fraction) * 100).toFixed(0)}%</b></span>; })}</div>
+                <footer><span>条件不满足：{policy.fallback_action.type}</span><b>自动执行：禁止</b></footer>
+              </article>;
+            })}</div> : <div className="empty"><Waypoints size={24} /><strong>还没有条件策略</strong><p>先从仍有效的因果知识编译，不能从聊天建议直接生成经营动作。</p></div>}
           </div>
         </section>
 

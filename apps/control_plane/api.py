@@ -19,6 +19,11 @@ from .causal_knowledge import (
     CausalKnowledgeService,
     ExperimentReviewVerdict,
 )
+from .causal_policies import (
+    CausalPolicyService,
+    PolicyReviewVerdict,
+    StageOutcomeVerdict,
+)
 from .content_growth import ContentGrowthService
 from .database import create_database_engine, database_health
 from .decision_contracts import DecisionContractService
@@ -55,7 +60,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.18.0"
+APP_VERSION = "0.19.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -82,6 +87,11 @@ causal_experiments = CausalExperimentService(
 causal_knowledge = CausalKnowledgeService(
     engine=engine,
     experiments=causal_experiments,
+    evidence=evidence,
+)
+causal_policies = CausalPolicyService(
+    engine=engine,
+    knowledge=causal_knowledge,
     evidence=evidence,
 )
 commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
@@ -547,6 +557,88 @@ class CausalKnowledgeInput(BaseModel):
     reevaluate_at: str
     replicates_knowledge_id: str | None = None
     replication_rationale: str | None = Field(default=None, max_length=10000)
+
+
+class CausalPolicyConditionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str = Field(min_length=1, max_length=200)
+    operator: Literal["eq", "neq", "gt", "gte", "lt", "lte", "in", "not_in"]
+    value: Any
+
+
+class CausalPolicyActionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: str = Field(pattern=r"^recommend_", max_length=200)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class CausalPolicyGuardrailInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: str = Field(min_length=1, max_length=200)
+    direction: Literal["min", "max"]
+    threshold: Decimal
+
+
+class CausalPolicyRolloutStageInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    max_exposure_fraction: Decimal = Field(ge=0, le=1)
+    minimum_observation_count: int = Field(ge=0)
+    minimum_incremental_value: Decimal
+
+
+class CausalPolicyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=500)
+    objective: str = Field(min_length=1, max_length=10000)
+    knowledge_ids: list[str] = Field(min_length=1)
+    applicability: dict[str, Any]
+    conditions: list[CausalPolicyConditionInput] = Field(min_length=1)
+    action: CausalPolicyActionInput
+    guardrails: list[CausalPolicyGuardrailInput] = Field(min_length=1)
+    fallback_action: CausalPolicyActionInput
+    rollout_stages: list[CausalPolicyRolloutStageInput] = Field(min_length=2)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class CausalPolicyReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: PolicyReviewVerdict
+    rationale: str = Field(min_length=1, max_length=10000)
+    counterarguments: list[str] = Field(min_length=1)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class CausalPolicyReleaseInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    review_id: str = Field(min_length=1)
+    stage_index: int = Field(ge=0)
+    rationale: str = Field(min_length=1, max_length=10000)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class CausalPolicyStageOutcomeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: StageOutcomeVerdict
+    observation_count: int = Field(ge=0)
+    incremental_value: Decimal
+    guardrail_breached: bool
+    notes: str = Field(min_length=1, max_length=10000)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class CausalPolicyContextInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    context: dict[str, Any]
 
 
 class FeeMappingInput(BaseModel):
@@ -1021,6 +1113,88 @@ def list_causal_knowledge(usable_only: bool = False):
 @app.get("/v1/causal-knowledge/{knowledge_id}")
 def get_causal_knowledge(knowledge_id: str):
     return run(lambda: causal_knowledge.get(knowledge_id))
+
+
+@app.post("/v1/causal-policies", status_code=201)
+def propose_causal_policy(
+    body: CausalPolicyInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: causal_policies.propose(
+            **body.model_dump(),
+            proposed_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/causal-policies")
+def list_causal_policies():
+    return causal_policies.list()
+
+
+@app.get("/v1/causal-policies/{policy_id}")
+def get_causal_policy(policy_id: str):
+    return run(lambda: causal_policies.get(policy_id))
+
+
+@app.post("/v1/causal-policies/{policy_id}/reviews", status_code=201)
+def review_causal_policy(
+    policy_id: str,
+    body: CausalPolicyReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(
+        lambda: causal_policies.review(
+            policy_id,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/causal-policies/{policy_id}/releases", status_code=201)
+def release_causal_policy_stage(
+    policy_id: str,
+    body: CausalPolicyReleaseInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "approver", "admin")
+    return run(
+        lambda: causal_policies.release_stage(
+            policy_id,
+            **body.model_dump(),
+            approved_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/causal-policy-releases/{release_id}/outcome", status_code=201)
+def record_causal_policy_stage_outcome(
+    release_id: str,
+    body: CausalPolicyStageOutcomeInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: causal_policies.record_stage_outcome(
+            release_id,
+            **body.model_dump(),
+            recorded_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/causal-policies/{policy_id}/evaluation")
+def evaluate_causal_policy_context(
+    policy_id: str,
+    body: CausalPolicyContextInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "approver", "admin")
+    return run(lambda: causal_policies.evaluate_context(policy_id, body.context))
 
 
 @app.post("/v1/models/discover")

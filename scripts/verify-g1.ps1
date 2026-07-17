@@ -130,6 +130,8 @@ $result = [ordered]@{
     causal_experiment_value_model = $false
     causal_experiment_independent_review = $false
     causal_knowledge_registry = $false
+    causal_policy_compiler = $false
+    controlled_policy_rollout = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -190,14 +192,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0016.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0017.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0016"
+    $result.migration = "20260717_0017"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0015")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0016")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0015") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0016") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -560,6 +562,78 @@ try {
     ) {
         throw "Causal knowledge publication gate smoke failed"
     }
+    $causalPolicy = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policies" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        title = "G-1 knowledge-backed conditional policy"
+        objective = "Recommend the validated listing only inside its evidence boundary"
+        knowledge_ids = @($causalKnowledgeEntry.id)
+        applicability = @{ platform = "Ozon"; country = "RU"; category = "G1-smoke"; population = "eligible-visitors" }
+        conditions = @(@{ field = "inventory_cover_days"; operator = "gte"; value = 45 })
+        action = @{ type = "recommend_listing_change"; parameters = @{ variant = "treatment" } }
+        guardrails = @(@{ metric = "refund_rate"; direction = "max"; threshold = 0.1 })
+        fallback_action = @{ type = "recommend_no_action"; parameters = @{ reason = "conditions_not_met" } }
+        rollout_stages = @(
+            @{ name = "shadow"; max_exposure_fraction = 0; minimum_observation_count = 20; minimum_incremental_value = 0 },
+            @{ name = "limited_10_percent"; max_exposure_fraction = 0.1; minimum_observation_count = 100; minimum_incremental_value = 3 }
+        )
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 7)
+    $policyEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policies/$($causalPolicy.id)/evaluation" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        context = @{ platform = "Ozon"; country = "RU"; category = "G1-smoke"; population = "eligible-visitors"; inventory_cover_days = 60 }
+    } | ConvertTo-Json -Depth 4)
+    if (
+        $causalPolicy.usable -ne $true -or
+        $causalPolicy.execution_eligible -ne $false -or
+        $policyEvaluation.matched -ne $true -or
+        $policyEvaluation.recommendation.type -ne "recommend_listing_change" -or
+        $policyEvaluation.automatic_execution -ne $false
+    ) {
+        throw "Knowledge-backed conditional policy compiler smoke failed"
+    }
+    $result.causal_policy_compiler = $true
+    $policyReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policies/$($causalPolicy.id)/reviews" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        verdict = "accepted"
+        rationale = "Conditions, fallback, guardrail, and rollout stages are bounded"
+        counterarguments = @("A traffic mix shift can invalidate applicability")
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $shadowRelease = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policies/$($causalPolicy.id)/releases" -Method Post -Headers $knowledgeHeaders -ContentType "application/json" -Body (@{
+        review_id = $policyReview.id
+        stage_index = 0
+        rationale = "Approve zero-exposure shadow observation only"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $prematureLimitedRelease = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/causal-policies/$($causalPolicy.id)/releases" -Method Post -Headers $knowledgeHeaders -ContentType "application/json" -Body (@{
+        review_id = $policyReview.id
+        stage_index = 1
+        rationale = "Must fail before shadow outcome"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $shadowOutcome = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-releases/$($shadowRelease.id)/outcome" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        verdict = "passed"
+        observation_count = 20
+        incremental_value = 3
+        guardrail_breached = $false
+        notes = "Shadow result met the preregistered promotion gate"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $limitedRelease = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policies/$($causalPolicy.id)/releases" -Method Post -Headers $knowledgeHeaders -ContentType "application/json" -Body (@{
+        review_id = $policyReview.id
+        stage_index = 1
+        rationale = "Previous immutable outcome met all promotion gates"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    if (
+        $policyReview.verdict -ne "accepted" -or
+        $shadowRelease.stage.max_exposure_fraction -ne "0" -or
+        $shadowRelease.execution_eligible -ne $false -or
+        $prematureLimitedRelease -ne 422 -or
+        $shadowOutcome.verdict -ne "passed" -or
+        $limitedRelease.stage.max_exposure_fraction -ne "0.1" -or
+        $limitedRelease.automatic_promotion -ne $false
+    ) {
+        throw "Controlled conditional policy rollout smoke failed"
+    }
+    $result.controlled_policy_rollout = $true
     $breachedGuardrail = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         metric = "refund_rate"
         value = 0.11
@@ -573,6 +647,7 @@ try {
     } | ConvertTo-Json)
     $breachedEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/evaluation" -Headers $headers
     $invalidatedKnowledge = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-knowledge/$($causalKnowledgeEntry.id)" -Headers $headers
+    $invalidatedPolicy = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policies/$($causalPolicy.id)" -Headers $headers
     if (
         $breachedGuardrail.status -ne "breached" -or
         $blockedAssignment -ne 422 -or
@@ -581,7 +656,9 @@ try {
         $breachedEvaluation.review_eligible -ne $false -or
         $breachedEvaluation.automatic_rollout -ne $false -or
         $invalidatedKnowledge.validity_status -ne "source_experiment_invalidated" -or
-        $invalidatedKnowledge.usable -ne $false
+        $invalidatedKnowledge.usable -ne $false -or
+        $invalidatedPolicy.validity_status -ne "source_knowledge_invalidated" -or
+        $invalidatedPolicy.usable -ne $false
     ) {
         throw "Causal experiment stop-loss and guardrail freeze smoke failed"
     }
