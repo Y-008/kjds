@@ -4,6 +4,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY apps ./apps
 RUN pip install --no-cache-dir uv==0.11.26 && uv sync --frozen --no-dev
+COPY alembic.ini ./
 COPY migrations ./migrations
 
 ENV PATH="/app/.venv/bin:$PATH"

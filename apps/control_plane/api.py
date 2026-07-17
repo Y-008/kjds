@@ -16,6 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from .automation import AutomationService, RiskLevel
 from .content_growth import ContentGrowthService
 from .database import create_database_engine, database_health
+from .decision_contracts import DecisionContractService
+from .decision_contracts import RiskLevel as DecisionRiskLevel
 from .domain import AgentMode, ChargeType, ContentType, PassportType
 from .evidence import EvidenceGrade, EvidenceService
 from .facts import FactPromotionService
@@ -43,7 +45,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.13.0"
+APP_VERSION = "0.14.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -56,6 +58,7 @@ def build_repository():
 repo = build_repository()
 engine = getattr(repo, "engine", None) or create_database_engine()
 evidence = EvidenceService(engine)
+decision_contracts = DecisionContractService(engine=engine, evidence=evidence)
 commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
 intake = SkuEpisodeIntakeService(commerce=commerce, evidence=evidence)
 market = MarketIntelligenceService(repo)
@@ -343,6 +346,25 @@ class LineageLinkInput(BaseModel):
     relationship: str = Field(min_length=1, max_length=100)
 
 
+class DecisionContractInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str = Field(min_length=1, max_length=80)
+    objective: str = Field(min_length=1, max_length=5000)
+    decision_domain: str = Field(min_length=1, max_length=100)
+    risk_level: DecisionRiskLevel
+    horizon_days: int | None = Field(default=None, ge=1, le=3650)
+    maximum_loss_amount: Decimal | None = Field(default=None, ge=0)
+    currency: str = Field(default="CNY", min_length=3, max_length=3)
+    source_contract_id: str | None = None
+    facts: dict[str, Any] = Field(default_factory=dict)
+    assumptions: list[str] = Field(default_factory=list)
+    unknowns: list[str] = Field(default_factory=list)
+    options: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
 class FeeMappingInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -550,6 +572,35 @@ def link_evidence(
 @app.get("/v1/evidence/{evidence_id}/lineage")
 def evidence_lineage(evidence_id: str):
     return [asdict(item) for item in evidence.lineage(evidence_id)]
+
+
+@app.get("/v1/interaction-profiles")
+def interaction_profiles():
+    return decision_contracts.profiles()
+
+
+@app.post("/v1/decision-contracts", status_code=201)
+def create_decision_contract(
+    body: DecisionContractInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "approver", "admin")
+    return run(
+        lambda: decision_contracts.create(
+            **body.model_dump(),
+            requested_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/decision-contracts")
+def list_decision_contracts(limit: int = 100):
+    return decision_contracts.list(limit)
+
+
+@app.get("/v1/decision-contracts/{contract_id}")
+def get_decision_contract(contract_id: str):
+    return run(lambda: decision_contracts.get(contract_id))
 
 
 @app.post("/v1/models/discover")

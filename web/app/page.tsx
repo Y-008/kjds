@@ -109,6 +109,21 @@ type GateReadiness = {
   requirements: GateRequirement[];
   next_actions: string[];
 };
+type EvidenceSummary = { id: string; filename: string; source: string; grade: string; effective_at: string };
+type InteractionProfile = {
+  id: string; version: string; label: string; description: string; aliases: string[];
+  workflow_steps: string[]; output_requirements: string[]; max_questions: number;
+  presentation_only: boolean; evidence_required_before_conclusion: boolean;
+  requires_options: boolean; requires_forecast_basis: boolean;
+};
+type DecisionContract = {
+  id: string; profile_id: string; profile_version: string; objective: string; decision_domain: string;
+  risk_level: string; horizon_days: number | null; maximum_loss_amount: string | null; currency: string;
+  source_contract_id: string | null; input: Record<string, unknown>; output_requirements: string[];
+  evidence_ids: string[]; compiler_policy: Record<string, boolean | string | number>;
+  missing_inputs: string[]; status: string; execution_eligible: boolean;
+  requires_human_approval: boolean; requested_by: string; created_at: string;
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -119,6 +134,11 @@ const procurementStatusLabels: Record<string, string> = {
 const procurementEventLabels: Record<string, string> = {
   order_confirmed: "确认样品订单", shipped: "记录发货", received: "记录签收", inspection_completed: "完成验货",
   golden_sample_approved: "批准黄金样", sample_rejected: "淘汰样品", rework_required: "要求返工", cancelled: "取消",
+};
+const decisionStatusLabels: Record<string, string> = {
+  clarification_required: "需要补充关键信息", ready_for_clarification: "可以开始澄清",
+  evidence_pending: "等待可验证证据", ready_for_render: "可以生成通俗解释",
+  ready_for_analysis: "可以进入分析",
 };
 
 const nav = [
@@ -148,6 +168,11 @@ export default function Home() {
   const [skuReadiness, setSkuReadiness] = useState<ProductReadiness[]>([]);
   const [passportReviews, setPassportReviews] = useState<PassportReview[]>([]);
   const [gateReadiness, setGateReadiness] = useState<GateReadiness | null>(null);
+  const [evidenceRecords, setEvidenceRecords] = useState<EvidenceSummary[]>([]);
+  const [interactionProfiles, setInteractionProfiles] = useState<InteractionProfile[]>([]);
+  const [decisionContracts, setDecisionContracts] = useState<DecisionContract[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
+  const [decisionBusy, setDecisionBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [gateUploading, setGateUploading] = useState(false);
   const [skuUploading, setSkuUploading] = useState(false);
@@ -159,7 +184,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -170,6 +195,9 @@ export default function Home() {
       fetch("/backend/v1/approvals", { cache: "no-store" }),
       fetch("/backend/v1/procurement/sample-orders", { cache: "no-store" }),
       fetch("/backend/v1/procurement/suppliers/performance", { cache: "no-store" }),
+      fetch("/backend/v1/evidence", { cache: "no-store" }),
+      fetch("/backend/v1/interaction-profiles", { cache: "no-store" }),
+      fetch("/backend/v1/decision-contracts", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -180,6 +208,9 @@ export default function Home() {
     if (approvalsResponse.ok) setApprovals(await approvalsResponse.json());
     if (sampleOrdersResponse.ok) setSampleOrders(await sampleOrdersResponse.json());
     if (supplierPerformanceResponse.ok) setSupplierPerformance(await supplierPerformanceResponse.json());
+    if (evidenceResponse.ok) setEvidenceRecords(await evidenceResponse.json());
+    if (profileResponse.ok) setInteractionProfiles(await profileResponse.json());
+    if (contractResponse.ok) setDecisionContracts(await contractResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -463,10 +494,59 @@ export default function Home() {
     finally { setProcurementBusy(null); }
   }
 
+  async function compileDecisionContract(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+    const lines = (name: string) => value(name).split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    const profile = interactionProfiles.find((item) => item.id === selectedProfileId);
+    const horizon = value("decision_horizon");
+    const maximumLoss = value("decision_maximum_loss");
+    const evidenceId = value("decision_evidence");
+    const sourceContractId = value("source_contract_id");
+    const context: Record<string, unknown> = {};
+    if (profile?.requires_forecast_basis) {
+      context.baseline = value("forecast_baseline");
+      context.scenarios = lines("forecast_scenarios").map((label) => ({ label }));
+    }
+    const payload = {
+      profile: selectedProfileId,
+      objective: value("decision_objective"),
+      decision_domain: value("decision_domain"),
+      risk_level: value("decision_risk"),
+      horizon_days: horizon ? Number(horizon) : null,
+      maximum_loss_amount: maximumLoss || null,
+      currency: value("decision_currency") || "CNY",
+      source_contract_id: sourceContractId || null,
+      assumptions: lines("decision_assumptions"),
+      unknowns: lines("decision_unknowns"),
+      options: lines("decision_options").map((label, index) => ({ id: String.fromCharCode(65 + index), label })),
+      evidence_ids: evidenceId ? [evidenceId] : [],
+      context,
+    };
+    setDecisionBusy(true);
+    setNotice("正在把问题编译成可审计的决策合同…");
+    try {
+      const response = await fetch("/backend/v1/decision-contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        const detail = result.missing_inputs.length ? `仍缺：${result.missing_inputs.join("、")}` : decisionStatusLabels[result.status] ?? result.status;
+        setNotice(`决策合同 ${result.id} 已固化；${detail}。该合同没有经营执行权。`);
+        await load();
+      } else setNotice(result.detail ?? "决策合同建立失败");
+    } catch { setNotice("无法建立决策合同，请检查服务状态"); }
+    finally { setDecisionBusy(false); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
   const approvedWithoutSample = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "approved" && !sampleOrders.some((order) => order.approval_id === item.id));
+  const selectedProfile = interactionProfiles.find((item) => item.id === selectedProfileId);
 
   return (
     <main className="shell">
@@ -508,6 +588,49 @@ export default function Home() {
         </section>
 
         <div className="notice"><Activity size={17} /><span>{notice}</span></div>
+
+        <section className="decision-workbench">
+          <div className="panel-title">
+            <div><p className="eyebrow">DECISION CONTRACT COMPILER</p><h3>把问题变成可审计的决策合同</h3></div>
+            <span className="gate ready">只分析，不执行经营动作</span>
+          </div>
+          <div className="procurement-guardrail"><ShieldCheck size={17} /><p><strong>“深度思考”等口令只负责选择流程。</strong><span>证据、备选方案、损失上限、责任人与人工审批仍是硬门槛；缺什么就明确显示什么。</span></p></div>
+          <div className="interaction-mode-grid">
+            {interactionProfiles.map((profile) => <button type="button" className={selectedProfileId === profile.id ? "selected" : ""} onClick={() => setSelectedProfileId(profile.id)} key={profile.id}>
+              <span>{profile.aliases.join(" · ")}</span><strong>{profile.label}</strong><small>{profile.description}</small><em>v{profile.version}</em>
+            </button>)}
+          </div>
+          <div className="decision-layout">
+            <form className="decision-form" onSubmit={compileDecisionContract}>
+              <div className="decision-form-head"><div><strong>{selectedProfile?.label ?? "选择一种工作方式"}</strong><small>{selectedProfile?.workflow_steps.join(" → ")}</small></div><BrainCircuit size={19} /></div>
+              <div className="decision-fields">
+                <label className="wide">你要解决的真实问题<textarea name="decision_objective" placeholder="例如：是否应把某 SKU 的首批样品量从 100 件增加到 300 件？" required /></label>
+                <label>决策领域<input name="decision_domain" defaultValue="operations" placeholder="采购 / 定价 / 广告" required /></label>
+                <label>风险等级<select name="decision_risk" defaultValue="medium"><option value="low">低风险</option><option value="medium">中风险</option><option value="high">高风险</option><option value="critical">重大不可逆风险</option></select></label>
+                <label>最坏可承受损失<input name="decision_maximum_loss" type="number" min="0" step="0.01" placeholder="高风险问题必须填写" /></label>
+                <label>币种<input name="decision_currency" defaultValue="CNY" maxLength={3} /></label>
+                <label>观察期限（天）<input name="decision_horizon" type="number" min="1" max="3650" placeholder="预测模式必须填写" /></label>
+                <label>可验证证据<select name="decision_evidence" defaultValue=""><option value="">暂未选择；系统会标为待证据</option>{evidenceRecords.slice(0, 100).map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename} · {item.source}</option>)}</select></label>
+                {selectedProfile?.presentation_only && <label className="wide">要解释的来源合同<select name="source_contract_id" defaultValue=""><option value="">选择一份已有合同</option>{decisionContracts.map((item) => <option value={item.id} key={item.id}>{item.id} · {item.objective}</option>)}</select></label>}
+                {selectedProfile?.requires_options && <label className="wide">备选方案（每行一个，至少两个）<textarea name="decision_options" placeholder={"方案 A\n方案 B\n不行动"} /></label>}
+                {selectedProfile?.requires_forecast_basis && <><label className="wide">基准情景 / 基础概率<textarea name="forecast_baseline" placeholder="写明历史基准、匹配样本或基础概率及其来源" /></label><label className="wide">未来情景（每行一个，至少两个）<textarea name="forecast_scenarios" placeholder={"基准情景\n下行情景\n上行情景"} /></label></>}
+                <label className="wide">当前假设（每行一个）<textarea name="decision_assumptions" placeholder="尚未证实、但本轮暂时采用的前提" /></label>
+                <label className="wide">已知未知项（每行一个）<textarea name="decision_unknowns" placeholder="缺少的数据、规则、责任人或外部条件" /></label>
+              </div>
+              <div className="decision-submit"><p>提交后生成不可变合同。即便“可以分析”，也不能直接改价、投放、采购或付款。</p><button disabled={decisionBusy}>{decisionBusy ? "正在编译…" : "建立决策合同"}</button></div>
+            </form>
+            <div className="decision-register">
+              <div className="decision-register-head"><strong>最近的决策合同</strong><span>{decisionContracts.length} 份</span></div>
+              {decisionContracts.length ? decisionContracts.slice(0, 6).map((contract) => <article key={contract.id}>
+                <div><span>{interactionProfiles.find((item) => item.id === contract.profile_id)?.label ?? contract.profile_id}</span><b>{decisionStatusLabels[contract.status] ?? contract.status}</b></div>
+                <strong>{contract.objective}</strong>
+                <small>{contract.decision_domain} · {contract.risk_level} · v{contract.profile_version}</small>
+                {contract.missing_inputs.length > 0 && <p>待补：{contract.missing_inputs.join("、")}</p>}
+                <footer><span>{contract.evidence_ids.length} 份证据</span><em>{contract.requires_human_approval ? "必须人工审批" : "分析合同"}</em><b>无执行权</b></footer>
+              </article>) : <div className="empty"><BrainCircuit size={25} /><strong>还没有决策合同</strong><p>先选择工作方式，再把第一个真实经营问题提交进来。</p></div>}
+            </div>
+          </div>
+        </section>
 
         <section className="gate-overview">
           <div className="gate-overview-head">

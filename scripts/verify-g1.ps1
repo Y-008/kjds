@@ -121,6 +121,8 @@ $result = [ordered]@{
     kill_switch = $false
     api_database_write = $false
     evidence_ledger = $false
+    interaction_profile_registry = $false
+    decision_contract_compiler = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -179,14 +181,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0011.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0012.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260716_0011"
+    $result.migration = "20260717_0012"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0010")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0011")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0010") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0011") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -281,6 +283,57 @@ try {
         throw "Immutable evidence and lineage smoke failed"
     }
     $result.evidence_ledger = $true
+
+    $profiles = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/interaction-profiles" -Headers $headers
+    $decisionProfile = $profiles | Where-Object { $_.id -eq "decision_review" }
+    if (
+        $profiles.Count -ne 5 -or
+        "/x10think" -notin $decisionProfile.aliases -or
+        "/oda" -notin $decisionProfile.aliases -or
+        $decisionProfile.version -ne "1.0.0"
+    ) {
+        throw "Versioned interaction profile registry smoke failed"
+    }
+    $result.interaction_profile_registry = $true
+
+    $pendingContract = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-contracts" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        profile = "/truth"
+        objective = "Verify whether a market signal is causal"
+        decision_domain = "market_intelligence"
+        risk_level = "medium"
+        unknowns = @("Full platform traffic is unavailable")
+    } | ConvertTo-Json -Depth 5)
+    $decisionBody = @{
+        profile = "/x10think"
+        objective = "Choose a controlled G-1 sample procurement path"
+        decision_domain = "procurement"
+        risk_level = "high"
+        maximum_loss_amount = 30000
+        currency = "CNY"
+        options = @(
+            @{ id = "A"; label = "Place a 100-unit sample order" },
+            @{ id = "B"; label = "Do not place the sample order" }
+        )
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 6
+    $decisionContract = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-contracts" -Method Post -Headers $headers -ContentType "application/json" -Body $decisionBody
+    $decisionRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-contracts" -Method Post -Headers $headers -ContentType "application/json" -Body $decisionBody
+    $decisionRegister = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-contracts" -Headers $headers
+    $decisionLineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/lineage" -Headers $headers
+    if (
+        $pendingContract.status -ne "evidence_pending" -or
+        $pendingContract.execution_eligible -ne $false -or
+        $decisionContract.id -ne $decisionRetry.id -or
+        $decisionContract.status -ne "ready_for_analysis" -or
+        $decisionContract.execution_eligible -ne $false -or
+        $decisionContract.requires_human_approval -ne $true -or
+        $decisionContract.compiler_policy.model_may_execute -ne $false -or
+        -not ($decisionRegister | Where-Object { $_.id -eq $decisionContract.id }) -or
+        -not ($decisionLineage | Where-Object { $_.to_type -eq "decision_contract" -and $_.to_id -eq $decisionContract.id })
+    ) {
+        throw "Immutable evidence-gated decision contract compiler smoke failed"
+    }
+    $result.decision_contract_compiler = $true
 
     foreach ($requirementId in @("GOV-001", "OZN-001")) {
         Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/gate-evidence" -Method Post -Headers $headers -Form @{

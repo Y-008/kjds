@@ -34,6 +34,7 @@ apps/control_plane/
   source_connectors.py 平台能力目录
   sourcing_store.py   Supabase/PostgreSQL 持久化适配器
   procurement.py      样品采购状态机、供应商实绩与备用方案
+  decision_contracts.py 版本化交互模式与不可变决策合同
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -75,6 +76,12 @@ tests/
 `POST /v1/sourcing/comparison-intake` 一次接收同一 SKU 的三家独立供应商报价、三份原始报价文件和一份共同利润假设证据，并为每家生成可比 CM3。`GET /v1/sourcing/comparisons/{product_id}` 返回排序后的报价比较；只有三家证据化供应商、完整利润场景、正 CM3 和三本已批准 Passport 同时满足时，`POST /v1/sourcing/procurement-candidates` 才能建立采购审批。采购申请仍须由不同身份通过双人控制，不会直接下单。
 
 双人批准后的候选可通过 `POST /v1/procurement/sample-orders` 建立受控样品单；确认、发货、签收、验货、黄金样批准/淘汰均通过只可追加的证据事件推进。`GET /v1/procurement/suppliers/performance` 只用实际样品事件计算质量、交付完整度和准时率；备用供应商接口只返回正 CM3 建议，任何切换都会重新创建采购审批，系统不自动付款或替换供应商。
+
+## 交互模式与决策合同
+
+`GET /v1/interaction-profiles` 返回五个固定版本的协作流程：快速解释、苏格拉底澄清、证据研究、决策评审和概率预测；`/eli10`、`/socrates`、`/truth`、`/x10think`、`/oda`、`/product` 只是这些流程的别名，不是绕过经营控制的魔法口令。
+
+`POST /v1/decision-contracts` 会把问题、风险、期限、最大损失、备选方案、假设、未知项和不可变证据编译成只可追加的合同。缺少关键输入时状态为 `clarification_required`，缺少证据时为 `evidence_pending`；高风险合同强制标记人工审批，重大风险保持纯建议。所有合同的 `execution_eligible` 固定为 `false`，模型分析结果必须经过独立的决策、审批与执行链才可能影响真实经营。
 
 ## Ozon 数据合同与正式事实
 
