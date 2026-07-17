@@ -41,6 +41,7 @@ from .finance import CashPlanStatus, FeeSignRule, FinanceEntryKind, FinanceServi
 from .imports import MAX_IMPORT_BYTES, OzonImportService
 from .intake import PassportEvidencePayload, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
+from .limited_executor import LimitedExecutorService
 from .ozon_contracts import contract_catalog
 from .policy_shadow import PolicyShadowService
 from .procurement import ProcurementService
@@ -62,7 +63,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.21.0"
+APP_VERSION = "0.22.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -136,6 +137,13 @@ readiness = GateReadinessService(
 )
 authenticator = ApiKeyAuthenticator.from_environment()
 kill_switch = KillSwitchService(engine)
+limited_executor = LimitedExecutorService(
+    engine=engine,
+    execution_plans=execution_plans,
+    evidence=evidence,
+    kill_switch=kill_switch,
+    enabled=os.getenv("KJDS_LIMITED_EXECUTION_ENABLED", "false").lower() == "true",
+)
 providers = {
     "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
     "comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189")),
@@ -162,7 +170,15 @@ async def enforce_control_plane_security(request: Request, call_next):
             return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
 
         if request.method in WRITE_METHODS and request.url.path not in KILL_SWITCH_CONTROL_PATHS:
-            if not request.state.principal.has_any_role("operator", "reviewer", "compliance", "approver", "admin"):
+            if not request.state.principal.has_any_role(
+                "operator",
+                "reviewer",
+                "compliance",
+                "approver",
+                "risk",
+                "executor",
+                "admin",
+            ):
                 return JSONResponse(status_code=403, content={"detail": "Authenticated actor has no write role"})
             try:
                 kill_switch.ensure_writes_allowed()
@@ -697,6 +713,25 @@ class GovernedExecutionDryRunInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     current_state_hash: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class LimitedExecutionClaimInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_state_hash: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+    lease_seconds: int = Field(default=120, ge=30, le=600)
+
+
+class LimitedExecutionReceiptInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["succeeded", "failed", "uncertain"]
+    remote_operation_id: str | None = Field(default=None, max_length=500)
+    resulting_state_hash: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
+    mutation_applied: bool
+    error_code: str | None = Field(default=None, max_length=300)
+    error_detail: str | None = Field(default=None, max_length=5000)
     evidence_ids: list[str] = Field(min_length=1)
 
 
@@ -1374,6 +1409,71 @@ def dry_run_governed_execution_plan(
             plan_id,
             **body.model_dump(),
             performed_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/governed-execution-plans/{plan_id}/commands", status_code=201)
+def queue_limited_execution_command(
+    plan_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(lambda: limited_executor.queue(plan_id, queued_by=principal.actor_id))
+
+
+@app.get("/v1/limited-execution-commands")
+def list_limited_execution_commands():
+    return run(limited_executor.list)
+
+
+@app.get("/v1/limited-execution-commands/{command_id}")
+def get_limited_execution_command(command_id: str):
+    return run(lambda: limited_executor.get(command_id))
+
+
+@app.post("/v1/limited-execution-commands/{command_id}/claim")
+def claim_limited_execution_command(
+    command_id: str,
+    body: LimitedExecutionClaimInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "executor", "admin")
+    return run(
+        lambda: limited_executor.claim(
+            command_id,
+            **body.model_dump(),
+            worker_id=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/limited-execution-commands/{command_id}/receipt", status_code=201)
+def record_limited_execution_receipt(
+    command_id: str,
+    body: LimitedExecutionReceiptInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "executor", "admin")
+    return run(
+        lambda: limited_executor.record_receipt(
+            command_id,
+            **body.model_dump(),
+            recorded_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/limited-execution-commands/{command_id}/rollback", status_code=201)
+def request_limited_execution_rollback(
+    command_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "risk", "admin")
+    return run(
+        lambda: limited_executor.request_rollback(
+            command_id,
+            requested_by=principal.actor_id,
         )
     )
 

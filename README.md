@@ -41,6 +41,7 @@ apps/control_plane/
   causal_policies.py 有效知识到条件策略、影子阶段和逐级放量合同
   policy_shadow.py 不可变策略评估、零暴露影子批次与独立审批交接
   execution_plans.py 目标绑定、前置快照、回滚合同、执行审批与零写入预演
+  limited_executor.py 默认关闭的命令队列、领取租约、平台回执与补偿回滚状态机
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -145,7 +146,15 @@ tests/
 
 当前首个适配器 `ozon.listing.draft.v1` 仅接受 Listing 草稿的标题、描述、属性和图片字段，并固定 `live_execution_supported=false`。建立计划会产生第二个高风险审批事项 `platform_execution.execute_plan`，申请人不能批准自己的具体执行计划。
 
-`POST /v1/governed-execution-plans/{id}/dry-run` 会再次核对阶段交接仍有效、当前状态与前置快照一致、回滚合同存在且实时写入仍被禁用。预演凭证不可覆盖，并明确返回 `platform_write_performed=false`。只有预演通过、具体执行审批通过且来源知识仍有效时，计划才会显示 `ready_for_executor=true`；当前依旧固定 `execution_eligible=false`，等待后续具备幂等写入和自动回滚能力的受限执行器。
+`POST /v1/governed-execution-plans/{id}/dry-run` 会再次核对阶段交接仍有效、当前状态与前置快照一致、回滚合同存在且网页实时写入仍被禁用。预演凭证不可覆盖，并明确返回 `platform_write_performed=false`。只有预演通过、具体执行审批通过且来源知识仍有效时，计划才会显示 `ready_for_executor=true`；计划对象依旧固定 `execution_eligible=false`，真实动作只能通过下述受限命令队列完成，不能绕过队列直接调用平台。
+
+## 受限执行命令、回执与补偿状态机
+
+受限执行由独立全局开关 `KJDS_LIMITED_EXECUTION_ENABLED` 控制，默认 `false`。开启后，计划仍需在入队时重新通过来源知识、阶段交接、零写入预演、具体执行审批和全局熔断检查。`POST /v1/governed-execution-plans/{id}/commands` 只生成不可变命令信封，不由网页进程直接调用平台；同一计划只有一个执行命令，并使用确定性幂等令牌。
+
+专用执行器使用 `executor` 身份调用 `/v1/limited-execution-commands/{id}/claim`。领取前必须提交刚读取的当前平台状态 SHA-256，任何漂移都会把命令锁定为 `precondition_failed`；领取采用 30–600 秒租约，只有持有租约的执行器才能提交平台回执。成功回执必须包含远端操作号、变更后状态指纹及 `mutation_applied=true`，失败回执必须保留错误码。回执不可覆盖，网络超时或租约过期进入 `uncertain`，禁止盲目重试造成重复写入。
+
+如果失败或不确定回执确认平台已经发生部分变更，系统会使用预批准的回滚内容自动生成独立 `rollback` 命令，并把变更后状态指纹作为回滚前置条件。风险负责人也能对已成功命令主动请求回滚。回滚同样需要领取、状态核验、幂等令牌和不可变回执；全局熔断开启时，新的执行与回滚领取都会失败关闭。
 
 ## Ozon 数据合同与正式事实
 

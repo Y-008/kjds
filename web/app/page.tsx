@@ -200,6 +200,13 @@ type GovernedExecutionPlan = {
   dry_run: null | { id: string; passed: boolean; platform_write_performed: boolean };
   ready_for_executor: boolean; execution_eligible: boolean; live_execution_supported: boolean;
 };
+type LimitedExecutionCommand = {
+  id: string; plan_id: string; parent_command_id: string | null; command_kind: "execute" | "rollback";
+  idempotency_token: string; operation: string; target: Record<string, string>;
+  expected_state_hash: string; status: string; claimed_by: string | null;
+  receipt: null | { outcome: string; mutation_applied: boolean; rollback_command_id: string | null };
+  platform_write_performed: boolean;
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -260,6 +267,7 @@ export default function Home() {
   const [policyShadowBatches, setPolicyShadowBatches] = useState<PolicyShadowBatch[]>([]);
   const [policyActivationHandoffs, setPolicyActivationHandoffs] = useState<PolicyActivationHandoff[]>([]);
   const [governedExecutionPlans, setGovernedExecutionPlans] = useState<GovernedExecutionPlan[]>([]);
+  const [limitedExecutionCommands, setLimitedExecutionCommands] = useState<LimitedExecutionCommand[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -275,7 +283,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -299,6 +307,7 @@ export default function Home() {
       fetch("/backend/v1/causal-policy-shadow-batches", { cache: "no-store" }),
       fetch("/backend/v1/causal-policy-activation-handoffs", { cache: "no-store" }),
       fetch("/backend/v1/governed-execution-plans", { cache: "no-store" }),
+      fetch("/backend/v1/limited-execution-commands", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -345,6 +354,7 @@ export default function Home() {
     if (policyShadowResponse.ok) setPolicyShadowBatches(await policyShadowResponse.json());
     if (policyHandoffResponse.ok) setPolicyActivationHandoffs(await policyHandoffResponse.json());
     if (executionPlanResponse.ok) setGovernedExecutionPlans(await executionPlanResponse.json());
+    if (executionCommandResponse.ok) setLimitedExecutionCommands(await executionCommandResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -1010,6 +1020,17 @@ export default function Home() {
     finally { setLifecycleBusy(null); }
   }
 
+  async function queueLimitedExecution(plan: GovernedExecutionPlan) {
+    setLifecycleBusy(`execution-queue:${plan.id}`); setNotice("正在重新核验知识、阶段交接、预演和双审批，并尝试进入受限执行队列…");
+    try {
+      const response = await fetch(`/backend/v1/governed-execution-plans/${plan.id}/commands`, { method: "POST" });
+      const result = await response.json();
+      setNotice(response.ok ? `命令 ${result.id} 已入队，等待专用执行器按状态指纹领取。` : result.detail ?? "执行命令入队失败");
+      if (response.ok) await load();
+    } catch { setNotice("无法进入受限执行队列，请检查全局执行开关和服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
@@ -1281,6 +1302,7 @@ export default function Home() {
               const shadowBatch = [...policyShadowBatches].reverse().find((item) => item.policy_id === policy.id && item.release_id === shadowRelease?.id);
               const activationHandoff = policyActivationHandoffs.find((item) => item.policy_id === policy.id);
               const executionPlan = governedExecutionPlans.find((item) => item.policy_id === policy.id);
+              const executionCommand = limitedExecutionCommands.find((item) => item.plan_id === executionPlan?.id && item.command_kind === "execute");
               const canReleaseNext = acceptedReview && policy.usable && policy.releases.length < policy.rollout_stages.length && (!latestRelease || latestRelease.outcome?.verdict === "passed");
               return <article className={policy.usable ? "policy-card" : "policy-card invalid"} key={policy.id}>
                 <div className="policy-card-head"><div><strong>{policy.title}</strong><small>{policy.validity_status} · 来源知识 {policy.knowledge_ids.length} 条</small></div><span className={policy.usable ? "gate ready" : "gate blocked"}>{policy.usable ? "可评估" : "已冻结"}</span></div>
@@ -1295,6 +1317,8 @@ export default function Home() {
                 {activationHandoff?.activation_eligible && !executionPlan && <form className="policy-outcome-form" onSubmit={(event) => createExecutionPlan(event, activationHandoff)}><strong>建立可回滚执行计划</strong><p>绑定具体 Listing、当前状态指纹、新标题和恢复标题；系统会另行申请执行审批。</p><input name="execution_listing_id" placeholder="Ozon Listing ID" required /><input name="execution_state_hash" minLength={64} maxLength={64} placeholder="当前平台快照 SHA-256" required /><input name="execution_old_title" placeholder="当前标题（用于回滚）" required /><input name="execution_new_title" placeholder="拟更新标题" required /><select name="execution_evidence" defaultValue="" required><option value="">选择当前状态证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `execution-plan:${activationHandoff.id}`}>固化计划并申请执行审批</button></form>}
                 {executionPlan && <div className={executionPlan.ready_for_executor ? "knowledge-status usable" : "knowledge-status invalid"}><strong>执行计划 {executionPlan.approval_status}</strong><span>{executionPlan.dry_run?.passed ? "预演通过" : "等待预演"} · {executionPlan.handoff_validity_status}</span><b>平台写入：禁用</b></div>}
                 {executionPlan && !executionPlan.dry_run && <form className="policy-release-form" onSubmit={(event) => dryRunExecutionPlan(event, executionPlan)}><strong>执行前预演</strong><p>重新读取平台状态后填写快照指纹；与计划前置状态不一致将失败并要求重建计划。</p><input name="dry_run_state_hash" minLength={64} maxLength={64} defaultValue={executionPlan.precondition_state_hash} required /><select name="dry_run_evidence" defaultValue="" required><option value="">选择最新平台快照证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `execution-dry-run:${executionPlan.id}`}>只做预演</button></form>}
+                {executionPlan?.ready_for_executor && !executionCommand && <div className="policy-release-form"><strong>受限执行队列</strong><p>默认全局关闭。启用后仍由专用执行器按状态指纹领取，网页不会直接调用 Ozon。</p><button type="button" disabled={lifecycleBusy === `execution-queue:${executionPlan.id}`} onClick={() => queueLimitedExecution(executionPlan)}>进入受限队列</button></div>}
+                {executionCommand && <div className={executionCommand.status === "succeeded" ? "knowledge-status usable" : "knowledge-status invalid"}><strong>{executionCommand.command_kind === "rollback" ? "回滚" : "执行"}命令 {executionCommand.status}</strong><span>{executionCommand.claimed_by ? `执行器 ${executionCommand.claimed_by}` : "等待专用执行器领取"}</span><b>远端写入：{executionCommand.platform_write_performed ? "已由回执确认" : "未确认"}</b></div>}
                 <div className="policy-stages">{policy.rollout_stages.map((stage, index) => { const release = policy.releases.find((item) => item.stage_index === index); return <span className={release?.outcome?.verdict === "passed" ? "passed" : release ? "released" : ""} key={stage.name}>{stage.name}<b>{(Number(stage.max_exposure_fraction) * 100).toFixed(0)}%</b></span>; })}</div>
                 <footer><span>条件不满足：{policy.fallback_action.type}</span><b>自动执行：禁止</b></footer>
               </article>;

@@ -138,6 +138,9 @@ $result = [ordered]@{
     governed_execution_plan = $false
     governed_execution_dry_run = $false
     governed_execution_dual_control = $false
+    limited_execution_command = $false
+    limited_execution_receipt = $false
+    compensating_rollback = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -185,27 +188,30 @@ try {
     $env:KJDS_DATABASE_PROVIDER = "local-postgres"
     $env:KJDS_REPOSITORY = "postgres"
     $env:KJDS_SHADOW_MODE = "true"
+    $env:KJDS_LIMITED_EXECUTION_ENABLED = "true"
     $env:KJDS_API_KEY = "g1-smoke-" + [guid]::NewGuid().ToString("N")
     $ApproverApiKey = "g1-approver-" + [guid]::NewGuid().ToString("N")
     $KnowledgeApiKey = "g1-knowledge-" + [guid]::NewGuid().ToString("N")
+    $ExecutorApiKey = "g1-executor-" + [guid]::NewGuid().ToString("N")
     $env:KJDS_API_ACTOR = "g1-verifier"
     $env:KJDS_API_ROLES = "operator,reviewer,approver,risk,admin"
     $ApiCredentials = @{}
     $ApiCredentials[$env:KJDS_API_KEY] = @{ actor = "g1-verifier"; roles = @("operator", "reviewer", "admin") }
     $ApiCredentials[$ApproverApiKey] = @{ actor = "g1-independent-approver"; roles = @("reviewer", "approver") }
     $ApiCredentials[$KnowledgeApiKey] = @{ actor = "g1-knowledge-publisher"; roles = @("approver") }
+    $ApiCredentials[$ExecutorApiKey] = @{ actor = "g1-ozon-worker"; roles = @("executor") }
     $env:KJDS_API_KEYS_JSON = $ApiCredentials | ConvertTo-Json -Compress
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0019.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0020.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0019"
+    $result.migration = "20260717_0020"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0018")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0019")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0018") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0019") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -257,6 +263,7 @@ try {
     $headers = @{ "X-KJDS-API-Key" = $env:KJDS_API_KEY }
     $approverHeaders = @{ "X-KJDS-API-Key" = $ApproverApiKey }
     $knowledgeHeaders = @{ "X-KJDS-API-Key" = $KnowledgeApiKey }
+    $executorHeaders = @{ "X-KJDS-API-Key" = $ExecutorApiKey }
     $unauthorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products"
     $invalid = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers @{ "X-KJDS-API-Key" = "invalid" }
     $authorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers $headers
@@ -695,6 +702,36 @@ try {
         reason = "Independent target, snapshot, patch, and rollback review passed"
     } | ConvertTo-Json)
     $readyExecutionPlan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governed-execution-plans/$($executionPlan.id)" -Headers $headers
+    $limitedCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governed-execution-plans/$($executionPlan.id)/commands" -Method Post -Headers $headers
+    $limitedCommandRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governed-execution-plans/$($executionPlan.id)/commands" -Method Post -Headers $headers
+    $claimedCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($limitedCommand.id)/claim" -Method Post -Headers $executorHeaders -ContentType "application/json" -Body (@{
+        current_state_hash = $executionStateHash
+        lease_seconds = 120
+    } | ConvertTo-Json)
+    $resultingExecutionHash = "b" * 64
+    $executionReceipt = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($limitedCommand.id)/receipt" -Method Post -Headers $executorHeaders -ContentType "application/json" -Body (@{
+        outcome = "succeeded"
+        remote_operation_id = "g1-simulated-ozon-operation"
+        resulting_state_hash = $resultingExecutionHash
+        mutation_applied = $true
+        error_code = $null
+        error_detail = $null
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $rollbackCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($limitedCommand.id)/rollback" -Method Post -Headers $headers
+    $claimedRollback = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($rollbackCommand.id)/claim" -Method Post -Headers $executorHeaders -ContentType "application/json" -Body (@{
+        current_state_hash = $resultingExecutionHash
+        lease_seconds = 120
+    } | ConvertTo-Json)
+    $rollbackReceipt = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($rollbackCommand.id)/receipt" -Method Post -Headers $executorHeaders -ContentType "application/json" -Body (@{
+        outcome = "succeeded"
+        remote_operation_id = "g1-simulated-ozon-rollback"
+        resulting_state_hash = $executionStateHash
+        mutation_applied = $true
+        error_code = $null
+        error_detail = $null
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
     if (
         $policyReview.verdict -ne "accepted" -or
         $shadowRelease.stage.max_exposure_fraction -ne "0" -or
@@ -734,6 +771,29 @@ try {
         -not $result.governed_execution_dual_control
     ) {
         throw "Governed reversible execution planning smoke failed"
+    }
+    $result.limited_execution_command = (
+        $limitedCommand.id -eq $limitedCommandRetry.id -and
+        $limitedCommand.status -eq "queued" -and
+        $claimedCommand.status -eq "claimed" -and
+        $claimedCommand.idempotency_token.Length -eq 64
+    )
+    $result.limited_execution_receipt = (
+        $executionReceipt.outcome -eq "succeeded" -and
+        $executionReceipt.mutation_applied -eq $true
+    )
+    $result.compensating_rollback = (
+        $rollbackCommand.command_kind -eq "rollback" -and
+        $rollbackCommand.expected_state_hash -eq $resultingExecutionHash -and
+        $claimedRollback.status -eq "claimed" -and
+        $rollbackReceipt.outcome -eq "succeeded"
+    )
+    if (
+        -not $result.limited_execution_command -or
+        -not $result.limited_execution_receipt -or
+        -not $result.compensating_rollback
+    ) {
+        throw "Limited execution command, receipt, and rollback smoke failed"
     }
     $breachedGuardrail = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-experiments/$($experiment.id)/safety-checks" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         metric = "refund_rate"

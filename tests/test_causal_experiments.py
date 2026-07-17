@@ -17,6 +17,7 @@ from apps.control_plane.decision_contracts import DecisionContractService
 from apps.control_plane.decision_lifecycle import DecisionLifecycleService
 from apps.control_plane.evidence import EvidenceGrade, EvidenceService
 from apps.control_plane.execution_plans import ExecutionPlanService
+from apps.control_plane.limited_executor import LimitedExecutorService
 from apps.control_plane.policy_shadow import PolicyShadowService
 from apps.control_plane.repository import InMemoryRepository
 from apps.control_plane.services import CommerceService
@@ -43,6 +44,12 @@ def setup_services():
         evidence=evidence,
     )
     return engine, evidence, contracts, decisions, experiments
+
+
+class OpenKillSwitch:
+    @staticmethod
+    def ensure_writes_allowed() -> None:
+        return None
 
 
 def capture(evidence: EvidenceService, ref: str):
@@ -1062,6 +1069,106 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     ready_plan = execution_plans.get(plan["id"])
     assert ready_plan["ready_for_executor"] is True
     assert ready_plan["execution_eligible"] is False
+    executor = LimitedExecutorService(
+        engine=engine,
+        execution_plans=execution_plans,
+        evidence=evidence,
+        kill_switch=OpenKillSwitch(),
+        enabled=False,
+    )
+    with pytest.raises(ValueError, match="global execution gate"):
+        executor.queue(plan["id"], queued_by="execution-operator")
+    executor.enabled = True
+    command = executor.queue(plan["id"], queued_by="execution-operator")
+    assert command["status"] == "queued"
+    assert executor.queue(plan["id"], queued_by="execution-operator")["id"] == command["id"]
+    claimed = executor.claim(
+        command["id"],
+        current_state_hash=state_hash,
+        worker_id="ozon-worker",
+    )
+    assert claimed["status"] == "claimed"
+    resulting_hash = "b" * 64
+    receipt = executor.record_receipt(
+        command["id"],
+        outcome="succeeded",
+        remote_operation_id="ozon-operation-001",
+        resulting_state_hash=resulting_hash,
+        mutation_applied=True,
+        error_code=None,
+        error_detail=None,
+        evidence_ids=[source.id],
+        recorded_by="ozon-worker",
+    )
+    assert receipt["outcome"] == "succeeded"
+    assert executor.get(command["id"])["platform_write_performed"] is True
+    rollback = executor.request_rollback(command["id"], requested_by="risk-operator")
+    assert rollback["command_kind"] == "rollback"
+    assert rollback["expected_state_hash"] == resulting_hash
+    executor.claim(
+        rollback["id"],
+        current_state_hash=resulting_hash,
+        worker_id="ozon-worker",
+    )
+    rollback_receipt = executor.record_receipt(
+        rollback["id"],
+        outcome="succeeded",
+        remote_operation_id="ozon-rollback-001",
+        resulting_state_hash=state_hash,
+        mutation_applied=True,
+        error_code=None,
+        error_detail=None,
+        evidence_ids=[source.id],
+        recorded_by="ozon-worker",
+    )
+    assert rollback_receipt["outcome"] == "succeeded"
+    compensation_plan = execution_plans.create(
+        handoff["id"],
+        idempotency_key="listing-draft-compensation",
+        adapter_id="ozon.listing.draft.v1",
+        target={"listing_id": "ozon-listing-002"},
+        precondition_state_hash=state_hash,
+        intended_patch={"title": "部分失败标题"},
+        rollback_patch={"title": "原始标题"},
+        evidence_ids=[source.id],
+        created_by="compensation-planner",
+    )
+    execution_plans.dry_run(
+        compensation_plan["id"],
+        current_state_hash=state_hash,
+        evidence_ids=[source.id],
+        performed_by="dry-run-operator",
+    )
+    commerce.decide_approval(
+        compensation_plan["approval_id"],
+        approved=True,
+        decided_by="execution-approver",
+        reason="补偿场景执行计划通过复核",
+    )
+    failed_command = executor.queue(
+        compensation_plan["id"],
+        queued_by="execution-operator",
+    )
+    executor.claim(
+        failed_command["id"],
+        current_state_hash=state_hash,
+        worker_id="ozon-worker",
+    )
+    partial_hash = "c" * 64
+    failed_receipt = executor.record_receipt(
+        failed_command["id"],
+        outcome="failed",
+        remote_operation_id="ozon-operation-partial",
+        resulting_state_hash=partial_hash,
+        mutation_applied=True,
+        error_code="PARTIAL_UPDATE",
+        error_detail="平台确认部分字段已写入",
+        evidence_ids=[source.id],
+        recorded_by="ozon-worker",
+    )
+    auto_rollback = executor.get(failed_receipt["rollback_command_id"])
+    assert auto_rollback["command_kind"] == "rollback"
+    assert auto_rollback["expected_state_hash"] == partial_hash
 
     experiments.record_safety_check(
         protocol["id"],
