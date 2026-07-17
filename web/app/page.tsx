@@ -76,6 +76,23 @@ type SourcingComparison = {
   }>;
 };
 type ApprovalRecord = { id: string; action: string; resource_id: string; status: string; requested_by: string; payload: Record<string, unknown> };
+type SampleEvent = { id: string; sequence: number; event_type: string; effective_at: string; evidence_id: string; facts: Record<string, unknown> };
+type SampleOrder = {
+  id: string; approval_id: string; product_id: string; product: { sku: string; name: string };
+  offer_id: string; scenario_id: string; supplier_ref: string; quantity: number; currency: string;
+  unit_price: string; status: string; next_events: string[]; events: SampleEvent[];
+};
+type SupplierPerformance = {
+  supplier_ref: string; sample_order_count: number; completed_sample_count: number; rejected_sample_count: number;
+  quality_yield: string | null; delivery_completeness: string | null; on_time_rate: string | null;
+  score: string | null; evidence_count: number;
+};
+type BackupOption = {
+  offer: { id: string; supplier_ref: string; platform: string; unit_price: string; currency: string; min_order_quantity: number };
+  scenario: { id: string; cm3_cny: string; cm3_rate: string; break_even_price_rub: string };
+  supplier_performance: SupplierPerformance | null;
+  advisory_only: boolean;
+};
 type GateRequirement = {
   id: string;
   title: string;
@@ -94,6 +111,15 @@ type GateReadiness = {
 };
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
+const procurementStatusLabels: Record<string, string> = {
+  approved_to_order: "已批准，待确认样品单", order_confirmed: "供应商已确认", shipped: "样品运输中",
+  received: "样品已签收", inspected: "验货完成，待决定", rework_required: "需要返工复验",
+  golden_sample_approved: "黄金样已批准", sample_rejected: "样品已淘汰", cancelled: "样品单已取消",
+};
+const procurementEventLabels: Record<string, string> = {
+  order_confirmed: "确认样品订单", shipped: "记录发货", received: "记录签收", inspection_completed: "完成验货",
+  golden_sample_approved: "批准黄金样", sample_rejected: "淘汰样品", rework_required: "要求返工", cancelled: "取消",
+};
 
 const nav = [
   [LayoutDashboard, "经营总览", true],
@@ -115,6 +141,10 @@ export default function Home() {
   const [products, setProducts] = useState<ProductIdentity[]>([]);
   const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
+  const [sampleOrders, setSampleOrders] = useState<SampleOrder[]>([]);
+  const [supplierPerformance, setSupplierPerformance] = useState<SupplierPerformance[]>([]);
+  const [backupOptions, setBackupOptions] = useState<Record<string, BackupOption[]>>({});
+  const [backupRationales, setBackupRationales] = useState<Record<string, string>>({});
   const [skuReadiness, setSkuReadiness] = useState<ProductReadiness[]>([]);
   const [passportReviews, setPassportReviews] = useState<PassportReview[]>([]);
   const [gateReadiness, setGateReadiness] = useState<GateReadiness | null>(null);
@@ -125,10 +155,11 @@ export default function Home() {
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [sourcingUploading, setSourcingUploading] = useState(false);
   const [procurementDrafts, setProcurementDrafts] = useState<Record<string, { quantity: string; rationale: string }>>({});
+  const [procurementBusy, setProcurementBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -137,6 +168,8 @@ export default function Home() {
       fetch("/backend/v1/operations/readiness", { cache: "no-store" }),
       fetch("/backend/v1/passport-reviews", { cache: "no-store" }),
       fetch("/backend/v1/approvals", { cache: "no-store" }),
+      fetch("/backend/v1/procurement/sample-orders", { cache: "no-store" }),
+      fetch("/backend/v1/procurement/suppliers/performance", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -145,6 +178,8 @@ export default function Home() {
     if (gateResponse.ok) setGateReadiness(await gateResponse.json());
     if (reviewResponse.ok) setPassportReviews(await reviewResponse.json());
     if (approvalsResponse.ok) setApprovals(await approvalsResponse.json());
+    if (sampleOrdersResponse.ok) setSampleOrders(await sampleOrdersResponse.json());
+    if (supplierPerformanceResponse.ok) setSupplierPerformance(await supplierPerformanceResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -347,9 +382,91 @@ export default function Home() {
     } catch { setNotice("无法提交采购审批，请检查服务状态"); }
   }
 
+  async function createSampleOrder(approvalId: string) {
+    setProcurementBusy(approvalId);
+    setNotice("正在把已批准的采购候选转为受控样品单…");
+    try {
+      const response = await fetch("/backend/v1/procurement/sample-orders", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approval_id: approvalId }),
+      });
+      const result = await response.json();
+      setNotice(response.ok ? `${result.product.sku} 样品单已建立，等待供应商确认` : result.detail ?? "样品单建立失败");
+      if (response.ok) await load();
+    } catch { setNotice("无法建立样品单，请检查服务状态"); }
+    finally { setProcurementBusy(null); }
+  }
+
+  async function recordSampleEvent(event: FormEvent<HTMLFormElement>, order: SampleOrder) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const file = (form.elements.namedItem("event_evidence") as HTMLInputElement).files?.[0];
+    if (!file) return;
+    let eventType = order.next_events.find((item) => item !== "cancelled") ?? "";
+    const facts: Record<string, string | number> = {};
+    if (order.status === "approved_to_order") {
+      facts.supplier_order_ref = value("supplier_order_ref"); facts.promised_delivery_at = value("promised_delivery_at");
+    } else if (order.status === "order_confirmed") {
+      facts.tracking_ref = value("tracking_ref"); facts.carrier = value("carrier");
+    } else if (order.status === "shipped") {
+      facts.received_quantity = Number(value("received_quantity")); facts.damaged_quantity = Number(value("damaged_quantity"));
+    } else if (order.status === "received" || order.status === "rework_required") {
+      facts.inspected_quantity = Number(value("inspected_quantity")); facts.passed_quantity = Number(value("passed_quantity"));
+      facts.defect_count = Number(value("defect_count")); facts.result = value("inspection_result");
+    } else if (order.status === "inspected") {
+      eventType = value("sample_decision");
+      if (eventType === "golden_sample_approved") facts.golden_sample_ref = value("decision_detail");
+      else facts.reason = value("decision_detail");
+    }
+    if (!eventType) { setNotice("当前样品单没有可执行的下一步"); return; }
+    const body = new FormData();
+    body.append("event_type", eventType); body.append("effective_at", new Date().toISOString());
+    body.append("facts_json", JSON.stringify(facts)); body.append("file", file);
+    setProcurementBusy(order.id);
+    setNotice(`正在固化“${procurementEventLabels[eventType] ?? eventType}”证据…`);
+    try {
+      const response = await fetch(`/backend/v1/procurement/sample-orders/${order.id}/events`, { method: "POST", body });
+      const result = await response.json();
+      setNotice(response.ok ? `${order.product.sku} 已更新：${procurementStatusLabels[result.status] ?? result.status}` : result.detail ?? "样品进度提交失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法记录样品进度，请检查服务状态"); }
+    finally { setProcurementBusy(null); }
+  }
+
+  async function loadBackupOptions(orderId: string) {
+    setProcurementBusy(orderId);
+    try {
+      const response = await fetch(`/backend/v1/procurement/sample-orders/${orderId}/backup-options`, { cache: "no-store" });
+      const result = await response.json();
+      if (response.ok) {
+        setBackupOptions((current) => ({ ...current, [orderId]: result.options }));
+        setNotice(result.options.length ? `已找到 ${result.options.length} 个正 CM3 备用方案，切换仍需重新审批` : "没有满足正 CM3 条件的备用供应商");
+      } else setNotice(result.detail ?? "备用方案读取失败");
+    } catch { setNotice("无法读取备用供应商，请检查服务状态"); }
+    finally { setProcurementBusy(null); }
+  }
+
+  async function requestBackupProcurement(order: SampleOrder, option: BackupOption) {
+    const key = `${order.id}:${option.offer.id}`;
+    const rationale = (backupRationales[key] ?? "").trim();
+    if (!rationale) { setNotice("备用供应商切换必须填写明确理由"); return; }
+    setProcurementBusy(order.id);
+    try {
+      const response = await fetch("/backend/v1/sourcing/procurement-candidates", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: order.product_id, offer_id: option.offer.id, scenario_id: option.scenario.id, quantity: Math.max(order.quantity, option.offer.min_order_quantity), rationale: `备用切换：${rationale}` }),
+      });
+      const result = await response.json();
+      setNotice(response.ok ? `备用方案已进入全新双人审批：${result.id}` : result.detail ?? "备用方案提交失败");
+      if (response.ok) await load();
+    } catch { setNotice("无法提交备用方案审批，请检查服务状态"); }
+    finally { setProcurementBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
+  const approvedWithoutSample = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "approved" && !sampleOrders.some((order) => order.approval_id === item.id));
 
   return (
     <main className="shell">
@@ -519,6 +636,51 @@ export default function Home() {
             </article>;
           })}</div></div>)}
         </section>}
+
+        <section className="procurement-panel">
+          <div className="panel-title">
+            <div><p className="eyebrow">SAMPLE PROCUREMENT</p><h3>样品采购与供应商验证</h3></div>
+            <span className="gate ready">每一步必须有证据</span>
+          </div>
+          <div className="procurement-guardrail"><ShieldCheck size={17} /><p><strong>真实付款不会自动执行。</strong><span>已批准候选只能建立样品跟踪；供应商切换会生成一项新的双人审批。</span></p></div>
+          {approvedWithoutSample.length > 0 && <div className="approved-order-queue">
+            <strong>已通过双人审批，等待建立样品单</strong>
+            {approvedWithoutSample.map((approval) => <button key={approval.id} disabled={procurementBusy === approval.id} onClick={() => createSampleOrder(approval.id)}>
+              {procurementBusy === approval.id ? "正在建立…" : `建立样品单 · ${String(approval.payload.quantity ?? "-")} 件`}
+            </button>)}
+          </div>}
+          {sampleOrders.length ? <div className="sample-order-grid">{sampleOrders.map((order) => {
+            const performance = supplierPerformance.find((item) => item.supplier_ref === order.supplier_ref);
+            const terminal = order.next_events.length === 0;
+            return <article className="sample-order-card" key={order.id}>
+              <div className="sample-order-head"><div><strong>{order.product.sku} · {order.product.name}</strong><small>{order.supplier_ref} · {order.quantity} 件 · {order.unit_price} {order.currency}/件</small></div><span className={`sample-state ${terminal ? "terminal" : ""}`}>{procurementStatusLabels[order.status] ?? order.status}</span></div>
+              <div className="sample-progress">{["确认", "发货", "签收", "验货", "定样"].map((label, index) => <span className={order.events.length > index ? "done" : ""} key={label}>{label}</span>)}</div>
+              <div className="sample-facts">
+                <div><span>证据事件</span><b>{order.events.length}</b></div><div><span>供应商评分</span><b>{performance?.score ? `${performance.score} 分` : "待形成"}</b></div><div><span>样品成功</span><b>{performance ? `${performance.completed_sample_count}/${performance.sample_order_count}` : "-"}</b></div>
+              </div>
+              {order.events.length > 0 && <details className="sample-timeline"><summary>查看不可变进度记录</summary><ol>{order.events.map((item) => <li key={item.id}><span>{item.sequence}</span><div><strong>{procurementEventLabels[item.event_type] ?? item.event_type}</strong><small>{new Date(item.effective_at).toLocaleString("zh-CN")} · 证据 {item.evidence_id.slice(-8)}</small></div></li>)}</ol></details>}
+              {!terminal && <form className="sample-event-form" onSubmit={(event) => recordSampleEvent(event, order)}>
+                <strong>下一步：{order.status === "inspected" ? "形成样品决定" : procurementEventLabels[order.next_events.find((item) => item !== "cancelled") ?? ""]}</strong>
+                {order.status === "approved_to_order" && <div className="sample-event-fields"><label>供应商订单号<input name="supplier_order_ref" required /></label><label>承诺交付时间<input name="promised_delivery_at" type="datetime-local" required /></label></div>}
+                {order.status === "order_confirmed" && <div className="sample-event-fields"><label>物流单号<input name="tracking_ref" required /></label><label>承运商<input name="carrier" required /></label></div>}
+                {order.status === "shipped" && <div className="sample-event-fields"><label>签收数量<input name="received_quantity" type="number" min="0" max={order.quantity} defaultValue={order.quantity} required /></label><label>破损数量<input name="damaged_quantity" type="number" min="0" defaultValue="0" required /></label></div>}
+                {(order.status === "received" || order.status === "rework_required") && <div className="sample-event-fields"><label>验货数量<input name="inspected_quantity" type="number" min="1" max={order.quantity} defaultValue={order.quantity} required /></label><label>通过数量<input name="passed_quantity" type="number" min="0" max={order.quantity} defaultValue={order.quantity} required /></label><label>缺陷数<input name="defect_count" type="number" min="0" defaultValue="0" required /></label><label>验货结论<select name="inspection_result" defaultValue="passed"><option value="passed">通过</option><option value="failed">不通过</option><option value="rework">需返工</option></select></label></div>}
+                {order.status === "inspected" && <div className="sample-event-fields"><label>样品决定<select name="sample_decision" defaultValue="golden_sample_approved"><option value="golden_sample_approved">批准为黄金样</option><option value="rework_required">要求返工</option><option value="sample_rejected">淘汰供应商样品</option></select></label><label>黄金样编号 / 决定原因<input name="decision_detail" required /></label></div>}
+                <label className="sample-evidence">本步原始证据<input name="event_evidence" type="file" required /></label>
+                <button disabled={procurementBusy === order.id}>{procurementBusy === order.id ? "正在固化…" : "提交进度与证据"}</button>
+              </form>}
+              <div className="backup-control">
+                <button className="secondary" disabled={procurementBusy === order.id} onClick={() => loadBackupOptions(order.id)}>查看备用供应商</button>
+                <small>只提供建议，不自动切换</small>
+              </div>
+              {backupOptions[order.id] && <div className="backup-list">{backupOptions[order.id].length ? backupOptions[order.id].map((option) => {
+                const rationaleKey = `${order.id}:${option.offer.id}`;
+                return <div key={option.offer.id}><div><strong>{option.offer.supplier_ref}</strong><small>{option.offer.unit_price} {option.offer.currency} · MOQ {option.offer.min_order_quantity} · CM3 {option.scenario.cm3_cny} CNY</small><input value={backupRationales[rationaleKey] ?? ""} onChange={(event) => setBackupRationales((current) => ({ ...current, [rationaleKey]: event.target.value }))} placeholder="填写切换理由" /></div><button disabled={procurementBusy === order.id} onClick={() => requestBackupProcurement(order, option)}>重新提交审批</button></div>;
+              }) : <p>暂无正 CM3 备用方案。</p>}</div>}
+            </article>;
+          })}</div> : <div className="empty"><Boxes size={25} /><strong>还没有受控样品单</strong><p>三家比价通过、Passport 批准并完成双人采购审批后，才会进入这里。</p></div>}
+          {supplierPerformance.length > 0 && <div className="supplier-scoreboard"><strong>供应商实绩榜</strong><div>{supplierPerformance.map((item) => <article key={item.supplier_ref}><span>{item.supplier_ref}</span><b>{item.score ? `${item.score} 分` : "数据不足"}</b><small>质量 {item.quality_yield ? `${(Number(item.quality_yield) * 100).toFixed(0)}%` : "-"} · 准时 {item.on_time_rate ? `${(Number(item.on_time_rate) * 100).toFixed(0)}%` : "-"} · {item.evidence_count} 份证据</small></article>)}</div></div>}
+        </section>
 
         <section className="metrics">
           <article><span className="metric-icon green"><CircleDollarSign /></span><div><p>CM3 净利润</p><strong>待导入</strong><small>真实费用齐全后计算</small></div></article>

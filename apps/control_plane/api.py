@@ -24,6 +24,7 @@ from .imports import MAX_IMPORT_BYTES, OzonImportService
 from .intake import PassportEvidencePayload, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .ozon_contracts import contract_catalog
+from .procurement import ProcurementService
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
 from .readiness import GateReadinessService
 from .repository import InMemoryRepository
@@ -42,7 +43,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.12.0"
+APP_VERSION = "0.13.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -66,6 +67,13 @@ automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_
 sourcing_store = SqlSourcingStore(engine)
 sourcing = SourcingService(sourcing_store, repo, evidence_validator=evidence.require_valid)
 sourcing_intake = SupplierComparisonIntakeService(sourcing=sourcing, evidence=evidence)
+procurement = ProcurementService(
+    engine=engine,
+    repository=repo,
+    sourcing_store=sourcing_store,
+    sourcing=sourcing,
+    evidence=evidence,
+)
 readiness = GateReadinessService(
     commerce=commerce,
     sourcing_store=sourcing_store,
@@ -304,6 +312,12 @@ class ProcurementCandidateInput(BaseModel):
     scenario_id: str
     quantity: int = Field(ge=1)
     rationale: str = Field(min_length=1, max_length=2000)
+
+
+class SampleOrderInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approval_id: str = Field(min_length=1)
 
 
 class OzonListingDraftInput(BaseModel):
@@ -764,6 +778,81 @@ def request_procurement_candidate(
         )
 
     return run(request)
+
+
+@app.post("/v1/procurement/sample-orders", status_code=201)
+def create_sample_purchase_order(
+    body: SampleOrderInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(lambda: procurement.create_sample_order(body.approval_id, created_by=principal.actor_id))
+
+
+@app.get("/v1/procurement/sample-orders")
+def list_sample_purchase_orders(limit: int = 100):
+    return run(lambda: procurement.list_orders(limit))
+
+
+@app.get("/v1/procurement/sample-orders/{order_id}")
+def get_sample_purchase_order(order_id: str):
+    return run(lambda: procurement.get_order(order_id))
+
+
+@app.post("/v1/procurement/sample-orders/{order_id}/events", status_code=201)
+async def record_sample_procurement_event(
+    order_id: str,
+    event_type: Annotated[str, Form()],
+    effective_at: Annotated[str, Form()],
+    facts_json: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    try:
+        event_facts = json.loads(facts_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="facts_json must be valid JSON") from exc
+    if not isinstance(event_facts, dict):
+        raise HTTPException(status_code=422, detail="facts_json must be a JSON object")
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    content = await file.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Event evidence exceeds {max_bytes} bytes")
+    digest = hashlib.sha256(content).hexdigest()
+    def capture_and_record():
+        record = evidence.capture(
+            content=content,
+            filename=file.filename or f"{event_type}-evidence.bin",
+            content_type=file.content_type or "application/octet-stream",
+            source="sample_procurement",
+            source_ref=f"sample-procurement://{order_id}/{event_type}/sha256/{digest}",
+            grade=EvidenceGrade.A,
+            effective_at=effective_at,
+            effective_until=None,
+            created_by=principal.actor_id,
+            metadata={"sample_order_id": order_id, "event_type": event_type},
+        )
+        return procurement.record_event(
+            order_id,
+            event_type=event_type,
+            effective_at=effective_at,
+            evidence_id=record.id,
+            facts=event_facts,
+            created_by=principal.actor_id,
+        )
+
+    return run(capture_and_record)
+
+
+@app.get("/v1/procurement/suppliers/performance")
+def supplier_performance():
+    return run(procurement.supplier_performance)
+
+
+@app.get("/v1/procurement/sample-orders/{order_id}/backup-options")
+def sample_order_backup_options(order_id: str):
+    return run(lambda: procurement.backup_options(order_id))
 
 
 @app.post("/v1/sourcing/profit-scenarios", status_code=201)

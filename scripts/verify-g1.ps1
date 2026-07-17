@@ -125,6 +125,8 @@ $result = [ordered]@{
     passport_human_review = $false
     supplier_comparison_intake = $false
     procurement_dual_control = $false
+    sample_procurement_lifecycle = $false
+    supplier_performance_backup = $false
     sourcing_evidence_gate = $false
     operations_readiness = $false
     passport_evidence_gate = $false
@@ -177,14 +179,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0010.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260716_0011.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260716_0010"
+    $result.migration = "20260716_0011"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0009")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0010")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0009") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0010") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -555,6 +557,47 @@ try {
         throw "Procurement dual-control approval smoke failed"
     }
     $result.procurement_dual_control = $true
+
+    $sampleOrder = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/procurement/sample-orders" -Method Post -Headers $headers -ContentType "application/json" -Body (@{ approval_id = $procurementApproval.id } | ConvertTo-Json)
+    $sampleOrderRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/procurement/sample-orders" -Method Post -Headers $headers -ContentType "application/json" -Body (@{ approval_id = $procurementApproval.id } | ConvertTo-Json)
+    $sampleEvents = @(
+        @{ type = "order_confirmed"; at = "2026-07-16T01:00:00+00:00"; facts = @{ supplier_order_ref = "G1-PO-1001"; promised_delivery_at = "2026-07-20T00:00:00+00:00" } },
+        @{ type = "shipped"; at = "2026-07-17T00:00:00+00:00"; facts = @{ tracking_ref = "G1-TRACKING"; carrier = "G1 carrier" } },
+        @{ type = "received"; at = "2026-07-19T00:00:00+00:00"; facts = @{ received_quantity = $selectedOffer.min_order_quantity; damaged_quantity = 0 } },
+        @{ type = "inspection_completed"; at = "2026-07-19T01:00:00+00:00"; facts = @{ inspected_quantity = 10; passed_quantity = 10; defect_count = 0; result = "passed" } },
+        @{ type = "golden_sample_approved"; at = "2026-07-19T02:00:00+00:00"; facts = @{ golden_sample_ref = "G1-GOLDEN-SAMPLE" } }
+    )
+    $sampleTimeline = $sampleOrder
+    foreach ($sampleEvent in $sampleEvents) {
+        $sampleTimeline = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/procurement/sample-orders/$($sampleOrder.id)/events" -Method Post -Headers $headers -Form @{
+            event_type = $sampleEvent.type
+            effective_at = $sampleEvent.at
+            facts_json = $sampleEvent.facts | ConvertTo-Json -Compress
+            file = Get-Item $EvidenceSmokeFile
+        }
+    }
+    $sampleOrders = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/procurement/sample-orders" -Headers $headers
+    if (
+        $sampleOrder.id -ne $sampleOrderRetry.id -or
+        $sampleTimeline.status -ne "golden_sample_approved" -or
+        $sampleTimeline.events.Count -ne 5 -or
+        -not ($sampleOrders | Where-Object { $_.id -eq $sampleOrder.id })
+    ) {
+        throw "Evidence-backed sample procurement lifecycle smoke failed"
+    }
+    $result.sample_procurement_lifecycle = $true
+
+    $supplierPerformance = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/procurement/suppliers/performance" -Headers $headers
+    $selectedPerformance = $supplierPerformance | Where-Object { $_.supplier_ref -eq $selectedOffer.supplier_ref }
+    $backupOptions = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/procurement/sample-orders/$($sampleOrder.id)/backup-options" -Headers $headers
+    if (
+        $selectedPerformance.score -ne "100.0" -or
+        $backupOptions.automatic_switch -ne $false -or
+        $backupOptions.options.Count -lt 2
+    ) {
+        throw "Supplier performance or controlled backup recommendation smoke failed"
+    }
+    $result.supplier_performance_backup = $true
 
     $orderExternalId = "G1-ORDER-" + [guid]::NewGuid().ToString("N")
     @(

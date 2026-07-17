@@ -33,6 +33,7 @@ apps/control_plane/
   sourcing.py         全球供货商品、物流利润和上架草稿规则
   source_connectors.py 平台能力目录
   sourcing_store.py   Supabase/PostgreSQL 持久化适配器
+  procurement.py      样品采购状态机、供应商实绩与备用方案
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -72,6 +73,8 @@ tests/
 `GET /v1/passport-reviews` 返回当前待审核队列；`POST /v1/products/{product_id}/passports/{kind}/review` 只允许审核角色提交批准、拒绝或阻断结论。审核会创建不可变新版本，使用预期版本防止覆盖并发修改，阻断或拒绝必须填写原因，重复提交同一结论可安全恢复原结果。
 
 `POST /v1/sourcing/comparison-intake` 一次接收同一 SKU 的三家独立供应商报价、三份原始报价文件和一份共同利润假设证据，并为每家生成可比 CM3。`GET /v1/sourcing/comparisons/{product_id}` 返回排序后的报价比较；只有三家证据化供应商、完整利润场景、正 CM3 和三本已批准 Passport 同时满足时，`POST /v1/sourcing/procurement-candidates` 才能建立采购审批。采购申请仍须由不同身份通过双人控制，不会直接下单。
+
+双人批准后的候选可通过 `POST /v1/procurement/sample-orders` 建立受控样品单；确认、发货、签收、验货、黄金样批准/淘汰均通过只可追加的证据事件推进。`GET /v1/procurement/suppliers/performance` 只用实际样品事件计算质量、交付完整度和准时率；备用供应商接口只返回正 CM3 建议，任何切换都会重新创建采购审批，系统不自动付款或替换供应商。
 
 ## Ozon 数据合同与正式事实
 
