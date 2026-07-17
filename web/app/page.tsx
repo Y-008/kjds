@@ -124,6 +124,16 @@ type DecisionContract = {
   missing_inputs: string[]; status: string; execution_eligible: boolean;
   requires_human_approval: boolean; requested_by: string; created_at: string;
 };
+type DecisionAnalysis = {
+  id: string; contract_id: string; conclusion: string; recommended_option_id: string | null;
+  confidence: string; forecast: null | { metric: string; value: string; low: string; high: string; unit: string; due_at: string };
+  assumptions: string[]; unknowns: string[]; evidence_ids: string[]; model_ref: string | null;
+  submitted_by: string; execution_eligible: boolean; created_at: string;
+};
+type DecisionReview = { id: string; analysis_id: string; verdict: string; rationale: string; counterarguments: string[]; evidence_ids: string[]; reviewed_by: string; created_at: string };
+type DecisionResolution = { id: string; contract_id: string; analysis_id: string; disposition: string; rationale: string; conditions: string[]; decided_by: string; execution_eligible: boolean; created_at: string };
+type DecisionOutcome = { id: string; resolution_id: string; metric: string; predicted_value: string; interval_low: string; interval_high: string; actual_value: string; unit: string; signed_error: string; absolute_error: string; interval_covered: boolean; observed_at: string; evidence_ids: string[]; notes: string; recorded_by: string; created_at: string };
+type DecisionCalibration = { metric: string; unit: string; outcome_count: number; mean_absolute_error: string; mean_absolute_percentage_error: string | null; interval_coverage: string };
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -171,8 +181,15 @@ export default function Home() {
   const [evidenceRecords, setEvidenceRecords] = useState<EvidenceSummary[]>([]);
   const [interactionProfiles, setInteractionProfiles] = useState<InteractionProfile[]>([]);
   const [decisionContracts, setDecisionContracts] = useState<DecisionContract[]>([]);
+  const [decisionAnalyses, setDecisionAnalyses] = useState<DecisionAnalysis[]>([]);
+  const [decisionReviews, setDecisionReviews] = useState<Record<string, DecisionReview[]>>({});
+  const [decisionResolutions, setDecisionResolutions] = useState<DecisionResolution[]>([]);
+  const [decisionOutcomes, setDecisionOutcomes] = useState<DecisionOutcome[]>([]);
+  const [decisionCalibration, setDecisionCalibration] = useState<DecisionCalibration[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
+  const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [gateUploading, setGateUploading] = useState(false);
   const [skuUploading, setSkuUploading] = useState(false);
@@ -184,7 +201,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -198,6 +215,10 @@ export default function Home() {
       fetch("/backend/v1/evidence", { cache: "no-store" }),
       fetch("/backend/v1/interaction-profiles", { cache: "no-store" }),
       fetch("/backend/v1/decision-contracts", { cache: "no-store" }),
+      fetch("/backend/v1/decision-analyses", { cache: "no-store" }),
+      fetch("/backend/v1/decision-resolutions", { cache: "no-store" }),
+      fetch("/backend/v1/decision-outcomes", { cache: "no-store" }),
+      fetch("/backend/v1/decision-calibration", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -211,6 +232,18 @@ export default function Home() {
     if (evidenceResponse.ok) setEvidenceRecords(await evidenceResponse.json());
     if (profileResponse.ok) setInteractionProfiles(await profileResponse.json());
     if (contractResponse.ok) setDecisionContracts(await contractResponse.json());
+    if (analysisResponse.ok) {
+      const rows: DecisionAnalysis[] = await analysisResponse.json();
+      setDecisionAnalyses(rows);
+      const reviews = await Promise.all(rows.map(async (item) => {
+        const response = await fetch(`/backend/v1/decision-analyses/${item.id}/reviews`, { cache: "no-store" });
+        return [item.id, response.ok ? await response.json() as DecisionReview[] : []] as const;
+      }));
+      setDecisionReviews(Object.fromEntries(reviews));
+    }
+    if (resolutionResponse.ok) setDecisionResolutions(await resolutionResponse.json());
+    if (outcomeResponse.ok) setDecisionOutcomes(await outcomeResponse.json());
+    if (calibrationResponse.ok) setDecisionCalibration(await calibrationResponse.json());
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -542,11 +575,86 @@ export default function Home() {
     finally { setDecisionBusy(false); }
   }
 
+  async function submitDecisionAnalysis(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+    const lines = (name: string) => value(name).split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    const contractId = value("analysis_contract_id");
+    const dueValue = value("analysis_due_at");
+    const body = {
+      conclusion: value("analysis_conclusion"), confidence: value("analysis_confidence"),
+      recommended_option_id: value("analysis_option_id") || null,
+      forecast_metric: value("analysis_metric"), forecast_value: value("analysis_value"),
+      forecast_low: value("analysis_low"), forecast_high: value("analysis_high"),
+      forecast_unit: value("analysis_unit"), forecast_due_at: dueValue ? new Date(dueValue).toISOString() : null,
+      assumptions: lines("analysis_assumptions"), unknowns: lines("analysis_unknowns"),
+      evidence_ids: [value("analysis_evidence")].filter(Boolean), model_ref: value("analysis_model_ref") || null,
+    };
+    setLifecycleBusy("analysis"); setNotice("正在固化分析、预测区间与证据…");
+    try {
+      const response = await fetch(`/backend/v1/decision-contracts/${contractId}/analyses`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `分析 ${result.id} 已提交，必须由另一身份独立复核；仍无执行权。` : result.detail ?? "分析提交失败");
+      if (response.ok) { form.reset(); setSelectedAnalysisContractId(""); await load(); }
+    } catch { setNotice("无法提交分析，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function reviewDecisionAnalysis(event: FormEvent<HTMLFormElement>, analysisId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+    const evidenceId = value("review_evidence");
+    const body = { verdict: value("review_verdict"), rationale: value("review_rationale"), counterarguments: value("review_counterarguments").split(/\r?\n/).map((item) => item.trim()).filter(Boolean), evidence_ids: evidenceId ? [evidenceId] : [] };
+    setLifecycleBusy(analysisId); setNotice("正在固化独立复核结论…");
+    try {
+      const response = await fetch(`/backend/v1/decision-analyses/${analysisId}/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `独立复核已记录：${result.verdict}` : result.detail ?? "复核提交失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法提交独立复核，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function resolveDecisionAnalysis(event: FormEvent<HTMLFormElement>, analysis: DecisionAnalysis) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+    const body = { analysis_id: analysis.id, disposition: value("resolution_disposition"), rationale: value("resolution_rationale"), conditions: value("resolution_conditions").split(/\r?\n/).map((item) => item.trim()).filter(Boolean) };
+    setLifecycleBusy(analysis.id); setNotice("正在记录正式决策；这仍不会执行经营动作…");
+    try {
+      const response = await fetch(`/backend/v1/decision-contracts/${analysis.contract_id}/resolution`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `正式决策已固化：${result.disposition}；执行仍需另行审批。` : result.detail ?? "正式决策提交失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法记录正式决策，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
+  async function recordDecisionOutcome(event: FormEvent<HTMLFormElement>, resolutionId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+    const observedAt = value("outcome_observed_at");
+    const body = { actual_value: value("outcome_actual"), observed_at: new Date(observedAt).toISOString(), evidence_ids: [value("outcome_evidence")].filter(Boolean), notes: value("outcome_notes") };
+    setLifecycleBusy(resolutionId); setNotice("正在回填真实结果并计算预测误差…");
+    try {
+      const response = await fetch(`/backend/v1/decision-resolutions/${resolutionId}/outcome`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      setNotice(response.ok ? `结果已回填：误差 ${result.signed_error} ${result.unit}，区间${result.interval_covered ? "命中" : "未命中"}。` : result.detail ?? "结果回填失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch { setNotice("无法回填结果，请检查服务状态"); }
+    finally { setLifecycleBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
   const approvedWithoutSample = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "approved" && !sampleOrders.some((order) => order.approval_id === item.id));
   const selectedProfile = interactionProfiles.find((item) => item.id === selectedProfileId);
+  const selectedAnalysisContract = decisionContracts.find((item) => item.id === selectedAnalysisContractId);
+  const analysisOptions = Array.isArray(selectedAnalysisContract?.input.options) ? selectedAnalysisContract.input.options as Array<{ id?: string; label?: string }> : [];
 
   return (
     <main className="shell">
@@ -628,6 +736,83 @@ export default function Home() {
                 {contract.missing_inputs.length > 0 && <p>待补：{contract.missing_inputs.join("、")}</p>}
                 <footer><span>{contract.evidence_ids.length} 份证据</span><em>{contract.requires_human_approval ? "必须人工审批" : "分析合同"}</em><b>无执行权</b></footer>
               </article>) : <div className="empty"><BrainCircuit size={25} /><strong>还没有决策合同</strong><p>先选择工作方式，再把第一个真实经营问题提交进来。</p></div>}
+            </div>
+          </div>
+        </section>
+
+        <section className="decision-lifecycle-panel">
+          <div className="panel-title">
+            <div><p className="eyebrow">DECISION LEARNING LOOP</p><h3>分析 → 独立复核 → 正式决定 → 结果回填</h3></div>
+            <span className="badge">分权留痕 · 预测可校准</span>
+          </div>
+          <div className="lifecycle-summary">
+            <article><span>分析</span><b>{decisionAnalyses.length}</b><small>提交人不能自审</small></article>
+            <article><span>正式决定</span><b>{decisionResolutions.length}</b><small>仍然没有执行权</small></article>
+            <article><span>真实结果</span><b>{decisionOutcomes.length}</b><small>证据到期后回填</small></article>
+            <article><span>区间命中率</span><b>{decisionCalibration.length ? `${(Number(decisionCalibration[0].interval_coverage) * 100).toFixed(0)}%` : "待形成"}</b><small>{decisionCalibration.length ? `${decisionCalibration[0].outcome_count} 次可核验预测` : "先完成一次结果闭环"}</small></article>
+          </div>
+          <div className="lifecycle-grid">
+            <form className="lifecycle-form" onSubmit={submitDecisionAnalysis}>
+              <div className="lifecycle-form-title"><span>1</span><div><strong>提交证据化分析</strong><small>必须先给出预测值、区间和回填日期</small></div></div>
+              <label>可分析合同<select name="analysis_contract_id" value={selectedAnalysisContractId} onChange={(event) => setSelectedAnalysisContractId(event.target.value)} required><option value="">选择一份已就绪合同</option>{decisionContracts.filter((item) => item.status === "ready_for_analysis" && ["decision_review", "probabilistic_forecast"].includes(item.profile_id)).map((item) => <option value={item.id} key={item.id}>{item.objective}</option>)}</select></label>
+              {selectedAnalysisContract?.profile_id === "decision_review" && <label>推荐方案<select name="analysis_option_id" defaultValue="" required><option value="">选择合同中的方案</option>{analysisOptions.map((item) => <option value={item.id} key={item.id}>{item.id} · {item.label}</option>)}</select></label>}
+              <label>分析结论<textarea name="analysis_conclusion" placeholder="结论必须说明为什么，并保留未知项" required /></label>
+              <div className="lifecycle-pair"><label>置信度<input name="analysis_confidence" type="number" min="0" max="1" step="0.01" defaultValue="0.6" required /></label><label>预测指标<input name="analysis_metric" placeholder="例如 30天 CM3" required /></label></div>
+              <div className="lifecycle-triple"><label>预测值<input name="analysis_value" type="number" step="0.01" required /></label><label>下界<input name="analysis_low" type="number" step="0.01" required /></label><label>上界<input name="analysis_high" type="number" step="0.01" required /></label></div>
+              <div className="lifecycle-pair"><label>单位<input name="analysis_unit" defaultValue="CNY" required /></label><label>结果回填时间<input name="analysis_due_at" type="datetime-local" required /></label></div>
+              <label>分析证据<select name="analysis_evidence" defaultValue="" required><option value="">选择原始证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select></label>
+              <label>分析者 / 模型版本<input name="analysis_model_ref" placeholder="例如 human+qwen-v3" /></label>
+              <label>关键假设（每行一个）<textarea name="analysis_assumptions" /></label><label>剩余未知项（每行一个）<textarea name="analysis_unknowns" /></label>
+              <button disabled={lifecycleBusy === "analysis" || !selectedAnalysisContractId}>{lifecycleBusy === "analysis" ? "正在固化…" : "提交分析，进入独立复核"}</button>
+            </form>
+
+            <div className="analysis-review-queue">
+              <div className="lifecycle-form-title"><span>2</span><div><strong>独立复核与正式决定</strong><small>分析者、复核者、重大决策者按风险分离</small></div></div>
+              {decisionAnalyses.length ? decisionAnalyses.slice(0, 4).map((item) => {
+                const reviews = decisionReviews[item.id] ?? [];
+                const contract = decisionContracts.find((row) => row.id === item.contract_id);
+                const blocking = reviews.some((row) => row.verdict !== "accepted");
+                const requiredReviews = contract?.risk_level === "critical" ? 2 : 1;
+                const acceptedCount = reviews.filter((row) => row.verdict === "accepted").length;
+                const resolution = decisionResolutions.find((row) => row.analysis_id === item.id);
+                return <article className="analysis-review-card" key={item.id}>
+                  <div className="analysis-review-head"><div><strong>{item.conclusion}</strong><small>{contract?.risk_level ?? "-"} · 置信度 {(Number(item.confidence) * 100).toFixed(0)}% · {item.submitted_by}</small></div><span>{resolution ? "已决定" : blocking ? "需重做" : `${acceptedCount}/${requiredReviews} 复核`}</span></div>
+                  {item.forecast && <p>预测 {item.forecast.value} {item.forecast.unit} · 区间 {item.forecast.low}–{item.forecast.high} · {new Date(item.forecast.due_at).toLocaleDateString("zh-CN")} 回填</p>}
+                  {reviews.map((review) => <div className={`review-result ${review.verdict}`} key={review.id}><b>{review.verdict}</b><span>{review.rationale}</span><small>{review.reviewed_by}</small></div>)}
+                  {!blocking && !resolution && acceptedCount < requiredReviews && <form className="mini-lifecycle-form" onSubmit={(event) => reviewDecisionAnalysis(event, item.id)}>
+                    <select name="review_verdict" defaultValue="accepted"><option value="accepted">证据支持</option><option value="needs_revision">需要修订</option><option value="rejected">拒绝结论</option></select>
+                    <textarea name="review_rationale" placeholder="独立复核理由" required />
+                    <textarea name="review_counterarguments" placeholder="反方解释（每行一个）" />
+                    <select name="review_evidence" defaultValue=""><option value="">无新增证据（接受结论时必须选择）</option>{evidenceRecords.map((evidence) => <option value={evidence.id} key={evidence.id}>{evidence.grade} · {evidence.filename}</option>)}</select>
+                    <button disabled={lifecycleBusy === item.id}>提交独立复核</button>
+                  </form>}
+                  {!blocking && !resolution && acceptedCount >= requiredReviews && <form className="mini-lifecycle-form resolution" onSubmit={(event) => resolveDecisionAnalysis(event, item)}>
+                    <select name="resolution_disposition" defaultValue="experiment"><option value="experiment">受控实验</option><option value="adopt">采纳方案</option><option value="defer">暂缓</option><option value="reject">拒绝</option></select>
+                    <textarea name="resolution_rationale" placeholder="正式决定理由" required /><textarea name="resolution_conditions" placeholder="执行前条件（每行一个）" />
+                    <button disabled={lifecycleBusy === item.id}>固化正式决定</button>
+                  </form>}
+                  {blocking && <p className="lifecycle-warning">存在阻断复核。不能覆盖旧分析，请基于反馈提交一份新分析。</p>}
+                  {resolution && <div className="resolution-result"><b>{resolution.disposition}</b><span>{resolution.rationale}</span><em>无执行权</em></div>}
+                </article>;
+              }) : <div className="empty"><BrainCircuit size={24} /><strong>等待第一份分析</strong><p>合同就绪后，先提交带预测区间的分析。</p></div>}
+            </div>
+
+            <div className="outcome-queue">
+              <div className="lifecycle-form-title"><span>3</span><div><strong>真实结果与校准</strong><small>只接受到期后的证据化事实</small></div></div>
+              {decisionResolutions.filter((item) => ["adopt", "experiment"].includes(item.disposition)).length ? decisionResolutions.filter((item) => ["adopt", "experiment"].includes(item.disposition)).slice(0, 4).map((resolution) => {
+                const outcome = decisionOutcomes.find((item) => item.resolution_id === resolution.id);
+                const selectedAnalysis = decisionAnalyses.find((item) => item.id === resolution.analysis_id);
+                return <article className="outcome-card" key={resolution.id}>
+                  <div><strong>{selectedAnalysis?.forecast?.metric ?? "待回填指标"}</strong><span>{resolution.disposition}</span></div>
+                  {selectedAnalysis?.forecast && <small>预测 {selectedAnalysis.forecast.value} {selectedAnalysis.forecast.unit} · 到期 {new Date(selectedAnalysis.forecast.due_at).toLocaleString("zh-CN")}</small>}
+                  {outcome ? <div className={`outcome-result ${outcome.interval_covered ? "covered" : "missed"}`}><b>实际 {outcome.actual_value} {outcome.unit}</b><span>误差 {outcome.signed_error}</span><em>{outcome.interval_covered ? "区间命中" : "区间未命中"}</em></div> : <form className="mini-lifecycle-form" onSubmit={(event) => recordDecisionOutcome(event, resolution.id)}>
+                    <input name="outcome_actual" type="number" step="0.01" placeholder="实际结果" required /><input name="outcome_observed_at" type="datetime-local" required />
+                    <select name="outcome_evidence" defaultValue="" required><option value="">选择结果证据</option>{evidenceRecords.map((evidence) => <option value={evidence.id} key={evidence.id}>{evidence.grade} · {evidence.filename}</option>)}</select>
+                    <textarea name="outcome_notes" placeholder="结果说明与异常" required /><button disabled={lifecycleBusy === resolution.id}>回填真实结果</button>
+                  </form>}
+                </article>;
+              }) : <div className="empty"><Clock3 size={24} /><strong>还没有待回填决定</strong><p>正式采纳或实验后，系统才建立结果回填任务。</p></div>}
+              {decisionCalibration.map((item) => <div className="calibration-card" key={`${item.metric}:${item.unit}`}><strong>{item.metric}</strong><span>平均绝对误差 {item.mean_absolute_error} {item.unit}</span><b>区间命中率 {(Number(item.interval_coverage) * 100).toFixed(0)}%</b></div>)}
             </div>
           </div>
         </section>

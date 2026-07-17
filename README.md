@@ -35,6 +35,7 @@ apps/control_plane/
   sourcing_store.py   Supabase/PostgreSQL 持久化适配器
   procurement.py      样品采购状态机、供应商实绩与备用方案
   decision_contracts.py 版本化交互模式与不可变决策合同
+  decision_lifecycle.py 分权分析、独立复核、正式决定、结果与校准
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -82,6 +83,10 @@ tests/
 `GET /v1/interaction-profiles` 返回五个固定版本的协作流程：快速解释、苏格拉底澄清、证据研究、决策评审和概率预测；`/eli10`、`/socrates`、`/truth`、`/x10think`、`/oda`、`/product` 只是这些流程的别名，不是绕过经营控制的魔法口令。
 
 `POST /v1/decision-contracts` 会把问题、风险、期限、最大损失、备选方案、假设、未知项和不可变证据编译成只可追加的合同。缺少关键输入时状态为 `clarification_required`，缺少证据时为 `evidence_pending`；高风险合同强制标记人工审批，重大风险保持纯建议。所有合同的 `execution_eligible` 固定为 `false`，模型分析结果必须经过独立的决策、审批与执行链才可能影响真实经营。
+
+分析就绪后，`POST /v1/decision-contracts/{id}/analyses` 要求结论、置信度、注册方案、预测指标、点预测、上下界、到期日和证据；分析提交者不能复核自己的产物。`POST /v1/decision-analyses/{id}/reviews` 记录不可变独立复核，重大风险需要两名接受结论的复核者，且最终决策人必须与分析者、复核者分离。正式决定仍固定为无执行权，真实执行必须另走既有审批链。
+
+采纳或受控实验的决定到期后，`POST /v1/decision-resolutions/{id}/outcome` 才允许用证据回填真实值，不能提前填报或覆盖历史。`GET /v1/decision-calibration` 按指标与单位返回平均绝对误差、平均绝对百分比误差和预测区间命中率，使系统用实际成败校准，而不是按文本流畅度评价 Agent。
 
 ## Ozon 数据合同与正式事实
 

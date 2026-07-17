@@ -123,6 +123,8 @@ $result = [ordered]@{
     evidence_ledger = $false
     interaction_profile_registry = $false
     decision_contract_compiler = $false
+    decision_lifecycle = $false
+    decision_calibration = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -176,19 +178,19 @@ try {
     $env:KJDS_API_ROLES = "operator,reviewer,approver,risk,admin"
     $ApiCredentials = @{}
     $ApiCredentials[$env:KJDS_API_KEY] = @{ actor = "g1-verifier"; roles = @("operator", "reviewer", "admin") }
-    $ApiCredentials[$ApproverApiKey] = @{ actor = "g1-independent-approver"; roles = @("approver") }
+    $ApiCredentials[$ApproverApiKey] = @{ actor = "g1-independent-approver"; roles = @("reviewer", "approver") }
     $env:KJDS_API_KEYS_JSON = $ApiCredentials | ConvertTo-Json -Compress
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0012.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0013.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0012"
+    $result.migration = "20260717_0013"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260716_0011")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0012")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260716_0011") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0012") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -334,6 +336,74 @@ try {
         throw "Immutable evidence-gated decision contract compiler smoke failed"
     }
     $result.decision_contract_compiler = $true
+
+    $analysisBody = @{
+        conclusion = "The controlled 100-unit option has bounded downside and should be tested"
+        confidence = 0.72
+        recommended_option_id = "A"
+        forecast_metric = "sample_cm3_cny"
+        forecast_value = 12000
+        forecast_low = 5000
+        forecast_high = 18000
+        forecast_unit = "CNY"
+        forecast_due_at = "2026-07-18T00:00:00+00:00"
+        assumptions = @("Freight remains within the evidence-backed range")
+        unknowns = @("Observed return rate")
+        evidence_ids = @($evidenceRecord.id)
+        model_ref = "g1-deterministic-analysis"
+    } | ConvertTo-Json -Depth 6
+    $analysis = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-contracts/$($decisionContract.id)/analyses" -Method Post -Headers $headers -ContentType "application/json" -Body $analysisBody
+    $analysisRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-contracts/$($decisionContract.id)/analyses" -Method Post -Headers $headers -ContentType "application/json" -Body $analysisBody
+    $selfReviewStatus = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/decision-analyses/$($analysis.id)/reviews" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        verdict = "accepted"
+        rationale = "Self review must fail"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $analysisReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-analyses/$($analysis.id)/reviews" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        verdict = "accepted"
+        rationale = "Independent evidence and interval review passed"
+        counterarguments = @("Freight can still rise")
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 5)
+    $resolution = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-contracts/$($decisionContract.id)/resolution" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        analysis_id = $analysis.id
+        disposition = "experiment"
+        rationale = "Run only the bounded G-1 test"
+        conditions = @("Maximum loss remains 30000 CNY")
+    } | ConvertTo-Json -Depth 5)
+    $outcome = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-resolutions/$($resolution.id)/outcome" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        actual_value = 10000
+        observed_at = "2026-07-19T00:00:00+00:00"
+        evidence_ids = @($evidenceRecord.id)
+        notes = "Observed G-1 outcome"
+    } | ConvertTo-Json -Depth 4)
+    $analysisLineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/lineage" -Headers $headers
+    if (
+        $analysis.id -ne $analysisRetry.id -or
+        $analysis.execution_eligible -ne $false -or
+        $selfReviewStatus -ne 422 -or
+        $analysisReview.reviewed_by -ne "g1-independent-approver" -or
+        $resolution.execution_eligible -ne $false -or
+        $resolution.decided_by -ne "g1-independent-approver" -or
+        [decimal]$outcome.signed_error -ne -2000 -or
+        $outcome.interval_covered -ne $true -or
+        -not ($analysisLineage | Where-Object { $_.to_type -eq "decision_analysis" -and $_.to_id -eq $analysis.id }) -or
+        -not ($analysisLineage | Where-Object { $_.to_type -eq "decision_outcome" -and $_.to_id -eq $outcome.id })
+    ) {
+        throw "Separated decision analysis, review, resolution, and outcome smoke failed"
+    }
+    $result.decision_lifecycle = $true
+
+    $calibrationRows = @(Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/decision-calibration" -Headers $headers)
+    $calibration = $calibrationRows | Where-Object { $_.metric -eq "sample_cm3_cny" -and $_.unit -eq "CNY" }
+    if (
+        $calibration.outcome_count -ne 1 -or
+        [decimal]$calibration.mean_absolute_error -ne 2000 -or
+        [decimal]$calibration.interval_coverage -ne 1
+    ) {
+        throw "Decision forecast calibration smoke failed"
+    }
+    $result.decision_calibration = $true
 
     foreach ($requirementId in @("GOV-001", "OZN-001")) {
         Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/gate-evidence" -Method Post -Headers $headers -Form @{

@@ -18,6 +18,11 @@ from .content_growth import ContentGrowthService
 from .database import create_database_engine, database_health
 from .decision_contracts import DecisionContractService
 from .decision_contracts import RiskLevel as DecisionRiskLevel
+from .decision_lifecycle import (
+    DecisionDisposition,
+    DecisionLifecycleService,
+    ReviewVerdict,
+)
 from .domain import AgentMode, ChargeType, ContentType, PassportType
 from .evidence import EvidenceGrade, EvidenceService
 from .facts import FactPromotionService
@@ -45,7 +50,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.14.0"
+APP_VERSION = "0.15.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -59,6 +64,11 @@ repo = build_repository()
 engine = getattr(repo, "engine", None) or create_database_engine()
 evidence = EvidenceService(engine)
 decision_contracts = DecisionContractService(engine=engine, evidence=evidence)
+decision_lifecycle = DecisionLifecycleService(
+    engine=engine,
+    contracts=decision_contracts,
+    evidence=evidence,
+)
 commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
 intake = SkuEpisodeIntakeService(commerce=commerce, evidence=evidence)
 market = MarketIntelligenceService(repo)
@@ -365,6 +375,51 @@ class DecisionContractInput(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
 
 
+class DecisionAnalysisInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conclusion: str = Field(min_length=1, max_length=10000)
+    confidence: Decimal = Field(ge=0, le=1)
+    recommended_option_id: str | None = None
+    forecast_metric: str | None = None
+    forecast_value: Decimal | None = None
+    forecast_low: Decimal | None = None
+    forecast_high: Decimal | None = None
+    forecast_unit: str | None = None
+    forecast_due_at: str | None = None
+    assumptions: list[str] = Field(default_factory=list)
+    unknowns: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(min_length=1)
+    model_ref: str | None = None
+
+
+class DecisionAnalysisReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: ReviewVerdict
+    rationale: str = Field(min_length=1, max_length=10000)
+    counterarguments: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class DecisionResolutionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    analysis_id: str = Field(min_length=1)
+    disposition: DecisionDisposition
+    rationale: str = Field(min_length=1, max_length=10000)
+    conditions: list[str] = Field(default_factory=list)
+
+
+class DecisionOutcomeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    actual_value: Decimal
+    observed_at: str
+    evidence_ids: list[str] = Field(min_length=1)
+    notes: str = Field(min_length=1, max_length=10000)
+
+
 class FeeMappingInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -601,6 +656,100 @@ def list_decision_contracts(limit: int = 100):
 @app.get("/v1/decision-contracts/{contract_id}")
 def get_decision_contract(contract_id: str):
     return run(lambda: decision_contracts.get(contract_id))
+
+
+@app.post("/v1/decision-contracts/{contract_id}/analyses", status_code=201)
+def submit_decision_analysis(
+    contract_id: str,
+    body: DecisionAnalysisInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: decision_lifecycle.submit_analysis(
+            contract_id,
+            **body.model_dump(),
+            submitted_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/decision-analyses")
+def list_decision_analyses(contract_id: str | None = None):
+    return decision_lifecycle.list_analyses(contract_id)
+
+
+@app.get("/v1/decision-analyses/{analysis_id}")
+def get_decision_analysis(analysis_id: str):
+    return run(lambda: decision_lifecycle.get_analysis(analysis_id))
+
+
+@app.post("/v1/decision-analyses/{analysis_id}/reviews", status_code=201)
+def review_decision_analysis(
+    analysis_id: str,
+    body: DecisionAnalysisReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(
+        lambda: decision_lifecycle.review_analysis(
+            analysis_id,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/decision-analyses/{analysis_id}/reviews")
+def list_decision_analysis_reviews(analysis_id: str):
+    return decision_lifecycle.list_reviews(analysis_id)
+
+
+@app.post("/v1/decision-contracts/{contract_id}/resolution", status_code=201)
+def resolve_decision_contract(
+    contract_id: str,
+    body: DecisionResolutionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "approver", "admin")
+    return run(
+        lambda: decision_lifecycle.resolve(
+            contract_id,
+            **body.model_dump(),
+            decided_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/decision-resolutions")
+def list_decision_resolutions():
+    return decision_lifecycle.list_resolutions()
+
+
+@app.post("/v1/decision-resolutions/{resolution_id}/outcome", status_code=201)
+def record_decision_outcome(
+    resolution_id: str,
+    body: DecisionOutcomeInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: decision_lifecycle.record_outcome(
+            resolution_id,
+            **body.model_dump(),
+            recorded_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/decision-outcomes")
+def list_decision_outcomes():
+    return decision_lifecycle.list_outcomes()
+
+
+@app.get("/v1/decision-calibration")
+def decision_calibration():
+    return decision_lifecycle.calibration()
 
 
 @app.post("/v1/models/discover")
