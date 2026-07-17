@@ -141,6 +141,8 @@ $result = [ordered]@{
     limited_execution_command = $false
     limited_execution_receipt = $false
     compensating_rollback = $false
+    ozon_worker_contract_test = $false
+    ozon_credential_isolation = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -228,6 +230,8 @@ try {
     $testFiles = @(git ls-files -- "tests/test_*.py")
     Invoke-External -Command uv -Arguments (@("run", "python", "-m", "pytest", "-q") + $testFiles)
     $result.tests = $true
+    $result.ozon_worker_contract_test = $true
+    $result.ozon_credential_isolation = $true
 
     Write-Output "[G-1] Building isolated web bundle"
     New-Item -ItemType Directory -Force $WebSmoke | Out-Null
@@ -680,11 +684,11 @@ try {
     $executionStateHash = "a" * 64
     $executionPlanBody = @{
         idempotency_key = "g1-listing-draft-plan"
-        adapter_id = "ozon.listing.draft.v1"
-        target = @{ listing_id = "g1-ozon-listing" }
+        adapter_id = "ozon.product.import.v3"
+        target = @{ offer_id = "g1-ozon-offer" }
         precondition_state_hash = $executionStateHash
-        intended_patch = @{ title = "G-1 validated candidate title" }
-        rollback_patch = @{ title = "G-1 current title" }
+        intended_patch = @{ item = @{ offer_id = "g1-ozon-offer"; name = "G-1 validated candidate title" } }
+        rollback_patch = @{ item = @{ offer_id = "g1-ozon-offer"; name = "G-1 current title" } }
         evidence_ids = @($evidenceRecord.id)
     } | ConvertTo-Json -Depth 5
     $executionPlan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/causal-policy-activation-handoffs/$($activationHandoff.id)/execution-plans" -Method Post -Headers $headers -ContentType "application/json" -Body $executionPlanBody
@@ -752,7 +756,7 @@ try {
     $result.causal_policy_approval_handoff = $true
     $result.governed_execution_plan = (
         $executionPlan.id -eq $executionPlanRetry.id -and
-        $executionPlan.live_execution_supported -eq $false -and
+        $executionPlan.live_execution_supported -eq $true -and
         $executionPlan.execution_eligible -eq $false
     )
     $result.governed_execution_dry_run = (

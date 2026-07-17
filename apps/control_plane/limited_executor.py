@@ -84,6 +84,8 @@ class LimitedExecutorService:
         plan = self.execution_plans.get(plan_id)
         if not plan["ready_for_executor"]:
             raise ValueError("Execution plan is not ready for the limited executor")
+        if not plan["adapter"].get("command_delivery_supported"):
+            raise ValueError("Execution adapter does not support live command delivery")
         queued_by = self._required(queued_by, "Command requester")
         existing = self._command_for(plan_id, "execute")
         if existing is not None:
@@ -92,7 +94,7 @@ class LimitedExecutorService:
             plan=plan,
             command_kind="execute",
             parent_command_id=None,
-            operation="listing.update_draft",
+            operation=plan["adapter"]["operation"],
             patch=plan["intended_patch"],
             expected_state_hash=plan["precondition_state_hash"],
             queued_by=queued_by,
@@ -344,7 +346,7 @@ class LimitedExecutorService:
             command_kind="rollback",
             idempotency_token=token,
             adapter_id=parent.adapter_id,
-            operation="listing.restore_draft",
+            operation=plan["adapter"]["rollback_operation"],
             target_json=parent.target_json,
             patch_json=plan["rollback_patch"],
             expected_state_hash=resulting_state_hash,

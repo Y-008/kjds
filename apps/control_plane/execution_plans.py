@@ -20,7 +20,19 @@ ADAPTERS = {
         "allowed_patch_keys": ["title", "description", "attributes", "images"],
         "live_execution_supported": False,
         "rollback_required": True,
-    }
+        "command_delivery_supported": False,
+    },
+    "ozon.product.import.v3": {
+        "platform": "Ozon",
+        "policy_action": "recommend_listing_change",
+        "operation": "product.import.v3",
+        "rollback_operation": "product.import.v3",
+        "required_target_keys": ["offer_id"],
+        "allowed_patch_keys": ["item"],
+        "live_execution_supported": True,
+        "rollback_required": True,
+        "command_delivery_supported": True,
+    },
 }
 
 
@@ -107,6 +119,11 @@ class ExecutionPlanService:
         precondition_state_hash = self._state_hash(precondition_state_hash)
         intended_patch = self._patch(intended_patch, adapter, "Intended patch")
         rollback_patch = self._patch(rollback_patch, adapter, "Rollback patch")
+        if adapter["operation"] == "product.import.v3":
+            if intended_patch["item"].get("offer_id") != target["offer_id"]:
+                raise ValueError("Intended Ozon import item must match target offer_id")
+            if rollback_patch["item"].get("offer_id") != target["offer_id"]:
+                raise ValueError("Rollback Ozon import item must match target offer_id")
         if intended_patch == rollback_patch:
             raise ValueError("Rollback patch must restore a different prior state")
         evidence_ids = self._evidence(evidence_ids)
@@ -266,7 +283,10 @@ class ExecutionPlanService:
             "dry_run": self._dry_run(dry_run) if dry_run else None,
             "ready_for_executor": ready_for_executor,
             "execution_eligible": False,
-            "live_execution_supported": False,
+            "adapter": {"id": result["adapter_id"], **self._adapter(result["adapter_id"])},
+            "live_execution_supported": self._adapter(result["adapter_id"])[
+                "live_execution_supported"
+            ],
             "automatic_execution": False,
         }
 
@@ -298,6 +318,10 @@ class ExecutionPlanService:
         encoded = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         if len(encoded.encode()) > 131072:
             raise ValueError(f"{name} exceeds the 128 KiB limit")
+        if adapter["operation"] == "product.import.v3":
+            item = value.get("item")
+            if not isinstance(item, dict) or not item:
+                raise ValueError(f"{name} requires a complete Ozon import item")
         return value
 
     @staticmethod

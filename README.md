@@ -42,6 +42,7 @@ apps/control_plane/
   policy_shadow.py 不可变策略评估、零暴露影子批次与独立审批交接
   execution_plans.py 目标绑定、前置快照、回滚合同、执行审批与零写入预演
   limited_executor.py 默认关闭的命令队列、领取租约、平台回执与补偿回滚状态机
+  ozon_worker.py 隔离 Seller API 凭证、读取真实状态、异步导入确认与回执上报
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -155,6 +156,14 @@ tests/
 专用执行器使用 `executor` 身份调用 `/v1/limited-execution-commands/{id}/claim`。领取前必须提交刚读取的当前平台状态 SHA-256，任何漂移都会把命令锁定为 `precondition_failed`；领取采用 30–600 秒租约，只有持有租约的执行器才能提交平台回执。成功回执必须包含远端操作号、变更后状态指纹及 `mutation_applied=true`，失败回执必须保留错误码。回执不可覆盖，网络超时或租约过期进入 `uncertain`，禁止盲目重试造成重复写入。
 
 如果失败或不确定回执确认平台已经发生部分变更，系统会使用预批准的回滚内容自动生成独立 `rollback` 命令，并把变更后状态指纹作为回滚前置条件。风险负责人也能对已成功命令主动请求回滚。回滚同样需要领取、状态核验、幂等令牌和不可变回执；全局熔断开启时，新的执行与回滚领取都会失败关闭。
+
+## 隔离的 Ozon Seller API Worker
+
+真实 Ozon 凭证只允许出现在独立 Worker 的 `OZON_CLIENT_ID` 和 `OZON_API_KEY` 环境变量中；控制平面、数据库、计划、命令、回执和 AI 上下文均不保存这两个值。Worker 使用单独的 `KJDS_EXECUTOR_API_KEY`，该身份在 `KJDS_API_KEYS_JSON` 中只能授予 `executor` 角色。
+
+`ozon.product.import.v3` 是首个支持命令投递的真实适配器。执行计划必须提供完整的 Ozon `import item`，而不是只提供标题差异，因为 Ozon 商品更新接口要求传递商品完整信息。Worker 在领取命令前分别读取 `/v3/product/info/list` 和 `/v4/product/info/attributes`，生成确定性状态指纹；通过后只调用一次 `/v3/product/import`，再用 `/v1/product/import/info` 确认异步任务。读取遇到 429 或服务端错误会有限退避重试；写请求遇到网络中断绝不盲重试，而是上报 `uncertain`，防止重复提交。
+
+本地启动前必须先保持 `KJDS_LIMITED_EXECUTION_ENABLED=false` 完成合同测试。准备真实试点时，为 API 注册独立 executor 密钥、上传本轮状态证据、设置 `KJDS_EXECUTION_EVIDENCE_ID`，最后显式运行 `docker compose --profile live-execution up ozon-worker`。没有真实 Ozon 凭证和人工批准时，Worker 不会启动。
 
 ## Ozon 数据合同与正式事实
 

@@ -1020,26 +1020,30 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     plan = execution_plans.create(
         handoff["id"],
         idempotency_key="listing-draft-001",
-        adapter_id="ozon.listing.draft.v1",
-        target={"listing_id": "ozon-listing-001"},
+        adapter_id="ozon.product.import.v3",
+        target={"offer_id": "ozon-offer-001"},
         precondition_state_hash=state_hash,
-        intended_patch={"title": "已验证候选标题"},
-        rollback_patch={"title": "当前线上标题"},
+        intended_patch={"item": {"offer_id": "ozon-offer-001", "name": "已验证候选标题"}},
+        rollback_patch={"item": {"offer_id": "ozon-offer-001", "name": "当前线上标题"}},
         evidence_ids=[source.id],
         created_by="execution-planner",
     )
     assert plan["approval_status"] == "pending"
-    assert plan["live_execution_supported"] is False
+    assert plan["live_execution_supported"] is True
     assert plan["execution_eligible"] is False
     assert (
         execution_plans.create(
             handoff["id"],
             idempotency_key="listing-draft-001",
-            adapter_id="ozon.listing.draft.v1",
-            target={"listing_id": "ozon-listing-001"},
+            adapter_id="ozon.product.import.v3",
+            target={"offer_id": "ozon-offer-001"},
             precondition_state_hash=state_hash,
-            intended_patch={"title": "已验证候选标题"},
-            rollback_patch={"title": "当前线上标题"},
+            intended_patch={
+                "item": {"offer_id": "ozon-offer-001", "name": "已验证候选标题"}
+            },
+            rollback_patch={
+                "item": {"offer_id": "ozon-offer-001", "name": "当前线上标题"}
+            },
             evidence_ids=[source.id],
             created_by="execution-planner",
         )["id"]
@@ -1125,11 +1129,11 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     compensation_plan = execution_plans.create(
         handoff["id"],
         idempotency_key="listing-draft-compensation",
-        adapter_id="ozon.listing.draft.v1",
-        target={"listing_id": "ozon-listing-002"},
+        adapter_id="ozon.product.import.v3",
+        target={"offer_id": "ozon-offer-002"},
         precondition_state_hash=state_hash,
-        intended_patch={"title": "部分失败标题"},
-        rollback_patch={"title": "原始标题"},
+        intended_patch={"item": {"offer_id": "ozon-offer-002", "name": "部分失败标题"}},
+        rollback_patch={"item": {"offer_id": "ozon-offer-002", "name": "原始标题"}},
         evidence_ids=[source.id],
         created_by="compensation-planner",
     )
