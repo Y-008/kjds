@@ -44,7 +44,9 @@ from .incident_recovery import IncidentRecoveryService
 from .intake import PassportEvidencePayload, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .limited_executor import LimitedExecutorService
+from .operations_queue import OperationsQueueService
 from .ozon_contracts import contract_catalog
+from .pilot_readiness import PilotReadinessService
 from .policy_shadow import PolicyShadowService
 from .post_execution import PostExecutionService
 from .procurement import ProcurementService
@@ -66,7 +68,7 @@ from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeServi
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.25.0"
+APP_VERSION = "0.26.0"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -166,6 +168,18 @@ incident_recovery = IncidentRecoveryService(
     evidence=evidence,
     kill_switch=kill_switch,
 )
+operations_queue = OperationsQueueService(
+    engine=engine,
+    incidents=incident_recovery,
+    limited_executor=limited_executor,
+    post_execution=post_execution,
+)
+pilot_readiness = PilotReadinessService(
+    engine=engine,
+    evidence=evidence,
+    incidents=incident_recovery,
+    kill_switch=kill_switch,
+)
 providers = {
     "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
     "comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189")),
@@ -184,7 +198,11 @@ KILL_SWITCH_CONTROL_PATHS = {
 
 
 def is_write_safety_control_path(path: str) -> bool:
-    return path in KILL_SWITCH_CONTROL_PATHS or path.startswith("/v1/operational-incidents")
+    return (
+        path in KILL_SWITCH_CONTROL_PATHS
+        or path.startswith("/v1/operational-incidents")
+        or path.startswith("/v1/operations-control")
+    )
 
 
 @app.middleware("http")
@@ -838,6 +856,67 @@ class IncidentClosureInput(BaseModel):
 
     notes: str = Field(min_length=1, max_length=5000)
     evidence_ids: list[str] = Field(min_length=1)
+
+
+class OperationsQueueScanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    as_of: str | None = None
+
+
+class ReadOnlyPilotInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    platform: Literal["ozon"] = "ozon"
+    account_alias: str = Field(min_length=1, max_length=300)
+    allowed_operations: list[
+        Literal[
+            "ozon.product.read",
+            "ozon.inventory.read",
+            "ozon.orders.read",
+            "ozon.analytics.read",
+            "ozon.finance.read",
+        ]
+    ] = Field(min_length=1)
+    max_daily_requests: int = Field(ge=1, le=10000)
+    max_targets: int = Field(ge=1, le=1000)
+    starts_at: str
+    ends_at: str
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class PilotControlAttestationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    control: Literal[
+        "credentials_isolated",
+        "least_privilege_scope",
+        "monitoring_configured",
+        "data_export_backup_verified",
+    ]
+    passed: bool
+    notes: str = Field(min_length=1, max_length=5000)
+    evidence_ids: list[str] = Field(min_length=1)
+
+
+class PilotReviewSubmissionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    as_of: str | None = None
+
+
+class PilotReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: bool
+    rationale: str = Field(min_length=1, max_length=5000)
+
+
+class PilotActivationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    as_of: str | None = None
 
 
 class FeeMappingInput(BaseModel):
@@ -1773,6 +1852,123 @@ def close_operational_incident(
             incident_id,
             **body.model_dump(),
             actor_id=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/operations-control/queue")
+def list_operations_control_queue(as_of: str | None = None):
+    return run(lambda: operations_queue.queue(as_of=as_of))
+
+
+@app.post("/v1/operations-control/escalation-scan")
+def scan_operations_control_escalations(
+    body: OperationsQueueScanInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "monitor", "risk", "admin")
+    return run(
+        lambda: operations_queue.scan(
+            as_of=body.as_of,
+            actor_id=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/operations-control/escalations")
+def list_operations_control_escalations():
+    return run(operations_queue.escalations)
+
+
+@app.post("/v1/read-only-pilots", status_code=201)
+def create_read_only_pilot(
+    body: ReadOnlyPilotInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: pilot_readiness.create(
+            **body.model_dump(),
+            requested_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/read-only-pilots")
+def list_read_only_pilots():
+    return run(pilot_readiness.list)
+
+
+@app.get("/v1/read-only-pilots/{pilot_id}")
+def get_read_only_pilot(pilot_id: str):
+    return run(lambda: pilot_readiness.get(pilot_id))
+
+
+@app.get("/v1/read-only-pilots/{pilot_id}/evaluation")
+def evaluate_read_only_pilot(pilot_id: str, as_of: str | None = None):
+    return run(lambda: pilot_readiness.evaluate(pilot_id, as_of=as_of))
+
+
+@app.post("/v1/read-only-pilots/{pilot_id}/attestations", status_code=201)
+def attest_read_only_pilot_control(
+    pilot_id: str,
+    body: PilotControlAttestationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "compliance", "admin")
+    return run(
+        lambda: pilot_readiness.attest(
+            pilot_id,
+            **body.model_dump(),
+            attested_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/read-only-pilots/{pilot_id}/review-request")
+def submit_read_only_pilot_review(
+    pilot_id: str,
+    body: PilotReviewSubmissionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: pilot_readiness.submit_review(
+            pilot_id,
+            actor_id=principal.actor_id,
+            as_of=body.as_of,
+        )
+    )
+
+
+@app.post("/v1/read-only-pilots/{pilot_id}/review")
+def review_read_only_pilot(
+    pilot_id: str,
+    body: PilotReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "admin")
+    return run(
+        lambda: pilot_readiness.review(
+            pilot_id,
+            **body.model_dump(),
+            actor_id=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/read-only-pilots/{pilot_id}/activate")
+def activate_read_only_pilot(
+    pilot_id: str,
+    body: PilotActivationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "admin")
+    return run(
+        lambda: pilot_readiness.activate(
+            pilot_id,
+            actor_id=principal.actor_id,
+            as_of=body.as_of,
         )
     )
 

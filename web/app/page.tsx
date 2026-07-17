@@ -229,6 +229,23 @@ type OperationalIncident = {
   checks: Record<string, { check: string; passed: boolean; notes: string }>;
   required_checks: string[]; kill_switch_engaged: boolean; automatic_release: boolean;
 };
+type OperationsQueueItem = {
+  queue_key: string; item_type: string; item_id: string; title: string; status: string;
+  priority: string; owner_id: string | null; due_at: string; overdue: boolean;
+  overdue_minutes: number; escalation_level: number; next_action: string;
+};
+type ReadOnlyPilot = {
+  id: string; platform: string; account_alias: string; allowed_operations: string[];
+  max_daily_requests: number; max_targets: number; starts_at: string; ends_at: string;
+  status: string; requested_by: string; reviewed_by: string | null; activated_by: string | null;
+  controls: Record<string, { passed: boolean; notes: string }>;
+  required_controls: string[]; platform_write_allowed: boolean; execution_eligible: boolean;
+  credential_material_stored: boolean;
+};
+type PilotEvaluation = {
+  ready_for_review: boolean; ready_for_activation: boolean; requirements: Record<string, boolean>;
+  blockers: string[]; recent_drill_ids: string[]; platform_write_allowed: boolean; automatic_activation: boolean;
+};
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 const procurementStatusLabels: Record<string, string> = {
@@ -293,6 +310,9 @@ export default function Home() {
   const [executionObservationWindows, setExecutionObservationWindows] = useState<ExecutionObservationWindow[]>([]);
   const [capabilityEconomicAssessments, setCapabilityEconomicAssessments] = useState<CapabilityEconomicAssessment[]>([]);
   const [operationalIncidents, setOperationalIncidents] = useState<OperationalIncident[]>([]);
+  const [operationsQueue, setOperationsQueue] = useState<OperationsQueueItem[]>([]);
+  const [readOnlyPilots, setReadOnlyPilots] = useState<ReadOnlyPilot[]>([]);
+  const [pilotEvaluations, setPilotEvaluations] = useState<Record<string, PilotEvaluation>>({});
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
@@ -308,7 +328,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -336,6 +356,8 @@ export default function Home() {
       fetch("/backend/v1/execution-observation-windows", { cache: "no-store" }),
       fetch("/backend/v1/capability-economic-assessments", { cache: "no-store" }),
       fetch("/backend/v1/operational-incidents", { cache: "no-store" }),
+      fetch("/backend/v1/operations-control/queue", { cache: "no-store" }),
+      fetch("/backend/v1/read-only-pilots", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
@@ -386,6 +408,12 @@ export default function Home() {
     if (executionObservationResponse.ok) setExecutionObservationWindows(await executionObservationResponse.json());
     if (capabilityEconomicsResponse.ok) setCapabilityEconomicAssessments(await capabilityEconomicsResponse.json());
     if (operationalIncidentsResponse.ok) setOperationalIncidents(await operationalIncidentsResponse.json());
+    if (operationsQueueResponse.ok) setOperationsQueue(await operationsQueueResponse.json());
+    if (readOnlyPilotsResponse.ok) {
+      const rows: ReadOnlyPilot[] = await readOnlyPilotsResponse.json(); setReadOnlyPilots(rows);
+      const evaluations = await Promise.all(rows.map(async (item) => { const response = await fetch(`/backend/v1/read-only-pilots/${item.id}/evaluation`, { cache: "no-store" }); return [item.id, response.ok ? await response.json() as PilotEvaluation : null] as const; }));
+      const indexed: Record<string, PilotEvaluation> = {}; evaluations.forEach(([id, evaluation]) => { if (evaluation) indexed[id] = evaluation; }); setPilotEvaluations(indexed);
+    }
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
@@ -1187,6 +1215,50 @@ export default function Home() {
     finally { setLifecycleBusy(null); }
   }
 
+  async function scanOperationsQueue() {
+    setLifecycleBusy("operations-scan"); setNotice("正在扫描逾期任务并固化升级记录…");
+    try { const response = await fetch("/backend/v1/operations-control/escalation-scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ as_of: null }) }); const result = await response.json(); setNotice(response.ok ? `扫描 ${result.scanned_count} 项，发现 ${result.overdue_count} 项逾期，新建 ${result.new_escalation_ids.length} 条升级记录。` : result.detail ?? "运营队列扫描失败"); if (response.ok) await load(); }
+    catch { setNotice("无法扫描运营队列"); } finally { setLifecycleBusy(null); }
+  }
+
+  async function createReadOnlyPilot(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const operations = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="pilot_operations"]:checked')).map((item) => item.value);
+    const body = { idempotency_key: `ozon-read-only-${value("pilot_account_alias")}-${value("pilot_starts_at")}`, platform: "ozon", account_alias: value("pilot_account_alias"), allowed_operations: operations, max_daily_requests: Number(value("pilot_daily_limit")), max_targets: Number(value("pilot_target_limit")), starts_at: new Date(value("pilot_starts_at")).toISOString(), ends_at: new Date(value("pilot_ends_at")).toISOString(), evidence_ids: [value("pilot_evidence")] };
+    setLifecycleBusy("pilot-create"); setNotice("正在固化 Ozon 只读试点边界…");
+    try { const response = await fetch("/backend/v1/read-only-pilots", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const result = await response.json(); setNotice(response.ok ? `只读试点 ${result.id} 已建立；平台写入仍被永久禁止。` : result.detail ?? "试点建立失败"); if (response.ok) { form.reset(); await load(); } }
+    catch { setNotice("无法建立只读试点，请检查期限、限额和证据"); } finally { setLifecycleBusy(null); }
+  }
+
+  async function attestPilotControl(event: FormEvent<HTMLFormElement>, pilot: ReadOnlyPilot) {
+    event.preventDefault(); const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    setLifecycleBusy(`pilot-attest:${pilot.id}`); setNotice("正在记录试点控制证据…");
+    try { const response = await fetch(`/backend/v1/read-only-pilots/${pilot.id}/attestations`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ control: value("pilot_control"), passed: true, notes: value("pilot_control_notes"), evidence_ids: [value("pilot_control_evidence")] }) }); const result = await response.json(); setNotice(response.ok ? "控制项已记录，仍需完成其余准入条件。" : result.detail ?? "控制项记录失败"); if (response.ok) { form.reset(); await load(); } }
+    catch { setNotice("无法记录试点控制项"); } finally { setLifecycleBusy(null); }
+  }
+
+  async function submitPilotReview(pilot: ReadOnlyPilot) {
+    setLifecycleBusy(`pilot-submit:${pilot.id}`); setNotice("正在核对控制项、事故、熔断与近期演练…");
+    try { const response = await fetch(`/backend/v1/read-only-pilots/${pilot.id}/review-request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ as_of: null }) }); const result = await response.json(); setNotice(response.ok ? "只读试点已提交独立复核。" : result.detail ?? "试点仍不满足准入条件"); if (response.ok) await load(); }
+    catch { setNotice("无法提交试点复核"); } finally { setLifecycleBusy(null); }
+  }
+
+  async function reviewPilot(event: FormEvent<HTMLFormElement>, pilot: ReadOnlyPilot) {
+    event.preventDefault(); const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    setLifecycleBusy(`pilot-review:${pilot.id}`); setNotice("正在执行只读试点独立复核…");
+    try { const response = await fetch(`/backend/v1/read-only-pilots/${pilot.id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accepted: value("pilot_review_verdict") === "accepted", rationale: value("pilot_review_rationale") }) }); const result = await response.json(); setNotice(response.ok ? `试点复核结果：${result.status}。` : result.detail ?? "试点复核失败"); if (response.ok) { form.reset(); await load(); } }
+    catch { setNotice("无法完成试点独立复核"); } finally { setLifecycleBusy(null); }
+  }
+
+  async function activatePilot(pilot: ReadOnlyPilot) {
+    setLifecycleBusy(`pilot-activate:${pilot.id}`); setNotice("正在重新核验全部准入条件…");
+    try { const response = await fetch(`/backend/v1/read-only-pilots/${pilot.id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ as_of: null }) }); const result = await response.json(); setNotice(response.ok ? `试点 ${result.id} 已激活：仅允许只读接口，禁止任何平台写入。` : result.detail ?? "试点激活被阻断"); if (response.ok) await load(); }
+    catch { setNotice("无法激活只读试点"); } finally { setLifecycleBusy(null); }
+  }
+
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
@@ -1236,6 +1308,16 @@ export default function Home() {
         </section>
 
         <div className="notice"><Activity size={17} /><span>{notice}</span></div>
+
+        <section className="decision-workbench">
+          <div className="panel-title"><div><p className="eyebrow">OPERATIONS CONTROL</p><h3>今日运营队列与 Ozon 只读试点</h3></div><button type="button" disabled={lifecycleBusy === "operations-scan"} onClick={scanOperationsQueue}>扫描逾期升级</button></div>
+          <div className="lifecycle-summary"><article><span>待处理</span><b>{operationsQueue.length}</b><small>事故、命令和观察合同统一排序</small></article><article><span>已逾期</span><b>{operationsQueue.filter((item) => item.overdue).length}</b><small>只升级提醒，不自动执行经营动作</small></article><article><span>未关闭事故</span><b>{operationalIncidents.filter((item) => item.status !== "closed").length}</b><small>严重事故阻断试点准入</small></article><article><span>只读试点</span><b>{readOnlyPilots.filter((item) => item.status === "active").length}</b><small>平台写入永久禁止</small></article></div>
+          <div className="decision-layout">
+            <div className="decision-register"><div className="decision-register-head"><strong>按风险和 SLA 排序</strong><span>{operationsQueue.length} 项</span></div>{operationsQueue.length ? operationsQueue.slice(0, 8).map((item) => <article key={item.queue_key}><div><span>{item.priority} · L{item.escalation_level}</span><b>{item.overdue ? `逾期 ${item.overdue_minutes} 分钟` : item.status}</b></div><strong>{item.title}</strong><small>截止 {new Date(item.due_at).toLocaleString("zh-CN")} · {item.owner_id ?? "待领取"}</small><p>{item.next_action}</p></article>) : <div className="empty"><ShieldCheck size={25} /><strong>当前没有待处理运营事项</strong><p>队列只展示需要人工注意的事故、执行命令和观察窗口。</p></div>}</div>
+            <form className="decision-form" onSubmit={createReadOnlyPilot}><div className="decision-form-head"><div><strong>建立 Ozon 只读试点</strong><small>不保存凭证，不允许商品、价格、广告或库存写入</small></div><ShieldCheck size={19} /></div><div className="decision-fields"><label>账户别名<input name="pilot_account_alias" placeholder="例如 ozon-ru-main（不得填写密钥）" required /></label><label>每日请求上限<input name="pilot_daily_limit" type="number" min="1" max="10000" defaultValue="100" required /></label><label>最大目标数<input name="pilot_target_limit" type="number" min="1" max="1000" defaultValue="10" required /></label><label>准入证据<select name="pilot_evidence" defaultValue="" required><option value="">选择账户范围或运行手册证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select></label><label>开始时间<input name="pilot_starts_at" type="datetime-local" required /></label><label>结束时间<input name="pilot_ends_at" type="datetime-local" required /></label><label className="wide">允许的只读能力<span><input name="pilot_operations" type="checkbox" value="ozon.product.read" />商品读取　<input name="pilot_operations" type="checkbox" value="ozon.inventory.read" />库存读取　<input name="pilot_operations" type="checkbox" value="ozon.orders.read" />订单读取　<input name="pilot_operations" type="checkbox" value="ozon.analytics.read" />分析读取　<input name="pilot_operations" type="checkbox" value="ozon.finance.read" />财务读取</span></label></div><div className="decision-submit"><p>最长 14 天；即使批准并激活，仍固定 execution_eligible=false。</p><button disabled={lifecycleBusy === "pilot-create"}>固化只读试点边界</button></div></form>
+          </div>
+          {readOnlyPilots.map((pilot) => { const evaluation = pilotEvaluations[pilot.id]; return <article className="policy-card" key={pilot.id}><div className="policy-card-head"><div><strong>{pilot.account_alias} · {pilot.status}</strong><small>{pilot.allowed_operations.join("、")} · 日限额 {pilot.max_daily_requests}</small></div><span className={evaluation?.ready_for_review ? "gate ready" : "gate blocked"}>{evaluation?.ready_for_review ? "准入条件齐备" : "仍有阻断项"}</span></div><div className="knowledge-status invalid"><strong>平台写入：永久禁止</strong><span>不保存凭证材料 · 不授予执行资格</span><b>自动激活：禁止</b></div>{["draft", "changes_requested"].includes(pilot.status) && <form className="policy-outcome-form" onSubmit={(event) => attestPilotControl(event, pilot)}><strong>逐项提交准入控制</strong><select name="pilot_control" defaultValue="" required><option value="">选择未完成控制项</option>{pilot.required_controls.filter((control) => !pilot.controls[control]?.passed).map((control) => <option value={control} key={control}>{control}</option>)}</select><input name="pilot_control_notes" placeholder="验证方法和结果" required /><select name="pilot_control_evidence" defaultValue="" required><option value="">选择控制证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `pilot-attest:${pilot.id}`}>记录控制项</button>{evaluation?.ready_for_review && <button type="button" disabled={lifecycleBusy === `pilot-submit:${pilot.id}`} onClick={() => submitPilotReview(pilot)}>提交独立复核</button>}</form>}{pilot.status === "pending_review" && <form className="policy-outcome-form" onSubmit={(event) => reviewPilot(event, pilot)}><strong>独立准入复核</strong><select name="pilot_review_verdict" defaultValue="" required><option value="">选择结论</option><option value="accepted">批准只读试点</option><option value="rejected">要求补充控制</option></select><input name="pilot_review_rationale" placeholder="独立复核理由" required /><button disabled={lifecycleBusy === `pilot-review:${pilot.id}`}>提交复核</button></form>}{pilot.status === "approved" && <button type="button" disabled={lifecycleBusy === `pilot-activate:${pilot.id}`} onClick={() => activatePilot(pilot)}>管理员重新核验并激活只读试点</button>}{evaluation?.blockers.length ? <footer><span>阻断：{evaluation.blockers.join("、")}</span><b>不得激活</b></footer> : <footer><span>近期演练 {evaluation?.recent_drill_ids.length ?? 0} 次</span><b>仍无写权限</b></footer>}</article>; })}
+        </section>
 
         <section className="decision-workbench">
           <div className="panel-title">

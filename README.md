@@ -46,6 +46,8 @@ apps/control_plane/
   post_execution.py 执行后观察合同、不可变指标、护栏冻结与补偿触发
   capability_economics.py 能力增量、避免损失、运行成本、事故损失与治理建议
   incident_recovery.py 生产事故、人工接管、恢复清单、独立复核与演练账
+  operations_queue.py 事故、执行命令与观察窗口的 SLA 队列和升级账
+  pilot_readiness.py Ozon 只读试点边界、控制证明、独立复核与准入门禁
 migrations/
   001_initial.sql     持久化模型与事务事件表
 tests/
@@ -173,6 +175,16 @@ tests/
 执行后护栏越界会自动创建 `operational_incident`，把异常指标、观察窗口、执行命令和执行计划绑定到同一事故影响范围。高危或严重的真实事故会保持全局熔断；事故接口是冻结期内唯一仍可写的安全控制面之一，但每个动作仍经过角色检查。负责人必须逐项提交远端状态核对、回滚确认、数据对账、凭证处置和监控恢复证据，不能一次点击把清单全部标记完成。
 
 恢复负责人不能复核自己的处理，事故发起人也不能担任独立复核者。复核接受后状态仅变为 `ready_for_release`，固定 `automatic_release=false`；管理员必须另行调用熔断解除，再以新证据关闭事故。`mode=drill` 使用完全相同的接管、检查、复核和关闭事件账，但不会触碰生产熔断或平台写入，可用于季度恢复演练并证明备用流程实际可执行，而不只是留在文档中。
+
+## 持续运营队列与 SLA 升级
+
+`GET /v1/operations-control/queue` 把未关闭事故、待领取或状态不确定的执行命令、仍在观察或样本不足的执行后窗口统一排序。严重事故采用 15 分钟 SLA，执行结果不确定采用 5 分钟 SLA；队列明确负责人、截止时间、逾期分钟数、升级等级和下一动作。`POST /v1/operations-control/escalation-scan` 可在全局冻结期间继续运行，将 L1–L3 逾期升级固化为不可变记录，但固定 `automatic_business_action=false`，不会因为逾期自动回滚、解冻、改价或调用平台。
+
+## Ozon 只读试点准入
+
+只读试点只能选择商品、库存、订单、分析和财务读取白名单，最长 14 天，并锁定每日请求数、目标数、非敏感账户别名和证据。系统不接受写操作，不保存 Client Secret、API Key 或 Token，所有试点对象固定 `platform_write_allowed=false`、`execution_eligible=false`、`credential_material_stored=false`。
+
+提交独立复核前必须逐项证明凭证隔离、最小权限、监控和数据导出备份，同时动态确认没有未关闭生产事故、熔断已解除、90 天内完成过一次恢复演练、期限未过期且操作仍在只读白名单内。申请人不能自审；复核通过后管理员激活时再次计算全部条件。激活只代表这份只读合同获准，不会启动 Worker，也不会把任何真实 Ozon 凭证写进数据库或仓库。
 
 ## 隔离的 Ozon Seller API Worker
 

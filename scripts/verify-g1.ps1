@@ -149,6 +149,10 @@ $result = [ordered]@{
     recovery_checklist = $false
     recovery_dual_control = $false
     recovery_drill = $false
+    operations_sla_queue = $false
+    operations_escalation_ledger = $false
+    read_only_pilot_gate = $false
+    read_only_pilot_dual_control = $false
     ozon_worker_contract_test = $false
     ozon_credential_isolation = $false
     sku_episode_intake = $false
@@ -216,14 +220,14 @@ try {
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0023.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0024.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0023"
+    $result.migration = "20260717_0024"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0022")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0023")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0022") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0023") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
@@ -757,6 +761,14 @@ try {
     $postExecutionSwitch = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch" -Headers $headers
     $rollbackCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($guardrailObservation.rollback_command_id)" -Headers $headers
     $incident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($guardrailObservation.incident_id)" -Headers $headers
+    $operationsQueueDuringIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations-control/queue?as_of=2026-07-18T12:00:00%2B00:00" -Headers $headers
+    $operationsScan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations-control/escalation-scan" -Method Post -Headers $monitorHeaders -ContentType "application/json" -Body (@{
+        as_of = "2026-07-18T12:00:00+00:00"
+    } | ConvertTo-Json)
+    $operationsScanRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations-control/escalation-scan" -Method Post -Headers $monitorHeaders -ContentType "application/json" -Body (@{
+        as_of = "2026-07-18T12:00:00+00:00"
+    } | ConvertTo-Json)
+    $operationsEscalations = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations-control/escalations" -Headers $headers
     $claimedIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($incident.id)/claim" -Method Post -Headers $headers
     $recoveryChecks = @(
         "remote_state_reconciled",
@@ -838,6 +850,46 @@ try {
         notes = "Drill completed without engaging production kill switch"
         evidence_ids = @($evidenceRecord.id)
     } | ConvertTo-Json -Depth 4)
+    $readOnlyPilot = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilots" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        idempotency_key = "g1-ozon-read-only-pilot"
+        platform = "ozon"
+        account_alias = "g1-ozon-ru-main"
+        allowed_operations = @("ozon.product.read", "ozon.inventory.read")
+        max_daily_requests = 100
+        max_targets = 10
+        starts_at = "2026-07-17T00:00:00+00:00"
+        ends_at = "2026-07-20T00:00:00+00:00"
+        evidence_ids = @($evidenceRecord.id)
+    } | ConvertTo-Json -Depth 4)
+    $pilotControls = @(
+        "credentials_isolated",
+        "least_privilege_scope",
+        "monitoring_configured",
+        "data_export_backup_verified"
+    )
+    foreach ($control in $pilotControls) {
+        $attestedPilot = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilots/$($readOnlyPilot.id)/attestations" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+            control = $control
+            passed = $true
+            notes = "G-1 verified $control without storing credentials"
+            evidence_ids = @($evidenceRecord.id)
+        } | ConvertTo-Json -Depth 4)
+    }
+    $pilotEvaluation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilots/$($readOnlyPilot.id)/evaluation?as_of=2026-07-17T14:00:00%2B00:00" -Headers $headers
+    $pendingPilotReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilots/$($readOnlyPilot.id)/review-request" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        as_of = "2026-07-17T14:00:00+00:00"
+    } | ConvertTo-Json)
+    $selfPilotReview = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/read-only-pilots/$($readOnlyPilot.id)/review" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        accepted = $true
+        rationale = "Self review must be rejected"
+    } | ConvertTo-Json)
+    $approvedPilot = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilots/$($readOnlyPilot.id)/review" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        accepted = $true
+        rationale = "Independent reviewer confirmed read-only scope and all controls"
+    } | ConvertTo-Json)
+    $activePilot = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilots/$($readOnlyPilot.id)/activate" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        as_of = "2026-07-17T14:00:00+00:00"
+    } | ConvertTo-Json)
     $capabilityAssessment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/execution-observation-windows/$($observationWindow.id)/capability-economics" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         realized_incremental_value = -20
         avoided_loss = 5
@@ -950,6 +1002,33 @@ try {
         $closedDrill.status -eq "closed" -and
         $closedDrill.kill_switch_engaged -eq $false
     )
+    $result.operations_sla_queue = (
+        @($operationsQueueDuringIncident).Count -ge 2 -and
+        @($operationsQueueDuringIncident | Where-Object { $_.item_type -eq "incident" -and $_.overdue -eq $true }).Count -eq 1 -and
+        @($operationsQueueDuringIncident | Where-Object { $_.item_type -eq "execution_command" }).Count -ge 1
+    )
+    $result.operations_escalation_ledger = (
+        $operationsScan.overdue_count -ge 2 -and
+        @($operationsScan.new_escalation_ids).Count -ge 2 -and
+        $operationsScan.automatic_business_action -eq $false -and
+        @($operationsScanRetry.new_escalation_ids).Count -eq 0 -and
+        @($operationsEscalations).Count -ge 2
+    )
+    $result.read_only_pilot_gate = (
+        $pilotEvaluation.ready_for_review -eq $true -and
+        $pilotEvaluation.platform_write_allowed -eq $false -and
+        @($attestedPilot.controls.PSObject.Properties).Count -eq 4 -and
+        $activePilot.status -eq "active" -and
+        $activePilot.platform_write_allowed -eq $false -and
+        $activePilot.execution_eligible -eq $false -and
+        $activePilot.credential_material_stored -eq $false
+    )
+    $result.read_only_pilot_dual_control = (
+        $pendingPilotReview.status -eq "pending_review" -and
+        $selfPilotReview -eq 422 -and
+        $approvedPilot.status -eq "approved" -and
+        $approvedPilot.reviewed_by -eq "g1-independent-approver"
+    )
     $result.compensating_rollback = (
         $rollbackCommand.command_kind -eq "rollback" -and
         $rollbackCommand.expected_state_hash -eq $resultingExecutionHash -and
@@ -967,6 +1046,10 @@ try {
         -not $result.recovery_checklist -or
         -not $result.recovery_dual_control -or
         -not $result.recovery_drill -or
+        -not $result.operations_sla_queue -or
+        -not $result.operations_escalation_ledger -or
+        -not $result.read_only_pilot_gate -or
+        -not $result.read_only_pilot_dual_control -or
         -not $result.compensating_rollback
     ) {
         throw "Limited execution, incident recovery, drill, and rollback smoke failed"
