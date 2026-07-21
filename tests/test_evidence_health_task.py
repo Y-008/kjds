@@ -11,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "manage-evidence-health-task.ps1"
 PWSH = shutil.which("pwsh")
 
+pytestmark = pytest.mark.skipif(
+    os.name != "nt",
+    reason="The evidence-health scheduler contract requires Windows Task Scheduler",
+)
+
 
 def run_manager(
     *arguments: str,
