@@ -1,0 +1,223 @@
+{
+  "registry_version": "1.0",
+  "last_reviewed": "2026-07-17",
+  "decision_rule": "Stars indicate discovery, not adoption. Adoption requires official-source verification, license review, least privilege, an owner, and a rollback test.",
+  "tools": [
+    {
+      "id": "openclaw",
+      "category": "agent_runtime",
+      "name": "OpenClaw",
+      "status": "adopt",
+      "fit": "Multi-agent operations and channel/tool orchestration",
+      "risk": "Broad tool permissions and plugin supply chain",
+      "control": "Role allowlists, pinned versions, no autonomous production writes"
+    },
+    {
+      "id": "hermes_agent",
+      "category": "agent_runtime",
+      "name": "Hermes Agent",
+      "repo": "https://github.com/NousResearch/hermes-agent",
+      "license": "MIT",
+      "status": "adopt",
+      "fit": "Local-first reasoning gateway and reusable skills",
+      "risk": "Local-model quality ceiling and cloud fallback billing",
+      "control": "Local primary, explicit cloud budget, verified skill bundles"
+    },
+    {
+      "id": "n8n",
+      "category": "workflow",
+      "name": "n8n",
+      "repo": "https://github.com/n8n-io/n8n",
+      "license": "Source-available; review terms before redistribution",
+      "status": "adopt_existing",
+      "fit": "Existing notification and low-risk integration wiring",
+      "risk": "Credential sprawl and uncontrolled workflow writes",
+      "control": "Read-only collectors first; credential scopes per workflow"
+    },
+    {
+      "id": "temporal",
+      "category": "workflow",
+      "name": "Temporal",
+      "repo": "https://github.com/temporalio/temporal",
+      "license": "MIT",
+      "status": "watch_after_adr",
+      "fit": "Durable approval-heavy and long-running workflows",
+      "risk": "Premature infrastructure complexity",
+      "control": "Introduce only after replay/SLO pressure is proven and ADR approved"
+    },
+    {
+      "id": "github_mcp",
+      "category": "mcp",
+      "name": "GitHub MCP Server",
+      "status": "adopt_read_only",
+      "fit": "Repository and release intelligence",
+      "risk": "Write-capable tokens",
+      "control": "Read-only and lockdown modes"
+    },
+    {
+      "id": "context7",
+      "category": "mcp",
+      "name": "Context7",
+      "repo": "https://github.com/upstash/context7",
+      "license": "MIT",
+      "status": "adopt",
+      "fit": "Current library documentation",
+      "risk": "External content is untrusted",
+      "control": "Use as evidence input, never as execution authority"
+    },
+    {
+      "id": "playwright_mcp",
+      "category": "browser",
+      "name": "Playwright MCP",
+      "status": "adopt_limited",
+      "fit": "Deterministic browser validation",
+      "risk": "Can mutate accounts and publish data",
+      "control": "Filtered tools and human approval for writes"
+    },
+    {
+      "id": "chrome_devtools_mcp",
+      "category": "browser",
+      "name": "Chrome DevTools MCP",
+      "repo": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+      "license": "Apache-2.0",
+      "status": "watch",
+      "fit": "Browser diagnostics and performance inspection",
+      "risk": "Overlaps Playwright and expands attack surface",
+      "control": "Adopt only for an unmet diagnostic use case"
+    },
+    {
+      "id": "langfuse",
+      "category": "observability",
+      "name": "Langfuse",
+      "repo": "https://github.com/langfuse/langfuse",
+      "license": "Review current repository license before production",
+      "status": "planned",
+      "fit": "Agent traces, quality and cost telemetry",
+      "risk": "Prompt and customer-data leakage",
+      "control": "Redaction, self-host boundary, retention policy"
+    },
+    {
+      "id": "promptfoo",
+      "category": "evaluation",
+      "name": "Promptfoo",
+      "repo": "https://github.com/promptfoo/promptfoo",
+      "license": "MIT",
+      "status": "planned",
+      "fit": "Regression, red-team and promotion gates",
+      "risk": "Bad test sets create false confidence",
+      "control": "Real failure cases and shadow-run evidence"
+    },
+    {
+      "id": "trivy",
+      "category": "security",
+      "name": "Trivy",
+      "repo": "https://github.com/aquasecurity/trivy",
+      "license": "Apache-2.0",
+      "status": "planned",
+      "fit": "Dependency, image, IaC and secret scanning",
+      "risk": "Scanner findings need triage",
+      "control": "Severity policy and documented suppressions"
+    },
+    {
+      "id": "dlt",
+      "category": "data",
+      "name": "dlt",
+      "repo": "https://github.com/dlt-hub/dlt",
+      "license": "Apache-2.0",
+      "status": "watch_phase_2",
+      "fit": "Repeatable evidence ingestion",
+      "risk": "Another abstraction before source contracts stabilize",
+      "control": "Use after two production connectors prove repeated ETL needs"
+    },
+    {
+      "id": "pgvector",
+      "category": "data",
+      "name": "pgvector",
+      "repo": "https://github.com/pgvector/pgvector",
+      "license": "PostgreSQL",
+      "status": "watch_after_adr",
+      "fit": "Evidence retrieval inside the existing database boundary",
+      "risk": "Premature vectorization and weak source provenance",
+      "control": "Exact/FTS search first; ADR and retrieval benchmark required"
+    },
+    {
+      "id": "opik",
+      "category": "observability",
+      "name": "Opik",
+      "repo": "https://github.com/comet-ml/opik",
+      "license": "Apache-2.0",
+      "status": "watch",
+      "fit": "Alternative LLM observability and evaluation",
+      "risk": "Duplicates the Langfuse/Promptfoo split",
+      "control": "Do not install without a capability comparison"
+    },
+    {
+      "id": "tensorzero",
+      "category": "gateway_observability",
+      "name": "TensorZero",
+      "repo": "https://github.com/tensorzero/tensorzero",
+      "license": "Apache-2.0",
+      "status": "watch",
+      "fit": "Model routing and feedback optimization",
+      "risk": "Duplicates current gateway and adds operational complexity",
+      "control": "Benchmark only after model traffic and feedback volume justify it"
+    },
+    {
+      "id": "trendradar",
+      "category": "intelligence",
+      "name": "TrendRadar",
+      "repo": "https://github.com/sansan0/TrendRadar",
+      "license": "GPL-3.0",
+      "status": "watch_isolated",
+      "fit": "Broad trend discovery",
+      "risk": "License boundary and secondary-source noise",
+      "control": "No code mixing; use only as a discovery benchmark"
+    },
+    {
+      "id": "ragflow",
+      "category": "knowledge",
+      "name": "RAGFlow",
+      "repo": "https://github.com/infiniflow/ragflow",
+      "license": "Apache-2.0",
+      "status": "watch",
+      "fit": "Document-heavy retrieval workflows",
+      "risk": "Large platform before retrieval needs are measured",
+      "control": "Benchmark against existing SQLite/PostgreSQL search first"
+    },
+    {
+      "id": "browser_use",
+      "category": "browser",
+      "name": "browser-use",
+      "repo": "https://github.com/browser-use/browser-use",
+      "license": "MIT",
+      "status": "watch",
+      "fit": "Agentic browser research",
+      "risk": "Non-determinism and account mutation",
+      "control": "Read-only sandbox and task-specific benchmark"
+    },
+    {
+      "id": "gemini_cli",
+      "category": "coding_agent",
+      "name": "Gemini CLI",
+      "repo": "https://github.com/google-gemini/gemini-cli",
+      "license": "Apache-2.0",
+      "status": "watch",
+      "fit": "Independent model/tool benchmark",
+      "risk": "Overlapping agent surface and credential sprawl",
+      "control": "Evaluate, do not add to the production control plane"
+    },
+    {
+      "id": "grok_build",
+      "category": "coding_agent_harness",
+      "name": "Grok Build",
+      "repo": "https://github.com/xai-org/grok-build",
+      "license": "Apache-2.0 for first-party code; third-party notices remain applicable",
+      "status": "pilot_isolated",
+      "installed_version": "0.2.102 (ab5ebf69ac)",
+      "installed_binary_sha256": "D09FEAC145D12636245F14732B70DD2BCB684A68A20BB8DEF3A9A2CD3EE967FF",
+      "fit": "Independent coding-agent benchmark, worktree isolation, headless JSON output and ACP research",
+      "risk": "Overlapping agent authority, credential sprawl, project instruction compatibility and unpinned auto-updates",
+      "control": "Developer workstation only; inspect before use; no production credentials; read-only benchmark first; writes only in disposable worktrees; never join the KJDS production control plane without an accepted ADR"
+    }
+  ]
+}

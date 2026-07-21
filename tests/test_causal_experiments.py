@@ -1,10 +1,11 @@
 import hashlib
 import hmac
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -17,9 +18,12 @@ from apps.control_plane.causal_knowledge import CausalKnowledgeService
 from apps.control_plane.causal_policies import CausalPolicyService
 from apps.control_plane.decision_contracts import DecisionContractService
 from apps.control_plane.decision_lifecycle import DecisionLifecycleService
-from apps.control_plane.evidence import EvidenceGrade, EvidenceService
+from apps.control_plane.evidence import EvidenceBlobRow, EvidenceGrade, EvidenceService
 from apps.control_plane.execution_plans import ExecutionPlanService
-from apps.control_plane.limited_executor import LimitedExecutorService
+from apps.control_plane.limited_executor import (
+    LimitedExecutionCommandRow,
+    LimitedExecutorService,
+)
 from apps.control_plane.policy_shadow import PolicyShadowService
 from apps.control_plane.post_execution import PostExecutionService
 from apps.control_plane.repository import InMemoryRepository
@@ -184,8 +188,7 @@ def start(experiments, protocol_id, evidence_id):
     )
 
 
-def populate_ready_experiment(experiments, protocol_id, evidence_id, unit_prefix="knowledge"):
-    start(experiments, protocol_id, evidence_id)
+def balanced_unit_keys(experiments, protocol_id, unit_prefix, per_variant=10):
     with Session(experiments.engine) as session:
         protocol_row = session.get(ExperimentProtocolRow, protocol_id)
         assert protocol_row is not None
@@ -202,11 +205,17 @@ def populate_ready_experiment(experiments, protocol_id, evidence_id, unit_prefix
             16,
         ) / (2**256)
         variant = "control" if bucket < 0.5 else "treatment"
-        if len(selected[variant]) < 10:
+        if len(selected[variant]) < per_variant:
             selected[variant].append(unit_key)
-        if all(len(items) == 10 for items in selected.values()):
+        if all(len(items) == per_variant for items in selected.values()):
             break
-    assert all(len(items) == 10 for items in selected.values())
+    assert all(len(items) == per_variant for items in selected.values())
+    return selected
+
+
+def populate_ready_experiment(experiments, protocol_id, evidence_id, unit_prefix="knowledge"):
+    start(experiments, protocol_id, evidence_id)
+    selected = balanced_unit_keys(experiments, protocol_id, unit_prefix)
     counts = {"control": 0, "treatment": 0}
     for expected_variant, unit_keys in selected.items():
         for unit_key in unit_keys:
@@ -300,6 +309,15 @@ def test_lifecycle_and_assignment_are_idempotent_and_privacy_preserving():
     assert retry["unit_hash"] != "raw-customer-123"
     assert len(retry["unit_hash"]) == 64
 
+    with pytest.raises(ValueError, match="Observation value must be a finite number"):
+        experiments.observe(
+            assigned["id"],
+            value=Decimal("NaN"),
+            observed_at="2026-07-26T00:00:00+00:00",
+            evidence_id=source.id,
+            created_by="finance-1",
+        )
+
     experiments.transition(
         protocol["id"],
         event_type="paused",
@@ -319,7 +337,11 @@ def test_lifecycle_and_assignment_are_idempotent_and_privacy_preserving():
         )
 
 
-def test_results_require_independent_review_and_never_auto_roll_out():
+def test_results_require_independent_review_and_never_auto_roll_out(monkeypatch):
+    monkeypatch.setattr(
+        "apps.control_plane.causal_experiments.secrets.token_hex",
+        lambda _nbytes: "test-seed",
+    )
     _, evidence, contracts, decisions, experiments = setup_services()
     source = capture(evidence, "results")
     resolution = experiment_resolution(contracts, decisions, source.id)
@@ -447,6 +469,16 @@ def test_budget_stop_loss_and_guardrails_freeze_new_assignments():
         assigned_at="2026-07-19T00:00:00+00:00",
     )
 
+    with pytest.raises(ValueError, match="Safety check value must be a finite number"):
+        experiments.record_safety_check(
+            protocol["id"],
+            metric="budget_spend_amount",
+            value=Decimal("Infinity"),
+            observed_at="2026-07-19T00:30:00+00:00",
+            evidence_id=source.id,
+            created_by="finance-1",
+        )
+
     safe = experiments.record_safety_check(
         protocol["id"],
         metric="budget_spend_amount",
@@ -535,50 +567,58 @@ def test_preregistered_segments_and_full_value_model_prevent_local_optimization(
         for tier in ("tier_1", "tier_2")
     }
     first_assignment = None
-    for index in range(500):
-        tier = "tier_1" if index % 2 == 0 else "tier_2"
-        assignment = experiments.assign(
+    first_unit_key = None
+    for tier in ("tier_1", "tier_2"):
+        selected = balanced_unit_keys(
+            experiments,
             protocol["id"],
-            unit_key=f"segmented-visitor-{index}",
-            assigned_at="2026-07-19T00:00:00+00:00",
-            strata={"country_tier": tier},
+            f"segmented-{tier}",
+            per_variant=5,
         )
-        if first_assignment is None:
-            first_assignment = assignment
-        key = (assignment["variant_id"], tier)
-        if counts[key] >= 5:
-            continue
-        if assignment["variant_id"] == "control":
-            primary_value = Decimal("100")
-            cannibalization = Decimal("0")
-            long_term_cost = Decimal("0")
-        else:
-            primary_value = Decimal("120") if tier == "tier_1" else Decimal("110")
-            cannibalization = Decimal("5")
-            long_term_cost = Decimal("2")
-        for metric, value in (
-            ("cm3_per_visitor", primary_value),
-            ("cannibalized_cm3", cannibalization),
-            ("refund_cost_30d", long_term_cost),
-        ):
-            experiments.observe(
-                assignment["id"],
-                metric=metric,
-                value=value,
-                observed_at="2026-07-26T00:00:00+00:00",
-                evidence_id=source.id,
-                created_by="finance-1",
-            )
-        counts[key] += 1
-        if all(value == 5 for value in counts.values()):
-            break
+        for expected_variant, unit_keys in selected.items():
+            for unit_key in unit_keys:
+                assignment = experiments.assign(
+                    protocol["id"],
+                    unit_key=unit_key,
+                    assigned_at="2026-07-19T00:00:00+00:00",
+                    strata={"country_tier": tier},
+                )
+                assert assignment["variant_id"] == expected_variant
+                if first_assignment is None:
+                    first_assignment = assignment
+                    first_unit_key = unit_key
+                if expected_variant == "control":
+                    primary_value = Decimal("100")
+                    cannibalization = Decimal("0")
+                    long_term_cost = Decimal("0")
+                else:
+                    primary_value = (
+                        Decimal("120") if tier == "tier_1" else Decimal("110")
+                    )
+                    cannibalization = Decimal("5")
+                    long_term_cost = Decimal("2")
+                for metric, value in (
+                    ("cm3_per_visitor", primary_value),
+                    ("cannibalized_cm3", cannibalization),
+                    ("refund_cost_30d", long_term_cost),
+                ):
+                    experiments.observe(
+                        assignment["id"],
+                        metric=metric,
+                        value=value,
+                        observed_at="2026-07-26T00:00:00+00:00",
+                        evidence_id=source.id,
+                        created_by="finance-1",
+                    )
+                counts[(expected_variant, tier)] += 1
 
     assert all(value == 5 for value in counts.values())
     assert first_assignment is not None
+    assert first_unit_key is not None
     with pytest.raises(ValueError, match="immutable strata"):
         experiments.assign(
             protocol["id"],
-            unit_key="segmented-visitor-0",
+            unit_key=first_unit_key,
             assigned_at="2026-07-20T00:00:00+00:00",
             strata={"country_tier": "changed_after_assignment"},
         )
@@ -624,26 +664,30 @@ def test_missing_required_long_term_metric_blocks_review():
         ],
     )
     start(experiments, protocol["id"], source.id)
+    selected = balanced_unit_keys(experiments, protocol["id"], "long-term-pending")
     counts = {"control": 0, "treatment": 0}
-    for index in range(200):
-        assignment = experiments.assign(
-            protocol["id"],
-            unit_key=f"long-term-pending-{index}",
-            assigned_at="2026-07-19T00:00:00+00:00",
-        )
-        variant = assignment["variant_id"]
-        if counts[variant] >= 10:
-            continue
-        experiments.observe(
-            assignment["id"],
-            value=Decimal("100") if variant == "control" else Decimal("110"),
-            observed_at="2026-07-20T00:00:00+00:00",
-            evidence_id=source.id,
-            created_by="finance-1",
-        )
-        counts[variant] += 1
-        if counts == {"control": 10, "treatment": 10}:
-            break
+    for expected_variant, unit_keys in selected.items():
+        for unit_key in unit_keys:
+            assignment = experiments.assign(
+                protocol["id"],
+                unit_key=unit_key,
+                assigned_at="2026-07-19T00:00:00+00:00",
+            )
+            assert assignment["variant_id"] == expected_variant
+            experiments.observe(
+                assignment["id"],
+                value=(
+                    Decimal("100")
+                    if expected_variant == "control"
+                    else Decimal("110")
+                ),
+                observed_at="2026-07-20T00:00:00+00:00",
+                evidence_id=source.id,
+                created_by="finance-1",
+            )
+            counts[expected_variant] += 1
+
+    assert counts == {"control": 10, "treatment": 10}
 
     result = experiments.evaluate(protocol["id"])
     assert result["status"] == "incomplete_value_model"
@@ -927,10 +971,53 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
         {**applicability, "inventory_cover_days": 60 if index < 12 else 30}
         for index in range(20)
     ]
+    baselines = [
+        {
+            "kind": "human",
+            "actor_id": "independent-human-baseline",
+            "result": policies.evaluate_context(policy["id"], context),
+            "evidence_ids": [source.id],
+        }
+        for context in contexts
+    ]
+    with pytest.raises(ValueError, match="independent from evaluator"):
+        shadow_service.record_evaluation(
+            shadow["id"],
+            idempotency_key="self-baseline",
+            context=contexts[0],
+            baseline={**baselines[0], "actor_id": "shadow-operator"},
+            observed_at="2026-07-17T12:00:00+00:00",
+            evidence_ids=[source.id],
+            evaluated_by="shadow-operator",
+        )
+    with pytest.raises(ValueError, match="Sensitive field"):
+        shadow_service.record_evaluation(
+            shadow["id"],
+            idempotency_key="sensitive-baseline",
+            context=contexts[0],
+            baseline={
+                **baselines[0],
+                "result": {"customer_email": "forbidden@example.com"},
+            },
+            observed_at="2026-07-17T12:00:00+00:00",
+            evidence_ids=[source.id],
+            evaluated_by="shadow-operator",
+        )
+    with pytest.raises(ValueError, match="must match the context count"):
+        shadow_service.run_shadow_batch(
+            shadow["id"],
+            batch_key="misaligned-baselines",
+            contexts=contexts,
+            baselines=baselines[:-1],
+            observed_at="2026-07-17T12:00:00+00:00",
+            evidence_ids=[source.id],
+            created_by="shadow-operator",
+        )
     batch = shadow_service.run_shadow_batch(
         shadow["id"],
         batch_key="shadow-2026-07-17",
         contexts=contexts,
+        baselines=baselines,
         observed_at="2026-07-17T12:00:00+00:00",
         evidence_ids=[source.id],
         created_by="shadow-operator",
@@ -939,6 +1026,14 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     assert batch["execution_eligible"] is False
     assert batch["matched_count"] == 12
     assert batch["fallback_count"] == 8
+    first_evaluation = shadow_service.get_evaluation(batch["evaluation_ids"][0])
+    comparison = first_evaluation["result"]["shadow_comparison"]
+    assert comparison["baseline_kind"] == "human"
+    assert comparison["baseline_actor_id"] == "independent-human-baseline"
+    assert comparison["exact_match"] is True
+    assert comparison["changed_path_count"] == 0
+    assert comparison["changed_paths"] == []
+    assert comparison["baseline_evidence_ids"] == [source.id]
     shadow_service.validate_stage_outcome(shadow["id"], 20)
     with pytest.raises(ValueError, match="must equal"):
         shadow_service.validate_stage_outcome(shadow["id"], 19)
@@ -947,6 +1042,7 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
             shadow["id"],
             batch_key="shadow-2026-07-17",
             contexts=contexts,
+            baselines=baselines,
             observed_at="2026-07-17T12:00:00+00:00",
             evidence_ids=[source.id],
             created_by="shadow-operator",
@@ -978,7 +1074,18 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
             evidence_ids=[source.id],
             approved_by="policy-approver",
         )
-    outcome = policies.record_stage_outcome(
+    with pytest.raises(ValueError, match="Incremental value must be finite"):
+        shadow_service.record_stage_outcome(
+            shadow["id"],
+            verdict="passed",
+            observation_count=20,
+            incremental_value=Decimal("NaN"),
+            guardrail_breached=False,
+            notes="非有限值不能进入策略结果账",
+            evidence_ids=[source.id],
+            recorded_by="outcome-recorder",
+        )
+    outcome = shadow_service.record_stage_outcome(
         shadow["id"],
         verdict="passed",
         observation_count=20,
@@ -1024,14 +1131,28 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     approved_handoff = shadow_service.get_handoff(handoff["id"])
     assert approved_handoff["activation_eligible"] is True
     assert approved_handoff["execution_eligible"] is False
+    readiness_source = capture(evidence, "execution-readiness")
     execution_plans = ExecutionPlanService(
         engine=engine,
         policy_shadow=shadow_service,
         policies=policies,
         evidence=evidence,
         commerce=commerce,
+        readiness_provider=lambda _action, _target: {
+            "demand.real_execution": {
+                "ready": True,
+                "evidence_ids": [readiness_source.id],
+                "blocking_reasons": [],
+            }
+        },
     )
     state_hash = "a" * 64
+    listing_risk_limits = {
+        "max_quantity": "1",
+        "max_daily_runs": "5",
+        "max_expected_loss": "500",
+    }
+    listing_risk_values = {"quantity": "1", "expected_loss": "300"}
     plan = execution_plans.create(
         handoff["id"],
         idempotency_key="listing-draft-001",
@@ -1042,10 +1163,20 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
         rollback_patch={"item": {"offer_id": "ozon-offer-001", "name": "当前线上标题"}},
         evidence_ids=[source.id],
         created_by="execution-planner",
+        risk_limits=listing_risk_limits,
+        risk_values=listing_risk_values,
+        risk_currency="CNY",
     )
     assert plan["approval_status"] == "pending"
     assert plan["live_execution_supported"] is True
     assert plan["execution_eligible"] is False
+    assert plan["evidence_ids"] == sorted([source.id, readiness_source.id])
+    frozen_readiness = plan["decision_packet"]["readiness_snapshot"]
+    assert frozen_readiness["demand.real_execution"]["ready"] is True
+    assert frozen_readiness["demand.real_execution"]["evidence_ids"] == [
+        readiness_source.id
+    ]
+    assert len(frozen_readiness["demand.real_execution"]["snapshot_hash"]) == 64
     assert (
         execution_plans.create(
             handoff["id"],
@@ -1061,6 +1192,9 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
             },
             evidence_ids=[source.id],
             created_by="execution-planner",
+            risk_limits=listing_risk_limits,
+            risk_values=listing_risk_values,
+            risk_currency="CNY",
         )["id"]
         == plan["id"]
     )
@@ -1099,9 +1233,75 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     with pytest.raises(ValueError, match="global execution gate"):
         executor.queue(plan["id"], queued_by="execution-operator")
     executor.enabled = True
+    with pytest.raises(ValueError, match="independent from the approver"):
+        executor.queue(plan["id"], queued_by="execution-approver")
     command = executor.queue(plan["id"], queued_by="execution-operator")
     assert command["status"] == "queued"
+    assert command["action_id"] == "listing_publish"
+    assert command["action_policy_version"] == "2026-07-21.2"
+    assert command["decision_hash"] == ready_plan["decision_packet"]["decision_hash"]
+    assert command["risk_limits"] == {
+        "max_daily_runs": "5",
+        "max_expected_loss": "500",
+        "max_quantity": "1",
+    }
+    assert command["risk_values"] == {"expected_loss": "300", "quantity": "1"}
+    assert command["risk_currency"] == "CNY"
+    assert command["portfolio_risk"] == {
+        "schema_version": "action-budget-snapshot-v1",
+        "mode": "queue_reservation",
+        "occurred_at": command["portfolio_risk"]["occurred_at"],
+        "utc_day": command["portfolio_risk"]["utc_day"],
+        "action_id": "listing_publish",
+        "currency": "CNY",
+        "prior_command_ids": [],
+        "command_count": 1,
+        "max_daily_runs": 5,
+        "risk_totals": {"expected_loss": "300", "quantity": "1"},
+        "derived_daily_limits": {"expected_loss": "2500", "quantity": "5"},
+        "coverage": "action_utc_day_currency",
+        "unmodeled_axes": ["sku", "category", "store", "legal_entity", "cash_floor"],
+        "allowed": True,
+        "blocking_reasons": [],
+        "snapshot_hash": command["portfolio_risk"]["snapshot_hash"],
+    }
+    assert len(command["portfolio_risk"]["snapshot_hash"]) == 64
+    assert command["permit_expires_at"] is not None
     assert executor.queue(plan["id"], queued_by="execution-operator")["id"] == command["id"]
+    with Session(engine) as session:
+        exhausted = executor._action_budget_snapshot(
+            session,
+            action_id="listing_publish",
+            risk_limits={
+                "max_daily_runs": "1",
+                "max_expected_loss": "500",
+                "max_quantity": "1",
+            },
+            risk_values=listing_risk_values,
+            risk_currency="CNY",
+            occurred_at=datetime.now(UTC),
+        )
+    assert exhausted["allowed"] is False
+    assert exhausted["command_count"] == 2
+    assert exhausted["risk_totals"] == {"expected_loss": "600", "quantity": "2"}
+    assert exhausted["blocking_reasons"] == [
+        "ACTION_DAILY_RUN_LIMIT_EXHAUSTED",
+        "ACTION_DAILY_RISK_LIMIT_EXCEEDED:expected_loss",
+        "ACTION_DAILY_RISK_LIMIT_EXCEEDED:quantity",
+    ]
+    with Session(engine) as session, session.begin():
+        command_row = session.get(LimitedExecutionCommandRow, command["id"])
+        original_portfolio_risk = dict(command_row.portfolio_risk_json)
+        command_row.portfolio_risk_json = {**original_portfolio_risk, "allowed": False}
+    with pytest.raises(ValueError, match="authorization snapshot changed"):
+        executor.claim(
+            command["id"],
+            current_state_hash=state_hash,
+            worker_id="ozon-worker",
+        )
+    with Session(engine) as session, session.begin():
+        command_row = session.get(LimitedExecutionCommandRow, command["id"])
+        command_row.portfolio_risk_json = original_portfolio_risk
     claimed = executor.claim(
         command["id"],
         current_state_hash=state_hash,
@@ -1119,8 +1319,12 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
         error_detail=None,
         evidence_ids=[source.id],
         recorded_by="ozon-worker",
+        request_id="req-execution-receipt",
+        trace_id="trace-execution",
     )
     assert receipt["outcome"] == "succeeded"
+    assert receipt["request_id"] == "req-execution-receipt"
+    assert receipt["trace_id"] == "trace-execution"
     assert executor.get(command["id"])["platform_write_performed"] is True
     post_execution = PostExecutionService(
         engine=engine,
@@ -1197,6 +1401,20 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
         execution_plans=execution_plans,
         evidence=evidence,
     )
+    with pytest.raises(ValueError, match="three-letter ASCII code"):
+        capability_economics.assess(
+            window["id"],
+            realized_incremental_value="-20",
+            avoided_loss="5",
+            model_compute_cost="1",
+            human_review_cost="2",
+            incident_loss="10",
+            maintenance_cost="1",
+            currency="РУБ",
+            evidence_ids=[source.id],
+            assessed_by="finance-controller",
+            as_of="2026-07-19T00:00:00+00:00",
+        )
     capability_assessment = capability_economics.assess(
         window["id"],
         realized_incremental_value="-20",
@@ -1234,6 +1452,9 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
         rollback_patch={"item": {"offer_id": "ozon-offer-002", "name": "原始标题"}},
         evidence_ids=[source.id],
         created_by="compensation-planner",
+        risk_limits=listing_risk_limits,
+        risk_values=listing_risk_values,
+        risk_currency="CNY",
     )
     execution_plans.dry_run(
         compensation_plan["id"],
@@ -1294,6 +1515,20 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     )
     assert after_invalidation["matched"] is False
     assert after_invalidation["recommendation"]["type"] == "recommend_no_action"
+    with Session(engine) as session, session.begin():
+        session.execute(
+            update(EvidenceBlobRow)
+            .where(EvidenceBlobRow.sha256 == readiness_source.sha256)
+            .values(content_bytes=b"tampered readiness evidence")
+        )
+    evidence_invalidated_plan = execution_plans.get(plan["id"])
+    assert evidence_invalidated_plan["ready_for_executor"] is False
+    assert "PLAN_EVIDENCE_INVALID" in evidence_invalidated_plan[
+        "authorization_blocking_reasons"
+    ]
+    assert "READINESS_EVIDENCE_INVALID" in evidence_invalidated_plan[
+        "authorization_blocking_reasons"
+    ]
 
 
 def test_registration_rejects_unsafe_or_ambiguous_protocols():
@@ -1321,4 +1556,101 @@ def test_registration_rejects_unsafe_or_ambiguous_protocols():
             ],
             evidence_ids=[source.id],
             created_by="owner",
+        )
+
+    with pytest.raises(ValueError, match="Minimum detectable effect must be a finite number"):
+        experiments.register(
+            resolution["id"],
+            hypothesis="non-finite risk input",
+            primary_metric="profit",
+            randomization_unit="visitor",
+            variants=[
+                {"id": "control", "label": "control", "allocation": "0.5", "control": True},
+                {"id": "test", "label": "test", "allocation": "0.5", "control": False},
+            ],
+            target_sample_size=20,
+            minimum_detectable_effect=Decimal("NaN"),
+            budget_cap_amount=Decimal("100"),
+            stop_loss_amount=Decimal("10"),
+            currency="CNY",
+            start_at="2026-07-18T00:00:00+00:00",
+            end_at="2026-07-25T00:00:00+00:00",
+            guardrails=[
+                {"metric": "refund", "direction": "max", "threshold": "0.1"}
+            ],
+            evidence_ids=[source.id],
+            created_by="owner",
+        )
+
+    with pytest.raises(ValueError, match="Variant allocation must be a finite number"):
+        experiments._variants(
+            [
+                {"id": "control", "label": "control", "allocation": "NaN", "control": True},
+                {"id": "test", "label": "test", "allocation": "0.5", "control": False},
+            ]
+        )
+    with pytest.raises(ValueError, match="Guardrail threshold must be a finite number"):
+        experiments._guardrails(
+            [{"metric": "refund", "direction": "max", "threshold": "Infinity"}]
+        )
+
+
+def test_causal_policy_numeric_helpers_reject_nonfinite_values():
+    with pytest.raises(ValueError, match="Guardrail threshold must be finite"):
+        CausalPolicyService._guardrails(
+            [{"metric": "refund_rate", "direction": "max", "threshold": "Infinity"}]
+        )
+    with pytest.raises(ValueError, match="Rollout exposure fraction must be finite"):
+        CausalPolicyService._stages(
+            [
+                {
+                    "name": "shadow",
+                    "max_exposure_fraction": "NaN",
+                    "minimum_observation_count": 0,
+                    "minimum_incremental_value": "0",
+                },
+                {
+                    "name": "limited",
+                    "max_exposure_fraction": "0.1",
+                    "minimum_observation_count": 20,
+                    "minimum_incremental_value": "1",
+                },
+            ]
+        )
+    with pytest.raises(ValueError, match="Minimum incremental value must be finite"):
+        CausalPolicyService._stages(
+            [
+                {
+                    "name": "shadow",
+                    "max_exposure_fraction": "0",
+                    "minimum_observation_count": 0,
+                    "minimum_incremental_value": "Infinity",
+                },
+                {
+                    "name": "limited",
+                    "max_exposure_fraction": "0.1",
+                    "minimum_observation_count": 20,
+                    "minimum_incremental_value": "1",
+                },
+            ]
+        )
+    assert CausalPolicyService._matches("NaN", "gte", "1") is False
+
+
+def test_shadow_comparison_reports_bounded_json_pointer_differences():
+    count, paths = PolicyShadowService._changed_paths(
+        {"recommendation": {"type": "keep", "items": ["a", "b"]}},
+        {"recommendation": {"type": "change", "items": ["a", "c", "d"]}},
+    )
+
+    assert count == 3
+    assert paths == [
+        "/recommendation/items/1",
+        "/recommendation/items/2",
+        "/recommendation/type",
+    ]
+    with pytest.raises(ValueError, match="baseline comparisons"):
+        PolicyShadowService._require_comparisons(
+            [{"result": {"matched": True}}],
+            purpose="Shadow outcome",
         )

@@ -26,7 +26,7 @@ function Get-ListeningProcess([int]$Port) {
 function Test-ApiFingerprint {
     try {
         $version = Invoke-RestMethod "http://127.0.0.1:8000/version" -TimeoutSec 3
-        return $version.service -eq "kjds-control-plane" -and $version.version -eq "0.3.0"
+        return $version.service -eq "kjds-control-plane" -and $version.schema_version -eq "v1"
     } catch { return $false }
 }
 
@@ -45,10 +45,13 @@ function Stop-StaleKjdsProcess([int]$Port, [string]$ExpectedMarker) {
 
 $databaseProvider = Get-Setting "KJDS_DATABASE_PROVIDER" "local-postgres"
 $apiKey = Get-Setting "KJDS_API_KEY" ""
-if (-not $apiKey -or $apiKey -like "replace-*") {
-    throw "KJDS_API_KEY must be configured in .env before KJDS can start."
+$apiKeysJson = Get-Setting "KJDS_API_KEYS_JSON" ""
+if ((-not $apiKey -or $apiKey -like "replace-*") -and (-not $apiKeysJson -or $apiKeysJson -eq "{}")) {
+    throw "KJDS_API_KEY or a non-empty KJDS_API_KEYS_JSON map must be configured before KJDS can start."
 }
-$env:KJDS_API_KEY = $apiKey
+if ($apiKey) { $env:KJDS_API_KEY = $apiKey }
+if ($apiKeysJson) { $env:KJDS_API_KEYS_JSON = $apiKeysJson }
+uv run python -m apps.control_plane.security | Out-Null
 if ($databaseProvider -ne "supabase") {
     docker compose up -d postgres
 }

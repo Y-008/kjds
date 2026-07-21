@@ -1,0 +1,13 @@
+{
+  "prompt-fixture-1": {
+    "outputs": [
+      {
+        "filename": "unexpected.png"
+      }
+    ],
+    "status": {
+      "completed": true,
+      "status_str": "success"
+    }
+  }
+}

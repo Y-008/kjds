@@ -1,21 +1,95 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
 
+from .correlation import correlation_id
+from .pilot_readiness import (
+    OZON_FINANCE_READ_CONTRACT_VERSION,
+    OZON_PRODUCT_READ_CONTRACT_VERSION,
+)
+
 
 class OzonApiError(RuntimeError):
-    def __init__(self, message: str, *, status_code: int | None = None, retryable: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "OZON_API_ERROR",
+        status_code: int | None = None,
+        retryable: bool = False,
+    ) -> None:
         super().__init__(message)
+        self.code = code
         self.status_code = status_code
         self.retryable = retryable
+
+
+class OzonCircuitBreaker:
+    def __init__(
+        self,
+        *,
+        failure_threshold: int = 3,
+        cooldown_seconds: float = 30,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if not 1 <= failure_threshold <= 100:
+            raise ValueError("Ozon circuit failure threshold must be between 1 and 100")
+        if not 0 < cooldown_seconds <= 3600:
+            raise ValueError("Ozon circuit cooldown must be between 0 and 3600 seconds")
+        self.failure_threshold = failure_threshold
+        self.cooldown_seconds = cooldown_seconds
+        self.clock = clock
+        self.failures = 0
+        self.state = "closed"
+        self.opened_at: float | None = None
+
+    def before_call(self) -> None:
+        if self.state == "closed":
+            return
+        now = self.clock()
+        if (
+            self.state == "open"
+            and self.opened_at is not None
+            and now - self.opened_at >= self.cooldown_seconds
+        ):
+            self.state = "half_open"
+            return
+        raise OzonApiError(
+            "Ozon connector circuit is open",
+            code="OZON_CIRCUIT_OPEN",
+            retryable=True,
+        )
+
+    def record_success(self) -> None:
+        self.failures = 0
+        self.state = "closed"
+        self.opened_at = None
+
+    def record_failure(self) -> None:
+        self.failures += 1
+        if self.state == "half_open" or self.failures >= self.failure_threshold:
+            self.state = "open"
+            self.opened_at = self.clock()
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "state": self.state,
+            "consecutive_failures": self.failures,
+            "failure_threshold": self.failure_threshold,
+            "cooldown_seconds": self.cooldown_seconds,
+        }
 
 
 @dataclass(frozen=True, repr=False)
@@ -33,6 +107,10 @@ class OzonCredentials:
 
 
 class OzonSellerClient:
+    PRODUCT_READ_CONTRACT_VERSION = OZON_PRODUCT_READ_CONTRACT_VERSION
+    FINANCE_READ_CONTRACT_VERSION = OZON_FINANCE_READ_CONTRACT_VERSION
+    RESPONSE_BUNDLE_SCHEMA_VERSION = "ozon-response-bundle-v2"
+
     def __init__(
         self,
         credentials: OzonCredentials,
@@ -42,6 +120,9 @@ class OzonSellerClient:
         transport: httpx.BaseTransport | None = None,
         allow_insecure_http: bool = False,
         attributes_path: str = "/v4/product/info/attributes",
+        circuit_failure_threshold: int = 3,
+        circuit_cooldown_seconds: float = 30,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         normalized = base_url.rstrip("/")
         if not allow_insecure_http and not normalized.startswith("https://"):
@@ -59,15 +140,26 @@ class OzonSellerClient:
             transport=transport,
         )
         self._attributes_path = attributes_path
+        self._breaker = OzonCircuitBreaker(
+            failure_threshold=circuit_failure_threshold,
+            cooldown_seconds=circuit_cooldown_seconds,
+            clock=clock,
+        )
 
     def close(self) -> None:
         self._client.close()
 
     def offer_state(self, offer_id: str) -> dict[str, Any]:
         offer_id = self._required(offer_id, "offer_id")
-        info = self._read(
+        info, info_capture = self._read_with_capture(
             "/v3/product/info/list",
             {"offer_id": [offer_id]},
+        )
+        self._require_single_offer(
+            info,
+            keys=("items",),
+            path="/v3/product/info/list",
+            offer_id=offer_id,
         )
         attributes_body = {
             "filter": {"offer_id": [offer_id], "visibility": "ALL"},
@@ -75,13 +167,115 @@ class OzonSellerClient:
             "sort_dir": "ASC",
         }
         try:
-            attributes = self._read(self._attributes_path, attributes_body)
+            attributes, attributes_capture = self._read_with_capture(
+                self._attributes_path, attributes_body
+            )
         except OzonApiError as exc:
             if exc.status_code != 404 or self._attributes_path == "/v3/products/info/attributes":
                 raise
-            attributes = self._read("/v3/products/info/attributes", attributes_body)
-        state = {"offer_id": offer_id, "info": info, "attributes": attributes}
-        return {"state": state, "state_hash": self.state_hash(state)}
+            attributes, attributes_capture = self._read_with_capture(
+                "/v3/products/info/attributes", attributes_body
+            )
+        self._require_single_offer(
+            attributes,
+            keys=("result", "items"),
+            path=attributes_capture["path"],
+            offer_id=offer_id,
+        )
+        state = {
+            "contract_version": self.PRODUCT_READ_CONTRACT_VERSION,
+            "offer_id": offer_id,
+            "info": info,
+            "attributes": attributes,
+        }
+        return {
+            "contract_version": self.PRODUCT_READ_CONTRACT_VERSION,
+            "state": state,
+            "state_hash": self.state_hash(state),
+            "response_evidence_bytes": self._response_bundle(
+                [info_capture, attributes_capture],
+                contract_version=self.PRODUCT_READ_CONTRACT_VERSION,
+            ),
+        }
+
+    def finance_transactions(
+        self,
+        *,
+        date_from: str,
+        date_to: str,
+        page: int = 1,
+        page_size: int = 1000,
+    ) -> dict[str, Any]:
+        body = self.finance_request_body(
+            date_from=date_from,
+            date_to=date_to,
+            page=page,
+            page_size=page_size,
+        )
+        response, capture = self._read_with_capture(
+            "/v3/finance/transaction/list",
+            body,
+        )
+        result = response.get("result")
+        if not isinstance(result, dict) or not isinstance(result.get("operations"), list):
+            raise self._schema_error("Ozon finance response is missing result.operations")
+        page_count = result.get("page_count")
+        if page_count is not None and (
+            isinstance(page_count, bool) or not isinstance(page_count, int) or page_count < 0
+        ):
+            raise self._schema_error("Ozon finance response contains an invalid page_count")
+        query_window_sha256 = hashlib.sha256(
+            json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return {
+            "contract_version": self.FINANCE_READ_CONTRACT_VERSION,
+            "query_window_sha256": query_window_sha256,
+            "page": page,
+            "page_size": page_size,
+            "page_count": page_count,
+            "operation_count": len(result["operations"]),
+            "response_evidence_bytes": self._response_bundle(
+                [capture],
+                contract_version=self.FINANCE_READ_CONTRACT_VERSION,
+            ),
+        }
+
+    @classmethod
+    def finance_request_body(
+        cls,
+        *,
+        date_from: str,
+        date_to: str,
+        page: int = 1,
+        page_size: int = 1000,
+    ) -> dict[str, Any]:
+        start = cls._finance_datetime(date_from, "date_from")
+        end = cls._finance_datetime(date_to, "date_to")
+        if start >= end:
+            raise ValueError("Ozon finance date_from must be before date_to")
+        if end - start > timedelta(days=31):
+            raise ValueError("Ozon finance query window cannot exceed 31 days")
+        if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+            raise ValueError("Ozon finance page must be a positive integer")
+        if (
+            isinstance(page_size, bool)
+            or not isinstance(page_size, int)
+            or not 1 <= page_size <= 1000
+        ):
+            raise ValueError("Ozon finance page_size must be between 1 and 1000")
+        return {
+            "filter": {
+                "date": {
+                    "from": start.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+                    "to": end.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+                },
+                "operation_type": [],
+                "posting_number": "",
+                "transaction_type": "all",
+            },
+            "page": page,
+            "page_size": page_size,
+        }
 
     def import_product(self, item: dict[str, Any]) -> str:
         if not isinstance(item, dict) or not item.get("offer_id"):
@@ -90,11 +284,15 @@ class OzonSellerClient:
         result = response.get("result")
         task_id = result.get("task_id") if isinstance(result, dict) else None
         if task_id is None:
-            raise OzonApiError("Ozon product import response did not contain task_id")
+            raise self._schema_error("Ozon product import response did not contain task_id")
         return str(task_id)
 
     def import_status(self, task_id: str) -> dict[str, Any]:
-        return self._read("/v1/product/import/info", {"task_id": task_id})
+        response = self._read("/v1/product/import/info", {"task_id": task_id})
+        result = response.get("result")
+        if not isinstance(result, dict) or not isinstance(result.get("items"), list):
+            raise self._schema_error("Ozon import status response is missing result.items")
+        return response
 
     def wait_for_import(
         self,
@@ -118,49 +316,80 @@ class OzonSellerClient:
         return {"status": "uncertain", "response": last}
 
     def _read(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        value, _ = self._read_with_capture(path, payload)
+        return value
+
+    def _read_with_capture(
+        self,
+        path: str,
+        payload: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        self._breaker.before_call()
         delay = 0.25
         for attempt in range(3):
             try:
                 response = self._client.post(path, json=payload)
             except httpx.TransportError as exc:
                 if attempt == 2:
-                    raise OzonApiError("Ozon read transport failure", retryable=True) from exc
+                    self._breaker.record_failure()
+                    raise OzonApiError(
+                        "Ozon read transport failure",
+                        code="OZON_READ_TRANSPORT",
+                        retryable=True,
+                    ) from exc
                 time.sleep(delay)
                 delay *= 2
                 continue
             if response.status_code == 429 or response.status_code >= 500:
                 if attempt == 2:
+                    self._breaker.record_failure()
                     raise self._response_error(response, retryable=True)
                 retry_after = self._retry_after(response, delay)
                 time.sleep(retry_after)
                 delay = min(delay * 2, 2)
                 continue
-            return self._json_or_error(response)
-        raise OzonApiError("Ozon read retry loop exhausted", retryable=True)
+            self._breaker.record_success()
+            return self._json_or_error(response), self._capture_response(path, response)
+        self._breaker.record_failure()
+        raise OzonApiError(
+            "Ozon read retry loop exhausted",
+            code="OZON_READ_RETRY_EXHAUSTED",
+            retryable=True,
+        )
 
     def _write(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self._breaker.before_call()
         try:
             response = self._client.post(path, json=payload)
         except httpx.TransportError as exc:
+            self._breaker.record_failure()
             raise OzonApiError(
                 "Ozon write outcome is uncertain after transport failure",
+                code="OZON_WRITE_UNCERTAIN",
                 retryable=False,
             ) from exc
+        if response.status_code == 429 or response.status_code >= 500:
+            self._breaker.record_failure()
+        else:
+            self._breaker.record_success()
         return self._json_or_error(response)
 
-    @classmethod
-    def _json_or_error(cls, response: httpx.Response) -> dict[str, Any]:
+    def _json_or_error(self, response: httpx.Response) -> dict[str, Any]:
         if not response.is_success:
-            raise cls._response_error(
+            raise self._response_error(
                 response,
                 retryable=response.status_code == 429 or response.status_code >= 500,
             )
         try:
             value = response.json()
         except ValueError as exc:
-            raise OzonApiError("Ozon API returned non-JSON response") from exc
+            self._breaker.record_failure()
+            raise OzonApiError(
+                "Ozon API returned non-JSON response",
+                code="OZON_NON_JSON_RESPONSE",
+            ) from exc
         if not isinstance(value, dict):
-            raise OzonApiError("Ozon API returned an unexpected response shape")
+            raise self._schema_error("Ozon API returned an unexpected response shape")
         return value
 
     @staticmethod
@@ -169,6 +398,7 @@ class OzonSellerClient:
         suffix = f" request_id={request_id}" if request_id else ""
         return OzonApiError(
             f"Ozon API returned HTTP {response.status_code}.{suffix}",
+            code=f"OZON_HTTP_{response.status_code}",
             status_code=response.status_code,
             retryable=retryable,
         )
@@ -191,6 +421,95 @@ class OzonSellerClient:
         return hashlib.sha256(
             json.dumps(state, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
         ).hexdigest()
+
+    def circuit_status(self) -> dict[str, Any]:
+        return self._breaker.snapshot()
+
+    def _schema_error(self, message: str) -> OzonApiError:
+        self._breaker.record_failure()
+        return OzonApiError(message, code="OZON_SCHEMA_DRIFT", retryable=False)
+
+    def _require_single_offer(
+        self,
+        value: dict[str, Any],
+        *,
+        keys: tuple[str, ...],
+        path: str,
+        offer_id: str,
+    ) -> None:
+        items = next(
+            (value.get(key) for key in keys if isinstance(value.get(key), list)),
+            None,
+        )
+        if items is None:
+            joined = " or ".join(keys)
+            raise self._schema_error(
+                f"Ozon response schema drift at {path}: missing {joined} list"
+            )
+        if not items:
+            raise OzonApiError(
+                "Ozon product read did not return the requested target",
+                code="OZON_TARGET_NOT_FOUND",
+            )
+        if len(items) != 1:
+            raise OzonApiError(
+                "Ozon product read returned an ambiguous target set",
+                code="OZON_TARGET_AMBIGUOUS",
+            )
+        item = items[0]
+        if not isinstance(item, dict) or not str(item.get("offer_id", "")).strip():
+            raise self._schema_error(
+                f"Ozon response schema drift at {path}: item is missing offer_id"
+            )
+        if str(item["offer_id"]).strip() != offer_id:
+            raise OzonApiError(
+                "Ozon product read returned a different target",
+                code="OZON_TARGET_MISMATCH",
+            )
+
+    @staticmethod
+    def _capture_response(path: str, response: httpx.Response) -> dict[str, Any]:
+        safe_headers = {}
+        for name in ("content-type", "x-o3-trace-id", "x-request-id"):
+            if value := response.headers.get(name):
+                safe_headers[name] = value[:500]
+        body = response.content
+        return {
+            "path": path,
+            "status_code": response.status_code,
+            "headers": safe_headers,
+            "body_sha256": hashlib.sha256(body).hexdigest(),
+            "body_base64": base64.b64encode(body).decode("ascii"),
+        }
+
+    @classmethod
+    def _response_bundle(
+        cls,
+        responses: list[dict[str, Any]],
+        *,
+        contract_version: str,
+    ) -> bytes:
+        return json.dumps(
+            {
+                "schema_version": cls.RESPONSE_BUNDLE_SCHEMA_VERSION,
+                "contract_version": contract_version,
+                "responses": responses,
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode()
+
+    @staticmethod
+    def _finance_datetime(value: str, name: str) -> datetime:
+        cleaned = str(value).strip()
+        try:
+            parsed = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"Ozon finance {name} must be an ISO-8601 datetime") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError(f"Ozon finance {name} must include a timezone")
+        return parsed
 
     @staticmethod
     def _required(value: str, name: str) -> str:
@@ -221,28 +540,45 @@ class ControlPlaneExecutorClient:
     def close(self) -> None:
         self._client.close()
 
-    def list_commands(self) -> list[dict[str, Any]]:
-        value = self._request("GET", "/v1/limited-execution-commands")
+    def list_commands(self, *, trace_id: str | None = None) -> list[dict[str, Any]]:
+        value = self._request("GET", "/v1/limited-execution-commands", trace_id=trace_id)
         if not isinstance(value, list):
             raise RuntimeError("Control plane returned an invalid command list")
         return value
 
-    def claim(self, command_id: str, state_hash: str) -> dict[str, Any]:
+    def claim(self, command_id: str, state_hash: str, *, trace_id: str) -> dict[str, Any]:
         return self._request(
             "POST",
             f"/v1/limited-execution-commands/{command_id}/claim",
             {"current_state_hash": state_hash, "lease_seconds": 300},
+            trace_id=trace_id,
         )
 
-    def receipt(self, command_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    def receipt(self, command_id: str, body: dict[str, Any], *, trace_id: str) -> dict[str, Any]:
         return self._request(
             "POST",
             f"/v1/limited-execution-commands/{command_id}/receipt",
             body,
+            trace_id=trace_id,
         )
 
-    def _request(self, method: str, path: str, body: dict[str, Any] | None = None):
-        response = self._client.request(method, path, json=body)
+    def _request(
+        self,
+        method: str,
+        path: str,
+        body: dict[str, Any] | None = None,
+        *,
+        trace_id: str | None = None,
+    ):
+        response = self._client.request(
+            method,
+            path,
+            json=body,
+            headers={
+                "X-Request-ID": correlation_id(None, "req"),
+                "X-Trace-ID": correlation_id(trace_id, "trace"),
+            },
+        )
         if not response.is_success:
             raise RuntimeError(f"Control plane returned HTTP {response.status_code}")
         return response.json()
@@ -250,12 +586,20 @@ class ControlPlaneExecutorClient:
 
 class OzonExecutionWorker:
     ADAPTER_ID = "ozon.product.import.v3"
+    ACTION_ID = "listing_publish"
 
     def __init__(self, *, control_plane: ControlPlaneExecutorClient, ozon: OzonSellerClient) -> None:
         self.control_plane = control_plane
         self.ozon = ozon
 
-    def process(self, command: dict[str, Any], *, evidence_ids: list[str]) -> dict[str, Any]:
+    def process(
+        self,
+        command: dict[str, Any],
+        *,
+        evidence_ids: list[str],
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
+        trace_id = correlation_id(trace_id, "trace")
         if command.get("adapter_id") != self.ADAPTER_ID:
             raise ValueError("Worker received a command for a different adapter")
         if command.get("status") != "queued":
@@ -266,7 +610,15 @@ class OzonExecutionWorker:
         if not offer_id or not isinstance(item, dict) or item.get("offer_id") != offer_id:
             raise ValueError("Command target and full Ozon import item do not match")
         before = self.ozon.offer_state(offer_id)
-        self.control_plane.claim(command["id"], before["state_hash"])
+        claimed = self.control_plane.claim(
+            command["id"], before["state_hash"], trace_id=trace_id
+        )
+        self._validate_claimed_command(claimed)
+        if claimed.get("target") != command.get("target"):
+            raise ValueError("Claimed command target changed after precondition read")
+        item = claimed.get("patch", {}).get("item")
+        if not isinstance(item, dict) or item.get("offer_id") != offer_id:
+            raise ValueError("Claimed command patch changed after authorization")
         try:
             task_id = self.ozon.import_product(item)
             import_result = self.ozon.wait_for_import(task_id)
@@ -282,6 +634,7 @@ class OzonExecutionWorker:
                     "error_detail": str(exc),
                     "evidence_ids": evidence_ids,
                 },
+                trace_id=trace_id,
             )
         if import_result["status"] == "succeeded":
             after = self.ozon.offer_state(offer_id)
@@ -296,6 +649,7 @@ class OzonExecutionWorker:
                     "error_detail": None,
                     "evidence_ids": evidence_ids,
                 },
+                trace_id=trace_id,
             )
         return self.control_plane.receipt(
             command["id"],
@@ -308,10 +662,12 @@ class OzonExecutionWorker:
                 "error_detail": "Ozon import task did not confirm a completed mutation",
                 "evidence_ids": evidence_ids,
             },
+            trace_id=trace_id,
         )
 
     def run_once(self, *, evidence_ids: list[str]) -> dict[str, Any] | None:
-        commands = self.control_plane.list_commands()
+        trace_id = correlation_id(None, "trace")
+        commands = self.control_plane.list_commands(trace_id=trace_id)
         command = next(
             (
                 item
@@ -320,7 +676,92 @@ class OzonExecutionWorker:
             ),
             None,
         )
-        return self.process(command, evidence_ids=evidence_ids) if command else None
+        return (
+            self.process(command, evidence_ids=evidence_ids, trace_id=trace_id)
+            if command
+            else None
+        )
+
+    @classmethod
+    def _validate_claimed_command(cls, command: dict[str, Any]) -> None:
+        if command.get("status") != "claimed":
+            raise ValueError("Control plane did not return a claimed execution permit")
+        if command.get("adapter_id") != cls.ADAPTER_ID or command.get("action_id") != cls.ACTION_ID:
+            raise ValueError("Execution permit is not authorized for Ozon listing publication")
+        for name in ("decision_hash", "authorization_hash"):
+            value = str(command.get(name, "")).strip().lower()
+            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+                raise ValueError(f"Execution permit has an invalid {name}")
+        expires_at = cls._aware_datetime(command.get("permit_expires_at"))
+        if expires_at <= datetime.now(UTC):
+            raise ValueError("Execution permit expired before the Ozon write")
+        if command["authorization_hash"] != cls._authorization_hash(command):
+            raise ValueError("Execution permit authorization hash does not match")
+        portfolio_risk = command.get("portfolio_risk")
+        if not isinstance(portfolio_risk, dict) or portfolio_risk.get("allowed") is not True:
+            raise ValueError("Execution permit lacks an allowed portfolio risk snapshot")
+        snapshot_hash = str(portfolio_risk.get("snapshot_hash", "")).strip().lower()
+        snapshot_payload = {key: value for key, value in portfolio_risk.items() if key != "snapshot_hash"}
+        if snapshot_hash != cls._hash(snapshot_payload):
+            raise ValueError("Execution permit portfolio risk snapshot does not match")
+        limits = command.get("risk_limits") or {}
+        values = command.get("risk_values") or {}
+        try:
+            quantity = Decimal(str(values["quantity"]))
+            max_quantity = Decimal(str(limits["max_quantity"]))
+            expected_loss = Decimal(str(values["expected_loss"]))
+            max_expected_loss = Decimal(str(limits["max_expected_loss"]))
+        except (KeyError, InvalidOperation) as exc:
+            raise ValueError("Execution permit is missing bounded listing risk values") from exc
+        if quantity != 1 or quantity > max_quantity or expected_loss > max_expected_loss:
+            raise ValueError("Execution permit listing risk values exceed their limits")
+
+    @classmethod
+    def _authorization_hash(cls, command: dict[str, Any]) -> str:
+        common = {
+            "action_id": command["action_id"],
+            "action_policy_version": command["action_policy_version"],
+            "decision_hash": command["decision_hash"],
+            "risk_limits": command["risk_limits"],
+            "risk_values": command["risk_values"],
+            "risk_currency": command.get("risk_currency"),
+            "portfolio_risk_snapshot": command["portfolio_risk"],
+            "permit_expires_at": command["permit_expires_at"],
+            "command_kind": command["command_kind"],
+        }
+        if command["command_kind"] == "rollback":
+            common["parent_command_id"] = command["parent_command_id"]
+        else:
+            common["plan_id"] = command["plan_id"]
+        return hashlib.sha256(
+            json.dumps(
+                common,
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+
+    @staticmethod
+    def _hash(value: dict[str, Any]) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                value,
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+
+    @staticmethod
+    def _aware_datetime(value: Any) -> datetime:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("Execution permit expiry must be ISO-8601") from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("Execution permit expiry must include a timezone")
+        return parsed.astimezone(UTC)
 
 
 def main() -> None:

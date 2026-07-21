@@ -6,8 +6,8 @@
 | owner | 本机操作员 |
 | approver | 项目负责人 |
 | status | Active |
-| version | 2.0 |
-| last_reviewed | 2026-07-16 |
+| version | 2.2 |
+| last_reviewed | 2026-07-19 |
 | next_review | 2026-08-16 |
 | applies_to | 本机 OpenClaw 2026.6.11、Hermes Agent 0.18.2 |
 
@@ -36,6 +36,9 @@ OpenClaw（控制面、35 个角色 Agent、飞书入口）
 - OpenClaw 安全审计：0 Critical、4 Warning、2 Info；
 - OpenClaw 配置校验通过，Gateway 与飞书 Channel 运行中；
 - OpenClaw Chief 的模型可见技能由 900+ 收敛为 37 个；本地 26B Agent 已禁止 Web/Browser 工具。
+- 33 个角色默认使用 Hermes Gateway，1 个 Local Gemma Worker 直连 Ollama，1 个 Auditor 使用智谱优先、本地回退；智谱 402/429 不再阻塞其它角色。
+- 三条原有无人值守任务已改为可验证 command job；健康、晨报、AI 候选分析均实际运行，连续错误归零；另有每周 20 条本地金标回归，当前基线 19/20（95.0%），低于 90% 时任务自动失败并进入错误计数。
+- 24×7 来源采集与认知晋级规则见 [07_CONTINUOUS_INTELLIGENCE_AND_AGENT_OS.md](07_CONTINUOUS_INTELLIGENCE_AND_AGENT_OS.md)。
 
 ## 为什么这样选
 
@@ -114,7 +117,7 @@ Hermes 当前主模型为 `ollama/gemma4:26b`，运行时 context 设为 65,536�
 
 | 路径 | 2026-07-16 实测 | 处理 |
 |---|---|---|
-| 智谱 GLM-5.2 | HTTP 402，余额不足 | 充值并轮换已在聊天暴露过的 Key 后再启用 |
+| 智谱 GLM-5.2 | HTTP 402/429，额度或限流不可用 | 充值、设月度硬预算并轮换已在聊天暴露过的 Key 后再启用 |
 | DeepSeek Direct | HTTP 429，无余额/资源包 | 充值或替换有效 Key |
 | 本地 CPA Proxy | HTTP 401，Provider Token 过期 | 重新认证 Proxy Provider |
 | Ollama Gemma4 26B | 成功 | 当前稳定离线主路径 |
@@ -148,6 +151,29 @@ hermes mcp test context7
 ```
 
 Hermes CLI 的原生 `venv\Scripts\hermes.exe` 被 Windows 应用控制策略阻止；`D:\IT\hermes.cmd` 已改用获准的 Python 运行时并补齐 venv/pywin32 搜索路径。不要删除该包装器。
+
+### KJDS Evidence 健康任务
+
+该任务复用 Windows Task Scheduler，不由 OpenClaw、n8n 或另一套工作流引擎重复调度。默认命令只生成计划，不修改系统：
+
+```powershell
+Set-Location D:\KJDS\kjds
+
+# 1. 查看预期定义；该命令不读取 .env，不创建任务。
+pwsh -NoProfile -File .\scripts\manage-evidence-health-task.ps1 -Mode Plan
+
+# 2. 由配置负责人从 .env.example 建立 Git 忽略的 .env，填入持续控制平面、
+#    独立 operator/monitor 身份映射，并手工完成失败关闭预检。
+pwsh -NoProfile -File .\scripts\run-24x7-health.ps1 -ControlPlaneOnly
+
+# 3. 只有上一步退出码为 0，且确认 .env 是任务以后仍可读取的持久配置后，才显式安装。
+pwsh -NoProfile -File .\scripts\manage-evidence-health-task.ps1 -Mode Install
+
+# 4. 等待至少三个计划周期后审计；历史不足或定义漂移时退出码为 2。
+pwsh -NoProfile -File .\scripts\manage-evidence-health-task.ps1 -Mode Audit
+```
+
+安装命令不得附带任何 API key、Token 或平台凭证。`installed_pending_history` 只代表任务定义已注册，不代表验收完成；只有 Audit 返回 `accepted` 且连续三次原生完成结果为 0 才可更新 BAS-040。当前机器尚无目标任务和 `.env`，不要跳过配置负责人审批执行 Install。本机任务也只覆盖“开机且用户环境可用”的运行窗口，不等于托管 24×7。
 
 ## 安全状态与保留警告
 

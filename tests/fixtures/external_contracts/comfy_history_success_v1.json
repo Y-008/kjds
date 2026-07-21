@@ -1,0 +1,19 @@
+{
+  "prompt-fixture-1": {
+    "outputs": {
+      "3": {
+        "images": [
+          {
+            "filename": "fixture_00001_.png",
+            "subfolder": "kjds/fixture",
+            "type": "output"
+          }
+        ]
+      }
+    },
+    "status": {
+      "completed": true,
+      "status_str": "success"
+    }
+  }
+}

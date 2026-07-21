@@ -8,7 +8,13 @@ from apps.control_plane.evidence import EvidenceGrade, EvidenceService
 from apps.control_plane.procurement import ProcurementService
 from apps.control_plane.repository import InMemoryRepository
 from apps.control_plane.services import CommerceService
-from apps.control_plane.sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOffer
+from apps.control_plane.sourcing import (
+    REQUIRED_COST_EVIDENCE_KEYS,
+    ProfitInputs,
+    SourcePlatform,
+    SourcingService,
+    SupplierOffer,
+)
 from apps.control_plane.sql_repository import Base
 
 
@@ -52,7 +58,7 @@ def capture(evidence, *, ref, content, effective_at="2026-07-16T00:00:00+00:00")
     )
 
 
-def setup_procurement():
+def setup_procurement(*, complete_costs: bool = True):
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     evidence = EvidenceService(engine)
@@ -99,6 +105,15 @@ def setup_procurement():
                 return_reserve_rate=Decimal("0.04"),
             ),
             [assumption.id],
+            (
+                {
+                    key: assumption.id
+                    for key in REQUIRED_COST_EVIDENCE_KEYS
+                    if key not in {"product_cost", "domestic_logistics"}
+                }
+                if complete_costs
+                else {}
+            ),
         )
         scenarios.append((offer, scenario))
     selected_offer, selected_scenario = scenarios[0]
@@ -194,3 +209,9 @@ def test_sample_procurement_rejects_invalid_transition():
             facts={"tracking_ref": "TRK", "carrier": "carrier"},
             created_by="operator-1",
         )
+
+
+def test_sample_procurement_rechecks_full_cost_gate_at_execution():
+    _, service, approval = setup_procurement(complete_costs=False)
+    with pytest.raises(ValueError, match="incomplete or unclassified costs"):
+        service.create_sample_order(approval.id, created_by="operator-1")

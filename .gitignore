@@ -6,6 +6,8 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .runtime/
+/output/
+backups/
 node_modules/
 .next/
 /web/next-env.d.ts

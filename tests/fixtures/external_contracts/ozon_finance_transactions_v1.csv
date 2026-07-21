@@ -1,0 +1,2 @@
+operation_id;fee_type;amount;currency;effective_at
+fixture-op-1;delivery;10.00;RUB;2025-10-01T10:00:00+03:00

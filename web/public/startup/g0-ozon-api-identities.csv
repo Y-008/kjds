@@ -1,0 +1,8 @@
+identity_ref,purpose,caller_system,owner,role_count,scope_class,last_used_at,disposition,evidence_reference,reviewed_by,status,notes
+IDENTITY-01,,,,,unknown,,investigate,,,pending,"Use only a platform-masked reference or internal alias; never paste a key value."
+IDENTITY-02,,,,,unknown,,investigate,,,pending,
+IDENTITY-03,,,,,unknown,,investigate,,,pending,
+IDENTITY-04,,,,,unknown,,investigate,,,pending,
+IDENTITY-05,,,,,unknown,,investigate,,,pending,
+IDENTITY-06,,,,,unknown,,investigate,,,pending,
+IDENTITY-07,,,,,unknown,,investigate,,,pending,

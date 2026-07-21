@@ -1,0 +1,74 @@
+{
+  "registry_version": "1.5",
+  "last_reviewed": "2026-07-20",
+  "principle": "Borrow product workflow patterns, never third-party truth claims or unapproved write authority.",
+  "shared_contracts": [
+    {
+      "id": "three_candidate_portfolio_decision_view_v1",
+      "status": "implemented",
+      "borrowed_from": ["seerfar", "miaoshou_erp", "selling51_erp"],
+      "boundary": "qualified candidates and current evidence only; advisory view with no automatic product selection, no automatic procurement, no automatic pricing, no automatic listing, and no platform write"
+    },
+    {
+      "id": "evidence_backed_operations_exception_workspace_v1",
+      "status": "implemented",
+      "borrowed_from": ["miaoshou_erp", "selling51_erp"],
+      "boundary": "gate blockers come from server readiness without invented SLA; operational incidents retain real SLA; no automatic resolution, incident closure, kill-switch release, or platform write"
+    },
+    {
+      "id": "field_level_cost_provenance_v1",
+      "status": "implemented",
+      "borrowed_from": ["menglar_ozon_tools", "selling51_erp"],
+      "boundary": "every cost field exposes estimate, actual, or unknown plus its KJDS Evidence reference; third-party calculator values remain cross-checks and unknown financial codes remain blocked"
+    }
+  ],
+  "providers": [
+    {
+      "id": "menglar_ozon_tools",
+      "url": "https://ozon.menglar.com/tools/",
+      "observed_capabilities": ["cost_input_form", "saved_pricing_template", "logistics_option_comparison"],
+      "patterns_to_borrow": ["guided_full_cost_input", "reusable_scenario_template", "side_by_side_logistics_scenarios"],
+      "do_not_copy": ["unverified_formula_as_fact", "other_cost_hiding_known_costs", "automatic_pricing"],
+      "evidence_tier": "C",
+      "integration_status": "workflow_reference_only",
+      "requires_review": true,
+      "implemented_contract": "ozon_ru_full_cost_scenario_template_v1",
+      "next_contract": "controlled_batch_diff_workspace_after_real_usage_bottleneck"
+    },
+    {
+      "id": "seerfar",
+      "url": "https://www.seerfar.cn/features/",
+      "observed_capabilities": ["product_trends_30_90_days", "market_and_keyword_analysis", "competitor_monitoring", "open_api_entry"],
+      "patterns_to_borrow": ["research_inbox", "trend_snapshot", "keyword_competitor_candidate_graph", "change_alert"],
+      "do_not_copy": ["estimated_sales_as_account_fact", "session_sharing", "unreviewed_browser_extension"],
+      "evidence_tier": "C",
+      "integration_status": "open_api_documentation_requires_review",
+      "requires_review": true,
+      "implemented_contract": "manual_export_research_signal_inbox_v1",
+      "next_contract": "provider_neutral_read_only_market_signal_adapter_after_admission"
+    },
+    {
+      "id": "miaoshou_erp",
+      "url": "https://erp.91miaoshou.com/",
+      "observed_capabilities": ["multi_platform_collection_and_listing", "pricing_template", "order_procurement_inventory_logistics", "batch_content_tools"],
+      "patterns_to_borrow": ["collection_box_claim_edit_review", "batch_job_progress", "exception_retry_queue"],
+      "do_not_copy": ["collection_to_listing_without_gate", "automatic_purchase", "automatic_price_change", "erp_as_canonical_fact_owner"],
+      "evidence_tier": "C",
+      "integration_status": "workflow_reference_only",
+      "requires_review": true,
+      "next_contract": "controlled_batch_diff_workspace"
+    },
+    {
+      "id": "selling51_erp",
+      "url": "https://www.51selling.com/HelpDocument/Details/156",
+      "observed_capabilities": ["ozon_listing", "order_and_return_workflow", "ozon_inventory", "bill_and_gross_profit_report", "field_level_bill_provenance", "unmapped_fee_visibility", "scan_ship_and_weight"],
+      "patterns_to_borrow": ["operations_exception_queue", "measured_weight_capture", "batch_edit_preview", "bill_to_profit_navigation", "field_level_source_badge", "explicit_unmapped_finance_queue"],
+      "do_not_copy": ["unreviewed_bill_to_profit", "automatic_customer_message", "unapproved_batch_write"],
+      "evidence_tier": "C",
+      "integration_status": "workflow_reference_only",
+      "requires_review": true,
+      "implemented_contract": "evidence_backed_operations_exception_workspace_v1",
+      "next_contract": "controlled_batch_diff_workspace_after_real_usage_bottleneck"
+    }
+  ]
+}

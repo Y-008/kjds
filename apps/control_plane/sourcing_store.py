@@ -151,7 +151,11 @@ class SqlSourcingStore:
     def save_scenario(self, scenario: ProfitScenario) -> ProfitScenario:
         import json
 
-        payload = {key: str(value) for key, value in asdict(scenario.inputs).items()}
+        payload = {
+            "values": {key: str(value) for key, value in asdict(scenario.inputs).items()},
+            "template_id": scenario.template_id,
+            "cost_states": scenario.cost_states,
+        }
         with self.engine.begin() as connection:
             connection.execute(
                 text("""
@@ -159,15 +163,20 @@ class SqlSourcingStore:
                     id, offer_id, target_platform, inputs_json, revenue_cny_decimal,
                     purchase_cny_decimal, domestic_logistics_cny_decimal,
                     international_logistics_cny_decimal, packaging_cny_decimal,
-                    customs_cny_decimal, last_mile_cny_decimal, platform_fee_cny_decimal,
+                    warehousing_cny_decimal, customs_cny_decimal, tax_cny_decimal,
+                    last_mile_cny_decimal, platform_fee_cny_decimal,
                     advertising_cny_decimal, return_reserve_cny_decimal, other_cost_cny_decimal,
+                    fx_cost_cny_decimal, capital_cost_cny_decimal, aftersales_cny_decimal,
+                    loss_reserve_cny_decimal,
                     total_cost_cny_decimal, cm3_cny_decimal, cm3_rate_decimal,
-                    break_even_price_rub_decimal, evidence_json, created_at
+                    break_even_price_rub_decimal, evidence_json, cost_evidence_json, created_at
                 ) VALUES (
                     :id, :offer_id, :target, CAST(:inputs AS jsonb), :revenue, :purchase,
-                    :domestic, :international, :packaging, :customs, :last_mile,
-                    :platform_fee, :advertising, :returns, :other, :total, :cm3,
-                    :cm3_rate, :break_even, CAST(:evidence AS jsonb), :created_at
+                    :domestic, :international, :packaging, :warehousing, :customs, :tax,
+                    :last_mile, :platform_fee, :advertising, :returns, :other, :fx_cost,
+                    :capital_cost, :aftersales, :loss_reserve, :total, :cm3,
+                    :cm3_rate, :break_even, CAST(:evidence AS jsonb),
+                    CAST(:cost_evidence AS jsonb), :created_at
                 )
             """),
                 {
@@ -180,17 +189,24 @@ class SqlSourcingStore:
                     "domestic": scenario.domestic_logistics_cny,
                     "international": scenario.international_logistics_cny,
                     "packaging": scenario.packaging_cny,
+                    "warehousing": scenario.warehousing_cny,
                     "customs": scenario.customs_cny,
+                    "tax": scenario.tax_cny,
                     "last_mile": scenario.last_mile_cny,
                     "platform_fee": scenario.platform_fee_cny,
                     "advertising": scenario.advertising_cny,
                     "returns": scenario.return_reserve_cny,
                     "other": scenario.other_cost_cny,
+                    "fx_cost": scenario.fx_cost_cny,
+                    "capital_cost": scenario.capital_cost_cny,
+                    "aftersales": scenario.aftersales_cny,
+                    "loss_reserve": scenario.loss_reserve_cny,
                     "total": scenario.total_cost_cny,
                     "cm3": scenario.cm3_cny,
                     "cm3_rate": scenario.cm3_rate,
                     "break_even": scenario.break_even_price_rub,
                     "evidence": json.dumps(scenario.evidence),
+                    "cost_evidence": json.dumps(scenario.cost_evidence),
                     "created_at": datetime.fromisoformat(scenario.created_at),
                 },
             )
@@ -209,7 +225,20 @@ class SqlSourcingStore:
 
     @staticmethod
     def _scenario(row) -> ProfitScenario:
-        inputs = {key: Decimal(value) for key, value in row["inputs_json"].items()}
+        stored_inputs = row["inputs_json"] or {}
+        # Legacy rows used a flat numeric object. Keep reading them without a migration.
+        if "values" in stored_inputs:
+            raw_values = stored_inputs["values"]
+            template_id = stored_inputs.get("template_id", "ozon-ru-full-cost-v1")
+            cost_states = stored_inputs.get("cost_states", {})
+        else:
+            raw_values = stored_inputs
+            template_id = "ozon-ru-full-cost-v1"
+            cost_states = {
+                key: "estimate"
+                for key in (row["cost_evidence_json"] or {})
+            }
+        inputs = {key: Decimal(value) for key, value in raw_values.items()}
         return ProfitScenario(
             offer_id=row["offer_id"],
             target_platform=row["target_platform"],
@@ -219,17 +248,26 @@ class SqlSourcingStore:
             domestic_logistics_cny=Decimal(row["domestic_logistics_cny_decimal"]),
             international_logistics_cny=Decimal(row["international_logistics_cny_decimal"]),
             packaging_cny=Decimal(row["packaging_cny_decimal"]),
+            warehousing_cny=Decimal(row["warehousing_cny_decimal"]),
             customs_cny=Decimal(row["customs_cny_decimal"]),
+            tax_cny=Decimal(row["tax_cny_decimal"]),
             last_mile_cny=Decimal(row["last_mile_cny_decimal"]),
             platform_fee_cny=Decimal(row["platform_fee_cny_decimal"]),
             advertising_cny=Decimal(row["advertising_cny_decimal"]),
             return_reserve_cny=Decimal(row["return_reserve_cny_decimal"]),
+            fx_cost_cny=Decimal(row["fx_cost_cny_decimal"]),
+            capital_cost_cny=Decimal(row["capital_cost_cny_decimal"]),
+            aftersales_cny=Decimal(row["aftersales_cny_decimal"]),
+            loss_reserve_cny=Decimal(row["loss_reserve_cny_decimal"]),
             other_cost_cny=Decimal(row["other_cost_cny_decimal"]),
             total_cost_cny=Decimal(row["total_cost_cny_decimal"]),
             cm3_cny=Decimal(row["cm3_cny_decimal"]),
             cm3_rate=Decimal(row["cm3_rate_decimal"]),
             break_even_price_rub=Decimal(row["break_even_price_rub_decimal"]),
             evidence=row["evidence_json"],
+            cost_evidence=row["cost_evidence_json"] or {},
+            template_id=template_id,
+            cost_states=cost_states,
             id=row["id"],
             created_at=_iso(row["created_at"]),
         )
@@ -299,6 +337,28 @@ class SqlSourcingStore:
             )
             for row in rows
         ]
+
+    def get_listing_draft(self, draft_id: str) -> ListingDraft:
+        with self.engine.connect() as connection:
+            row = (
+                connection.execute(text("SELECT * FROM listing_drafts WHERE id=:id"), {"id": draft_id})
+                .mappings()
+                .first()
+            )
+        if row is None:
+            raise KeyError(f"Unknown listing draft: {draft_id}")
+        return ListingDraft(
+            product_id=row["product_id"],
+            offer_id=row["offer_id"],
+            scenario_id=row["scenario_id"],
+            target_platform=row["target_platform"],
+            listing_data=row["listing_json"],
+            requested_by=row["requested_by"],
+            status=row["status"],
+            approval_id=row["approval_id"],
+            id=row["id"],
+            created_at=_iso(row["created_at"]),
+        )
 
     def attach_listing_approval(self, draft: ListingDraft) -> ListingDraft:
         with self.engine.begin() as connection:

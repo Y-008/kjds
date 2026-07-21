@@ -23,8 +23,10 @@ services:
       KJDS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hermes}:${POSTGRES_PASSWORD:-hermes_dev}@postgres:5432/${POSTGRES_DB:-hermes}
       KJDS_ENVIRONMENT: development
       KJDS_API_KEY: ${KJDS_API_KEY:-}
+      KJDS_API_KEYS_JSON: ${KJDS_API_KEYS_JSON:-}
       KJDS_API_ACTOR: ${KJDS_API_ACTOR:-container-operator}
       KJDS_API_ROLES: ${KJDS_API_ROLES:-operator}
+      KJDS_PILOT_RUN_LEASE_SECONDS: ${KJDS_PILOT_RUN_LEASE_SECONDS:-900}
       KJDS_COMFYUI_URL: ${KJDS_COMFYUI_URL:-http://host.docker.internal:8189}
       KJDS_OLLAMA_URL: ${KJDS_OLLAMA_URL:-http://host.docker.internal:11434}
       KJDS_N8N_URL: ${KJDS_N8N_URL:-http://host.docker.internal:5678}
@@ -34,6 +36,43 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: ./web
+    ports:
+      - "3000:3000"
+    environment:
+      KJDS_ENVIRONMENT: development
+      KJDS_WEB_AUTH_MODE: ${KJDS_WEB_AUTH_MODE:-legacy}
+      KJDS_API_URL: http://api:8000
+      KJDS_API_KEY: ${KJDS_API_KEY:-}
+      KJDS_API_KEYS_JSON: ${KJDS_API_KEYS_JSON:-}
+      KJDS_API_ACTOR: ${KJDS_API_ACTOR:-container-operator}
+      KJDS_API_ROLES: ${KJDS_API_ROLES:-operator}
+      KJDS_WEB_USER_ACTORS_JSON: ${KJDS_WEB_USER_ACTORS_JSON:-}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   ozon-worker:
     profiles: ["live-execution"]
@@ -52,7 +91,34 @@ services:
       OZON_API_URL: https://api-seller.ozon.ru
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
+
+  ozon-read-worker:
+    profiles: ["read-only-pilot"]
+    build: .
+    command:
+      - python
+      - -m
+      - apps.control_plane.ozon_read_worker
+      - --execute
+      - --pilot-id
+      - ${KJDS_READ_ONLY_PILOT_ID:-missing}
+      - --idempotency-key
+      - ${KJDS_READ_ONLY_IDEMPOTENCY_KEY:-missing}
+    environment:
+      KJDS_CONTROL_PLANE_URL: http://api:8000
+      KJDS_PILOT_READER_API_KEY: ${KJDS_PILOT_READER_API_KEY:-}
+      KJDS_READ_ONLY_OFFER_ID: ${KJDS_READ_ONLY_OFFER_ID:-}
+      KJDS_READ_ONLY_OFFER_IDS: ${KJDS_READ_ONLY_OFFER_IDS:-}
+      KJDS_READ_ONLY_CURSOR: ${KJDS_READ_ONLY_CURSOR:-}
+      KJDS_READ_ONLY_PAGE_SIZE: ${KJDS_READ_ONLY_PAGE_SIZE:-10}
+      OZON_CLIENT_ID: ${OZON_CLIENT_ID:-}
+      OZON_API_KEY: ${OZON_API_KEY:-}
+      OZON_API_URL: https://api-seller.ozon.ru
+      OZON_PRODUCT_ATTRIBUTES_PATH: ${OZON_PRODUCT_ATTRIBUTES_PATH:-/v4/product/info/attributes}
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:

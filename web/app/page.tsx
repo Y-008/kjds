@@ -10,6 +10,7 @@ import {
   CircleDollarSign,
   Clock3,
   Database,
+  Download,
   FileUp,
   FlaskConical,
   Image as ImageIcon,
@@ -23,6 +24,123 @@ import {
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 type Health = { name: string; status: string; detail?: string | null };
+type WebSession = {
+  authenticated: boolean;
+  auth_mode: "legacy" | "supabase";
+  email: string | null;
+  actor_id: string;
+  roles: string[];
+};
+type OzonImportResult = {
+  id: string;
+  record_type: string;
+  filename: string;
+  status: string;
+  row_count: number;
+  accepted_count: number;
+  rejected_count: number;
+  evidence_id: string | null;
+  duplicate: boolean;
+};
+type OzonImportPreview = {
+  record_type: string;
+  row_count: number;
+  mapping: Record<string, string>;
+  missing_columns: string[];
+  ready: boolean;
+};
+type FinanceReviewStatus = {
+  import_id: string;
+  report_evidence_id: string;
+  record_type: string;
+  status: "pending" | "accepted" | "rejected";
+  ready: boolean;
+  review_count: number;
+  report_period_start: string;
+  report_period_end: string;
+  review_packet: {
+    source: {
+      filename: string; sha256: string; byte_size: number; content_type: string;
+      submitted_by: string; recorded_at: string;
+    };
+    import: {
+      filename: string; sha256: string; status: string; row_count: number;
+      accepted_count: number; rejected_count: number; mapped_fields: string[];
+    };
+    integrity: {
+      evidence_valid: boolean; sha256_matches_import: boolean;
+      source_lineage_verified: boolean; row_numbers_contiguous: boolean;
+    };
+    aggregates: {
+      currency_totals: Array<{ currency: string; row_count: number; total_amount: string }>;
+      earliest_effective_at: string | null; latest_effective_at: string | null;
+      accrual_pairs: Array<{
+        accrual_group: string; accrual_type: string; row_count: number;
+        currency_totals: Array<{ currency: string; total_amount: string }>;
+      }>;
+    };
+    boundaries: {
+      aggregate_only: true; raw_rows_exposed: false; automatic_acceptance: false;
+      automatic_classification: false; automatic_finance_posting: false;
+    };
+  };
+};
+type CostAuthorityCatalog = {
+  schema_version: "cost-actual-authority-v1";
+  items: Array<{
+    cost_type: string;
+    label: string;
+    authorities: Array<{ id: string; label: string }>;
+  }>;
+  automatic_state_change: false;
+  automatic_finance_posting: false;
+  automatic_procurement: false;
+  automatic_listing: false;
+};
+type ActualCostAuthorityStatus = {
+  evidence_id: string;
+  cost_type: string;
+  status: "pending" | "accepted" | "rejected";
+  accepted_authorities: string[];
+  review_ids: string[];
+  review_count: number;
+};
+type FeeCodeStatus = {
+  import_id: string;
+  record_type: "ozon_fee";
+  ready: boolean;
+  codes: Array<{
+    raw_code: string;
+    row_count: number;
+    earliest_effective_at: string;
+    latest_effective_at: string;
+    ready: boolean;
+    mapping_ids: string[];
+  }>;
+};
+type AccrualClassificationStatus = {
+  import_id: string;
+  record_type: "ozon_accrual";
+  ready: boolean;
+  posting_policy: "control_only_no_finance_entry";
+  automatic_finance_posting: false;
+  order_revenue_replacement: false;
+  pairs: Array<{
+    accrual_group: string;
+    accrual_type: string;
+    row_count: number;
+    total_amount: string | null;
+    currency: string | null;
+    currency_totals: Array<{ currency: string; total_amount: string }>;
+    observed_signs: Array<"positive" | "negative" | "zero">;
+    earliest_effective_at: string;
+    latest_effective_at: string;
+    ready: boolean;
+    approval_ids: string[];
+    accounting_classes: string[];
+    expected_signs: Array<"positive" | "negative" | "either">;
+  }>;
+};
 type Recommendation = {
   id: string;
   agent: string;
@@ -50,6 +168,40 @@ type ProductReadiness = {
   passports: PassportReadiness[];
   ready_for_validation: boolean;
 };
+type ProductMediaReadiness = {
+  product: ProductIdentity;
+  roles: Array<{
+    role: string;
+    status: "missing" | "captured_pending_passport" | "approved";
+    source_asset_evidence_id: string | null;
+    rights_evidence_id: string | null;
+  }>;
+  approved_role_count: number;
+  missing_roles: string[];
+  pending_passport_roles: string[];
+  all_passports_approved: boolean;
+  ready_for_full_production: boolean;
+  automatic_generation: false;
+  next_action: string;
+};
+type ContentAssetView = {
+  id: string;
+  product_id: string;
+  content_type: string;
+  status: string;
+  brief: Record<string, unknown>;
+  artifact_ref: string | null;
+  qa_results: Array<{
+    check: string;
+    passed: boolean;
+    notes: string;
+    evidence_ids: string[];
+    reviewed_by: string;
+    reviewed_at: string;
+  }>;
+  generation: Record<string, unknown>;
+  created_at: string;
+};
 type PassportReview = {
   product: { id: string; sku: string; name: string };
   passport: {
@@ -71,7 +223,11 @@ type SourcingComparison = {
   ready_for_procurement_review: boolean;
   rows: Array<{
     offer: { id: string; supplier_ref: string; platform: string; title: string; unit_price: string; currency: string; min_order_quantity: number; evidence_ref: string };
-    scenario: null | { id: string; cm3_cny: string; cm3_rate: string; break_even_price_rub: string; evidence: string[] };
+    scenario: null | {
+      id: string; cm3_cny: string; cm3_rate: string; break_even_price_rub: string; evidence: string[];
+      template_id: string; cost_states: Record<string, "estimate" | "actual" | "unknown">;
+      cost_evidence: Record<string, string>;
+    };
     has_positive_cm3: boolean;
   }>;
 };
@@ -101,15 +257,64 @@ type GateRequirement = {
   current: number;
   target: number;
   next_action: string;
+  details?: Record<string, unknown>;
 };
 type GateReadiness = {
   status: "ready_for_review" | "needs_input";
   g0: "ready_for_review" | "blocked";
   g1: "ready_for_review" | "blocked";
+  decision_scope_readiness?: {
+    research: { ready: boolean; blocking_reasons: string[] };
+    real_execution: { ready: boolean; blocking_reasons: string[] };
+  };
   requirements: GateRequirement[];
   next_actions: string[];
+  candidate_portfolio: {
+    target_count: number; candidate_count: number; selection_ready_count: number; advisory_only: true;
+    automatic_product_selection: false; automatic_procurement: false; automatic_pricing: false; automatic_listing: false;
+    rows: Array<{
+      product: ProductIdentity; qualified_candidate: boolean; passports_ready: boolean; supplier_count: number;
+      offer_count: number; profit_scenario_count: number; complete_profit_scenario_count: number;
+      sourcing_ready: boolean; ready_for_g1_review: boolean; blockers: string[];
+      best_scenario: null | {
+        id: string | null; offer_id: string; supplier_ref: string | null; cm3_cny: string; cm3_rate: string;
+        break_even_price_rub: string; template_id: string | null; unknown_costs: string[];
+        evidence_count: number; release_ready: boolean;
+      };
+    }>;
+  };
+  exception_workspace: {
+    blocked_count: number; counts_by_gate: Record<string, number>; advisory_only: true;
+    automatic_resolution: false; platform_write_allowed: false;
+    items: Array<{
+      queue_key: string; item_type: "gate_blocker"; source_type: "gate_requirement"; source_id: string;
+      gate: string; title: string; status: "blocked"; attention: "current_gate" | "downstream";
+      owner_role: string; current: number; target: number; next_action: string; details: Record<string, unknown>;
+    }>;
+  };
 };
-type EvidenceSummary = { id: string; filename: string; source: string; grade: string; effective_at: string };
+type EvidenceSummary = {
+  id: string; filename: string; source: string; source_ref: string; grade: string;
+  effective_at: string; effective_until: string | null; created_by: string;
+  metadata: Record<string, unknown>;
+};
+type CandidateResearchAssessment = {
+  candidate_ref: string; candidate_name: string; market: string; category: string; decision: "reject" | "collect_evidence" | "request_three_quotes";
+  demand_report_evidence_id: string;
+  reasons: string[]; missing_metrics: string[]; source_family_count: number; evidence_ids: string[];
+  low_authority_evidence_ids: string[]; minimum_evidence_grades: Record<string, string[]>;
+  measurement_policy_id: string; quote_policy_id: string; quote_policy_status: string; metric_values: Record<string, string>;
+  threshold_failures: Array<{ metric: string; operator: "gte" | "lte"; threshold: string; actual: string }>;
+  required_supplier_quotes: number; automatic_product_creation: false; automatic_listing: false; next_gate: string | null;
+};
+type CandidateAuthorityStatus = {
+  evidence_id: string; metric: string; status: "pending" | "accepted" | "rejected";
+  accepted_grades: string[]; review_count: number;
+};
+type CandidateSourcingHandoff = {
+  product: ProductIdentity; created: boolean; candidate_ref: string; evidence_ids: string[]; next_gate: "sourcing_comparison_intake";
+  automatic_procurement: false; automatic_listing: false;
+};
 type InteractionProfile = {
   id: string; version: string; label: string; description: string; aliases: string[];
   workflow_steps: string[]; output_requirements: string[]; max_questions: number;
@@ -127,7 +332,8 @@ type DecisionContract = {
 type DecisionAnalysis = {
   id: string; contract_id: string; conclusion: string; recommended_option_id: string | null;
   confidence: string; forecast: null | { metric: string; value: string; low: string; high: string; unit: string; due_at: string };
-  assumptions: string[]; unknowns: string[]; evidence_ids: string[]; model_ref: string | null;
+  assumptions: string[]; unknowns: string[]; selection_assessment: Record<string, unknown>;
+  evidence_ids: string[]; model_ref: string | null;
   submitted_by: string; execution_eligible: boolean; created_at: string;
 };
 type DecisionReview = { id: string; analysis_id: string; verdict: string; rationale: string; counterarguments: string[]; evidence_ids: string[]; reviewed_by: string; created_at: string };
@@ -248,6 +454,38 @@ type PilotEvaluation = {
 };
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
+const productMediaRoleLabels: Record<string, string> = {
+  front_main: "正面主图", back: "背面", side: "侧面", detail: "细节",
+  accessories: "配件", packaging: "包装", scale_reference: "比例参照",
+};
+const candidateMetricDefinitions = [
+  ["demand_signal", "需求信号", "类目需求百分位；至少 28 天、30 个样本；询价线 ≥50", 30, 30],
+  ["competition_gap", "竞争缺口", "类目供需缺口百分位；至少 28 天、30 个样本；询价线 ≥50", 30, 30],
+  ["supplier_available", "可采购性", "是否已有可核验供应来源；至少核验 1 个供应对象", 30, 1],
+  ["compliance_redline", "合规红线", "按当前官方规则核验；一旦确认红线，候选立即淘汰", 30, 1],
+  ["return_risk", "退货风险", "预期 30 日退货率百分比；至少 28 天、30 个样本；询价线 ≤30%", 30, 30],
+] as const;
+const candidateMetricLabels = Object.fromEntries(candidateMetricDefinitions.map(([key, label]) => [key, label]));
+const sourcingCostDefinitions = [
+  ["product_cost", "采购成本"], ["domestic_logistics", "国内物流"],
+  ["international_logistics", "头程物流"], ["packaging", "包装"],
+  ["warehousing", "仓储"], ["customs", "关税"], ["tax", "税费"],
+  ["last_mile", "尾程"], ["platform_fee", "平台佣金"], ["advertising", "广告"],
+  ["return", "退款退货"], ["fx", "汇兑"], ["capital_cost", "资金占用"],
+  ["aftersales", "售后"], ["loss", "损耗"],
+] as const;
+const costStateLabels = { estimate: "预估", actual: "实际", unknown: "未知（阻断）" } as const;
+const financeReviewRecordTypes = new Set(["ozon_accrual", "ozon_fee", "ozon_return", "ozon_settlement"]);
+const imageQaDefinitions = [
+  ["factual_grounding", "事实一致", "商品事实、参数与已批准 Passport 一致"],
+  ["policy", "平台规则", "主图、文字和表达符合当前 Ozon 规则"],
+  ["localization", "俄语本地化", "俄语自然、无歧义，适合目标消费者"],
+  ["ip_rights", "知识产权", "图片、字体、品牌和素材权利可追溯"],
+  ["brand", "品牌一致", "视觉语气、颜色与品牌规范一致"],
+  ["product_fidelity", "商品保真", "外观、颜色、结构、配件和数量未被改变"],
+  ["source_provenance", "来源血缘", "原图、权利文件、处理结果与 Evidence 对应"],
+  ["text_accuracy", "文字参数", "图中俄语、尺寸、数量和声明准确无误"],
+] as const;
 const procurementStatusLabels: Record<string, string> = {
   approved_to_order: "已批准，待确认样品单", order_confirmed: "供应商已确认", shipped: "样品运输中",
   received: "样品已签收", inspected: "验货完成，待决定", rework_required: "需要返工复验",
@@ -276,6 +514,7 @@ const nav = [
 ] as const;
 
 export default function Home() {
+  const [webSession, setWebSession] = useState<WebSession | null>(null);
   const [health, setHealth] = useState<Record<string, Health>>({});
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [sourceConnectors, setSourceConnectors] = useState<SourceConnector[]>([]);
@@ -288,6 +527,8 @@ export default function Home() {
   const [backupOptions, setBackupOptions] = useState<Record<string, BackupOption[]>>({});
   const [backupRationales, setBackupRationales] = useState<Record<string, string>>({});
   const [skuReadiness, setSkuReadiness] = useState<ProductReadiness[]>([]);
+  const [productMediaReadiness, setProductMediaReadiness] = useState<ProductMediaReadiness[]>([]);
+  const [contentAssets, setContentAssets] = useState<ContentAssetView[]>([]);
   const [passportReviews, setPassportReviews] = useState<PassportReview[]>([]);
   const [gateReadiness, setGateReadiness] = useState<GateReadiness | null>(null);
   const [evidenceRecords, setEvidenceRecords] = useState<EvidenceSummary[]>([]);
@@ -315,11 +556,37 @@ export default function Home() {
   const [pilotEvaluations, setPilotEvaluations] = useState<Record<string, PilotEvaluation>>({});
   const [selectedProfileId, setSelectedProfileId] = useState("evidence_research");
   const [selectedAnalysisContractId, setSelectedAnalysisContractId] = useState("");
+  const [selectedAnalysisOptionId, setSelectedAnalysisOptionId] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [lastOzonImport, setLastOzonImport] = useState<OzonImportResult | null>(null);
+  const [financeReviewStatus, setFinanceReviewStatus] = useState<FinanceReviewStatus | null>(null);
+  const [financeReviewImportId, setFinanceReviewImportId] = useState("");
+  const [financeReviewBusy, setFinanceReviewBusy] = useState(false);
+  const [costAuthorityCatalog, setCostAuthorityCatalog] = useState<CostAuthorityCatalog | null>(null);
+  const [actualCostAuthorityStatus, setActualCostAuthorityStatus] = useState<ActualCostAuthorityStatus | null>(null);
+  const [actualCostEvidenceId, setActualCostEvidenceId] = useState("");
+  const [actualCostType, setActualCostType] = useState("product_cost");
+  const [actualCostReviewBusy, setActualCostReviewBusy] = useState(false);
+  const [feeCodeStatus, setFeeCodeStatus] = useState<FeeCodeStatus | null>(null);
+  const [feeMappingBusy, setFeeMappingBusy] = useState(false);
+  const [accrualClassificationStatus, setAccrualClassificationStatus] = useState<AccrualClassificationStatus | null>(null);
+  const [accrualClassificationBusy, setAccrualClassificationBusy] = useState(false);
   const [gateUploading, setGateUploading] = useState(false);
+  const [candidateEvidenceUploading, setCandidateEvidenceUploading] = useState(false);
+  const [candidateAuthorityBusy, setCandidateAuthorityBusy] = useState(false);
+  const [candidateAuthorityStatus, setCandidateAuthorityStatus] = useState<CandidateAuthorityStatus | null>(null);
+  const [candidateResearchBusy, setCandidateResearchBusy] = useState(false);
+  const [candidateAssessment, setCandidateAssessment] = useState<CandidateResearchAssessment | null>(null);
+  const [candidateHandoffBusy, setCandidateHandoffBusy] = useState(false);
+  const [candidateHandoff, setCandidateHandoff] = useState<CandidateSourcingHandoff | null>(null);
   const [skuUploading, setSkuUploading] = useState(false);
+  const [productMediaUploading, setProductMediaUploading] = useState(false);
+  const [imageBriefBusy, setImageBriefBusy] = useState(false);
+  const [imageExecutionBusy, setImageExecutionBusy] = useState<string | null>(null);
+  const [imageQaBusy, setImageQaBusy] = useState<string | null>(null);
+  const [listingDraftBusy, setListingDraftBusy] = useState<string | null>(null);
   const [reviewingKey, setReviewingKey] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [sourcingUploading, setSourcingUploading] = useState(false);
@@ -328,7 +595,7 @@ export default function Home() {
   const [notice, setNotice] = useState("等待第一份 Ozon 数据");
 
   const load = useCallback(async () => {
-    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse] = await Promise.all([
+    const [healthResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse] = await Promise.all([
       fetch("/backend/v1/integrations/health", { cache: "no-store" }),
       fetch("/backend/v1/recommendations", { cache: "no-store" }),
       fetch("/backend/v1/sourcing/connectors", { cache: "no-store" }),
@@ -358,17 +625,20 @@ export default function Home() {
       fetch("/backend/v1/operational-incidents", { cache: "no-store" }),
       fetch("/backend/v1/operations-control/queue", { cache: "no-store" }),
       fetch("/backend/v1/read-only-pilots", { cache: "no-store" }),
+      fetch("/backend/v1/finance/cost-authorities", { cache: "no-store" }),
     ]);
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
     if (connectorResponse.ok) setSourceConnectors(await connectorResponse.json());
     if (offersResponse.ok) setOffers(await offersResponse.json());
-    if (gateResponse.ok) setGateReadiness(await gateResponse.json());
+    const gateData: GateReadiness | null = gateResponse.ok ? await gateResponse.json() : null;
+    if (gateData) setGateReadiness(gateData);
     if (reviewResponse.ok) setPassportReviews(await reviewResponse.json());
     if (approvalsResponse.ok) setApprovals(await approvalsResponse.json());
     if (sampleOrdersResponse.ok) setSampleOrders(await sampleOrdersResponse.json());
     if (supplierPerformanceResponse.ok) setSupplierPerformance(await supplierPerformanceResponse.json());
     if (evidenceResponse.ok) setEvidenceRecords(await evidenceResponse.json());
+    if (costAuthorityResponse.ok) setCostAuthorityCatalog(await costAuthorityResponse.json());
     if (profileResponse.ok) setInteractionProfiles(await profileResponse.json());
     if (contractResponse.ok) setDecisionContracts(await contractResponse.json());
     if (analysisResponse.ok) {
@@ -417,14 +687,29 @@ export default function Home() {
     if (productsResponse.ok) {
       const products: ProductIdentity[] = await productsResponse.json();
       setProducts(products);
+      const candidateProducts = gateData?.candidate_portfolio.rows.map((item) => item.product) ?? [];
       const readiness = await Promise.all(
-        products.slice(0, 3).map(async (product) => {
+        candidateProducts.map(async (product) => {
           const response = await fetch(`/backend/v1/products/${product.id}/readiness`, { cache: "no-store" });
           return response.ok ? response.json() as Promise<ProductReadiness> : null;
         }),
       );
       setSkuReadiness(readiness.filter((item): item is ProductReadiness => item !== null));
-      const comparisonRows = await Promise.all(products.slice(0, 3).map(async (product) => {
+      const mediaReadiness = await Promise.all(
+        candidateProducts.map(async (product) => {
+          const response = await fetch(`/backend/v1/products/${product.id}/media-readiness`, { cache: "no-store" });
+          return response.ok ? response.json() as Promise<ProductMediaReadiness> : null;
+        }),
+      );
+      setProductMediaReadiness(mediaReadiness.filter((item): item is ProductMediaReadiness => item !== null));
+      const assetRows = await Promise.all(
+        candidateProducts.map(async (product) => {
+          const response = await fetch(`/backend/v1/products/${product.id}/content-assets`, { cache: "no-store" });
+          return response.ok ? response.json() as Promise<ContentAssetView[]> : [];
+        }),
+      );
+      setContentAssets(assetRows.flat());
+      const comparisonRows = await Promise.all(candidateProducts.map(async (product) => {
         const response = await fetch(`/backend/v1/sourcing/comparisons/${product.id}`, { cache: "no-store" });
         return response.ok ? response.json() as Promise<SourcingComparison> : null;
       }));
@@ -433,7 +718,25 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    load().catch(() => setNotice("后端尚未启动，请先启动 KJDS 服务"));
+    async function boot() {
+      const sessionResponse = await fetch("/auth/session", { cache: "no-store" });
+      if (sessionResponse.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      if (sessionResponse.status === 428) {
+        window.location.assign("/mfa");
+        return;
+      }
+      if (!sessionResponse.ok) {
+        const body = await sessionResponse.json().catch(() => ({}));
+        setNotice(body.detail ?? "Web 身份服务尚未就绪");
+        return;
+      }
+      setWebSession(await sessionResponse.json());
+      await load();
+    }
+    boot().catch(() => setNotice("后端或身份服务尚未启动，请先检查 KJDS 服务"));
   }, [load]);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
@@ -441,23 +744,279 @@ export default function Home() {
     const form = event.currentTarget;
     const input = form.elements.namedItem("file") as HTMLInputElement;
     if (!input.files?.[0]) return;
+    const file = input.files[0];
+    const periodStart = (form.elements.namedItem("report_period_start") as HTMLInputElement).value;
+    const periodEnd = (form.elements.namedItem("report_period_end") as HTMLInputElement).value;
+    const uploadBody = () => {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("report_period_start", periodStart);
+      body.append("report_period_end", periodEnd);
+      return body;
+    };
     setUploading(true);
-    setNotice("正在校验并导入 Ozon 文件…");
-    const body = new FormData();
-    body.append("file", input.files[0]);
+    setNotice("正在只读预检 Ozon 原文件…");
     try {
-      const response = await fetch("/backend/v1/imports/ozon", { method: "POST", body });
+      const preflightResponse = await fetch("/backend/v1/imports/ozon/preflight", { method: "POST", body: uploadBody() });
+      const preflightResult = await preflightResponse.json();
+      if (!preflightResponse.ok) {
+        setNotice(preflightResult.detail ?? "原文件预检失败");
+        return;
+      }
+      const preview = preflightResult as OzonImportPreview;
+      if (!preview.ready) {
+        setNotice(`原文件尚不能导入：缺少 ${preview.missing_columns.join("、")}。请保留原文件，不要手工改列名。`);
+        return;
+      }
+      setNotice(`预检通过：识别为 ${preview.record_type}，共 ${preview.row_count} 行；正在固化原件…`);
+      const response = await fetch("/backend/v1/imports/ozon", { method: "POST", body: uploadBody() });
       const result = await response.json();
-      setNotice(
-        response.ok
-          ? `导入完成：${result.accepted_count} 行可用，${result.rejected_count} 行需检查`
-          : result.detail ?? "导入失败",
-      );
-      if (response.ok) form.reset();
+      if (!response.ok) {
+        setNotice(result.detail ?? "导入失败");
+        return;
+      }
+      const imported = result as OzonImportResult;
+      setLastOzonImport(imported);
+      setFinanceReviewImportId(imported.id);
+      form.reset();
+      if (financeReviewRecordTypes.has(imported.record_type)) {
+        await loadFinanceReviewStatus(imported.id);
+        setNotice(`财务文件已暂存：${imported.accepted_count} 行可解析，尚未入账；请把导入编号交给另一位复核人。`);
+      } else {
+        setFinanceReviewStatus(null);
+        setNotice(`导入完成：${imported.accepted_count} 行可用，${imported.rejected_count} 行需检查`);
+      }
     } catch {
       setNotice("无法连接后端，请检查服务状态");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function loadFinanceReviewStatus(importId = financeReviewImportId.trim()) {
+    if (!importId) return;
+    setFinanceReviewBusy(true);
+    try {
+      const response = await fetch(`/backend/v1/imports/${encodeURIComponent(importId)}/finance-review`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "无法读取财务复核状态");
+        return;
+      }
+      setFinanceReviewImportId(importId);
+      setFinanceReviewStatus(result as FinanceReviewStatus);
+      if (result.status === "accepted" && result.record_type === "ozon_fee") {
+        await loadFeeCodeStatus(importId);
+      } else {
+        setFeeCodeStatus(null);
+      }
+      if (result.status === "accepted" && result.record_type === "ozon_accrual") {
+        await loadAccrualClassificationStatus(importId);
+      } else {
+        setAccrualClassificationStatus(null);
+      }
+      setNotice(result.status === "accepted" ? "来源复核已通过；仍未自动入账，需等待会计字段映射和正式事实晋升。" : result.status === "rejected" ? "来源复核已拒绝，该财务文件保持阻塞。" : "财务文件仍在等待另一身份复核，尚未入账。");
+    } catch {
+      setNotice("无法连接后端，请检查服务状态");
+    } finally {
+      setFinanceReviewBusy(false);
+    }
+  }
+
+  async function reviewFinanceReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const importId = (form.elements.namedItem("finance_review_import_id") as HTMLInputElement).value.trim();
+    if (!importId) return;
+    const checked = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).checked;
+    const accepted = (form.elements.namedItem("finance_review_decision") as HTMLSelectElement).value === "accepted";
+    setFinanceReviewBusy(true);
+    try {
+      const response = await fetch(`/backend/v1/imports/${encodeURIComponent(importId)}/finance-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accepted,
+          authentic_account_export: checked("authentic_account_export"),
+          period_matches: checked("period_matches"),
+          not_public_sample: checked("not_public_sample"),
+          complete_export: checked("complete_export"),
+          rationale: (form.elements.namedItem("finance_review_rationale") as HTMLTextAreaElement).value.trim(),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "财务复核提交失败");
+        return;
+      }
+      form.reset();
+      setFinanceReviewImportId(importId);
+      await loadFinanceReviewStatus(importId);
+    } catch {
+      setNotice("无法连接后端，请检查服务状态");
+    } finally {
+      setFinanceReviewBusy(false);
+    }
+  }
+
+  async function loadActualCostAuthorityStatus(
+    evidenceId = actualCostEvidenceId.trim(),
+    costType = actualCostType,
+  ) {
+    if (!evidenceId || !costType) return;
+    setActualCostReviewBusy(true);
+    try {
+      const response = await fetch(
+        `/backend/v1/finance/cost-evidence/${encodeURIComponent(evidenceId)}/authority-review?cost_type=${encodeURIComponent(costType)}`,
+        { cache: "no-store" },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        setActualCostAuthorityStatus(null);
+        setNotice(result.detail ?? "无法读取实际成本复核状态");
+        return;
+      }
+      setActualCostAuthorityStatus(result as ActualCostAuthorityStatus);
+      setNotice(result.status === "accepted" ? "该原件已通过实际成本权威复核；执行出口仍会重新验证原件和证明。" : result.status === "rejected" ? "该原件已有拒绝结论，不能作为实际成本。" : "该原件尚未获得独立实际成本证明。峰值、报价或估算不会自动转为实际成本。");
+    } catch {
+      setNotice("无法连接后端，请检查服务状态");
+    } finally {
+      setActualCostReviewBusy(false);
+    }
+  }
+
+  async function reviewActualCostAuthority(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value.trim();
+    const checked = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).checked;
+    const evidenceId = value("actual_cost_evidence_id");
+    const costType = value("actual_cost_type");
+    setActualCostReviewBusy(true);
+    try {
+      const response = await fetch(`/backend/v1/finance/cost-evidence/${encodeURIComponent(evidenceId)}/authority-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cost_type: costType,
+          authority_id: value("actual_cost_authority_id"),
+          accepted: value("actual_cost_decision") === "accepted",
+          authentic_original: checked("actual_cost_authentic_original"),
+          cost_scope_matches: checked("actual_cost_scope_matches"),
+          charging_party_matches: checked("actual_cost_charging_party_matches"),
+          amount_currency_period_matches: checked("actual_cost_amount_currency_period_matches"),
+          rationale: value("actual_cost_rationale"),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "实际成本复核提交失败");
+        return;
+      }
+      setNotice(result.idempotent ? "相同复核记录已存在，没有重复写入。" : "不可变实际成本复核记录已保存；没有自动改场景、入账、采购或上架。");
+      await loadActualCostAuthorityStatus(evidenceId, costType);
+    } catch {
+      setNotice("无法连接后端，请检查服务状态");
+    } finally {
+      setActualCostReviewBusy(false);
+    }
+  }
+
+  async function loadFeeCodeStatus(importId = financeReviewImportId.trim()) {
+    if (!importId) return;
+    const response = await fetch(`/backend/v1/imports/${encodeURIComponent(importId)}/fee-codes`, { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) {
+      setFeeCodeStatus(null);
+      setNotice(result.detail ?? "无法读取费用代码状态");
+      return;
+    }
+    setFeeCodeStatus(result as FeeCodeStatus);
+  }
+
+  async function approveFeeMapping(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const importId = financeReviewImportId.trim();
+    if (!importId) return;
+    const until = (form.elements.namedItem("fee_effective_until") as HTMLInputElement).value;
+    setFeeMappingBusy(true);
+    try {
+      const response = await fetch(`/backend/v1/imports/${encodeURIComponent(importId)}/fee-mappings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          raw_code: (form.elements.namedItem("fee_raw_code") as HTMLSelectElement).value,
+          canonical_type: (form.elements.namedItem("fee_canonical_type") as HTMLSelectElement).value,
+          sign_rule: (form.elements.namedItem("fee_sign_rule") as HTMLSelectElement).value,
+          effective_from: new Date((form.elements.namedItem("fee_effective_from") as HTMLInputElement).value).toISOString(),
+          effective_until: until ? new Date(until).toISOString() : null,
+          rationale: (form.elements.namedItem("fee_mapping_rationale") as HTMLTextAreaElement).value.trim(),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "费用代码批准失败");
+        return;
+      }
+      form.reset();
+      await loadFeeCodeStatus(importId);
+      setNotice(`费用代码 ${result.mapping.raw_code} 的版本化映射已批准；仍未自动入账。`);
+    } catch {
+      setNotice("无法连接后端，请检查服务状态");
+    } finally {
+      setFeeMappingBusy(false);
+    }
+  }
+
+  async function loadAccrualClassificationStatus(importId = financeReviewImportId.trim()) {
+    if (!importId) return;
+    const response = await fetch(`/backend/v1/imports/${encodeURIComponent(importId)}/accrual-classifications`, { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) {
+      setAccrualClassificationStatus(null);
+      setNotice(result.detail ?? "无法读取应计分类状态");
+      return;
+    }
+    setAccrualClassificationStatus(result as AccrualClassificationStatus);
+  }
+
+  async function approveAccrualClassification(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const importId = financeReviewImportId.trim();
+    if (!importId) return;
+    const [accrualGroup, accrualType] = JSON.parse(
+      (form.elements.namedItem("accrual_pair") as HTMLSelectElement).value,
+    ) as [string, string];
+    const until = (form.elements.namedItem("accrual_effective_until") as HTMLInputElement).value;
+    setAccrualClassificationBusy(true);
+    try {
+      const response = await fetch(`/backend/v1/imports/${encodeURIComponent(importId)}/accrual-classifications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accrual_group: accrualGroup,
+          accrual_type: accrualType,
+          accounting_class: (form.elements.namedItem("accrual_accounting_class") as HTMLSelectElement).value,
+          expected_sign: (form.elements.namedItem("accrual_expected_sign") as HTMLSelectElement).value,
+          effective_from: new Date((form.elements.namedItem("accrual_effective_from") as HTMLInputElement).value).toISOString(),
+          effective_until: until ? new Date(until).toISOString() : null,
+          rationale: (form.elements.namedItem("accrual_classification_rationale") as HTMLTextAreaElement).value.trim(),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "应计分类批准失败");
+        return;
+      }
+      form.reset();
+      await loadAccrualClassificationStatus(importId);
+      setNotice("应计组合的版本化控制分类已批准；仍不会生成财务分录或替代订单收入。");
+    } catch {
+      setNotice("无法连接后端，请检查服务状态");
+    } finally {
+      setAccrualClassificationBusy(false);
     }
   }
 
@@ -485,6 +1044,234 @@ export default function Home() {
       setNotice("无法提交阶段门证据，请检查服务状态");
     } finally {
       setGateUploading(false);
+    }
+  }
+
+  async function uploadDemandReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const file = (form.elements.namedItem("demand_report_file") as HTMLInputElement).files?.[0];
+    const windowDays = (form.elements.namedItem("demand_report_window_days") as HTMLInputElement).value;
+    const sourceSystem = (form.elements.namedItem("demand_report_source_system") as HTMLSelectElement).value;
+    const sourceLocator = (form.elements.namedItem("demand_report_source_locator") as HTMLInputElement).value;
+    if (!file) return;
+    setGateUploading(true);
+    setNotice("正在固化需求研究原件…");
+    const body = new FormData();
+    body.append("file", file);
+    body.append("requirement_id", "SKU-000");
+    body.append("effective_at", new Date().toISOString());
+    body.append("source_system", sourceSystem);
+    body.append("source_locator", sourceLocator);
+    body.append("report_window_days", windowDays);
+    try {
+      const response = await fetch("/backend/v1/operations/gate-evidence", { method: "POST", body });
+      const result = await response.json();
+      setNotice(response.ok ? "SKU-000 研究原件已固化并进入待复核；研究与真实执行将按来源组合分别判定。" : result.detail ?? "需求报告提交失败");
+      if (response.ok) {
+        form.reset();
+        await load();
+      }
+    } catch {
+      setNotice("无法提交需求报告，请检查服务状态");
+    } finally {
+      setGateUploading(false);
+    }
+  }
+
+  async function reviewDemandReport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const reportEvidenceId = (form.elements.namedItem("demand_report_evidence_id") as HTMLSelectElement).value;
+    const accepted = (form.elements.namedItem("demand_report_decision") as HTMLSelectElement).value === "accepted";
+    const rationale = (form.elements.namedItem("demand_report_rationale") as HTMLInputElement).value.trim();
+    if (!reportEvidenceId || !rationale) return;
+    setLifecycleBusy("demand-report-review");
+    setNotice("正在固化独立复核结论…");
+    try {
+      const response = await fetch("/backend/v1/operations/demand-report-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report_evidence_id: reportEvidenceId, accepted, rationale }),
+      });
+      const result = await response.json();
+      setNotice(response.ok ? `独立复核已固化：${accepted ? "接受" : "拒绝"}；历史结论不可覆盖。` : result.detail ?? "复核失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch {
+      setNotice("无法完成独立复核，请确认当前身份与上传者不同");
+    } finally {
+      setLifecycleBusy(null);
+    }
+  }
+
+  async function uploadCandidateEvidence(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const file = (form.elements.namedItem("candidate_evidence_file") as HTMLInputElement).files?.[0];
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value.trim();
+    if (!file) return;
+    setCandidateEvidenceUploading(true);
+    setNotice("正在固化候选研究原件…");
+    const body = new FormData();
+    body.append("file", file);
+    body.append("provider", value("candidate_evidence_source"));
+    body.append("provider_record_id", value("candidate_evidence_source_ref"));
+    body.append("source_url", value("candidate_evidence_source_url"));
+    body.append("observed_at", new Date().toISOString());
+    body.append("declared_grade", value("candidate_evidence_grade"));
+    body.append("license_status", value("candidate_evidence_license_status"));
+    body.append("raw_fields_json", value("candidate_evidence_raw_fields") || "{}");
+    body.append("candidate_refs_json", JSON.stringify(value("candidate_evidence_candidate_refs").split(/[\s,]+/).filter(Boolean)));
+    try {
+      const response = await fetch("/backend/v1/market/research-signals", { method: "POST", body });
+      const result = await response.json();
+      setNotice(response.ok ? `研究信号已固化：${result.evidence.id}；只作为辅助资料，尚未通过独立权威复核。` : result.detail ?? "研究信号固化失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch {
+      setNotice("无法固化候选原件，请检查服务状态");
+    } finally {
+      setCandidateEvidenceUploading(false);
+    }
+  }
+
+  async function loadCandidateAuthorityStatus(evidenceId: string, metric: string) {
+    if (!evidenceId || !metric) return;
+    setCandidateAuthorityBusy(true);
+    try {
+      const response = await fetch(`/backend/v1/market/candidate-evidence/${encodeURIComponent(evidenceId)}/authority-review?metric=${encodeURIComponent(metric)}`, { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) {
+        setCandidateAuthorityStatus(null);
+        setNotice(result.detail ?? "无法读取候选证据复核状态");
+        return;
+      }
+      setCandidateAuthorityStatus(result as CandidateAuthorityStatus);
+      setNotice(`复核状态：${result.status}；已记录 ${result.review_count} 条不可变结论。`);
+    } catch {
+      setNotice("无法读取候选证据复核状态，请检查服务状态");
+    } finally {
+      setCandidateAuthorityBusy(false);
+    }
+  }
+
+  async function reviewCandidateEvidenceAuthority(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value.trim();
+    const evidenceId = value("candidate_authority_evidence_id");
+    const metric = value("candidate_authority_metric");
+    const accepted = value("candidate_authority_decision") === "accepted";
+    setCandidateAuthorityBusy(true);
+    setNotice("正在固化候选证据独立权威复核…");
+    try {
+      const response = await fetch(`/backend/v1/market/candidate-evidence/${encodeURIComponent(evidenceId)}/authority-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          metric,
+          approved_grade: value("candidate_authority_grade"),
+          accepted,
+          authentic_original: (form.elements.namedItem("candidate_authority_authentic") as HTMLInputElement).checked,
+          source_scope_matches: (form.elements.namedItem("candidate_authority_scope") as HTMLInputElement).checked,
+          authority_basis_verified: (form.elements.namedItem("candidate_authority_basis") as HTMLInputElement).checked,
+          rationale: value("candidate_authority_rationale"),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "候选证据权威复核失败");
+        return;
+      }
+      await loadCandidateAuthorityStatus(evidenceId, metric);
+      setNotice(`独立复核已固化：${accepted ? "接受" : "拒绝"}；原件自报等级未被修改。`);
+    } catch {
+      setNotice("无法完成独立复核，请确认复核人与上传人是不同身份");
+    } finally {
+      setCandidateAuthorityBusy(false);
+    }
+  }
+
+  async function submitCandidateResearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
+    const observations = candidateMetricDefinitions.map(([metric]) => ({
+      metric,
+      value: value(`candidate_${metric}_value`),
+      confidence: value(`candidate_${metric}_confidence`),
+      evidence_id: value(`candidate_${metric}_evidence`),
+      window_days: Number(value(`candidate_${metric}_window_days`)),
+      sample_size: Number(value(`candidate_${metric}_sample_size`)),
+    }));
+    setCandidateResearchBusy(true);
+    setCandidateAssessment(null);
+    setCandidateHandoff(null);
+    setNotice("正在复验五类原件并执行候选预检…");
+    try {
+      const response = await fetch("/backend/v1/market/candidates/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidate_ref: value("candidate_ref"),
+          candidate_name: value("candidate_name"),
+          market: value("candidate_market"),
+          category: value("candidate_category"),
+          as_of: new Date().toISOString(),
+          demand_report_evidence_id: value("candidate_demand_report_evidence_id"),
+          observations,
+        }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setCandidateAssessment(result);
+        const message = result.decision === "request_three_quotes"
+          ? "预检通过：下一步收集三家真实报价"
+          : result.decision === "reject" ? "候选已因合规红线淘汰" : "候选仍需补充或更新证据";
+        setNotice(message);
+      } else {
+        setNotice(typeof result.detail === "string" ? result.detail : "候选预检失败，请检查五类输入");
+      }
+    } catch {
+      setNotice("无法执行候选预检，请检查服务状态");
+    } finally {
+      setCandidateResearchBusy(false);
+    }
+  }
+
+  async function createCandidateSourcingWorkspace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!candidateAssessment || candidateAssessment.decision !== "request_three_quotes") return;
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).value.trim();
+    setCandidateHandoffBusy(true);
+    setNotice("正在复验证据并建立报价工作区…");
+    try {
+      const response = await fetch("/backend/v1/market/candidates/sourcing-handoff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidate_ref: candidateAssessment.candidate_ref,
+          candidate_name: candidateAssessment.candidate_name,
+          market: candidateAssessment.market,
+          category: candidateAssessment.category,
+          as_of: new Date().toISOString(),
+          demand_report_evidence_id: candidateAssessment.demand_report_evidence_id,
+          sku: value("candidate_handoff_sku"),
+          confirmed: (form.elements.namedItem("candidate_handoff_confirmed") as HTMLInputElement).checked,
+        }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setCandidateHandoff(result);
+        setNotice(result.created ? "报价工作区已建立，请录入三家真实报价" : "已有同一报价工作区，已安全复用");
+        await load();
+      } else {
+        setNotice(typeof result.detail === "string" ? result.detail : "报价工作区建立失败");
+      }
+    } catch {
+      setNotice("无法建立报价工作区，请检查服务状态");
+    } finally {
+      setCandidateHandoffBusy(false);
     }
   }
 
@@ -536,6 +1323,198 @@ export default function Home() {
     }
   }
 
+  async function uploadProductMedia(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
+    const image = (form.elements.namedItem("product_media_image") as HTMLInputElement).files?.[0];
+    const rights = (form.elements.namedItem("product_media_rights") as HTMLInputElement).files?.[0];
+    const productId = value("product_media_product_id");
+    if (!image || !rights || !productId) return;
+    const body = new FormData();
+    body.append("variant_id", value("product_media_variant_id"));
+    body.append("asset_role", value("product_media_role"));
+    body.append("source_kind", value("product_media_source_kind"));
+    body.append("source_ref", value("product_media_source_ref"));
+    body.append("effective_at", new Date().toISOString());
+    body.append("image", image);
+    body.append("rights_file", rights);
+    setProductMediaUploading(true);
+    setNotice("正在校验原图与权利文件，并追加 Quality Passport 草稿…");
+    try {
+      const response = await fetch(`/backend/v1/products/${productId}/media-evidence`, { method: "POST", body });
+      const result = await response.json();
+      setNotice(
+        response.ok
+          ? `${result.product.sku} · ${productMediaRoleLabels[value("product_media_role")]} 已固化，等待 Passport 人工批准`
+          : result.detail ?? "商品图片证据提交失败",
+      );
+      if (response.ok) { form.reset(); await load(); }
+    } catch {
+      setNotice("无法提交商品图片证据，请检查服务状态");
+    } finally {
+      setProductMediaUploading(false);
+    }
+  }
+
+  async function createImageBrief(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
+    const readiness = productMediaReadiness.find((item) => item.product.id === value("image_brief_product_id"));
+    const role = readiness?.roles.find((item) => item.role === value("image_brief_role"));
+    if (
+      !readiness?.ready_for_full_production
+      || role?.status !== "approved"
+      || !role.source_asset_evidence_id
+      || !role.rights_evidence_id
+    ) {
+      setNotice("必须先让七类真实素材与权利证据全部通过 Passport 审核");
+      return;
+    }
+    setImageBriefBusy(true);
+    setNotice("正在冻结商品事实、原图与权利证据，建立受控图片 Brief…");
+    try {
+      const response = await fetch("/backend/v1/content/assets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: readiness.product.id,
+          content_type: "image",
+          locale: "ru-RU",
+          channel: "OZON",
+          brief: {
+            goal: value("image_brief_goal"),
+            generation_mode: value("image_brief_mode"),
+            preserve_product_facts: true,
+            source_asset_evidence_ids: [role.source_asset_evidence_id],
+            rights_evidence_ids: [role.rights_evidence_id],
+          },
+        }),
+      });
+      const result = await response.json();
+      setNotice(
+        response.ok
+          ? `${readiness.product.sku} 图片 Brief ${result.id} 已冻结；保真精修可在执行队列中提交`
+          : result.detail ?? "图片 Brief 建立失败",
+      );
+      if (response.ok) { form.reset(); await load(); }
+    } catch {
+      setNotice("无法建立图片 Brief，请检查服务状态");
+    } finally {
+      setImageBriefBusy(false);
+    }
+  }
+
+  async function runImageGeneration(asset: ContentAssetView, action: "queue" | "sync") {
+    setImageExecutionBusy(asset.id);
+    setNotice(action === "queue" ? "正在提交固定保真工作流…" : "正在同步 ComfyUI 执行结果…");
+    const endpoint = action === "queue"
+      ? `/backend/v1/content/assets/${asset.id}/generation`
+      : `/backend/v1/content/assets/${asset.id}/generation/sync`;
+    try {
+      const response = await fetch(endpoint, { method: "POST" });
+      const result = await response.json();
+      const promptId = String(result.generation?.prompt_id ?? "");
+      setNotice(
+        response.ok
+          ? action === "queue"
+            ? `已进入 ComfyUI 队列${promptId ? ` · ${promptId}` : ""}`
+            : result.status === "generated"
+              ? `结果已回收为不可变证据 · ${result.artifact_ref}`
+              : result.status === "execution_failed"
+                ? `执行失败并已关闭 · ${result.generation?.failure_code ?? "unknown"}`
+                : "任务仍在执行，可稍后再次同步"
+          : result.detail ?? "图片执行操作失败",
+      );
+      if (response.ok) await load();
+    } catch {
+      setNotice("无法连接图片执行服务，请检查 KJDS 与 ComfyUI 状态");
+    } finally {
+      setImageExecutionBusy(null);
+    }
+  }
+
+  async function reviewImageAsset(event: FormEvent<HTMLFormElement>, asset: ContentAssetView) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const checks = imageQaDefinitions.map(([check]) => ({
+      check,
+      passed: data.get(`qa_${check}_passed`) === "true",
+      notes: String(data.get(`qa_${check}_notes`) ?? "").trim(),
+      evidence_ids: [],
+    }));
+    if (checks.some((item) => !item.notes)) {
+      setNotice("八项图片 QA 都必须填写人工判断依据");
+      return;
+    }
+    setImageQaBusy(asset.id);
+    setNotice("正在记录八项图片 QA 与可信审核身份…");
+    try {
+      const response = await fetch(`/backend/v1/content/assets/${asset.id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checks }),
+      });
+      const result = await response.json();
+      setNotice(
+        response.ok
+          ? result.status === "approved"
+            ? "图片已通过八项 QA，可作为 Listing 草稿素材；仍不会自动上架"
+            : "图片未通过 QA，已退回内容队列"
+          : result.detail ?? "图片 QA 提交失败",
+      );
+      if (response.ok) await load();
+    } catch {
+      setNotice("无法提交图片 QA，请检查服务状态");
+    } finally {
+      setImageQaBusy(null);
+    }
+  }
+
+  async function createListingDraft(event: FormEvent<HTMLFormElement>, asset: ContentAssetView) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const [offerId, scenarioId] = String(data.get("listing_scenario") ?? "").split("::");
+    if (!offerId || !scenarioId || !asset.artifact_ref) {
+      setNotice("Listing 草稿需要已批准图片和正 CM3 利润场景");
+      return;
+    }
+    setListingDraftBusy(asset.id);
+    setNotice("正在建立仅供审批的 Ozon Listing 草稿…");
+    try {
+      const response = await fetch("/backend/v1/listings/ozon/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_id: asset.product_id,
+          offer_id: offerId,
+          scenario_id: scenarioId,
+          content_asset_ids: [asset.id],
+          listing_data: {
+            title: String(data.get("listing_title") ?? "").trim(),
+            description: String(data.get("listing_description") ?? "").trim(),
+            category_id: String(data.get("listing_category_id") ?? "").trim(),
+            attributes: {},
+            images: [asset.artifact_ref],
+          },
+        }),
+      });
+      const result = await response.json();
+      setNotice(
+        response.ok
+          ? `Listing 草稿 ${result.draft.id} 已建立，发布审批 ${result.approval.id} 待人工处理；平台未发生写入`
+          : result.detail ?? "Listing 草稿建立失败",
+      );
+      if (response.ok) { form.reset(); await load(); }
+    } catch {
+      setNotice("无法建立 Listing 草稿，请检查服务状态");
+    } finally {
+      setListingDraftBusy(null);
+    }
+  }
+
   async function reviewPassport(item: PassportReview, decision: "approved" | "blocked") {
     const key = item.passport.id;
     const notes = (reviewNotes[key] ?? "").trim();
@@ -584,7 +1563,11 @@ export default function Home() {
       sale_price_rub: value("sale_price_rub"), rub_per_cny: value("rub_per_cny"),
       international_freight_cny_per_kg: value("international_freight"), packaging_cny: value("packaging_cny"),
       last_mile_cny: value("last_mile_cny"), customs_rate: value("customs_rate"), platform_fee_rate: value("platform_fee_rate"),
-      advertising_rate: value("advertising_rate"), return_reserve_rate: value("return_reserve_rate"), other_cost_cny: value("other_cost_cny"),
+      advertising_rate: value("advertising_rate"), return_reserve_rate: value("return_reserve_rate"),
+      warehousing_cny: value("warehousing_cny"), tax_cny: value("tax_cny"), fx_cost_cny: value("fx_cost_cny"),
+      capital_cost_cny: value("capital_cost_cny"), aftersales_cny: value("aftersales_cny"), loss_reserve_cny: value("loss_reserve_cny"),
+      other_cost_cny: value("other_cost_cny"), template_id: "ozon-ru-full-cost-v1",
+      cost_states: Object.fromEntries(sourcingCostDefinitions.map(([key]) => [key, value(`cost_state_${key}`)])),
     };
     const body = new FormData();
     body.append("product_id", value("sourcing_product_id")); body.append("effective_at", new Date().toISOString());
@@ -712,6 +1695,10 @@ export default function Home() {
       context.baseline = value("forecast_baseline");
       context.scenarios = lines("forecast_scenarios").map((label) => ({ label }));
     }
+    if (profile?.id === "best_solution") {
+      context.hard_constraints = lines("decision_hard_constraints");
+      context.decision_criteria = lines("decision_criteria");
+    }
     const payload = {
       profile: selectedProfileId,
       objective: value("decision_objective"),
@@ -751,14 +1738,48 @@ export default function Home() {
     const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
     const lines = (name: string) => value(name).split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
     const contractId = value("analysis_contract_id");
+    const contract = decisionContracts.find((item) => item.id === contractId);
+    const options = Array.isArray(contract?.input.options) ? contract.input.options as Array<{ id?: string; label?: string }> : [];
+    const context = contract?.input.context as Record<string, unknown> | undefined;
+    const hardConstraints = Array.isArray(context?.hard_constraints) ? context.hard_constraints.map(String) : [];
+    const bestSolution = contract?.profile_id === "best_solution";
+    const optionId = value("analysis_option_id");
     const dueValue = value("analysis_due_at");
+    const selectionAssessment = bestSolution ? {
+      hard_constraint_results: options.flatMap((option, optionIndex) => hardConstraints.map((constraint, constraintIndex) => ({
+        option_id: String(option.id ?? ""), constraint,
+        passed: value(`best_constraint_${optionIndex}_${constraintIndex}_passed`) === "true",
+        rationale: value(`best_constraint_${optionIndex}_${constraintIndex}_rationale`),
+      }))),
+      option_assessments: options.map((option, index) => ({
+        option_id: String(option.id ?? ""), evidence_quality: value(`best_evidence_quality_${index}`),
+        expected_risk_adjusted_long_term_value: value(`best_long_term_value_${index}`),
+        total_cost_of_ownership: value(`best_tco_${index}`), maximum_loss: value(`best_maximum_loss_${index}`),
+        reversibility_and_rollback: value(`best_rollback_${index}`), time_to_value: value(`best_time_to_value_${index}`),
+        operational_fit: value(`best_operational_fit_${index}`),
+      })),
+      rejected_options: options.filter((option) => String(option.id ?? "") !== optionId).map((option) => {
+        const originalIndex = options.indexOf(option);
+        return { option_id: String(option.id ?? ""), reason: value(`best_rejection_reason_${originalIndex}`) };
+      }),
+      sensitivity_drivers: lines("best_sensitivity_drivers"),
+      invalidation_conditions: lines("best_invalidation_conditions"),
+      review_at: value("best_review_at") ? new Date(value("best_review_at")).toISOString() : "",
+      approval_requirement: value("best_approval_requirement"),
+      no_action_option_id: value("best_no_action_option_id") || null,
+      no_action_omission_reason: value("best_no_action_omission_reason") || null,
+    } : null;
     const body = {
       conclusion: value("analysis_conclusion"), confidence: value("analysis_confidence"),
-      recommended_option_id: value("analysis_option_id") || null,
-      forecast_metric: value("analysis_metric"), forecast_value: value("analysis_value"),
-      forecast_low: value("analysis_low"), forecast_high: value("analysis_high"),
-      forecast_unit: value("analysis_unit"), forecast_due_at: dueValue ? new Date(dueValue).toISOString() : null,
+      recommended_option_id: optionId || null,
+      forecast_metric: bestSolution ? null : value("analysis_metric") || null,
+      forecast_value: bestSolution ? null : value("analysis_value") || null,
+      forecast_low: bestSolution ? null : value("analysis_low") || null,
+      forecast_high: bestSolution ? null : value("analysis_high") || null,
+      forecast_unit: bestSolution ? null : value("analysis_unit") || null,
+      forecast_due_at: bestSolution ? null : dueValue ? new Date(dueValue).toISOString() : null,
       assumptions: lines("analysis_assumptions"), unknowns: lines("analysis_unknowns"),
+      selection_assessment: selectionAssessment,
       evidence_ids: [value("analysis_evidence")].filter(Boolean), model_ref: value("analysis_model_ref") || null,
     };
     setLifecycleBusy("analysis"); setNotice("正在固化分析、预测区间与证据…");
@@ -766,7 +1787,7 @@ export default function Home() {
       const response = await fetch(`/backend/v1/decision-contracts/${contractId}/analyses`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json();
       setNotice(response.ok ? `分析 ${result.id} 已提交，必须由另一身份独立复核；仍无执行权。` : result.detail ?? "分析提交失败");
-      if (response.ok) { form.reset(); setSelectedAnalysisContractId(""); await load(); }
+      if (response.ok) { form.reset(); setSelectedAnalysisContractId(""); setSelectedAnalysisOptionId(""); await load(); }
     } catch { setNotice("无法提交分析，请检查服务状态"); }
     finally { setLifecycleBusy(null); }
   }
@@ -1260,13 +2281,43 @@ export default function Home() {
   }
 
   const toolCount = Object.values(health).filter((item) => item.status === "ok").length;
+  const demandSourceReports = evidenceRecords.filter((item) =>
+    item.metadata?.requirement_id === "SKU-000" && item.metadata?.evidence_role === "source_report"
+  );
+  const demandRequirement = gateReadiness?.requirements.find((item) => item.id === "SKU-000");
+  const acceptedDemandReportIds = Array.isArray(demandRequirement?.details?.accepted_report_ids)
+    ? demandRequirement.details.accepted_report_ids.filter((item): item is string => typeof item === "string")
+    : [];
+  const acceptedDemandReports = demandSourceReports.filter((item) => acceptedDemandReportIds.includes(item.id));
+  const researchReadiness = gateReadiness?.decision_scope_readiness?.research;
+  const realExecutionReadiness = gateReadiness?.decision_scope_readiness?.real_execution;
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
+  const pendingListingApprovals = approvals.filter((item) => item.action === "listing.publish" && item.status === "pending");
   const approvedWithoutSample = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "approved" && !sampleOrders.some((order) => order.approval_id === item.id));
   const selectedProfile = interactionProfiles.find((item) => item.id === selectedProfileId);
   const selectedAnalysisContract = decisionContracts.find((item) => item.id === selectedAnalysisContractId);
   const analysisOptions = Array.isArray(selectedAnalysisContract?.input.options) ? selectedAnalysisContract.input.options as Array<{ id?: string; label?: string }> : [];
+  const analysisContext = selectedAnalysisContract?.input.context as Record<string, unknown> | undefined;
+  const analysisHardConstraints = Array.isArray(analysisContext?.hard_constraints) ? analysisContext.hard_constraints.map(String) : [];
+  const isBestSolutionAnalysis = selectedAnalysisContract?.profile_id === "best_solution";
+  const analysisNeedsForecast = Boolean(selectedAnalysisContract && !isBestSolutionAnalysis);
   const experimentResolutions = decisionResolutions.filter((item) => item.disposition === "experiment" && !causalExperiments.some((experiment) => experiment.resolution_id === item.id));
+  const requirement = (id: string) => gateReadiness?.requirements.find((item) => item.id === id);
+  const startupSteps = [
+    { id: "GOV-001", title: "确认经营责任与风险预算", href: "#reality-gate", actionLabel: "前往处理", template: "/startup/g0-governance.csv", templateLabel: "治理模板", secondaryTemplate: null, secondaryTemplateLabel: null },
+    { id: "OZN-001", title: "核验 Ozon 账户与只读权限", href: "#reality-gate", actionLabel: "前往处理", template: "/startup/g0-ozon-access.csv", templateLabel: "权限模板", secondaryTemplate: "/startup/g0-ozon-api-identities.csv", secondaryTemplateLabel: "身份盘点" },
+    { id: "SKU-000", title: "取得合格需求研究依据", href: "https://data.ozon.ru/app", actionLabel: "打开 Ozon Data", template: null, templateLabel: null, secondaryTemplate: null, secondaryTemplateLabel: null },
+    { id: "SKU-001", title: "研究并交接 3 个真实候选 SKU", href: "#candidate-research", actionLabel: "进入候选研究", template: "/startup/candidate-research.csv", templateLabel: "研究模板", secondaryTemplate: "/startup/sku-passports.csv", secondaryTemplateLabel: "Passport 模板" },
+    { id: "SKU-002", title: "复核 Passport 并准备真实商品素材", href: "#passport-review", actionLabel: "前往处理", template: "/startup/sku-media.csv", templateLabel: "素材模板", secondaryTemplate: null, secondaryTemplateLabel: null },
+    { id: "SKU-003", title: "补齐每个 SKU 的三家报价", href: "#sourcing-intake", actionLabel: "前往处理", template: "/startup/supplier-quotes.csv", templateLabel: "报价模板", secondaryTemplate: null, secondaryTemplateLabel: null },
+    { id: "FIN-001", title: "导入结算、银行与 FX 样本", href: "#ozon-import", actionLabel: "前往处理", template: "/startup/finance-reconciliation.csv", templateLabel: "财务模板", secondaryTemplate: null, secondaryTemplateLabel: null },
+  ];
+  const nextStartupStep = startupSteps.find((item) => !requirement(item.id)?.ready);
+  const canReviewFinance = webSession?.roles.some((role) => ["reviewer", "compliance", "admin"].includes(role)) ?? false;
+  const actualCostAuthorityItem = costAuthorityCatalog?.items.find((item) => item.cost_type === actualCostType);
+  const reviewableCostEvidence = evidenceRecords.filter((item) => item.source !== "cost_actual_authority_review");
+  const researchSignals = evidenceRecords.filter((record) => record.metadata.evidence_role === "research_signal");
 
   return (
     <main className="shell">
@@ -1289,10 +2340,20 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">OZON · RUSSIA</p><h1>经营指挥中心</h1></div>
-          <button className="refresh" onClick={() => load()}><RefreshCw size={17} />刷新状态</button>
+          <div className="topbar-actions">
+            <div className="session-chip">
+              <ShieldCheck size={16} />
+              <span>
+                {webSession?.email ?? (webSession?.auth_mode === "legacy" ? "本地运营身份" : "身份校验中")}
+                {webSession ? ` · ${webSession.actor_id} · ${webSession.roles.join("/")}` : ""}
+              </span>
+            </div>
+            {webSession?.auth_mode === "supabase" ? <form action="/auth/logout" method="post"><button className="refresh" type="submit">退出</button></form> : null}
+            <button className="refresh" onClick={() => load()}><RefreshCw size={17} />刷新状态</button>
+          </div>
         </header>
 
-        <section className="hero">
+        <section className="hero" id="ozon-import">
           <div>
             <span className="hero-tag"><Sparkles size={15} />核心目标：单品净利润 CM3</span>
             <h2>先用真实数据跑通 3 个 SKU，<br />再把成功打法复制成规模。</h2>
@@ -1301,19 +2362,227 @@ export default function Home() {
           <form className="upload" onSubmit={upload}>
             <FileUp size={23} />
             <label htmlFor="ozon-file">导入 Ozon 经营数据</label>
-            <span>支持 CSV / XLSX，重复文件不会重复入库</span>
+            <span>支持 CSV / XLSX；先只读预检原文件，通过后才存证和导入</span>
             <input id="ozon-file" name="file" type="file" accept=".csv,.xlsx" />
-            <button disabled={uploading}>{uploading ? "正在导入…" : "选择文件并导入"}</button>
+            <div className="report-period-fields">
+              <label>查询开始日期<input name="report_period_start" type="date" required /></label>
+              <label>查询结束日期<input name="report_period_end" type="date" required /></label>
+            </div>
+            <button disabled={uploading}>{uploading ? "正在处理…" : "预检并导入"}</button>
           </form>
         </section>
 
         <div className="notice"><Activity size={17} /><span>{notice}</span></div>
 
+        {(lastOzonImport && financeReviewRecordTypes.has(lastOzonImport.record_type)) || canReviewFinance ? (
+          <section className="finance-review-panel" aria-labelledby="finance-review-title">
+            <div className="finance-review-head">
+              <div><p className="eyebrow">DOUBLE CONTROL</p><h3 id="finance-review-title">Ozon 财务来源复核</h3></div>
+              <span className={`gate ${financeReviewStatus?.status === "accepted" ? "ready" : financeReviewStatus?.status === "rejected" ? "blocked" : ""}`}>
+                {financeReviewStatus?.status === "accepted" ? "来源已接受" : financeReviewStatus?.status === "rejected" ? "来源已拒绝" : "等待复核"}
+              </span>
+            </div>
+            <p className="finance-review-boundary">应计、费用、退货和结算文件上传后只进入暂存区。复核通过也不会自动入账、批准会计字段或启动对账。</p>
+            <div className="finance-review-grid">
+              <article className="finance-handoff">
+                <strong>上传人交接</strong>
+                {lastOzonImport && financeReviewRecordTypes.has(lastOzonImport.record_type) ? <>
+                  <dl>
+                    <div><dt>导入编号</dt><dd><code>{lastOzonImport.id}</code></dd></div>
+                    <div><dt>文件类型</dt><dd>{lastOzonImport.record_type}</dd></div>
+                    <div><dt>暂存结果</dt><dd>{lastOzonImport.accepted_count}/{lastOzonImport.row_count} 行可解析</dd></div>
+                    <div><dt>当前状态</dt><dd>{financeReviewStatus?.status ?? "pending"} · 未入账</dd></div>
+                    <div><dt>交接期间</dt><dd>{financeReviewStatus ? `${financeReviewStatus.report_period_start} — ${financeReviewStatus.report_period_end}` : "读取中"}</dd></div>
+                  </dl>
+                  <p>把导入编号交给另一位 Reviewer/Compliance 用户；上传人不能复核自己的文件。</p>
+                </> : <p>本会话没有刚上传的财务文件。复核人可在右侧输入上传人提供的导入编号。</p>}
+              </article>
+              {canReviewFinance ? <form className="finance-review-form" onSubmit={reviewFinanceReport}>
+                <strong>独立复核人</strong>
+                <label>导入编号
+                  <span className="finance-review-id-row">
+                    <input name="finance_review_import_id" value={financeReviewImportId} onChange={(event) => setFinanceReviewImportId(event.target.value)} required />
+                    <button type="button" disabled={financeReviewBusy || !financeReviewImportId.trim()} onClick={() => loadFinanceReviewStatus()}>{financeReviewBusy ? "读取中…" : "读取状态"}</button>
+                  </span>
+                </label>
+                {financeReviewStatus ? <div className="finance-handoff" role="note" aria-label="财务原件只读核验包">
+                  <strong>提交前核验包</strong>
+                  <dl>
+                    <div><dt>原件</dt><dd>{financeReviewStatus.review_packet.source.filename} · {financeReviewStatus.review_packet.source.byte_size} bytes</dd></div>
+                    <div><dt>SHA-256</dt><dd><code>{financeReviewStatus.review_packet.source.sha256}</code></dd></div>
+                    <div><dt>上传身份</dt><dd><code>{financeReviewStatus.review_packet.source.submitted_by}</code></dd></div>
+                    <div><dt>解析覆盖</dt><dd>{financeReviewStatus.review_packet.import.accepted_count}/{financeReviewStatus.review_packet.import.row_count} 行通过；{financeReviewStatus.review_packet.import.rejected_count} 行拒绝</dd></div>
+                    <div><dt>精确合计</dt><dd>{financeReviewStatus.review_packet.aggregates.currency_totals.length ? financeReviewStatus.review_packet.aggregates.currency_totals.map((item) => `${item.total_amount} ${item.currency}（${item.row_count} 行）`).join("；") : "原件没有可聚合金额"}</dd></div>
+                    <div><dt>日期覆盖</dt><dd>{financeReviewStatus.review_packet.aggregates.earliest_effective_at && financeReviewStatus.review_packet.aggregates.latest_effective_at ? `${financeReviewStatus.review_packet.aggregates.earliest_effective_at} — ${financeReviewStatus.review_packet.aggregates.latest_effective_at}` : "无可聚合日期"}</dd></div>
+                    <div><dt>完整性</dt><dd>{Object.values(financeReviewStatus.review_packet.integrity).every(Boolean) ? "原件、哈希、血缘和行号连续性均通过" : "存在完整性异常，禁止接受"}</dd></div>
+                  </dl>
+                  {financeReviewStatus.review_packet.aggregates.accrual_pairs.length ? <details>
+                    <summary>查看原件中 {financeReviewStatus.review_packet.aggregates.accrual_pairs.length} 个应计组/类型</summary>
+                    <ul>{financeReviewStatus.review_packet.aggregates.accrual_pairs.map((item) => <li key={`${item.accrual_group}:${item.accrual_type}`}><strong>{item.accrual_group} / {item.accrual_type}</strong><span>{item.row_count} 行 · {item.currency_totals.map((total) => `${total.total_amount} ${total.currency}`).join("；")}</span></li>)}</ul>
+                  </details> : null}
+                  <p>这里只展示只读聚合，不返回商品、订单或客户原始行；核验包不会自动接受、分类或入账。</p>
+                </div> : null}
+                <fieldset>
+                  <legend>逐项核对原件</legend>
+                  <label><input name="authentic_account_export" type="checkbox" />来自真实 Ozon 店铺账户导出</label>
+                  <label><input name="period_matches" type="checkbox" />报告期间与上方结构化交接期间一致</label>
+                  <label><input name="not_public_sample" type="checkbox" />不是公开样例或演示数据</label>
+                  <label><input name="complete_export" type="checkbox" />导出完整，没有缺页或截断</label>
+                </fieldset>
+                <label>复核结论
+                  <select name="finance_review_decision" defaultValue="accepted"><option value="accepted">接受来源</option><option value="rejected">拒绝并保持阻塞</option></select>
+                </label>
+                <label>依据与异常说明<textarea name="finance_review_rationale" minLength={1} required /></label>
+                <button className="finance-review-submit" disabled={financeReviewBusy}>{financeReviewBusy ? "正在提交…" : "保存不可变复核记录"}</button>
+              </form> : <article className="finance-review-locked"><ShieldCheck size={23} /><strong>当前身份只能上传</strong><p>请让另一位拥有 Reviewer 或 Compliance 角色的用户登录后完成复核。</p></article>}
+            </div>
+            {canReviewFinance && financeReviewStatus?.status === "accepted" && financeReviewStatus.record_type === "ozon_fee" ? (
+              <div className="fee-mapping-panel">
+                <div className="fee-mapping-status">
+                  <strong>实际费用代码</strong>
+                  <span className={`gate ${feeCodeStatus?.ready ? "ready" : "blocked"}`}>{feeCodeStatus?.ready ? "全部已映射" : "仍有未映射代码"}</span>
+                  <p>只显示该已接受文件中真实出现的代码。每条映射单独留证；全部覆盖后 Operator 才能另行晋升事实。</p>
+                  <ul>{feeCodeStatus?.codes.map((item) => <li key={item.raw_code}><code>{item.raw_code}</code><span>{item.row_count} 行 · {item.ready ? "已覆盖" : "待批准"}</span></li>)}</ul>
+                </div>
+                <form className="finance-review-form" onSubmit={approveFeeMapping}>
+                  <strong>批准一个代码映射</strong>
+                  <label>原始费用代码<select name="fee_raw_code" defaultValue="" required><option value="">选择文件中的代码</option>{feeCodeStatus?.codes.map((item) => <option value={item.raw_code} key={item.raw_code}>{item.raw_code}{item.ready ? "（已有有效映射）" : ""}</option>)}</select></label>
+                  <label>会计类型<select name="fee_canonical_type" defaultValue="platform_fee" required><option value="platform_fee">平台佣金/服务费</option><option value="international_logistics">国际物流</option><option value="last_mile">尾程配送</option><option value="warehousing">仓储</option><option value="advertising">广告</option><option value="return">退货</option><option value="refund">退款</option><option value="tax">税费</option><option value="customer_compensation">客户补偿</option><option value="damage">损耗</option></select></label>
+                  <label>金额符号<select name="fee_sign_rule" defaultValue="absolute_outflow" required><option value="absolute_outflow">始终记为支出</option><option value="absolute_inflow">始终记为收入</option><option value="preserve">保留原始正负号</option></select></label>
+                  <label>生效时间<input name="fee_effective_from" type="datetime-local" required /></label>
+                  <label>失效时间（可选）<input name="fee_effective_until" type="datetime-local" /></label>
+                  <label>映射依据与口径<textarea name="fee_mapping_rationale" minLength={1} required /></label>
+                  <button className="finance-review-submit" disabled={feeMappingBusy || !feeCodeStatus?.codes.length}>{feeMappingBusy ? "正在留证…" : "批准版本化映射"}</button>
+                </form>
+              </div>
+            ) : null}
+            {financeReviewStatus?.status === "accepted" && financeReviewStatus.record_type === "ozon_accrual" ? (
+              <div className="fee-mapping-panel">
+                <div className="accrual-classification-boundary" role="note">
+                  <ShieldCheck size={20} />
+                  <p><strong>来源已核验，仍禁止计入利润</strong><span>应计报告同时包含销售、折扣、佣金、物流、补偿等不同性质项目。系统保留原始“应计组 + 应计类型”，等待独立、版本化的会计分类合同；不得把整份报告当作平台费用。</span></p>
+                </div>
+                <div className="fee-mapping-status">
+                  <p><strong>{accrualClassificationStatus?.ready ? "控制分类已完整" : "控制分类仍有缺口"}</strong><span>仅控制账；不生成财务分录；不替代订单收入。</span></p>
+                  <span>{accrualClassificationStatus?.pairs.filter((item) => item.ready).length ?? 0}/{accrualClassificationStatus?.pairs.length ?? 0} 组已批准</span>
+                </div>
+                <div className="fee-code-list" aria-label="应计组与应计类型分类状态">
+                  {accrualClassificationStatus?.pairs.map((item) => (
+                    <div key={`${item.accrual_group}:${item.accrual_type}`}>
+                      <strong>{item.accrual_group} / {item.accrual_type}</strong>
+                      <span>{item.row_count} 行 · {item.currency_totals.map((total) => `${total.total_amount} ${total.currency}`).join(" / ")} · 实际符号 {item.observed_signs.join("、")} · {item.ready ? `${item.accounting_classes.join("、")}（合同符号 ${item.expected_signs.join("、")}）` : "待分类"}</span>
+                    </div>
+                  ))}
+                </div>
+                {canReviewFinance ? (
+                  <form className="finance-review-form" onSubmit={approveAccrualClassification}>
+                    <strong>批准一个应计组合</strong>
+                    <label>应计组 / 类型<select name="accrual_pair" defaultValue="" required><option value="">选择文件中的组合</option>{accrualClassificationStatus?.pairs.map((item) => <option value={JSON.stringify([item.accrual_group, item.accrual_type])} key={`${item.accrual_group}:${item.accrual_type}`}>{item.accrual_group} / {item.accrual_type}{item.ready ? "（已有有效分类）" : ""}</option>)}</select></label>
+                    <label>会计分类<select name="accrual_accounting_class" defaultValue="platform_fee" required><option value="sales">销售</option><option value="discount">折扣</option><option value="platform_fee">平台费用</option><option value="logistics">物流</option><option value="compensation">补偿</option><option value="other_review">其他待复核</option></select></label>
+                    <label>预期金额符号<select name="accrual_expected_sign" defaultValue="either" required><option value="positive">正数</option><option value="negative">负数</option><option value="either">允许正负</option></select></label>
+                    <label>生效时间<input name="accrual_effective_from" type="datetime-local" required /></label>
+                    <label>失效时间（可选）<input name="accrual_effective_until" type="datetime-local" /></label>
+                    <label>分类依据与口径<textarea name="accrual_classification_rationale" minLength={1} required /></label>
+                    <button className="finance-review-submit" disabled={accrualClassificationBusy || !accrualClassificationStatus?.pairs.length}>{accrualClassificationBusy ? "正在留证…" : "批准版本化控制分类"}</button>
+                  </form>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section className="finance-review-panel" aria-labelledby="actual-cost-review-title">
+          <div className="finance-review-head">
+            <div><p className="eyebrow">ACTUAL COST PROOF</p><h3 id="actual-cost-review-title">实际成本权威复核</h3></div>
+            <span className={`gate ${actualCostAuthorityStatus?.status === "accepted" ? "ready" : actualCostAuthorityStatus?.status === "rejected" ? "blocked" : ""}`}>
+              {actualCostAuthorityStatus?.status === "accepted" ? "实际依据已接受" : actualCostAuthorityStatus?.status === "rejected" ? "实际依据已拒绝" : "等待独立复核"}
+            </span>
+          </div>
+          <p className="finance-review-boundary">只有非上传者核对原件、成本范围、计费主体以及金额—币种—期间后，Evidence 才能证明对应成本为实际值。复核不会自动改写利润场景、入账、采购、定价或上架。</p>
+          <div className="finance-review-grid">
+            <article className="finance-handoff">
+              <strong>原件与规则交接</strong>
+              <dl>
+                <div><dt>规则版本</dt><dd><code>{costAuthorityCatalog?.schema_version ?? "读取中"}</code></dd></div>
+                <div><dt>成本项</dt><dd>{costAuthorityCatalog?.items.length ?? 0}/15</dd></div>
+                <div><dt>当前原件</dt><dd>{actualCostEvidenceId ? <code>{actualCostEvidenceId}</code> : "尚未选择"}</dd></div>
+                <div><dt>复核记录</dt><dd>{actualCostAuthorityStatus ? `${actualCostAuthorityStatus.review_count} 条 · ${actualCostAuthorityStatus.status}` : "尚未读取"}</dd></div>
+                <div><dt>已接受权威</dt><dd>{actualCostAuthorityStatus?.accepted_authorities.length ? actualCostAuthorityStatus.accepted_authorities.join("、") : "无"}</dd></div>
+              </dl>
+              <p>权威类型由后端统一下发，页面不能自造或修改。上传人不能复核自己的原件；任一拒绝结论优先阻断。</p>
+            </article>
+            <form className="finance-review-form" onSubmit={canReviewFinance ? reviewActualCostAuthority : (event) => event.preventDefault()}>
+              <strong>{canReviewFinance ? "独立复核人" : "只读状态查询"}</strong>
+              <label>原件 Evidence
+                <select name="actual_cost_evidence_id" value={actualCostEvidenceId} onChange={(event) => { setActualCostEvidenceId(event.target.value); setActualCostAuthorityStatus(null); }} required>
+                  <option value="">选择已有原件</option>
+                  {reviewableCostEvidence.map((item) => <option value={item.id} key={item.id}>{item.filename} · {item.source} · 上传者 {item.created_by}</option>)}
+                </select>
+              </label>
+              <label>精确成本项
+                <select name="actual_cost_type" value={actualCostType} onChange={(event) => { setActualCostType(event.target.value); setActualCostAuthorityStatus(null); }} required>
+                  {costAuthorityCatalog?.items.map((item) => <option value={item.cost_type} key={item.cost_type}>{item.label}</option>)}
+                </select>
+              </label>
+              <label>允许的实际权威类型
+                <select name="actual_cost_authority_id" key={`${actualCostType}:${actualCostAuthorityItem?.authorities[0]?.id ?? "loading"}`} defaultValue={actualCostAuthorityItem?.authorities[0]?.id ?? ""} required>
+                  {actualCostAuthorityItem?.authorities.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}
+                </select>
+              </label>
+              <button type="button" className="finance-review-submit" disabled={actualCostReviewBusy || !actualCostEvidenceId} onClick={() => loadActualCostAuthorityStatus()}>{actualCostReviewBusy ? "读取中…" : "读取当前状态"}</button>
+              {canReviewFinance ? <>
+                <fieldset>
+                  <legend>逐项核对实际原件</legend>
+                  <label><input name="actual_cost_authentic_original" type="checkbox" />原件真实、完整且哈希有效</label>
+                  <label><input name="actual_cost_scope_matches" type="checkbox" />原件范围与该成本项精确对应</label>
+                  <label><input name="actual_cost_charging_party_matches" type="checkbox" />计费方与实际责任主体一致</label>
+                  <label><input name="actual_cost_amount_currency_period_matches" type="checkbox" />金额、币种和归属期间一致</label>
+                </fieldset>
+                <label>复核结论<select name="actual_cost_decision" defaultValue="accepted"><option value="accepted">接受为实际成本依据</option><option value="rejected">拒绝并保持阻断</option></select></label>
+                <label>依据与异常说明<textarea name="actual_cost_rationale" minLength={1} required /></label>
+                <button className="finance-review-submit" disabled={actualCostReviewBusy || !actualCostEvidenceId || !actualCostAuthorityItem}>{actualCostReviewBusy ? "正在保存…" : "保存不可变实际成本复核"}</button>
+              </> : <div className="finance-review-locked"><ShieldCheck size={23} /><strong>当前身份不能提交结论</strong><p>Operator 可以查询状态；请由另一位 Reviewer、Compliance 或 Admin 核对并留证。</p></div>}
+            </form>
+          </div>
+        </section>
+
+        <section className="startup-path" aria-labelledby="startup-path-title">
+          <div className="startup-path-head">
+            <div><p className="eyebrow">START HERE</p><h3 id="startup-path-title">真实业务启动路径</h3></div>
+            <div className={nextStartupStep ? "startup-next" : "startup-next ready"}>
+              <span>{nextStartupStep ? "当前下一步" : "资料条件已齐"}</span>
+              <strong>{nextStartupStep?.title ?? "等待阶段门人工复核"}</strong>
+            </div>
+          </div>
+          <p className="startup-explainer">按顺序准备真实资料。模板只帮助收集，不会代替原始凭证、独立审批或平台权限验证。</p>
+          <div className="startup-boundary" role="note" aria-label="本地资料预检与系统证据状态边界">
+            <strong>两层状态不要混淆</strong>
+            <p>本地资料包只检查必填项是否齐全；下方卡片只认系统 Evidence、Passport、事实账与人工审批。两者都不会自动上架。</p>
+            <code>uv run python scripts/validate_startup_package.py .runtime/startup-intake --require-review-ready</code>
+          </div>
+          <div className="startup-step-grid">
+            {startupSteps.map((step, index) => {
+              const state = requirement(step.id);
+              return <article className={state?.ready ? "startup-step ready" : "startup-step"} key={step.id}>
+                <div><span>{index + 1}</span><b>{step.id} · 系统证据</b><em>{state?.ready ? "已满足" : `${state?.current ?? 0}/${state?.target ?? "-"}`}</em></div>
+                <strong>{step.title}</strong>
+                <p>{state?.ready ? "证据条件已满足，等待人工阶段门复核。" : state?.next_action ?? "正在读取真实准入状态…"}</p>
+                <footer>
+                  {step.template ? <a href={step.template} download><Download size={13} />{step.templateLabel}</a> : null}
+                  {step.secondaryTemplate ? <a href={step.secondaryTemplate} download><Download size={13} />{step.secondaryTemplateLabel}</a> : null}
+                  <a className="primary" href={step.href} target={step.href.startsWith("https://") ? "_blank" : undefined} rel={step.href.startsWith("https://") ? "noreferrer" : undefined}>{step.actionLabel}<ChevronRight size={13} /></a>
+                </footer>
+              </article>;
+            })}
+          </div>
+        </section>
+
         <section className="decision-workbench">
-          <div className="panel-title"><div><p className="eyebrow">OPERATIONS CONTROL</p><h3>今日运营队列与 Ozon 只读试点</h3></div><button type="button" disabled={lifecycleBusy === "operations-scan"} onClick={scanOperationsQueue}>扫描逾期升级</button></div>
-          <div className="lifecycle-summary"><article><span>待处理</span><b>{operationsQueue.length}</b><small>事故、命令和观察合同统一排序</small></article><article><span>已逾期</span><b>{operationsQueue.filter((item) => item.overdue).length}</b><small>只升级提醒，不自动执行经营动作</small></article><article><span>未关闭事故</span><b>{operationalIncidents.filter((item) => item.status !== "closed").length}</b><small>严重事故阻断试点准入</small></article><article><span>只读试点</span><b>{readOnlyPilots.filter((item) => item.status === "active").length}</b><small>平台写入永久禁止</small></article></div>
+          <div className="panel-title"><div><p className="eyebrow">OPERATIONS CONTROL</p><h3>今日异常中心与 Ozon 只读试点</h3></div><button type="button" disabled={lifecycleBusy === "operations-scan"} onClick={scanOperationsQueue}>扫描逾期升级</button></div>
+          <p className="section-copy">Gate 阻断来自服务端 readiness，不伪造 SLA；事故、命令和观察合同继续按真实截止时间升级。这里只解释和导航，不会自动补证、关事故或写平台。</p>
+          <div className="lifecycle-summary"><article><span>经营阻断</span><b>{gateReadiness?.exception_workspace.blocked_count ?? 0}</b><small>按 Gate、来源对象和责任角色展示</small></article><article><span>运行待处理</span><b>{operationsQueue.length}</b><small>事故、命令和观察合同按 SLA 排序</small></article><article><span>已逾期</span><b>{operationsQueue.filter((item) => item.overdue).length}</b><small>只升级提醒，不自动执行经营动作</small></article><article><span>未关闭事故</span><b>{operationalIncidents.filter((item) => item.status !== "closed").length}</b><small>严重事故阻断试点准入</small></article></div>
           <div className="decision-layout">
-            <div className="decision-register"><div className="decision-register-head"><strong>按风险和 SLA 排序</strong><span>{operationsQueue.length} 项</span></div>{operationsQueue.length ? operationsQueue.slice(0, 8).map((item) => <article key={item.queue_key}><div><span>{item.priority} · L{item.escalation_level}</span><b>{item.overdue ? `逾期 ${item.overdue_minutes} 分钟` : item.status}</b></div><strong>{item.title}</strong><small>截止 {new Date(item.due_at).toLocaleString("zh-CN")} · {item.owner_id ?? "待领取"}</small><p>{item.next_action}</p></article>) : <div className="empty"><ShieldCheck size={25} /><strong>当前没有待处理运营事项</strong><p>队列只展示需要人工注意的事故、执行命令和观察窗口。</p></div>}</div>
+            <div className="decision-register"><div className="decision-register-head"><strong>经营阻断与运行异常</strong><span>{(gateReadiness?.exception_workspace.blocked_count ?? 0) + operationsQueue.length} 项</span></div>{gateReadiness?.exception_workspace.items.map((item) => <article key={item.queue_key}><div><span>{item.gate} · {item.attention === "current_gate" ? "当前门" : "后续门"}</span><b>{item.current}/{item.target}</b></div><strong>{item.source_id} · {item.title}</strong><small>责任角色：{item.owner_role} · 来源：{item.source_type}</small><p>{item.next_action}</p></article>)}{operationsQueue.slice(0, Math.max(0, 8 - (gateReadiness?.exception_workspace.blocked_count ?? 0))).map((item) => <article key={item.queue_key}><div><span>{item.priority} · L{item.escalation_level}</span><b>{item.overdue ? `逾期 ${item.overdue_minutes} 分钟` : item.status}</b></div><strong>{item.title}</strong><small>截止 {new Date(item.due_at).toLocaleString("zh-CN")} · {item.owner_id ?? "待领取"}</small><p>{item.next_action}</p></article>)}{!(gateReadiness?.exception_workspace.blocked_count || operationsQueue.length) && <div className="empty"><ShieldCheck size={25} /><strong>当前没有待处理异常</strong><p>Gate 阻断由 readiness 计算；运行队列只展示事故、执行命令和观察窗口。</p></div>}</div>
             <form className="decision-form" onSubmit={createReadOnlyPilot}><div className="decision-form-head"><div><strong>建立 Ozon 只读试点</strong><small>不保存凭证，不允许商品、价格、广告或库存写入</small></div><ShieldCheck size={19} /></div><div className="decision-fields"><label>账户别名<input name="pilot_account_alias" placeholder="例如 ozon-ru-main（不得填写密钥）" required /></label><label>每日请求上限<input name="pilot_daily_limit" type="number" min="1" max="10000" defaultValue="100" required /></label><label>最大目标数<input name="pilot_target_limit" type="number" min="1" max="1000" defaultValue="10" required /></label><label>准入证据<select name="pilot_evidence" defaultValue="" required><option value="">选择账户范围或运行手册证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select></label><label>开始时间<input name="pilot_starts_at" type="datetime-local" required /></label><label>结束时间<input name="pilot_ends_at" type="datetime-local" required /></label><label className="wide">允许的只读能力<span><input name="pilot_operations" type="checkbox" value="ozon.product.read" />商品读取　<input name="pilot_operations" type="checkbox" value="ozon.inventory.read" />库存读取　<input name="pilot_operations" type="checkbox" value="ozon.orders.read" />订单读取　<input name="pilot_operations" type="checkbox" value="ozon.analytics.read" />分析读取　<input name="pilot_operations" type="checkbox" value="ozon.finance.read" />财务读取</span></label></div><div className="decision-submit"><p>最长 14 天；即使批准并激活，仍固定 execution_eligible=false。</p><button disabled={lifecycleBusy === "pilot-create"}>固化只读试点边界</button></div></form>
           </div>
           {readOnlyPilots.map((pilot) => { const evaluation = pilotEvaluations[pilot.id]; return <article className="policy-card" key={pilot.id}><div className="policy-card-head"><div><strong>{pilot.account_alias} · {pilot.status}</strong><small>{pilot.allowed_operations.join("、")} · 日限额 {pilot.max_daily_requests}</small></div><span className={evaluation?.ready_for_review ? "gate ready" : "gate blocked"}>{evaluation?.ready_for_review ? "准入条件齐备" : "仍有阻断项"}</span></div><div className="knowledge-status invalid"><strong>平台写入：永久禁止</strong><span>不保存凭证材料 · 不授予执行资格</span><b>自动激活：禁止</b></div>{["draft", "changes_requested"].includes(pilot.status) && <form className="policy-outcome-form" onSubmit={(event) => attestPilotControl(event, pilot)}><strong>逐项提交准入控制</strong><select name="pilot_control" defaultValue="" required><option value="">选择未完成控制项</option>{pilot.required_controls.filter((control) => !pilot.controls[control]?.passed).map((control) => <option value={control} key={control}>{control}</option>)}</select><input name="pilot_control_notes" placeholder="验证方法和结果" required /><select name="pilot_control_evidence" defaultValue="" required><option value="">选择控制证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select><button disabled={lifecycleBusy === `pilot-attest:${pilot.id}`}>记录控制项</button>{evaluation?.ready_for_review && <button type="button" disabled={lifecycleBusy === `pilot-submit:${pilot.id}`} onClick={() => submitPilotReview(pilot)}>提交独立复核</button>}</form>}{pilot.status === "pending_review" && <form className="policy-outcome-form" onSubmit={(event) => reviewPilot(event, pilot)}><strong>独立准入复核</strong><select name="pilot_review_verdict" defaultValue="" required><option value="">选择结论</option><option value="accepted">批准只读试点</option><option value="rejected">要求补充控制</option></select><input name="pilot_review_rationale" placeholder="独立复核理由" required /><button disabled={lifecycleBusy === `pilot-review:${pilot.id}`}>提交复核</button></form>}{pilot.status === "approved" && <button type="button" disabled={lifecycleBusy === `pilot-activate:${pilot.id}`} onClick={() => activatePilot(pilot)}>管理员重新核验并激活只读试点</button>}{evaluation?.blockers.length ? <footer><span>阻断：{evaluation.blockers.join("、")}</span><b>不得激活</b></footer> : <footer><span>近期演练 {evaluation?.recent_drill_ids.length ?? 0} 次</span><b>仍无写权限</b></footer>}</article>; })}
@@ -1343,6 +2612,7 @@ export default function Home() {
                 <label>可验证证据<select name="decision_evidence" defaultValue=""><option value="">暂未选择；系统会标为待证据</option>{evidenceRecords.slice(0, 100).map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename} · {item.source}</option>)}</select></label>
                 {selectedProfile?.presentation_only && <label className="wide">要解释的来源合同<select name="source_contract_id" defaultValue=""><option value="">选择一份已有合同</option>{decisionContracts.map((item) => <option value={item.id} key={item.id}>{item.id} · {item.objective}</option>)}</select></label>}
                 {selectedProfile?.requires_options && <label className="wide">备选方案（每行一个，至少两个）<textarea name="decision_options" placeholder={"方案 A\n方案 B\n不行动"} /></label>}
+                {selectedProfile?.id === "best_solution" && <><label className="wide">不可突破的硬约束（每行一个）<textarea name="decision_hard_constraints" placeholder={"必须有一手证据\n不得越权或自动执行\n最坏损失不得超过预算"} /></label><label className="wide">比较维度（每行一个）<textarea name="decision_criteria" defaultValue={"长期风险调整价值\n证据质量\n总拥有成本\n可逆性与回滚\n落地时间\n运维适配"} /></label></>}
                 {selectedProfile?.requires_forecast_basis && <><label className="wide">基准情景 / 基础概率<textarea name="forecast_baseline" placeholder="写明历史基准、匹配样本或基础概率及其来源" /></label><label className="wide">未来情景（每行一个，至少两个）<textarea name="forecast_scenarios" placeholder={"基准情景\n下行情景\n上行情景"} /></label></>}
                 <label className="wide">当前假设（每行一个）<textarea name="decision_assumptions" placeholder="尚未证实、但本轮暂时采用的前提" /></label>
                 <label className="wide">已知未知项（每行一个）<textarea name="decision_unknowns" placeholder="缺少的数据、规则、责任人或外部条件" /></label>
@@ -1375,13 +2645,34 @@ export default function Home() {
           </div>
           <div className="lifecycle-grid">
             <form className="lifecycle-form" onSubmit={submitDecisionAnalysis}>
-              <div className="lifecycle-form-title"><span>1</span><div><strong>提交证据化分析</strong><small>必须先给出预测值、区间和回填日期</small></div></div>
-              <label>可分析合同<select name="analysis_contract_id" value={selectedAnalysisContractId} onChange={(event) => setSelectedAnalysisContractId(event.target.value)} required><option value="">选择一份已就绪合同</option>{decisionContracts.filter((item) => item.status === "ready_for_analysis" && ["decision_review", "probabilistic_forecast"].includes(item.profile_id)).map((item) => <option value={item.id} key={item.id}>{item.objective}</option>)}</select></label>
-              {selectedAnalysisContract?.profile_id === "decision_review" && <label>推荐方案<select name="analysis_option_id" defaultValue="" required><option value="">选择合同中的方案</option>{analysisOptions.map((item) => <option value={item.id} key={item.id}>{item.id} · {item.label}</option>)}</select></label>}
+              <div className="lifecycle-form-title"><span>1</span><div><strong>提交证据化分析</strong><small>{isBestSolutionAnalysis ? "先过硬约束，再比较长期价值与总成本" : "必须先给出预测值、区间和回填日期"}</small></div></div>
+              <label>可分析合同<select name="analysis_contract_id" value={selectedAnalysisContractId} onChange={(event) => { setSelectedAnalysisContractId(event.target.value); setSelectedAnalysisOptionId(""); }} required><option value="">选择一份已就绪合同</option>{decisionContracts.filter((item) => item.status === "ready_for_analysis" && ["decision_review", "best_solution", "probabilistic_forecast"].includes(item.profile_id)).map((item) => <option value={item.id} key={item.id}>{item.objective}</option>)}</select></label>
+              {selectedAnalysisContract && ["decision_review", "best_solution"].includes(selectedAnalysisContract.profile_id) && <label>推荐方案<select name="analysis_option_id" value={selectedAnalysisOptionId} onChange={(event) => setSelectedAnalysisOptionId(event.target.value)} required><option value="">选择合同中的方案</option>{analysisOptions.map((item) => <option value={item.id} key={item.id}>{item.id} · {item.label}</option>)}</select></label>}
               <label>分析结论<textarea name="analysis_conclusion" placeholder="结论必须说明为什么，并保留未知项" required /></label>
-              <div className="lifecycle-pair"><label>置信度<input name="analysis_confidence" type="number" min="0" max="1" step="0.01" defaultValue="0.6" required /></label><label>预测指标<input name="analysis_metric" placeholder="例如 30天 CM3" required /></label></div>
-              <div className="lifecycle-triple"><label>预测值<input name="analysis_value" type="number" step="0.01" required /></label><label>下界<input name="analysis_low" type="number" step="0.01" required /></label><label>上界<input name="analysis_high" type="number" step="0.01" required /></label></div>
-              <div className="lifecycle-pair"><label>单位<input name="analysis_unit" defaultValue="CNY" required /></label><label>结果回填时间<input name="analysis_due_at" type="datetime-local" required /></label></div>
+              <label>置信度<input name="analysis_confidence" type="number" min="0" max="1" step="0.01" defaultValue="0.6" required /></label>
+              {analysisNeedsForecast && <><div className="lifecycle-pair"><label>预测指标<input name="analysis_metric" placeholder="例如 30天 CM3" required /></label><label>单位<input name="analysis_unit" defaultValue="CNY" required /></label></div><div className="lifecycle-triple"><label>预测值<input name="analysis_value" type="number" step="0.01" required /></label><label>下界<input name="analysis_low" type="number" step="0.01" required /></label><label>上界<input name="analysis_high" type="number" step="0.01" required /></label></div><label>结果回填时间<input name="analysis_due_at" type="datetime-local" required /></label></>}
+              {isBestSolutionAnalysis && <div className="best-solution-assessment">
+                <strong>逐项方案比较</strong>
+                <p>每个方案都必须覆盖全部硬约束与六项经营判断；系统不会把“最新”或“最复杂”自动当成最好。</p>
+                {analysisOptions.map((option, optionIndex) => <fieldset key={String(option.id)}>
+                  <legend>{option.id} · {option.label}</legend>
+                  {analysisHardConstraints.map((constraint, constraintIndex) => <div className="lifecycle-pair" key={`${option.id}-${constraint}`}><label>{constraint}<select name={`best_constraint_${optionIndex}_${constraintIndex}_passed`} defaultValue="false" required><option value="false">不满足</option><option value="true">满足</option></select></label><label>判断依据<input name={`best_constraint_${optionIndex}_${constraintIndex}_rationale`} placeholder="引用证据或说明缺口" required /></label></div>)}
+                  <label>证据质量<select name={`best_evidence_quality_${optionIndex}`} defaultValue="UNKNOWN" required><option value="A">A · 官方原件/直接事实</option><option value="B">B · 可靠二手/独立复核</option><option value="C">C · 第三方参考</option><option value="D">D · 弱信号</option><option value="UNKNOWN">未知</option></select></label>
+                  <label>长期风险调整价值<textarea name={`best_long_term_value_${optionIndex}`} required /></label>
+                  <label>总拥有成本<textarea name={`best_tco_${optionIndex}`} placeholder="建设、采购、运维、迁移、失败和人工成本" required /></label>
+                  <label>最大损失<textarea name={`best_maximum_loss_${optionIndex}`} required /></label>
+                  <label>可逆性与回滚<textarea name={`best_rollback_${optionIndex}`} required /></label>
+                  <label>见效时间<textarea name={`best_time_to_value_${optionIndex}`} required /></label>
+                  <label>现有团队与系统适配<textarea name={`best_operational_fit_${optionIndex}`} required /></label>
+                  {selectedAnalysisOptionId && selectedAnalysisOptionId !== String(option.id) && <label>淘汰该方案的原因<textarea name={`best_rejection_reason_${optionIndex}`} required /></label>}
+                </fieldset>)}
+                <label>不行动方案<select name="best_no_action_option_id" defaultValue=""><option value="">合同中没有明确的不行动方案</option>{analysisOptions.map((item) => <option value={item.id} key={item.id}>{item.id} · {item.label}</option>)}</select></label>
+                <label>若没有不行动方案，说明原因<textarea name="best_no_action_omission_reason" /></label>
+                <label>敏感性驱动因素（每行一个）<textarea name="best_sensitivity_drivers" required /></label>
+                <label>结论失效条件（每行一个）<textarea name="best_invalidation_conditions" required /></label>
+                <label>重新审查时间<input name="best_review_at" type="datetime-local" required /></label>
+                <label>审批要求<textarea name="best_approval_requirement" placeholder="谁复核、谁批准、什么条件下才能进入执行" required /></label>
+              </div>}
               <label>分析证据<select name="analysis_evidence" defaultValue="" required><option value="">选择原始证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select></label>
               <label>分析者 / 模型版本<input name="analysis_model_ref" placeholder="例如 human+qwen-v3" /></label>
               <label>关键假设（每行一个）<textarea name="analysis_assumptions" /></label><label>剩余未知项（每行一个）<textarea name="analysis_unknowns" /></label>
@@ -1400,11 +2691,12 @@ export default function Home() {
                 return <article className="analysis-review-card" key={item.id}>
                   <div className="analysis-review-head"><div><strong>{item.conclusion}</strong><small>{contract?.risk_level ?? "-"} · 置信度 {(Number(item.confidence) * 100).toFixed(0)}% · {item.submitted_by}</small></div><span>{resolution ? "已决定" : blocking ? "需重做" : `${acceptedCount}/${requiredReviews} 复核`}</span></div>
                   {item.forecast && <p>预测 {item.forecast.value} {item.forecast.unit} · 区间 {item.forecast.low}–{item.forecast.high} · {new Date(item.forecast.due_at).toLocaleDateString("zh-CN")} 回填</p>}
+                  {contract?.profile_id === "best_solution" && <p>推荐 {item.recommended_option_id} · 已记录 {Array.isArray(item.selection_assessment.rejected_options) ? item.selection_assessment.rejected_options.length : 0} 个淘汰理由 · 仍需反方审查</p>}
                   {reviews.map((review) => <div className={`review-result ${review.verdict}`} key={review.id}><b>{review.verdict}</b><span>{review.rationale}</span><small>{review.reviewed_by}</small></div>)}
                   {!blocking && !resolution && acceptedCount < requiredReviews && <form className="mini-lifecycle-form" onSubmit={(event) => reviewDecisionAnalysis(event, item.id)}>
                     <select name="review_verdict" defaultValue="accepted"><option value="accepted">证据支持</option><option value="needs_revision">需要修订</option><option value="rejected">拒绝结论</option></select>
                     <textarea name="review_rationale" placeholder="独立复核理由" required />
-                    <textarea name="review_counterarguments" placeholder="反方解释（每行一个）" />
+                    <textarea name="review_counterarguments" placeholder="反方解释（每行一个）" required={contract?.profile_id === "best_solution"} />
                     <select name="review_evidence" defaultValue=""><option value="">无新增证据（接受结论时必须选择）</option>{evidenceRecords.map((evidence) => <option value={evidence.id} key={evidence.id}>{evidence.grade} · {evidence.filename}</option>)}</select>
                     <button disabled={lifecycleBusy === item.id}>提交独立复核</button>
                   </form>}
@@ -1578,7 +2870,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="gate-overview">
+        <section className="gate-overview" id="reality-gate">
           <div className="gate-overview-head">
             <div><p className="eyebrow">REALITY GATE</p><h3>G0–G1 真实准入状态</h3></div>
             <span className={gateReadiness?.status === "ready_for_review" ? "gate ready" : "gate blocked"}>
@@ -1592,6 +2884,48 @@ export default function Home() {
               <small>{item.ready ? "证据条件已满足，仍需阶段门人工复核" : item.next_action}</small>
             </article>)}
           </div> : <div className="gate-loading">正在读取阶段门事实…</div>}
+          {gateReadiness && <div className="requirement-grid">
+            <article className={researchReadiness?.ready ? "requirement ready" : "requirement"}>
+              <div><span>研究闭环</span><b>{researchReadiness?.ready ? "READY" : "BLOCKED"}</b></div>
+              <strong>分析、模拟、生图/视频与 Listing 草稿</strong>
+              <small>{researchReadiness?.ready ? "只允许 research_signal / estimate / simulation / draft，不允许外部副作用" : researchReadiness?.blocking_reasons.join("；") || "等待合格研究原件及独立复核"}</small>
+            </article>
+            <article className={realExecutionReadiness?.ready ? "requirement ready" : "requirement"}>
+              <div><span>真实经营</span><b>{realExecutionReadiness?.ready ? "READY" : "BLOCKED"}</b></div>
+              <strong>付款、采购、发布、广告、补货与 actual 晋升</strong>
+              <small>{realExecutionReadiness?.ready ? "动作仍需按风险等级、审批、额度和执行时复验" : realExecutionReadiness?.blocking_reasons.join("；") || "等待 Ozon Data 或两项独立官方分析证据"}</small>
+            </article>
+          </div>}
+          <form className="gate-evidence-upload" onSubmit={uploadDemandReport}>
+            <div><strong>1. 上传需求研究原件</strong><small>上传后只进入待复核。测试数据最多放行研究闭环；真实经营要求 Ozon Data，或至少两个独立 Ozon 官方分析入口。</small></div>
+            <select name="demand_report_source_system" aria-label="需求研究来源" defaultValue="ozon_category_analytics" required>
+              <option value="ozon_data">Ozon Data 正式报告</option>
+              <option value="ozon_category_analytics">Ozon 类目分析</option>
+              <option value="ozon_trends">Ozon 趋势数据</option>
+              <option value="ozon_what_to_sell">Ozon 卖什么</option>
+              <option value="ozon_search_terms">Ozon 搜索词</option>
+              <option value="ozon_competitor_compare">Ozon 竞品/类目比较</option>
+              <option value="sanitized_history">脱敏历史样本</option>
+              <option value="fixed_test_data">固定工程测试数据</option>
+            </select>
+            <input name="demand_report_source_locator" aria-label="需求研究来源定位" placeholder="原始页面 URL、导出编号或 fixture:// 路径" required />
+            <input name="demand_report_window_days" aria-label="需求报告窗口天数" type="number" min="28" max="365" defaultValue="28" required />
+            <input name="demand_report_file" aria-label="需求研究原件文件" type="file" accept=".json,.csv,.xlsx,.xls,.pdf" required />
+            <button disabled={gateUploading}>{gateUploading ? "正在固化…" : "固化研究原件"}</button>
+          </form>
+          <form className="gate-evidence-upload" onSubmit={reviewDemandReport}>
+            <div><strong>2. 独立复核需求报告</strong><small>复核身份必须与上传者不同；接受或拒绝都会形成不可覆盖的证据。</small></div>
+            <select name="demand_report_evidence_id" aria-label="待复核需求报告" defaultValue="" required>
+              <option value="" disabled>{demandSourceReports.length ? "选择报告" : "暂无待复核报告"}</option>
+              {demandSourceReports.map((item) => <option value={item.id} key={item.id}>{item.filename} · {String(item.metadata.source_system ?? "unknown")} · 上传者 {item.created_by}</option>)}
+            </select>
+            <select name="demand_report_decision" aria-label="需求报告复核结论" defaultValue="accepted" required>
+              <option value="accepted">接受：已核对后台来源、窗口与字段</option>
+              <option value="rejected">拒绝：来源或范围不可复验</option>
+            </select>
+            <input name="demand_report_rationale" aria-label="需求报告复核理由" placeholder="写明核对位置、日期范围和异常" required />
+            <button disabled={lifecycleBusy === "demand-report-review" || demandSourceReports.length === 0}>{lifecycleBusy === "demand-report-review" ? "正在复核…" : "固化独立复核"}</button>
+          </form>
           <form className="gate-evidence-upload" onSubmit={uploadGateEvidence}>
             <div><strong>补充阶段门证据</strong><small>原文件将哈希固化并自动链接，不覆盖历史。</small></div>
             <select name="requirement_id" aria-label="阶段门证据类型" defaultValue="" required>
@@ -1604,7 +2938,110 @@ export default function Home() {
           </form>
         </section>
 
-        <section className="sku-intake-panel">
+        <section className="sku-intake-panel" id="candidate-research">
+          <div className="panel-title">
+            <div><p className="eyebrow">CANDIDATE RESEARCH</p><h3>新上新候选预检</h3></div>
+            <span className="badge">先证据 · 后报价</span>
+          </div>
+          <div className="procurement-guardrail">
+            <ShieldCheck size={18} />
+            <p><strong>系统不会替你编造来源</strong><span>先固化原文件，再让每个指标绑定一份可复验原件。预检通过也只进入三家真实报价。</span></p>
+          </div>
+          <form className="candidate-evidence-form" onSubmit={uploadCandidateEvidence}>
+            <div><strong>1. 研究收集箱：固化信号与原件</strong><small>保存原文件、来源时间、原始字段和候选关联；不自动生成商品或上架</small></div>
+            <input name="candidate_evidence_source" placeholder="来源机构，例如 Seerfar、萌啦或 Ozon Analytics" required />
+            <input name="candidate_evidence_source_ref" placeholder="提供方稳定记录编号，例如 export://2026-07/row-18" required />
+            <input name="candidate_evidence_source_url" type="url" placeholder="原始页面 URL（不得包含账号、Token 或密钥）" required />
+            <input name="candidate_evidence_candidate_refs" placeholder="关联候选编号，可用逗号分隔；允许一条信号关联多个候选" />
+            <textarea name="candidate_evidence_raw_fields" aria-label="提供方原始字段" defaultValue="{}" placeholder='原始字段 JSON，例如 {"keyword":"storage box","search_index":81.5}' required />
+            <select name="candidate_evidence_license_status" defaultValue="requires_review" aria-label="来源使用状态"><option value="requires_review">使用条款待核对</option><option value="verified">已核对允许保存/使用</option><option value="restricted">受限，仅留档不得复用</option></select>
+            <select name="candidate_evidence_grade" defaultValue="C" aria-label="证据等级"><option value="A">A · 官方原件</option><option value="B">B · 一手业务数据</option><option value="C">C · 可追溯二手资料</option><option value="D">D · 探索线索</option></select>
+            <small>第三方选品、ERP 和利润计算器默认是 C 级辅助资料；A/B 只能按原始账户、供应商或官方规则依据声明，后续仍需独立复核。</small>
+            <input name="candidate_evidence_file" type="file" required />
+            <button disabled={candidateEvidenceUploading}>{candidateEvidenceUploading ? "正在固化…" : "固化原件"}</button>
+          </form>
+          {researchSignals.length > 0 && <div className="candidate-inbox-list">
+            <strong>最近研究信号</strong>
+            {researchSignals.slice(0, 5).map((record) => <p key={`signal-${record.id}`}><code>{record.id}</code><span>{record.source} · {String(record.metadata.license_status ?? "requires_review")} · 辅助资料</span></p>)}
+          </div>}
+          <div className="finance-review-grid">
+            <article className="finance-handoff">
+              <strong>2. 上传人交接复核</strong>
+              <p>把 Evidence 编号、对应指标和原始依据交给另一位 Reviewer/Compliance 用户。上传时选择的 A/B/C/D 只是声明，不会直接推动候选进入三报价。</p>
+              {candidateAuthorityStatus && <dl>
+                <div><dt>Evidence</dt><dd><code>{candidateAuthorityStatus.evidence_id}</code></dd></div>
+                <div><dt>指标</dt><dd>{candidateMetricLabels[candidateAuthorityStatus.metric] ?? candidateAuthorityStatus.metric}</dd></div>
+                <div><dt>状态</dt><dd>{candidateAuthorityStatus.status}</dd></div>
+                <div><dt>有效等级</dt><dd>{candidateAuthorityStatus.accepted_grades.join("/") || "无"}</dd></div>
+              </dl>}
+            </article>
+            {canReviewFinance ? <form className="finance-review-form" onSubmit={reviewCandidateEvidenceAuthority}>
+              <strong>独立权威复核人</strong>
+              <label>候选 Evidence<select name="candidate_authority_evidence_id" defaultValue="" required><option value="">选择原件</option>{evidenceRecords.filter((record) => record.source !== "candidate_evidence_authority_review").map((record) => <option value={record.id} key={`authority-${record.id}`}>{record.source} · {record.filename}</option>)}</select></label>
+              <label>适用指标<select name="candidate_authority_metric" defaultValue="" required><option value="">选择指标</option>{candidateMetricDefinitions.map(([metric, label]) => <option value={metric} key={`authority-metric-${metric}`}>{label}</option>)}</select></label>
+              <label>批准等级<select name="candidate_authority_grade" defaultValue="B"><option value="A">A · 官方原件</option><option value="B">B · 一手业务数据</option></select></label>
+              <fieldset>
+                <legend>逐项核对原件</legend>
+                <label><input name="candidate_authority_authentic" type="checkbox" />原件真实、完整且哈希可复验</label>
+                <label><input name="candidate_authority_scope" type="checkbox" />来源范围与本指标、市场和时间窗口一致</label>
+                <label><input name="candidate_authority_basis" type="checkbox" />A/B 权威依据已核对，不依赖二手计算器声明</label>
+              </fieldset>
+              <label>复核结论<select name="candidate_authority_decision" defaultValue="accepted"><option value="accepted">接受该指标的 A/B 等级</option><option value="rejected">拒绝并保持阻塞</option></select></label>
+              <label>依据与异常说明<textarea name="candidate_authority_rationale" minLength={1} required /></label>
+              <span className="finance-review-id-row">
+                <button type="button" disabled={candidateAuthorityBusy} onClick={(event) => { const form = event.currentTarget.form; if (form) loadCandidateAuthorityStatus((form.elements.namedItem("candidate_authority_evidence_id") as HTMLSelectElement).value, (form.elements.namedItem("candidate_authority_metric") as HTMLSelectElement).value); }}>读取状态</button>
+                <button className="finance-review-submit" disabled={candidateAuthorityBusy}>{candidateAuthorityBusy ? "处理中…" : "保存不可变复核记录"}</button>
+              </span>
+            </form> : <article className="finance-review-locked"><ShieldCheck size={23} /><strong>当前身份只能上传</strong><p>请让另一位 Reviewer 或 Compliance 用户核对原件；上传人不能复核自己的证据。</p></article>}
+          </div>
+          <form className="sku-intake candidate-research-form" onSubmit={submitCandidateResearch}>
+            <div className="candidate-heading"><strong>3. 绑定五类证据并预检</strong><small>每份原件还必须有该指标的独立 A/B 复核；五项全部验真后才会一起落账。</small></div>
+            <div className="candidate-basics">
+              <label>已接受需求报告<select name="candidate_demand_report_evidence_id" defaultValue="" required><option value="" disabled>{acceptedDemandReports.length ? "选择本次研究依据" : "请先完成需求报告独立复核"}</option>{acceptedDemandReports.map((report) => <option value={report.id} key={`candidate-report-${report.id}`}>{report.filename} · {report.effective_at.slice(0, 10)}</option>)}</select></label>
+              <label>候选编号<input name="candidate_ref" placeholder="candidate://stable-name-v1" required /></label>
+              <label>候选名称<input name="candidate_name" placeholder="便于经营人员识别的名称" required /></label>
+              <label>市场<input name="candidate_market" defaultValue="RU" required /></label>
+              <label>类目<input name="candidate_category" placeholder="例如 kitchen_storage" required /></label>
+            </div>
+            <div className="candidate-metric-list">
+              {candidateMetricDefinitions.map(([metric, label, help, defaultWindow, defaultSample]) => <div className="candidate-metric" key={metric}>
+                <div><strong>{label}</strong><small>{help}</small></div>
+                {metric === "supplier_available" || metric === "compliance_redline"
+                  ? <select name={`candidate_${metric}_value`} aria-label={`${label}数值`} defaultValue="" required><option value="" disabled>请选择</option><option value="1">是</option><option value="0">否</option></select>
+                  : <input name={`candidate_${metric}_value`} aria-label={`${label}数值`} type="number" min="0" max="100" step="0.1" placeholder="0–100" required />}
+                <select name={`candidate_${metric}_evidence`} aria-label={`${label}原件`} defaultValue="" required>
+                  <option value="" disabled>{evidenceRecords.length ? "选择 Evidence 原件" : "请先固化原件"}</option>
+                  {evidenceRecords.map((record) => <option value={record.id} key={`${metric}-${record.id}`}>{record.grade}级 · {record.source} · {record.filename} · {record.effective_at.slice(0, 10)}</option>)}
+                </select>
+                <label>可信度<input name={`candidate_${metric}_confidence`} aria-label={`${label}可信度`} type="number" min="0.01" max="1" step="0.01" defaultValue="0.8" required /></label>
+                <label>观察窗口（天）<input name={`candidate_${metric}_window_days`} aria-label={`${label}观察窗口`} type="number" min={metric === "supplier_available" || metric === "compliance_redline" ? 1 : 28} max="90" step="1" defaultValue={defaultWindow} required /></label>
+                <label>样本量<input name={`candidate_${metric}_sample_size`} aria-label={`${label}样本量`} type="number" min={defaultSample} step="1" defaultValue={defaultSample} required /></label>
+              </div>)}
+            </div>
+            <div className="intake-submit"><p>同一候选包重复提交不会重复建账；需求报告未接受、坏原件或缺任一指标时，五条观测全部不写入。</p><button disabled={candidateResearchBusy || evidenceRecords.length === 0 || acceptedDemandReports.length === 0}>{candidateResearchBusy ? "正在预检…" : "执行候选预检"}</button></div>
+          </form>
+          {candidateAssessment && <article className={`candidate-result ${candidateAssessment.decision}`}>
+            <div><strong>{candidateAssessment.candidate_name}</strong><span>{candidateAssessment.decision === "request_three_quotes" ? "进入三报价" : candidateAssessment.decision === "reject" ? "淘汰" : "需要补证"}</span></div>
+            <p>测量合同：{candidateAssessment.measurement_policy_id}；筛选策略：{candidateAssessment.quote_policy_id}（工程默认值，G0 前需经营负责人复核）</p>
+            <p>需求报告：{candidateAssessment.demand_report_evidence_id}</p>
+            <p>聚合值：需求 {candidateAssessment.metric_values.demand_signal ?? "—"} · 缺口 {candidateAssessment.metric_values.competition_gap ?? "—"} · 退货风险 {candidateAssessment.metric_values.return_risk ?? "—"}%</p>
+            {candidateAssessment.threshold_failures.length > 0 && <ul>{candidateAssessment.threshold_failures.map((item) => <li key={item.metric}>{candidateMetricLabels[item.metric] ?? item.metric}：实际 {item.actual}，要求 {item.operator === "gte" ? "≥" : "≤"} {item.threshold}</li>)}</ul>}
+            <p>{candidateAssessment.decision === "request_three_quotes"
+              ? `已核验 ${candidateAssessment.evidence_ids.length} 份原件、${candidateAssessment.source_family_count} 个独立来源族；下一步必须收集 ${candidateAssessment.required_supplier_quotes} 家真实报价并计算风险调整后 CM3。`
+              : candidateAssessment.reasons.join("；")}</p>
+            {candidateAssessment.missing_metrics.length > 0 && <small>缺失或无效：{candidateAssessment.missing_metrics.map((metric) => candidateMetricLabels[metric] ?? metric).join("、")}</small>}
+            {candidateAssessment.low_authority_evidence_ids.length > 0 && <small>有 {candidateAssessment.low_authority_evidence_ids.length} 条辅助资料已保留，但权威等级不足，不能推动三报价。</small>}
+            <small>不会自动创建商品、采购或 Listing。</small>
+            {candidateAssessment.decision === "request_three_quotes" && !candidateHandoff && <form className="candidate-handoff" onSubmit={createCandidateSourcingWorkspace}>
+              <label>内部 SKU<input name="candidate_handoff_sku" placeholder="例如 RU-CAND-001" required /></label>
+              <label className="candidate-confirm"><input name="candidate_handoff_confirmed" type="checkbox" required />我确认建立报价工作区；这不代表采购或上架批准</label>
+              <button disabled={candidateHandoffBusy}>{candidateHandoffBusy ? "正在建立…" : "建立报价工作区"}</button>
+            </form>}
+            {candidateHandoff && <div className="candidate-next-step"><strong>{candidateHandoff.product.sku} 已就绪</strong><a href="#sourcing-intake">前往录入三家报价</a></div>}
+          </article>}
+        </section>
+
+        <section className="sku-intake-panel" id="sku-intake">
           <div className="panel-title"><div><p className="eyebrow">SKU EPISODE INTAKE</p><h3>候选 SKU 一站式录入</h3></div><span className="badge">草稿 · 需人工审核</span></div>
           <form className="sku-intake" onSubmit={uploadSkuEpisode}>
             <div className="intake-basic">
@@ -1643,7 +3080,132 @@ export default function Home() {
           </form>
         </section>
 
-        <section className="passport-review-panel">
+        <section className="sku-intake-panel" id="product-media-intake">
+          <div className="panel-title">
+            <div><p className="eyebrow">PRODUCT MEDIA EVIDENCE</p><h3>真实原图与权利证据</h3></div>
+            <span className="badge">上传不触发生成</span>
+          </div>
+          <form className="sku-intake" onSubmit={uploadProductMedia}>
+            <div className="intake-basic">
+              <label>候选 SKU<select name="product_media_product_id" required><option value="">选择 SKU</option>{products.map((item) => <option value={item.id} key={item.id}>{item.sku} · {item.name}</option>)}</select></label>
+              <label>变体标识<input name="product_media_variant_id" defaultValue="base" required /></label>
+              <label>图片角色<select name="product_media_role" defaultValue="front_main">{Object.entries(productMediaRoleLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+              <label>来源类型<select name="product_media_source_kind" defaultValue="sample_photo"><option value="sample_photo">真实样品拍摄</option><option value="supplier_authorized">供应商授权原图</option></select></label>
+              <label>来源编号 / 链接<input name="product_media_source_ref" placeholder="样品编号、供应商报价编号或原始链接" required /></label>
+              <label>真实原图<input name="product_media_image" type="file" accept="image/jpeg,image/png,image/webp" required /></label>
+              <label>权利 / 授权文件<input name="product_media_rights" type="file" accept="application/pdf,text/plain,image/jpeg,image/png" required /></label>
+            </div>
+            <div className="intake-submit"><p>服务端校验文件签名并哈希固化；最新 Quality Passport 未获人工批准前，Content Agent 无权引用。</p><button disabled={productMediaUploading}>{productMediaUploading ? "正在固化…" : "提交一组素材证据"}</button></div>
+          </form>
+          {productMediaReadiness.length > 0 && <div className="media-readiness-grid">{productMediaReadiness.map((item) => <article className="media-readiness-card" key={item.product.id}>
+            <div className="sku-card-head"><div><strong>{item.product.sku}</strong><small>{item.product.name}</small></div><span className={item.ready_for_full_production ? "gate ready" : "gate"}>{item.approved_role_count}/7</span></div>
+            <div className="media-role-row">{item.roles.map((role) => <span className={role.status} key={role.role}>{productMediaRoleLabels[role.role]}</span>)}</div>
+            <p>{item.ready_for_full_production ? "七类原图与权利证据均已批准，可以建立受控图片 Brief。" : item.pending_passport_roles.length ? "已捕获素材正在等待 Passport 人工批准。" : `仍缺：${item.missing_roles.map((role) => productMediaRoleLabels[role]).join("、")}`}</p>
+          </article>)}</div>}
+          <form className="sku-intake image-brief-form" onSubmit={createImageBrief}>
+            <div className="procurement-guardrail">
+              <ImageIcon size={18} />
+              <p>
+                <strong>官方 ComfyUI · {health.comfyui?.status === "ok" ? "本地执行器在线" : "执行器离线"}</strong>
+                <span>{health.comfyui?.detail || "仅建立 Brief；执行器恢复后再受控生成。"} 第三方 custom nodes 默认禁用。</span>
+              </p>
+            </div>
+            <div className="intake-basic">
+              <label>已就绪 SKU<select name="image_brief_product_id" required><option value="">选择已通过 7/7 的 SKU</option>{productMediaReadiness.filter((item) => item.ready_for_full_production).map((item) => <option value={item.product.id} key={item.product.id}>{item.product.sku} · {item.product.name}</option>)}</select></label>
+              <label>来源图片角色<select name="image_brief_role" defaultValue="front_main">{Object.entries(productMediaRoleLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+              <label>处理模式<select name="image_brief_mode" defaultValue="retouch"><option value="retouch">真实图精修</option><option value="composite">受控场景合成</option><option value="infographic">固定模板信息图</option></select></label>
+              <label>图片目标<input name="image_brief_goal" defaultValue="Ozon 正面主图" required /></label>
+            </div>
+            <div className="intake-submit"><p>提交只冻结事实、来源与权利证据，不向 ComfyUI 暴露任意工作流，也不会自动生成或上架。</p><button disabled={imageBriefBusy || !productMediaReadiness.some((item) => item.ready_for_full_production)}>{imageBriefBusy ? "正在冻结…" : "建立受控图片 Brief"}</button></div>
+          </form>
+          {contentAssets.length > 0 && <div className="content-execution-grid">{contentAssets.map((asset) => {
+            const product = products.find((item) => item.id === asset.product_id);
+            const mode = String(asset.brief.generation_mode ?? "");
+            const busy = imageExecutionBusy === asset.id;
+            const comparison = comparisons.find((item) => item.product.id === asset.product_id);
+            const profitableRows = comparison?.rows.filter((item) => item.has_positive_cm3 && item.scenario) ?? [];
+            return <article className={`content-execution-card ${["generated", "approved"].includes(asset.status) ? "wide" : ""}`} key={asset.id}>
+              <div className="sku-card-head">
+                <div><strong>{product?.sku ?? asset.product_id}</strong><small>{String(asset.brief.goal ?? "受控图片任务")}</small></div>
+                <span className={`gate ${asset.status === "generated" ? "ready" : asset.status === "execution_failed" ? "blocked" : ""}`}>{asset.status}</span>
+              </div>
+              <p>{mode === "retouch" ? "固定核心节点：真实原图 → Lanczos 4MP 保真缩放 → 证据回收" : "当前只冻结 Brief；场景合成与信息图需真实 SKU 模板验证后开放。"}</p>
+              {Boolean(asset.generation.prompt_id) && <small>Prompt · {String(asset.generation.prompt_id)}</small>}
+              {asset.artifact_ref && <small>Evidence · {asset.artifact_ref}</small>}
+              {mode === "retouch" && ["brief", "qa_failed", "execution_failed"].includes(asset.status) && <button disabled={busy || health.comfyui?.status !== "ok"} onClick={() => runImageGeneration(asset, "queue")}>{busy ? "提交中…" : "提交保真处理"}</button>}
+              {asset.status === "queued" && <button disabled={busy} onClick={() => runImageGeneration(asset, "sync")}>{busy ? "同步中…" : "同步执行结果"}</button>}
+              {asset.status === "generated" && <form className="image-qa-form" onSubmit={(event) => reviewImageAsset(event, asset)}>
+                <div className="content-next-step"><ShieldCheck size={14} />八项必须全部判断；任一失败都会退回</div>
+                {imageQaDefinitions.map(([check, label, help]) => <label key={check}>
+                  <span><strong>{label}</strong><small>{help}</small></span>
+                  <select name={`qa_${check}_passed`} defaultValue="" required>
+                    <option value="" disabled>请选择结论</option>
+                    <option value="true">通过</option>
+                    <option value="false">不通过</option>
+                  </select>
+                  <textarea name={`qa_${check}_notes`} placeholder="填写核查依据、看到的证据或失败原因" required />
+                </label>)}
+                <button disabled={imageQaBusy === asset.id}>{imageQaBusy === asset.id ? "正在提交…" : "提交完整人工 QA"}</button>
+                <small>审核身份与 UTC 时间由服务端记录；提交后仍不触发 Ozon 发布。</small>
+              </form>}
+              {asset.status === "approved" && <div className="content-next-step"><CheckCircle2 size={14} />八项 QA 已通过，可进入 Listing 草稿引用；发布仍需独立审批</div>}
+              {asset.status === "approved" && <form className="listing-handoff-form" onSubmit={(event) => createListingDraft(event, asset)}>
+                <div>
+                  <label>正 CM3 方案<select name="listing_scenario" defaultValue="" required>
+                    <option value="" disabled>选择已复算方案</option>
+                    {profitableRows.map((row) => <option key={row.scenario!.id} value={`${row.offer.id}::${row.scenario!.id}`}>
+                      {row.offer.supplier_ref} · CM3 ¥{row.scenario!.cm3_cny} · {row.scenario!.cm3_rate}
+                    </option>)}
+                  </select></label>
+                  <label>Ozon 类目 ID<input name="listing_category_id" required /></label>
+                  <label>俄语标题<input name="listing_title" required /></label>
+                  <label className="wide">俄语描述<textarea name="listing_description" required /></label>
+                </div>
+                <p>{profitableRows.length ? "草稿会锁定当前图片 Evidence 与利润场景；创建后只进入发布审批。" : "尚无正 CM3 供应商方案，禁止建立 Listing 草稿。"}</p>
+                <button disabled={listingDraftBusy === asset.id || profitableRows.length === 0}>{listingDraftBusy === asset.id ? "正在建立…" : "建立待审批 Listing 草稿"}</button>
+              </form>}
+              {asset.status === "qa_failed" && asset.qa_results.length > 0 && <div className="image-qa-failures">
+                <strong>退回原因</strong>
+                {asset.qa_results.filter((item) => !item.passed).map((item) => <span key={item.check}>{imageQaDefinitions.find(([check]) => check === item.check)?.[1] ?? item.check} · {item.notes}</span>)}
+              </div>}
+            </article>;
+          })}</div>}
+        </section>
+
+        <section className="passport-review-panel" id="listing-approval">
+          <div className="panel-title">
+            <div><p className="eyebrow">IMMUTABLE LISTING REVIEW</p><h3>Ozon Listing 发布审批快照</h3></div>
+            <span className={pendingListingApprovals.length ? "badge" : "gate ready"}>{pendingListingApprovals.length ? `${pendingListingApprovals.length} 项待独立审批` : "队列已清空"}</span>
+          </div>
+          {pendingListingApprovals.length ? <div className="review-grid">{pendingListingApprovals.map((approval) => {
+            const payload = approval.payload;
+            const product = products.find((item) => item.id === String(payload.product_id ?? ""));
+            const contentAssetIds = Array.isArray(payload.content_asset_ids) ? payload.content_asset_ids : [];
+            const imageRefs = Array.isArray(payload.image_evidence_refs) ? payload.image_evidence_refs : [];
+            const snapshot = String(payload.listing_snapshot_sha256 ?? "");
+            return <article className="review-card listing-approval-card" key={approval.id}>
+              <div className="review-head">
+                <div><strong>{product?.sku ?? String(payload.product_id ?? "未知商品")}</strong><small>{String(payload.title ?? "无标题")}</small></div>
+                <span>等待独立审批</span>
+              </div>
+              <div className="fact-list">
+                <div><span>Ozon 类目</span><b>{String(payload.category_id ?? "未填写")}</b></div>
+                <div><span>预计 CM3</span><b>¥{String(payload.expected_cm3_cny ?? "未知")} · {String(payload.expected_cm3_rate ?? "未知")}</b></div>
+                <div><span>图片血缘</span><b>{contentAssetIds.length} 个内容资产 / {imageRefs.length} 份产物证据</b></div>
+                <div><span>申请人</span><b>{approval.requested_by}</b></div>
+              </div>
+              <details className="listing-snapshot-details">
+                <summary>查看审批中的完整文案与属性</summary>
+                <p>{String(payload.description ?? "无描述")}</p>
+                <pre>{JSON.stringify(payload.attributes ?? {}, null, 2)}</pre>
+              </details>
+              <div className="review-evidence"><ShieldCheck size={14} /><span>草稿摘要</span><b title={snapshot}>{snapshot ? `${snapshot.slice(0, 16)}…` : "摘要缺失"}</b></div>
+              <div className="content-next-step"><ShieldCheck size={14} />平台未写入；必须由不同身份核对完整摘要后审批</div>
+            </article>;
+          })}</div> : <div className="empty"><CheckCircle2 size={25} /><strong>没有待审批 Listing</strong><p>批准图片建立草稿后，会在这里显示完整快照、CM3 和内容血缘。</p></div>}
+        </section>
+
+        <section className="passport-review-panel" id="passport-review">
           <div className="panel-title">
             <div><p className="eyebrow">HUMAN REVIEW</p><h3>Passport 人工审核</h3></div>
             <span className={passportReviews.length ? "badge" : "gate ready"}>{passportReviews.length ? `${passportReviews.length} 项待审` : "队列已清空"}</span>
@@ -1667,7 +3229,7 @@ export default function Home() {
           })}</div> : <div className="empty"><CheckCircle2 size={25} /><strong>没有待审核 Passport</strong><p>新的 SKU Episode 提交后会自动进入这里。</p></div>}
         </section>
 
-        <section className="sourcing-intake-panel">
+        <section className="sourcing-intake-panel" id="sourcing-intake">
           <div className="panel-title"><div><p className="eyebrow">THREE-QUOTE GATE</p><h3>三家供应商证据化比价</h3></div><span className="badge">{pendingProcurementApprovals} 项采购待审批</span></div>
           <form className="sourcing-intake" onSubmit={uploadSupplierComparison}>
             <div className="sourcing-common">
@@ -1676,9 +3238,13 @@ export default function Home() {
               <label>国际运费 CNY/kg<input name="international_freight" type="number" min="0" step="0.01" required /></label><label>包装 CNY<input name="packaging_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
               <label>尾程 CNY<input name="last_mile_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>关税率<input name="customs_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label>
               <label>平台费率<input name="platform_fee_rate" type="number" min="0" max="0.9999" step="0.0001" required /></label><label>广告率<input name="advertising_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label>
-              <label>退货准备率<input name="return_reserve_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label><label>其他成本 CNY<input name="other_cost_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
-              <label>利润假设证据<input name="assumption_evidence" type="file" required /></label>
+              <label>退货准备率<input name="return_reserve_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label><label>仓储 CNY<input name="warehousing_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+              <label>税费 CNY<input name="tax_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>汇兑成本 CNY<input name="fx_cost_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+              <label>资金占用 CNY<input name="capital_cost_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>售后 CNY<input name="aftersales_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+              <label>损耗准备 CNY<input name="loss_reserve_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>未分类成本 CNY（放行须为 0）<input name="other_cost_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+              <label>全成本依据清单<input name="assumption_evidence" type="file" required /></label>
             </div>
+            <fieldset className="cost-state-grid"><legend>逐项证据状态 · v1.0.0</legend>{sourcingCostDefinitions.map(([key, label]) => <label key={key}>{label}<select name={`cost_state_${key}`} defaultValue="estimate">{(key === "product_cost" || key === "domestic_logistics" ? ["estimate", "actual"] : ["estimate", "actual", "unknown"]).map((state) => <option value={state} key={state}>{costStateLabels[state as keyof typeof costStateLabels]}</option>)}</select></label>)}</fieldset>
             <div className="supplier-entry-grid">{[1, 2, 3].map((index) => <details open key={index}><summary><span>{index}</span><strong>供应商 {index}</strong><small>原始报价与实测条件</small></summary><div className="supplier-fields">
               <label>供应商标识<input name={`supplier_ref_${index}`} required /></label><label>来源平台<select name={`platform_${index}`} defaultValue="1688"><option value="1688">1688</option><option value="alibaba">Alibaba</option><option value="manual">线下/人工</option></select></label>
               <label>报价快照编号<input name={`external_id_${index}`} required /></label><label>商品标题<input name={`offer_title_${index}`} required /></label>
@@ -1693,12 +3259,29 @@ export default function Home() {
           </form>
         </section>
 
+        {gateReadiness && <section className="comparison-panel">
+          <div className="panel-title"><div><p className="eyebrow">THREE-CANDIDATE PORTFOLIO</p><h3>三候选组合决策台</h3></div><span className="badge">{gateReadiness.candidate_portfolio.selection_ready_count} / {gateReadiness.candidate_portfolio.target_count} 可进入人工选择</span></div>
+          <p className="section-copy">只展示通过候选交接、原件复验和需求报告门的商品；排序只是决策辅助，不会自动选品、采购、定价或上架。</p>
+          {gateReadiness.candidate_portfolio.rows.length ? <div className="comparison-grid">{gateReadiness.candidate_portfolio.rows.map((item, index) => <article className="comparison-card" key={item.product.id}>
+            <div className="rank">#{index + 1}</div><strong>{item.product.sku} · {item.product.name}</strong>
+            <small>{item.supplier_count}/3 家当前供应商 · {item.complete_profit_scenario_count} 个完整正 CM3 场景 · Passport {item.passports_ready ? "已通过" : "未完成"}</small>
+            <div className="cm3"><span>当前最佳可用场景</span><b>{item.best_scenario ? `${item.best_scenario.cm3_cny} CNY` : "尚无场景"}</b><small>{item.best_scenario ? `${item.best_scenario.supplier_ref ?? "供应商未知"} · CM3 ${(Number(item.best_scenario.cm3_rate) * 100).toFixed(1)}% · 保本价 ${item.best_scenario.break_even_price_rub || "未知"} RUB` : "需要三报价和全成本证据"}</small></div>
+            <div className={item.ready_for_g1_review ? "knowledge-status usable" : "knowledge-status invalid"}><span>{item.ready_for_g1_review ? "证据链满足人工选择门" : item.blockers.join("；")}</span><b>自动执行：禁止</b></div>
+          </article>)}</div> : <div className="empty-state">还没有通过资格门的真实候选。历史目录和未复核商品不会进入本组合。</div>}
+        </section>}
+
         {comparisons.length > 0 && <section className="comparison-panel">
           <div className="panel-title"><div><p className="eyebrow">SOURCING DECISION</p><h3>报价与 CM3 比较</h3></div><span className="gate ready">仅人工提交采购</span></div>
           {comparisons.map((comparison) => <div className="comparison-group" key={comparison.product.id}><div className="comparison-title"><strong>{comparison.product.sku} · {comparison.product.name}</strong><span>{comparison.supplier_count}/3 家供应商</span></div><div className="comparison-grid">{comparison.rows.map((row, index) => {
             const draft = procurementDrafts[row.offer.id] ?? { quantity: String(row.offer.min_order_quantity), rationale: "" };
             const passportReady = skuReadiness.find((item) => item.product.id === comparison.product.id)?.ready_for_validation;
-            return <article className="comparison-card" key={row.offer.id}><div className="rank">#{index + 1}</div><strong>{row.offer.supplier_ref}</strong><small>{row.offer.platform} · {row.offer.unit_price} {row.offer.currency} · MOQ {row.offer.min_order_quantity}</small><div className="cm3"><span>预计 CM3</span><b>{row.scenario ? `${row.scenario.cm3_cny} CNY` : "缺少场景"}</b><small>{row.scenario ? `${(Number(row.scenario.cm3_rate) * 100).toFixed(1)}% · 保本价 ${row.scenario.break_even_price_rub} RUB` : ""}</small></div>
+            const unknownCosts = row.scenario ? Object.values(row.scenario.cost_states).filter((state) => state === "unknown").length : 0;
+            return <article className="comparison-card" key={row.offer.id}><div className="rank">#{index + 1}</div><strong>{row.offer.supplier_ref}</strong><small>{row.offer.platform} · {row.offer.unit_price} {row.offer.currency} · MOQ {row.offer.min_order_quantity}</small><div className="cm3"><span>预计 CM3 · {row.scenario?.template_id ?? "无模板"}</span><b>{row.scenario ? `${row.scenario.cm3_cny} CNY` : "缺少场景"}</b><small>{row.scenario ? `${(Number(row.scenario.cm3_rate) * 100).toFixed(1)}% · 保本价 ${row.scenario.break_even_price_rub} RUB · ${unknownCosts ? `${unknownCosts} 项未知` : "成本项可追溯"}` : ""}</small></div>
+              {row.scenario && <details className="cost-provenance"><summary>查看 15 项成本来源</summary><div>{sourcingCostDefinitions.map(([key, label]) => {
+                const state = row.scenario?.cost_states[key] ?? "unknown";
+                const evidenceId = row.scenario?.cost_evidence[key];
+                return <p className={`cost-source ${state}`} key={key}><span>{label}</span><b>{costStateLabels[state]}</b><code>{evidenceId ? `证据 …${evidenceId.slice(-8)}` : "无证据"}</code></p>;
+              })}</div></details>}
               <label>采购数量<input type="number" min={row.offer.min_order_quantity} value={draft.quantity} onChange={(event) => setProcurementDrafts((current) => ({ ...current, [row.offer.id]: { ...draft, quantity: event.target.value } }))} /></label>
               <label>选择理由<textarea value={draft.rationale} onChange={(event) => setProcurementDrafts((current) => ({ ...current, [row.offer.id]: { ...draft, rationale: event.target.value } }))} placeholder="为什么选择它，而不是另外两家？" /></label>
               <button disabled={!comparison.ready_for_procurement_review || !passportReady || !row.has_positive_cm3} onClick={() => requestProcurement(comparison, row)}>提交双人采购审批</button>{!passportReady && <em>需先批准三本 Passport</em>}

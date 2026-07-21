@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, UniqueConstraint, select
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from .action_policies import ActionAuthorizationService, ActionPolicyRegistry
 from .domain import new_id
 from .sql_repository import Base
 
 ADAPTERS = {
     "ozon.listing.draft.v1": {
+        "action_id": "listing_draft",
         "platform": "Ozon",
         "policy_action": "recommend_listing_change",
         "operation": "listing.update_draft",
@@ -23,6 +26,7 @@ ADAPTERS = {
         "command_delivery_supported": False,
     },
     "ozon.product.import.v3": {
+        "action_id": "listing_publish",
         "platform": "Ozon",
         "policy_action": "recommend_listing_change",
         "operation": "product.import.v3",
@@ -53,10 +57,16 @@ class ExecutionPlanRow(Base):
     )
     idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
     adapter_id: Mapped[str] = mapped_column(String, nullable=False)
+    action_id: Mapped[str] = mapped_column(String, nullable=False)
+    action_policy_version: Mapped[str] = mapped_column(String, nullable=False)
     target_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     precondition_state_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     intended_patch_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     rollback_patch_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    risk_limits_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    risk_values_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    risk_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    permit_ttl_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     evidence_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     approval_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     created_by: Mapped[str] = mapped_column(String, nullable=False)
@@ -80,12 +90,25 @@ class ExecutionDryRunRow(Base):
 
 
 class ExecutionPlanService:
-    def __init__(self, *, engine, policy_shadow, policies, evidence, commerce) -> None:
+    def __init__(
+        self,
+        *,
+        engine,
+        policy_shadow,
+        policies,
+        evidence,
+        commerce,
+        action_policies: ActionPolicyRegistry | None = None,
+        readiness_provider: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
+    ) -> None:
         self.engine = engine
         self.policy_shadow = policy_shadow
         self.policies = policies
         self.evidence = evidence
         self.commerce = commerce
+        self.action_policies = action_policies or ActionPolicyRegistry()
+        self.action_authorization = ActionAuthorizationService(self.action_policies)
+        self.readiness_provider = readiness_provider
 
     @staticmethod
     def adapters() -> list[dict[str, Any]]:
@@ -103,12 +126,18 @@ class ExecutionPlanService:
         rollback_patch: dict[str, Any],
         evidence_ids: list[str],
         created_by: str,
+        risk_limits: dict[str, Any] | None = None,
+        risk_values: dict[str, Any] | None = None,
+        risk_currency: str | None = None,
     ) -> dict[str, Any]:
         handoff = self.policy_shadow.get_handoff(handoff_id)
         if not handoff["activation_eligible"]:
             raise ValueError("Execution planning requires an active approved policy handoff")
         policy = self.policies.get(handoff["policy_id"])
         adapter = self._adapter(adapter_id)
+        action_policy = self.action_policies.get(adapter["action_id"])
+        if adapter["live_execution_supported"] and action_policy["decision_scope"] != "real_execution":
+            raise ValueError("Live execution adapter must use a real-execution action policy")
         if adapter["platform"] != policy["applicability"]["platform"]:
             raise ValueError("Execution adapter platform is outside policy applicability")
         if adapter["policy_action"] != policy["action"]["type"]:
@@ -126,16 +155,39 @@ class ExecutionPlanService:
                 raise ValueError("Rollback Ozon import item must match target offer_id")
         if intended_patch == rollback_patch:
             raise ValueError("Rollback patch must restore a different prior state")
-        evidence_ids = self._evidence(evidence_ids)
+        readiness_snapshot = self.action_readiness_snapshot(adapter["action_id"], target)
+        evidence_ids = self._evidence(
+            [*evidence_ids, *self._readiness_evidence_ids(readiness_snapshot)]
+        )
+        authorization = self.action_authorization.authorize_action(
+            action=adapter["action_id"],
+            subject_id=self._subject_ref(adapter_id, target),
+            actor_id=created_by,
+            occurred_at=datetime.now(UTC),
+            phase="request",
+            limits=risk_limits,
+            values=risk_values,
+            currency=risk_currency,
+            readiness=self._readiness_flags(readiness_snapshot),
+        )
+        self.action_authorization.require_allowed(authorization)
+        risk = authorization["risk"]
         canonical = {
             "handoff_id": handoff_id,
             "idempotency_key": idempotency_key,
             "adapter_id": adapter_id,
+            "action_id": adapter["action_id"],
+            "action_policy_version": self.action_policies.policy_version,
             "target": target,
             "precondition_state_hash": precondition_state_hash,
             "intended_patch": intended_patch,
             "rollback_patch": rollback_patch,
+            "risk_limits": risk["limits"],
+            "risk_values": risk["values"],
+            "risk_currency": risk["currency"],
+            "permit_ttl_seconds": risk["permit_ttl_seconds"],
             "evidence_ids": evidence_ids,
+            "readiness_snapshot": readiness_snapshot,
             "created_by": created_by,
         }
         request_hash = self._hash(canonical)
@@ -163,11 +215,19 @@ class ExecutionPlanService:
                 "policy_id": policy["id"],
                 "release_id": handoff["release_id"],
                 "adapter_id": adapter_id,
+                "action_id": adapter["action_id"],
+                "action_policy_version": self.action_policies.policy_version,
+                "risk_tier": action_policy["risk_tier"],
                 "operation": adapter["operation"],
                 "target": target,
                 "precondition_state_hash": precondition_state_hash,
                 "intended_patch": intended_patch,
                 "rollback_patch": rollback_patch,
+                "risk_limits": risk["limits"],
+                "risk_values": risk["values"],
+                "risk_currency": risk["currency"],
+                "permit_ttl_seconds": risk["permit_ttl_seconds"],
+                "readiness_snapshot": readiness_snapshot,
                 "live_execution_supported": False,
             },
         )
@@ -180,10 +240,16 @@ class ExecutionPlanService:
                 release_id=handoff["release_id"],
                 idempotency_key=idempotency_key,
                 adapter_id=adapter_id,
+                action_id=adapter["action_id"],
+                action_policy_version=self.action_policies.policy_version,
                 target_json=target,
                 precondition_state_hash=precondition_state_hash,
                 intended_patch_json=intended_patch,
                 rollback_patch_json=rollback_patch,
+                risk_limits_json=risk["limits"],
+                risk_values_json=risk["values"],
+                risk_currency=risk["currency"],
+                permit_ttl_seconds=risk["permit_ttl_seconds"],
                 evidence_json=evidence_ids,
                 approval_id=approval.id,
                 created_by=created_by,
@@ -274,7 +340,59 @@ class ExecutionPlanService:
         approval = self.commerce.repo.get_approval(result["approval_id"])
         active = handoff["validity_status"] == "active"
         dry_run_passed = bool(dry_run and dry_run.passed)
-        ready_for_executor = active and approval.status.value == "approved" and dry_run_passed
+        current_readiness_snapshot = self.action_readiness_snapshot(
+            result["action_id"], result["target"]
+        )
+        authorization = self.action_authorization.authorize_action(
+            action=result["action_id"],
+            subject_id=self._subject_ref(result["adapter_id"], result["target"]),
+            actor_id=result["created_by"],
+            occurred_at=datetime.now(UTC),
+            phase="permit",
+            limits=result["risk_limits"],
+            values=result["risk_values"],
+            currency=result["risk_currency"],
+            policy_version=result["action_policy_version"],
+            readiness=self._readiness_flags(current_readiness_snapshot),
+            approval_actor_ids=(
+                [approval.decided_by]
+                if approval.status.value == "approved" and approval.decided_by
+                else []
+            ),
+        )
+        authorization_blocking_reasons = list(authorization["blocking_reasons"])
+        frozen_readiness_snapshot = (
+            approval.payload.get("readiness_snapshot", {})
+            if isinstance(approval.payload, dict)
+            else {}
+        )
+        try:
+            self.evidence.require_valid(result["evidence_ids"])
+        except (KeyError, RuntimeError, ValueError):
+            authorization_blocking_reasons.append("PLAN_EVIDENCE_INVALID")
+        frozen_readiness_evidence_ids = self._readiness_evidence_ids(
+            frozen_readiness_snapshot
+        )
+        if frozen_readiness_evidence_ids:
+            try:
+                self.evidence.require_valid(frozen_readiness_evidence_ids)
+            except (KeyError, RuntimeError, ValueError):
+                authorization_blocking_reasons.append("READINESS_EVIDENCE_INVALID")
+        authorization_blocking_reasons = sorted(set(authorization_blocking_reasons))
+        current_action_policy = authorization["action_policy"]
+        ready_for_executor = (
+            active
+            and approval.status.value == "approved"
+            and dry_run_passed
+            and not authorization_blocking_reasons
+        )
+        decision_packet = self._decision_packet(
+            result=result,
+            handoff=handoff,
+            approval=approval,
+            dry_run=self._dry_run(dry_run) if dry_run else None,
+            frozen_readiness_snapshot=frozen_readiness_snapshot,
+        )
         return {
             **result,
             "approval_status": approval.status.value,
@@ -282,13 +400,89 @@ class ExecutionPlanService:
             "handoff_validity_status": handoff["validity_status"],
             "dry_run": self._dry_run(dry_run) if dry_run else None,
             "ready_for_executor": ready_for_executor,
+            "authorization_blocking_reasons": authorization_blocking_reasons,
+            "current_readiness_snapshot": current_readiness_snapshot,
+            "decision_packet": decision_packet,
             "execution_eligible": False,
             "adapter": {"id": result["adapter_id"], **self._adapter(result["adapter_id"])},
+            "action_policy": current_action_policy,
             "live_execution_supported": self._adapter(result["adapter_id"])[
                 "live_execution_supported"
             ],
             "automatic_execution": False,
         }
+
+    def action_readiness(self, action_id: str, target: dict[str, Any]) -> dict[str, bool]:
+        return self._readiness_flags(self.action_readiness_snapshot(action_id, target))
+
+    def action_readiness_snapshot(
+        self, action_id: str, target: dict[str, Any]
+    ) -> dict[str, dict[str, Any]]:
+        if self.readiness_provider is None:
+            return {}
+        readiness = self.readiness_provider(action_id, target)
+        if not isinstance(readiness, dict):
+            raise ValueError("Action readiness provider must return a mapping")
+        result: dict[str, dict[str, Any]] = {}
+        for key, value in readiness.items():
+            requirement_id = self._required(str(key), "Readiness requirement")
+            if isinstance(value, bool):
+                snapshot = {
+                    "ready": value,
+                    "evidence_ids": [],
+                    "blocking_reasons": [],
+                }
+            elif isinstance(value, dict):
+                snapshot = {
+                    "ready": value.get("ready") is True,
+                    "evidence_ids": self._string_list(
+                        value.get("evidence_ids", []),
+                        "Readiness evidence IDs",
+                    ),
+                    "blocking_reasons": self._string_list(
+                        value.get("blocking_reasons", []),
+                        "Readiness blocking reasons",
+                    ),
+                }
+            else:
+                raise ValueError("Action readiness values must be booleans or mappings")
+            result[requirement_id] = {
+                **snapshot,
+                "snapshot_hash": self._hash(snapshot),
+            }
+        return dict(sorted(result.items()))
+
+    @staticmethod
+    def _readiness_flags(snapshot: dict[str, dict[str, Any]]) -> dict[str, bool]:
+        return {
+            requirement_id: requirement.get("ready") is True
+            for requirement_id, requirement in snapshot.items()
+        }
+
+    @staticmethod
+    def _readiness_evidence_ids(snapshot: dict[str, dict[str, Any]]) -> list[str]:
+        return sorted(
+            {
+                evidence_id
+                for requirement in snapshot.values()
+                if isinstance(requirement, dict)
+                for evidence_id in requirement.get("evidence_ids", [])
+                if isinstance(evidence_id, str) and evidence_id.strip()
+            }
+        )
+
+    @classmethod
+    def _string_list(cls, value: Any, name: str) -> list[str]:
+        if not isinstance(value, list):
+            raise ValueError(f"{name} must be a list")
+        if len(value) > 100:
+            raise ValueError(f"{name} exceeds the 100 item limit")
+        normalized: set[str] = set()
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError(f"{name} entries must be strings")
+            normalized.add(cls._required(item, name))
+        return sorted(normalized)
 
     @staticmethod
     def _adapter(adapter_id: str) -> dict[str, Any]:
@@ -361,6 +555,10 @@ class ExecutionPlanService:
             json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
         ).hexdigest()
 
+    @classmethod
+    def _subject_ref(cls, adapter_id: str, target: dict[str, Any]) -> str:
+        return cls._hash({"adapter_id": adapter_id, "target": target})
+
     @staticmethod
     def _iso(value: datetime) -> str:
         return (value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)).isoformat()
@@ -374,16 +572,65 @@ class ExecutionPlanService:
             "release_id": row.release_id,
             "idempotency_key": row.idempotency_key,
             "adapter_id": row.adapter_id,
+            "action_id": row.action_id,
+            "action_policy_version": row.action_policy_version,
             "target": row.target_json,
             "precondition_state_hash": row.precondition_state_hash,
             "intended_patch": row.intended_patch_json,
             "rollback_patch": row.rollback_patch_json,
+            "risk_limits": row.risk_limits_json,
+            "risk_values": row.risk_values_json,
+            "risk_currency": row.risk_currency,
+            "permit_ttl_seconds": row.permit_ttl_seconds,
             "evidence_ids": row.evidence_json,
             "approval_id": row.approval_id,
             "created_by": row.created_by,
             "created_at": cls._iso(row.created_at),
             "immutable": True,
         }
+
+    @classmethod
+    def _decision_packet(
+        cls,
+        *,
+        result: dict[str, Any],
+        handoff: dict[str, Any],
+        approval,
+        dry_run: dict[str, Any] | None,
+        frozen_readiness_snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        packet = {
+            "schema_version": "decision-packet-v1",
+            "action": result["action_id"],
+            "subject": result["target"],
+            "requested_by": result["created_by"],
+            "policy_version": result["action_policy_version"],
+            "causal_policy_id": result["policy_id"],
+            "causal_policy_release_id": result["release_id"],
+            "causal_policy_snapshot_hash": handoff["policy_snapshot_hash"],
+            "evidence_ids": result["evidence_ids"],
+            "readiness_snapshot": frozen_readiness_snapshot,
+            "adapter_id": result["adapter_id"],
+            "risk_limits": result["risk_limits"],
+            "risk_values": result["risk_values"],
+            "risk_currency": result["risk_currency"],
+            "approval": {
+                "id": result["approval_id"],
+                "status": approval.status.value,
+                "decided_by": approval.decided_by,
+                "reason": approval.decision_reason,
+            },
+            "dry_run_hash": cls._hash(dry_run) if dry_run else None,
+            "expiry_conditions": [
+                "action_policy_version_changes",
+                "causal_policy_snapshot_changes",
+                "approval_is_not_approved",
+                "evidence_becomes_invalid",
+                "readiness_evidence_becomes_invalid",
+                "permit_expires",
+            ],
+        }
+        return {**packet, "decision_hash": cls._hash(packet), "immutable_projection": True}
 
     @classmethod
     def _dry_run(cls, row: ExecutionDryRunRow) -> dict[str, Any]:

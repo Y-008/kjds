@@ -1,0 +1,10 @@
+field,value,evidence_reference,owner,status
+account_alias,,,,pending
+seller_or_client_id,,,,pending
+legal_entity,,,,pending
+allowed_read_operations,"product; inventory; orders; analytics; finance",,,pending
+forbidden_write_operations,"product; price; inventory; ads; finance",,,pending
+payout_path_masked,,,,pending
+credential_owner,,,,pending
+permission_verified_at,,,,pending
+note,"Do not place passwords, API keys, tokens, bank account numbers, or personal IDs in this file.",,,required

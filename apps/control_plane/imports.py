@@ -34,6 +34,7 @@ FIELD_ALIASES = {
         "номер операции",
         "номер отправления",
         "номер возврата",
+        "id начисления",
     },
     "sku": {"sku", "offer_id", "артикул", "артикул продавца"},
     "quantity": {"quantity", "qty", "количество"},
@@ -52,6 +53,8 @@ FIELD_ALIASES = {
         "дата выплаты",
     },
     "fee_type": {"fee_type", "service", "commission_type", "услуга", "тип начисления"},
+    "accrual_group": {"accrual_group", "группа услуг"},
+    "accrual_type": {"accrual_type", "тип начисления"},
     "amount": {
         "amount",
         "fee_amount",
@@ -61,9 +64,12 @@ FIELD_ALIASES = {
         "итого, руб",
         "сумма выплаты",
         "сумма операции",
+        "сумма итого, руб.",
     },
     "return_reason": {"return_reason", "reason", "причина возврата"},
 }
+
+DERIVED_RUB_FROM_HEADER = "__derived_rub_from_amount_header__"
 
 
 class ImportJobRow(Base):
@@ -117,6 +123,17 @@ class ImportResult:
         return asdict(self)
 
 
+@dataclass(frozen=True, slots=True)
+class ImportPreview:
+    filename: str
+    sha256: str
+    record_type: str
+    row_count: int
+    mapping: dict[str, str]
+    missing_columns: list[str]
+    ready: bool
+
+
 def _clean_header(value: Any) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
@@ -129,16 +146,29 @@ def _detect_mapping(headers: list[str]) -> dict[str, str]:
             if alias in normalized_headers:
                 mapping[canonical] = normalized_headers[alias]
                 break
+    if "сумма итого, руб." in normalized_headers and "currency" not in mapping:
+        mapping["currency"] = DERIVED_RUB_FROM_HEADER
     return mapping
 
 
 def _normalize(
-    raw: dict[str, Any], mapping: dict[str, str], record_type: OzonRecordType
+    raw: dict[str, Any],
+    mapping: dict[str, str],
+    record_type: OzonRecordType,
+    *,
+    source_row_id: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     result: dict[str, Any] = {}
     for canonical, header in mapping.items():
+        if header == DERIVED_RUB_FROM_HEADER:
+            result[canonical] = "RUB"
+            continue
         value = raw.get(header)
-        result[canonical] = str(value or "").strip()
+        if canonical == "effective_at" and isinstance(value, datetime) and value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        result[canonical] = str("" if value is None else value).strip()
+    if record_type is OzonRecordType.ACCRUAL and not result.get("external_id") and source_row_id:
+        result["external_id"] = source_row_id
     return normalize_record(record_type, result)
 
 
@@ -169,7 +199,11 @@ def _xlsx_rows(content: bytes) -> Iterable[dict[str, Any]]:
     workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     sheet = workbook.active
     values = sheet.iter_rows(values_only=True)
-    headers = [str(value or "").strip() for value in next(values, ())]
+    header_row = next(values, ())
+    nonempty_header_cells = [value for value in header_row if str(value or "").strip()]
+    if len(nonempty_header_cells) == 1 and str(nonempty_header_cells[0]).strip().lower().startswith("период:"):
+        header_row = next(values, ())
+    headers = [str(value or "").strip() for value in header_row]
     for row in values:
         yield dict(zip(headers, row, strict=False))
 
@@ -184,33 +218,55 @@ class OzonImportService:
             existing = session.scalar(select(ImportJobRow).where(ImportJobRow.sha256 == digest))
             return self._result(existing, duplicate=True) if existing else None
 
+    def preview_file(self, *, filename: str, content: bytes) -> ImportPreview:
+        preview, _ = self._inspect_file(filename=filename, content=content)
+        return preview
+
+    def _inspect_file(
+        self, *, filename: str, content: bytes
+    ) -> tuple[ImportPreview, list[dict[str, Any]]]:
+        raw_rows = self._read_rows(filename=filename, content=content)
+        headers = list(raw_rows[0]) if raw_rows else []
+        record_type = detect_record_type(filename, headers)
+        detected_mapping = _detect_mapping(headers)
+        contract_fields = CONTRACTS[record_type].required_fields | CONTRACTS[record_type].optional_fields
+        mapping = {key: value for key, value in detected_mapping.items() if key in contract_fields}
+        missing_columns = [
+            name for name in sorted(CONTRACTS[record_type].required_fields) if name not in mapping
+        ]
+        preview = ImportPreview(
+            filename=Path(filename).name,
+            sha256=hashlib.sha256(content).hexdigest(),
+            record_type=record_type.value,
+            row_count=len(raw_rows),
+            mapping=mapping,
+            missing_columns=missing_columns,
+            ready=not missing_columns,
+        )
+        return preview, raw_rows
+
     def import_file(self, *, filename: str, content: bytes, evidence_id: str | None = None) -> ImportResult:
-        if not content:
-            raise ValueError("Import file is empty")
-        if len(content) > MAX_IMPORT_BYTES:
-            raise ValueError("Import file exceeds 20 MB")
-        extension = Path(filename).suffix.lower()
-        if extension not in {".csv", ".xlsx"}:
-            raise ValueError("Only CSV and XLSX imports are supported")
+        preview, raw_rows = self._inspect_file(filename=filename, content=content)
         digest = hashlib.sha256(content).hexdigest()
         existing = self.find_by_content(content)
         if existing:
             return existing
 
-        raw_rows = list(_csv_rows(content) if extension == ".csv" else _xlsx_rows(content))
-        if len(raw_rows) > MAX_IMPORT_ROWS:
-            raise ValueError("Import file exceeds 50,000 rows")
-        headers = list(raw_rows[0]) if raw_rows else []
-        record_type = detect_record_type(filename, headers)
-        mapping = _detect_mapping(headers)
-        missing_columns = [name for name in sorted(CONTRACTS[record_type].required_fields) if name not in mapping]
+        record_type = OzonRecordType(preview.record_type)
+        mapping = preview.mapping
+        missing_columns = preview.missing_columns
         file_errors = [{"type": "missing_column", "field": name} for name in missing_columns]
         job_id = new_id("imp")
         accepted = 0
         rejected = 0
         data_rows: list[ImportDataRow] = []
         for row_number, raw in enumerate(raw_rows, start=2):
-            normalized, errors = _normalize(raw, mapping, record_type)
+            normalized, errors = _normalize(
+                raw,
+                mapping,
+                record_type,
+                source_row_id=f"report-row:{digest[:16]}:{row_number}",
+            )
             accepted += not errors
             rejected += bool(errors)
             data_rows.append(
@@ -246,6 +302,20 @@ class OzonImportService:
             session.flush()
             session.add_all(data_rows)
         return self._result(job)
+
+    @staticmethod
+    def _read_rows(*, filename: str, content: bytes) -> list[dict[str, Any]]:
+        if not content:
+            raise ValueError("Import file is empty")
+        if len(content) > MAX_IMPORT_BYTES:
+            raise ValueError("Import file exceeds 20 MB")
+        extension = Path(filename).suffix.lower()
+        if extension not in {".csv", ".xlsx"}:
+            raise ValueError("Only CSV and XLSX imports are supported")
+        rows = list(_csv_rows(content) if extension == ".csv" else _xlsx_rows(content))
+        if len(rows) > MAX_IMPORT_ROWS:
+            raise ValueError("Import file exceeds 50,000 rows")
+        return rows
 
     def get(self, import_id: str) -> ImportResult:
         with Session(self.engine) as session:

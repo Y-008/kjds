@@ -1,0 +1,73 @@
+{
+  "registry_version": "1.0",
+  "last_reviewed": "2026-07-16",
+  "default_policy": {
+    "current_mode": "official_docs_monitoring_only",
+    "read_api": "L2 after account, app review, sandbox and least-privilege token",
+    "write_api": "FROZEN until KJDS G6 and per-action L3 approval",
+    "funds_contracts_credentials": "L4 prohibited from autonomy",
+    "secret_storage": "environment or approved secret provider; never Markdown, Git or chat"
+  },
+  "platforms": [
+    {
+      "id":"taobao_tmall",
+      "name":"淘宝/天猫",
+      "official_docs":"https://developer.alibaba.com/docs/doc.htm?articleId=108&docType=1&treeId=154",
+      "status":"docs_only",
+      "account":"missing",
+      "app_review":"not_started",
+      "read_scopes":["商品","订单","库存","物流","退款/售后"],
+      "write_scopes_frozen":["商品发布","价格","库存","订单处理","客户消息"]
+    },
+    {
+      "id":"douyin_ecommerce",
+      "name":"抖音电商",
+      "official_docs":"https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/list/",
+      "status":"docs_only",
+      "account":"missing",
+      "app_review":"not_started",
+      "read_scopes":["商品","订单","售后","物流","经营数据"],
+      "write_scopes_frozen":["商品","价格","库存","发货","广告","私信"]
+    },
+    {
+      "id":"jd",
+      "name":"京东",
+      "official_docs":"https://help.jd.com/oapihelp/question-460.html",
+      "status":"docs_only",
+      "account":"missing",
+      "app_review":"not_started",
+      "read_scopes":["商品","订单","库存","物流","结算"],
+      "write_scopes_frozen":["商品","价格","库存","订单履约","营销"]
+    },
+    {
+      "id":"pinduoduo",
+      "name":"拼多多",
+      "official_docs":"https://open.pinduoduo.com/",
+      "status":"docs_only",
+      "account":"missing",
+      "app_review":"not_started",
+      "read_scopes":["商品","订单","物流","售后","经营数据"],
+      "write_scopes_frozen":["商品","价格","库存","发货","广告"]
+    },
+    {
+      "id":"kuaishou",
+      "name":"快手电商",
+      "official_docs":"https://open.kuaishou.com/platform/openApi?grop=GROUP_OPEN_PLATFORM",
+      "status":"watch_after_primary_four",
+      "account":"missing",
+      "app_review":"not_started",
+      "read_scopes":["商品","订单","物流","经营数据"],
+      "write_scopes_frozen":["商品","价格","库存","订单履约","广告"]
+    },
+    {
+      "id":"xiaohongshu",
+      "name":"小红书",
+      "official_docs":"https://school.xiaohongshu.com/en/open/index.html",
+      "status":"watch_after_primary_four",
+      "account":"missing",
+      "app_review":"not_started",
+      "read_scopes":["商品","订单","库存","售后"],
+      "write_scopes_frozen":["商品上传","价格","库存","发货","内容发布","营销"]
+    }
+  ]
+}

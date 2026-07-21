@@ -1,0 +1,4 @@
+sku,product_name,material,intended_use,country_of_origin,weight_kg,length_cm,width_cm,height_cm,product_evidence,hs_code,eaeu_rules,eac_requirement,chestny_znak_requirement,russian_labeling,ip_status,transport_restrictions,sellability,compliance_evidence,golden_sample_ref,inspection_plan,packaging_test,quality_evidence,owner,status
+RU-001,,,,CN,,,,,,,,unknown,unknown,unknown,review_required,unknown,pending_review,,,,pending,,,draft
+RU-002,,,,CN,,,,,,,,unknown,unknown,unknown,review_required,unknown,pending_review,,,,pending,,,draft
+RU-003,,,,CN,,,,,,,,unknown,unknown,unknown,review_required,unknown,pending_review,,,,pending,,,draft

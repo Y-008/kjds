@@ -1,0 +1,7 @@
+field,value,evidence_reference,owner,status
+business_owner,,,,pending
+independent_approver,,,,pending
+monthly_risk_budget_cny,,,,pending
+maximum_single_loss_cny,,,,pending
+rollback_authority,,,,pending
+forbidden_actions,"payments; credential changes; batch delisting; unapproved platform writes",,,pending

@@ -4,7 +4,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, select
@@ -122,6 +122,44 @@ INTERACTION_PROFILES = (
         requires_forecast_basis=False,
     ),
     InteractionProfile(
+        id="best_solution",
+        version="1.0.0",
+        label="最佳方案选择",
+        description=(
+            "先用硬约束淘汰不可行方案，再按证据支撑的长期风险调整价值选择，"
+            "不把最新、最复杂或最省代码自动当作最佳。"
+        ),
+        aliases=("/best",),
+        workflow_steps=(
+            "define_objective_and_boundaries",
+            "freeze_hard_constraints",
+            "enumerate_realistic_options",
+            "eliminate_infeasible_options",
+            "compare_evidence_risk_value_tco_and_reversibility",
+            "red_team_preferred_option",
+            "record_choice_rejections_and_invalidation_conditions",
+        ),
+        output_requirements=(
+            "chosen_option_id",
+            "hard_constraint_results",
+            "evidence_quality",
+            "expected_risk_adjusted_long_term_value",
+            "total_cost_of_ownership",
+            "maximum_loss",
+            "reversibility_and_rollback",
+            "time_to_value",
+            "operational_fit",
+            "rejected_options_and_reasons",
+            "sensitivity_and_invalidation_conditions",
+            "approval_requirement",
+        ),
+        max_questions=0,
+        presentation_only=False,
+        evidence_required_before_conclusion=True,
+        requires_options=True,
+        requires_forecast_basis=False,
+    ),
+    InteractionProfile(
         id="probabilistic_forecast",
         version="1.0.0",
         label="概率预测",
@@ -226,8 +264,15 @@ class DecisionContractService:
             raise ValueError("Currency must be a three-letter code")
         if horizon_days is not None and not 1 <= horizon_days <= 3650:
             raise ValueError("Horizon days must be between 1 and 3650")
-        if maximum_loss_amount is not None and maximum_loss_amount < 0:
-            raise ValueError("Maximum loss cannot be negative")
+        if maximum_loss_amount is not None:
+            try:
+                maximum_loss_amount = Decimal(maximum_loss_amount)
+            except (InvalidOperation, TypeError, ValueError) as exc:
+                raise ValueError("Maximum loss must be a finite number") from exc
+            if not maximum_loss_amount.is_finite():
+                raise ValueError("Maximum loss must be a finite number")
+            if maximum_loss_amount < 0:
+                raise ValueError("Maximum loss cannot be negative")
 
         normalized_evidence = sorted({item.strip() for item in evidence_ids or [] if item.strip()})
         if normalized_evidence:
@@ -263,6 +308,17 @@ class DecisionContractService:
             "mandatory_human_approval": requires_human_approval,
             "critical_risk_forces_advisory_only": risk_level == "critical",
         }
+        if selected.id == "best_solution":
+            compiler_policy.update(
+                {
+                    "selection_rule": "HARD_CONSTRAINTS_THEN_RISK_ADJUSTED_LONG_TERM_VALUE",
+                    "automatic_equal_weight_score": False,
+                    "latest_or_most_complex_is_not_best": True,
+                    "must_include_no_action_when_feasible": True,
+                    "must_record_rejected_options": True,
+                    "must_state_invalidation_conditions": True,
+                }
+            )
         canonical = {
             "profile_id": selected.id,
             "profile_version": selected.version,
@@ -364,6 +420,25 @@ class DecisionContractService:
             missing.append("source_contract_id")
         if profile.requires_options and len(payload["options"]) < 2:
             missing.append("at_least_two_options")
+        if profile.id == "best_solution":
+            options = payload["options"]
+            if any(
+                not isinstance(option, dict)
+                or not str(option.get("id", "")).strip()
+                or not str(option.get("label", "")).strip()
+                for option in options
+            ):
+                missing.append("options_with_id_and_label")
+            hard_constraints = payload["context"].get("hard_constraints")
+            if not isinstance(hard_constraints, list) or not any(
+                str(item).strip() for item in hard_constraints
+            ):
+                missing.append("context.hard_constraints")
+            decision_criteria = payload["context"].get("decision_criteria")
+            if not isinstance(decision_criteria, list) or not any(
+                str(item).strip() for item in decision_criteria
+            ):
+                missing.append("context.decision_criteria")
         if risk_level in {"high", "critical"} and maximum_loss_amount is None:
             missing.append("maximum_loss_amount")
         if profile.requires_forecast_basis:

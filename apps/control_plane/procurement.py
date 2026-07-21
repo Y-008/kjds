@@ -117,6 +117,7 @@ class ProcurementService:
             raise ValueError("Approval, offer, and scenario do not share the same decision basis")
         if offer.product_id != payload["product_id"] or scenario.cm3_cny <= 0:
             raise ValueError("Approved procurement basis is invalid or no longer positive-CM3")
+        self.sourcing.require_release_ready(scenario)
         quantity = int(payload["quantity"])
         if quantity < offer.min_order_quantity:
             raise ValueError("Approved quantity is below supplier MOQ")
@@ -311,7 +312,12 @@ class ProcurementService:
         for item in comparison["rows"]:
             offer = item["offer"]
             scenario = item["scenario"]
-            if offer.supplier_ref == order["supplier_ref"] or scenario is None or scenario.cm3_cny <= 0:
+            if (
+                offer.supplier_ref == order["supplier_ref"]
+                or scenario is None
+                or scenario.cm3_cny <= 0
+                or not scenario.cost_complete
+            ):
                 continue
             options.append(
                 {

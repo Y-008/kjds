@@ -3,11 +3,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, select
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
@@ -20,6 +21,23 @@ class EvidenceGrade(StrEnum):
     C = "C"
     D = "D"
     UNKNOWN = "UNKNOWN"
+
+
+class RetentionClass(StrEnum):
+    OPERATIONAL = "operational"
+    FINANCIAL = "financial"
+    COMPLIANCE = "compliance"
+    EXPERIMENT = "experiment"
+    SECURITY = "security"
+
+
+RETENTION_REVIEW_DAYS = {
+    RetentionClass.OPERATIONAL: 365,
+    RetentionClass.FINANCIAL: 3650,
+    RetentionClass.COMPLIANCE: 3650,
+    RetentionClass.EXPERIMENT: 1095,
+    RetentionClass.SECURITY: 2555,
+}
 
 
 class EvidenceBlobRow(Base):
@@ -112,6 +130,38 @@ class EvidenceVerification:
     valid: bool
 
 
+@dataclass(frozen=True, slots=True)
+class EvidenceIntegrityFinding:
+    evidence_id: str
+    declared_sha256: str
+    actual_sha256: str | None
+    declared_byte_size: int | None
+    actual_byte_size: int | None
+    codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceIntegrityScan:
+    total: int
+    offset: int
+    scanned: int
+    valid: int
+    invalid: int
+    next_offset: int | None
+    findings: tuple[EvidenceIntegrityFinding, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RetentionAssessment:
+    evidence_id: str
+    retention_class: str | None
+    legal_hold: bool
+    review_due_at: str | None
+    status: str
+    archive_eligible: bool
+    automatic_delete_allowed: bool = False
+
+
 def parse_timestamp(value: str, field: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -153,39 +203,61 @@ class EvidenceService:
         if effective_end is not None and effective_end <= effective:
             raise ValueError("effective_until must be later than effective_at")
 
+        metadata = metadata or {}
+        retention_class = metadata.get("retention_class")
+        if retention_class is not None:
+            try:
+                RetentionClass(retention_class)
+            except ValueError as exc:
+                raise ValueError(f"Unsupported retention_class: {retention_class}") from exc
+        if "legal_hold" in metadata and not isinstance(metadata["legal_hold"], bool):
+            raise ValueError("legal_hold must be true or false")
+
         digest = hashlib.sha256(content).hexdigest()
         now = datetime.now(UTC)
-        with Session(self.engine) as session, session.begin():
-            blob = session.get(EvidenceBlobRow, digest)
-            if blob is None:
-                session.add(EvidenceBlobRow(sha256=digest, byte_size=len(content), content_bytes=content, created_at=now))
-            existing = session.scalar(
-                select(EvidenceRecordRow).where(
-                    EvidenceRecordRow.blob_sha256 == digest,
-                    EvidenceRecordRow.source == source,
-                    EvidenceRecordRow.source_ref == source_ref,
-                    EvidenceRecordRow.effective_at == effective,
+        try:
+            with Session(self.engine) as session, session.begin():
+                blob = session.get(EvidenceBlobRow, digest)
+                if blob is None:
+                    session.add(EvidenceBlobRow(sha256=digest, byte_size=len(content), content_bytes=content, created_at=now))
+                existing = self._captured_row(
+                    session,
+                    digest=digest,
+                    source=source,
+                    source_ref=source_ref,
+                    effective_at=effective,
                 )
-            )
-            if existing is not None:
-                return self._record(existing, len(content))
-            row = EvidenceRecordRow(
-                id=new_id("evd"),
-                blob_sha256=digest,
-                filename=filename,
-                content_type=content_type,
-                source=source,
-                source_ref=source_ref,
-                grade=grade.value,
-                effective_at=effective,
-                effective_until=effective_end,
-                recorded_at=now,
-                created_by=created_by,
-                metadata_json=metadata or {},
-            )
-            session.add(row)
-            session.flush()
-            return self._record(row, len(content))
+                if existing is not None:
+                    return self._record(existing, len(content))
+                row = EvidenceRecordRow(
+                    id=new_id("evd"),
+                    blob_sha256=digest,
+                    filename=filename,
+                    content_type=content_type,
+                    source=source,
+                    source_ref=source_ref,
+                    grade=grade.value,
+                    effective_at=effective,
+                    effective_until=effective_end,
+                    recorded_at=now,
+                    created_by=created_by,
+                    metadata_json=metadata,
+                )
+                session.add(row)
+                session.flush()
+                return self._record(row, len(content))
+        except IntegrityError:
+            with Session(self.engine) as session:
+                winner = self._captured_row(
+                    session,
+                    digest=digest,
+                    source=source,
+                    source_ref=source_ref,
+                    effective_at=effective,
+                )
+                if winner is None:
+                    raise
+                return self._record(winner, len(content))
 
     def get(self, evidence_id: str) -> EvidenceRecord:
         with Session(self.engine) as session:
@@ -207,6 +279,27 @@ class EvidenceService:
             ).all()
             return [self._record(row, byte_size) for row, byte_size in rows]
 
+    def find_by_source_ref(self, *, source: str, source_ref: str) -> EvidenceRecord | None:
+        source = source.strip()
+        source_ref = source_ref.strip()
+        if not source or not source_ref:
+            raise ValueError("Evidence source and source_ref are required")
+        with Session(self.engine) as session:
+            result = session.execute(
+                select(EvidenceRecordRow, EvidenceBlobRow.byte_size)
+                .join(EvidenceBlobRow, EvidenceBlobRow.sha256 == EvidenceRecordRow.blob_sha256)
+                .where(
+                    EvidenceRecordRow.source == source,
+                    EvidenceRecordRow.source_ref == source_ref,
+                )
+                .order_by(EvidenceRecordRow.recorded_at, EvidenceRecordRow.id)
+                .limit(1)
+            ).first()
+            if result is None:
+                return None
+            row, byte_size = result
+            return self._record(row, byte_size)
+
     def content(self, evidence_id: str) -> tuple[bytes, EvidenceRecord]:
         with Session(self.engine) as session:
             row = session.get(EvidenceRecordRow, evidence_id)
@@ -218,9 +311,139 @@ class EvidenceService:
             return blob.content_bytes, self._record(row, blob.byte_size)
 
     def verify(self, evidence_id: str) -> EvidenceVerification:
-        content, record = self.content(evidence_id)
+        _, verification = self.inspect_integrity(evidence_id)
+        return verification
+
+    def scan_integrity(
+        self,
+        *,
+        limit: int = 500,
+        offset: int = 0,
+        excluded_sources: tuple[str, ...] = (),
+    ) -> EvidenceIntegrityScan:
+        """Verify a bounded record/blob snapshot, including records whose blob is missing."""
+        if not 1 <= limit <= 1000:
+            raise ValueError("Evidence integrity scan limit must be between 1 and 1000")
+        if offset < 0:
+            raise ValueError("Evidence integrity scan offset cannot be negative")
+        excluded_sources = tuple(sorted({item.strip() for item in excluded_sources if item.strip()}))
+        with Session(self.engine) as session:
+            count_query = select(func.count()).select_from(EvidenceRecordRow)
+            rows_query = (
+                select(EvidenceRecordRow, EvidenceBlobRow)
+                .outerjoin(EvidenceBlobRow, EvidenceBlobRow.sha256 == EvidenceRecordRow.blob_sha256)
+                .order_by(EvidenceRecordRow.recorded_at, EvidenceRecordRow.id)
+                .offset(offset)
+                .limit(limit)
+            )
+            if excluded_sources:
+                source_filter = EvidenceRecordRow.source.not_in(excluded_sources)
+                count_query = count_query.where(source_filter)
+                rows_query = rows_query.where(source_filter)
+            total = int(session.scalar(count_query) or 0)
+            rows = list(
+                session.execute(rows_query).all()
+            )
+            snapshots = [
+                (
+                    row.id,
+                    row.blob_sha256,
+                    blob.byte_size if blob is not None else None,
+                    bytes(blob.content_bytes) if blob is not None else None,
+                )
+                for row, blob in rows
+            ]
+
+        findings: list[EvidenceIntegrityFinding] = []
+        for evidence_id, declared_sha256, declared_byte_size, content in snapshots:
+            if content is None:
+                findings.append(
+                    EvidenceIntegrityFinding(
+                        evidence_id,
+                        declared_sha256,
+                        None,
+                        None,
+                        None,
+                        ("EVIDENCE_BLOB_MISSING",),
+                    )
+                )
+                continue
+            actual_sha256 = hashlib.sha256(content).hexdigest()
+            actual_byte_size = len(content)
+            codes = []
+            if not hmac_compare(declared_sha256, actual_sha256):
+                codes.append("EVIDENCE_HASH_MISMATCH")
+            if declared_byte_size != actual_byte_size:
+                codes.append("EVIDENCE_SIZE_MISMATCH")
+            if codes:
+                findings.append(
+                    EvidenceIntegrityFinding(
+                        evidence_id,
+                        declared_sha256,
+                        actual_sha256,
+                        declared_byte_size,
+                        actual_byte_size,
+                        tuple(codes),
+                    )
+                )
+
+        scanned = len(snapshots)
+        next_offset = offset + scanned if offset + scanned < total else None
+        return EvidenceIntegrityScan(
+            total=total,
+            offset=offset,
+            scanned=scanned,
+            valid=scanned - len(findings),
+            invalid=len(findings),
+            next_offset=next_offset,
+            findings=tuple(findings),
+        )
+
+    def inspect_integrity(
+        self, evidence_id: str
+    ) -> tuple[EvidenceRecord, EvidenceVerification]:
+        """Read record and blob in one snapshot and recompute the blob digest."""
+        with Session(self.engine) as session:
+            row = session.get(EvidenceRecordRow, evidence_id)
+            if row is None:
+                raise KeyError(f"Unknown evidence: {evidence_id}")
+            blob = session.get(EvidenceBlobRow, row.blob_sha256)
+            if blob is None:
+                raise RuntimeError(f"Evidence blob is missing: {row.blob_sha256}")
+            content = bytes(blob.content_bytes)
+            record = self._record(row, blob.byte_size)
         actual = hashlib.sha256(content).hexdigest()
-        return EvidenceVerification(record.id, record.sha256, actual, len(content), hmac_compare(record.sha256, actual))
+        verification = EvidenceVerification(
+            record.id,
+            record.sha256,
+            actual,
+            len(content),
+            hmac_compare(record.sha256, actual),
+        )
+        return record, verification
+
+    def retention(self, evidence_id: str, *, as_of: datetime | None = None) -> RetentionAssessment:
+        record = self.get(evidence_id)
+        class_value = record.metadata.get("retention_class")
+        legal_hold = record.metadata.get("legal_hold", False)
+        if class_value is None:
+            return RetentionAssessment(record.id, None, legal_hold, None, "classification_required", False)
+
+        retention_class = RetentionClass(class_value)
+        recorded_at = datetime.fromisoformat(record.recorded_at.replace("Z", "+00:00"))
+        if recorded_at.tzinfo is None:
+            recorded_at = recorded_at.replace(tzinfo=UTC)
+        review_due = recorded_at.astimezone(UTC) + timedelta(days=RETENTION_REVIEW_DAYS[retention_class])
+        now = (as_of or datetime.now(UTC)).astimezone(UTC)
+        status = "legal_hold" if legal_hold else "review_due" if now >= review_due else "active"
+        return RetentionAssessment(
+            record.id,
+            retention_class.value,
+            legal_hold,
+            review_due.isoformat(),
+            status,
+            status == "review_due",
+        )
 
     def require_valid(self, evidence_ids: list[str]) -> None:
         normalized = [item.strip() for item in evidence_ids if item.strip()]
@@ -252,31 +475,42 @@ class EvidenceService:
             self.get(target_id)
             if target_id == evidence_id:
                 raise ValueError("Evidence cannot derive from itself")
-        with Session(self.engine) as session, session.begin():
-            existing = session.scalar(
-                select(LineageEdgeRow).where(
-                    LineageEdgeRow.from_type == "evidence",
-                    LineageEdgeRow.from_id == evidence_id,
-                    LineageEdgeRow.to_type == target_type,
-                    LineageEdgeRow.to_id == target_id,
-                    LineageEdgeRow.relationship == relationship,
+        try:
+            with Session(self.engine) as session, session.begin():
+                existing = self._lineage_row(
+                    session,
+                    evidence_id=evidence_id,
+                    target_type=target_type,
+                    target_id=target_id,
+                    relationship=relationship,
                 )
-            )
-            if existing is not None:
-                return self._edge(existing)
-            row = LineageEdgeRow(
-                id=new_id("lin"),
-                from_type="evidence",
-                from_id=evidence_id,
-                to_type=target_type,
-                to_id=target_id,
-                relationship=relationship,
-                created_by=created_by,
-                recorded_at=datetime.now(UTC),
-            )
-            session.add(row)
-            session.flush()
-            return self._edge(row)
+                if existing is not None:
+                    return self._edge(existing)
+                row = LineageEdgeRow(
+                    id=new_id("lin"),
+                    from_type="evidence",
+                    from_id=evidence_id,
+                    to_type=target_type,
+                    to_id=target_id,
+                    relationship=relationship,
+                    created_by=created_by,
+                    recorded_at=datetime.now(UTC),
+                )
+                session.add(row)
+                session.flush()
+                return self._edge(row)
+        except IntegrityError:
+            with Session(self.engine) as session:
+                winner = self._lineage_row(
+                    session,
+                    evidence_id=evidence_id,
+                    target_type=target_type,
+                    target_id=target_id,
+                    relationship=relationship,
+                )
+                if winner is None:
+                    raise
+                return self._edge(winner)
 
     def lineage(self, evidence_id: str) -> list[LineageEdge]:
         self.get(evidence_id)
@@ -291,24 +525,27 @@ class EvidenceService:
             ).all()
         return [self._edge(row) for row in rows]
 
-    def target_evidence_ids(self, *, target_type: str, target_id: str) -> list[str]:
+    def target_evidence_ids(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        relationship: str | None = None,
+    ) -> list[str]:
         target_type = target_type.strip().lower()
         target_id = target_id.strip()
         if not target_type or not target_id:
             raise ValueError("Target evidence lookup requires target_type and target_id")
+        relationship = relationship.strip() if relationship else None
         with Session(self.engine) as session:
-            return list(
-                session.scalars(
-                    select(LineageEdgeRow.from_id)
-                    .where(
-                        LineageEdgeRow.from_type == "evidence",
-                        LineageEdgeRow.to_type == target_type,
-                        LineageEdgeRow.to_id == target_id,
-                    )
-                    .distinct()
-                    .order_by(LineageEdgeRow.from_id)
-                ).all()
+            query = select(LineageEdgeRow.from_id).where(
+                LineageEdgeRow.from_type == "evidence",
+                LineageEdgeRow.to_type == target_type,
+                LineageEdgeRow.to_id == target_id,
             )
+            if relationship:
+                query = query.where(LineageEdgeRow.relationship == relationship)
+            return list(session.scalars(query.distinct().order_by(LineageEdgeRow.from_id)).all())
 
     @staticmethod
     def _record(row: EvidenceRecordRow, byte_size: int) -> EvidenceRecord:
@@ -326,6 +563,43 @@ class EvidenceService:
             row.recorded_at.isoformat(),
             row.created_by,
             row.metadata_json,
+        )
+
+    @staticmethod
+    def _captured_row(
+        session: Session,
+        *,
+        digest: str,
+        source: str,
+        source_ref: str,
+        effective_at: datetime,
+    ) -> EvidenceRecordRow | None:
+        return session.scalar(
+            select(EvidenceRecordRow).where(
+                EvidenceRecordRow.blob_sha256 == digest,
+                EvidenceRecordRow.source == source,
+                EvidenceRecordRow.source_ref == source_ref,
+                EvidenceRecordRow.effective_at == effective_at,
+            )
+        )
+
+    @staticmethod
+    def _lineage_row(
+        session: Session,
+        *,
+        evidence_id: str,
+        target_type: str,
+        target_id: str,
+        relationship: str,
+    ) -> LineageEdgeRow | None:
+        return session.scalar(
+            select(LineageEdgeRow).where(
+                LineageEdgeRow.from_type == "evidence",
+                LineageEdgeRow.from_id == evidence_id,
+                LineageEdgeRow.to_type == target_type,
+                LineageEdgeRow.to_id == target_id,
+                LineageEdgeRow.relationship == relationship,
+            )
         )
 
     @staticmethod

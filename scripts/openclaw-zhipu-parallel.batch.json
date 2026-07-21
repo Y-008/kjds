@@ -1,0 +1,16 @@
+[
+  {
+    "path": "agents.defaults.models[\"zhipu-direct/glm-5.2\"]",
+    "value": {
+      "alias": "zhipu-glm-5.2"
+    }
+  },
+  {
+    "path": "agents.list[28].model.primary",
+    "value": "zhipu-direct/glm-5.2"
+  },
+  {
+    "path": "agents.list[28].model.fallbacks",
+    "value": ["ollama-direct/gemma4:26b"]
+  }
+]

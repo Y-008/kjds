@@ -1,22 +1,32 @@
+param([switch]$UseExistingPostgres)
+
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
 $Runtime = Join-Path $Root ".runtime"
 $Web = Join-Path $Root "web"
 $WebSmoke = Join-Path $Runtime ("web-g1-" + [guid]::NewGuid().ToString("N"))
+$PytestTemp = Join-Path $Runtime ("pytest-g1-" + [guid]::NewGuid().ToString("N"))
+$BackupSmokeDirectory = Join-Path $Runtime ("backup-g1-" + [guid]::NewGuid().ToString("N"))
 $DatabaseName = "kjds_g1_smoke"
+$RestoreDatabaseName = "kjds_g1_restore"
 $ApiPort = 8010
 $WebPort = 3010
 $EvidenceSmokeFile = Join-Path $Runtime ("g1-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
+$BankEvidenceSmokeFile = Join-Path $Runtime ("g1-bank-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
+$PilotResponseSmokeFile = Join-Path $Runtime ("g1-ozon-response-" + [guid]::NewGuid().ToString("N") + ".json")
 $EpisodeSmokeFiles = @(
     Join-Path $Runtime ("g1-product-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
     Join-Path $Runtime ("g1-compliance-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
     Join-Path $Runtime ("g1-quality-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
 )
 $ImportSmokeFile = Join-Path $Runtime ("g1-orders-" + [guid]::NewGuid().ToString("N") + ".csv")
+$FeeImportSmokeFile = Join-Path $Runtime ("g1-fees-" + [guid]::NewGuid().ToString("N") + ".csv")
 $ApiProcess = $null
 $WebProcess = $null
 $PostgresContainer = $null
+$WebContainer = $null
+$Python = Join-Path $Root ".venv\Scripts\python.exe"
 
 New-Item -ItemType Directory -Force $Runtime | Out-Null
 Set-Location $Root
@@ -87,21 +97,42 @@ function Get-HttpStatus {
 function Stop-OwnedProcess {
     param($Process)
     if ($null -ne $Process -and -not $Process.HasExited) {
-        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        try {
+            $Process.Kill($true)
+        } catch {
+            Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        }
         $Process.WaitForExit(5000) | Out-Null
+    }
+}
+
+function Stop-OwnedListener {
+    param(
+        $Process,
+        [int]$Port
+    )
+    if ($null -eq $Process) { return }
+    $listeners = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    foreach ($listener in $listeners) {
+        Stop-Process -Id $listener.OwningProcess -Force -ErrorAction SilentlyContinue
     }
 }
 
 function Stop-SmokeProcesses {
     $markers = @("--port $ApiPort", "--port $WebPort", $WebSmoke)
-    $processes = Get-CimInstance Win32_Process | Where-Object {
-        $commandLine = [string]$_.CommandLine
-        $markers | Where-Object { $commandLine.Contains($_) }
+    try {
+        $processes = Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+            $commandLine = [string]$_.CommandLine
+            $markers | Where-Object { $commandLine.Contains($_) }
+        }
+        foreach ($process in $processes) {
+            Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Milliseconds 500
+    } catch {
+        # Owned child processes are stopped separately. Some managed runners
+        # intentionally deny global process enumeration.
     }
-    foreach ($process in $processes) {
-        Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
-    }
-    Start-Sleep -Milliseconds 500
 }
 
 $startedAt = (Get-Date).ToUniversalTime()
@@ -111,16 +142,47 @@ $result = [ordered]@{
     started_at = $startedAt.ToString("o")
     finished_at = $null
     git_commit = $null
+    database_control_mode = $(if ($UseExistingPostgres) { "existing-postgres" } else { "docker-compose" })
     migration = $null
     migration_replay = $false
+    transactional_outbox = $false
+    sourcing_numeric_integrity = $false
+    finance_numeric_integrity = $false
+    decision_experiment_numeric_integrity = $false
+    policy_capability_numeric_integrity = $false
+    core_numeric_integrity = $false
+    backup_restore = $false
+    backup_restore_sha256 = $null
+    backup_restore_elapsed_seconds = $null
+    backup_restore_counts = $null
+    end_to_end_trace = $false
+    connector_safety = $false
+    runtime_identity_config = $false
+    secret_scan = $false
+    startup_package_contract = $false
     lint = $false
     tests = $false
+    web_tests = $false
     web_build = $false
+    container_import = $false
+    web_container_health = $false
     api_health = $false
     api_auth = $false
+    loop_engineering_registry = $false
+    loop_engineering_validation = $false
     kill_switch = $false
     api_database_write = $false
     evidence_ledger = $false
+    evidence_integrity_monitor = $false
+    evidence_integrity_health_loop = $false
+    evidence_health_task_contract = $false
+    candidate_demand_report_gate = $false
+    research_signal_inbox = $false
+    versioned_full_cost_template = $false
+    actual_cost_authority_gate = $false
+    actual_cost_authority_catalog = $false
+    three_candidate_portfolio = $false
+    evidence_backed_exception_workspace = $false
     interaction_profile_registry = $false
     decision_contract_compiler = $false
     decision_lifecycle = $false
@@ -155,6 +217,11 @@ $result = [ordered]@{
     read_only_pilot_dual_control = $false
     ozon_worker_contract_test = $false
     ozon_credential_isolation = $false
+    ozon_pilot_preflight = $false
+    ozon_worker_execution_intent = $false
+    ozon_run_replay_guard = $false
+    ozon_response_recovery = $false
+    ozon_response_integrity = $false
     sku_episode_intake = $false
     passport_human_review = $false
     supplier_comparison_intake = $false
@@ -165,6 +232,7 @@ $result = [ordered]@{
     operations_readiness = $false
     passport_evidence_gate = $false
     formal_fact_promotion = $false
+    finance_fee_mapping_gate = $false
     finance_reconciliation = $false
     cash_forecast = $false
     web_health = $false
@@ -172,12 +240,17 @@ $result = [ordered]@{
     cleanup_processes = $false
     cleanup_database = $false
     cleanup_files = $false
+    cleanup_file_errors = @()
     report = (Join-Path $Runtime "G1_VERIFICATION.json")
 }
 
 try {
     Write-Output "[G-1] Checking required commands and Git revision"
-    foreach ($command in @("docker", "uv", "npm.cmd")) {
+    if ($PSVersionTable.PSVersion.Major -lt 7) {
+        throw "G-1 requires PowerShell 7 or newer because multipart smoke tests use -Form"
+    }
+    $requiredCommands = @("uv", "npm.cmd", "docker")
+    foreach ($command in $requiredCommands) {
         if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
             throw "Required command is unavailable: $command"
         }
@@ -186,81 +259,242 @@ try {
     Invoke-External -Command git -Arguments @("rev-parse", "--verify", "HEAD")
     $result.git_commit = (git rev-parse HEAD).Trim()
 
-    Write-Output "[G-1] Starting PostgreSQL"
-    Invoke-External -Command docker -Arguments @("compose", "up", "-d", "postgres")
-    $PostgresContainer = (docker compose ps -q postgres).Trim()
-    if (-not $PostgresContainer) { throw "PostgreSQL container was not created" }
-    Wait-Until -Description "PostgreSQL health" -Condition {
-        (docker inspect --format "{{.State.Health.Status}}" $PostgresContainer 2>$null).Trim() -eq "healthy"
-    }
-
-    Write-Output "[G-1] Replaying migrations in disposable database"
-    Invoke-External -Command docker -Arguments @("exec", $PostgresContainer, "dropdb", "--if-exists", "-U", "hermes", $DatabaseName)
-    Invoke-External -Command docker -Arguments @("exec", $PostgresContainer, "createdb", "-U", "hermes", $DatabaseName)
-
     $env:KJDS_DATABASE_URL = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/$DatabaseName"
     $env:KJDS_DATABASE_PROVIDER = "local-postgres"
+    # The gate must not inherit a machine-level cache path that a managed
+    # runner cannot access. This override is scoped to this process only.
+    $env:UV_CACHE_DIR = Join-Path $Runtime "uv-cache"
+
+    if ($UseExistingPostgres) {
+        Write-Output "[G-1] Using reachable PostgreSQL without Docker control-plane access"
+        Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "recreate")
+    } else {
+        Write-Output "[G-1] Starting PostgreSQL"
+        Invoke-External -Command docker -Arguments @("compose", "up", "-d", "postgres")
+        $PostgresContainer = (docker compose ps -q postgres).Trim()
+        if (-not $PostgresContainer) { throw "PostgreSQL container was not created" }
+        Wait-Until -Description "PostgreSQL health" -Condition {
+            (docker inspect --format "{{.State.Health.Status}}" $PostgresContainer 2>$null).Trim() -eq "healthy"
+        }
+        Invoke-External -Command docker -Arguments @("exec", $PostgresContainer, "dropdb", "--if-exists", "-U", "hermes", $DatabaseName)
+        Invoke-External -Command docker -Arguments @("exec", $PostgresContainer, "createdb", "-U", "hermes", $DatabaseName)
+    }
+    Write-Output "[G-1] Replaying migrations in disposable database"
     $env:KJDS_REPOSITORY = "postgres"
     $env:KJDS_SHADOW_MODE = "true"
     $env:KJDS_LIMITED_EXECUTION_ENABLED = "true"
+    $env:KJDS_CONTROL_PLANE_URL = "http://127.0.0.1:$ApiPort"
     $env:KJDS_API_KEY = "g1-smoke-" + [guid]::NewGuid().ToString("N")
     $ApproverApiKey = "g1-approver-" + [guid]::NewGuid().ToString("N")
+    $FinanceReviewerApiKey = "g1-finance-reviewer-" + [guid]::NewGuid().ToString("N")
     $KnowledgeApiKey = "g1-knowledge-" + [guid]::NewGuid().ToString("N")
     $ExecutorApiKey = "g1-executor-" + [guid]::NewGuid().ToString("N")
     $MonitorApiKey = "g1-monitor-" + [guid]::NewGuid().ToString("N")
     $env:KJDS_API_ACTOR = "g1-verifier"
-    $env:KJDS_API_ROLES = "operator,reviewer,approver,risk,admin"
+    $env:KJDS_API_ROLES = "operator"
     $ApiCredentials = @{}
     $ApiCredentials[$env:KJDS_API_KEY] = @{ actor = "g1-verifier"; roles = @("operator", "reviewer", "admin") }
     $ApiCredentials[$ApproverApiKey] = @{ actor = "g1-independent-approver"; roles = @("reviewer", "approver") }
+    $ApiCredentials[$FinanceReviewerApiKey] = @{ actor = "g1-finance-reviewer"; roles = @("reviewer") }
     $ApiCredentials[$KnowledgeApiKey] = @{ actor = "g1-knowledge-publisher"; roles = @("approver") }
     $ApiCredentials[$ExecutorApiKey] = @{ actor = "g1-ozon-worker"; roles = @("executor") }
     $ApiCredentials[$MonitorApiKey] = @{ actor = "g1-monitor-worker"; roles = @("monitor") }
     $env:KJDS_API_KEYS_JSON = $ApiCredentials | ConvertTo-Json -Compress
+    $env:KJDS_MONITOR_API_KEY = $MonitorApiKey
 
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $current = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260717_0024.*head") {
+    if ($LASTEXITCODE -ne 0 -or $current -notmatch "20260720_0038.*head") {
         throw "Unexpected migration head: $current"
     }
-    $result.migration = "20260717_0024"
+    $result.migration = "20260720_0038"
 
-    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0023")
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "downgrade", "20260717_0024")
     $downgraded = (uv run python -m alembic current).Trim()
-    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0023") {
+    if ($LASTEXITCODE -ne 0 -or $downgraded -notmatch "20260717_0024") {
         throw "Migration downgrade verification failed: $downgraded"
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $result.migration_replay = $true
 
+    Write-Output "[G-1] Verifying transactional outbox on PostgreSQL"
+    Invoke-External -Command uv -Arguments @("run", "python", "scripts/verify_outbox_postgres.py")
+    $result.transactional_outbox = $true
+
+    Write-Output "[G-1] Verifying sourcing numeric integrity on PostgreSQL"
+    Invoke-External -Command uv -Arguments @("run", "python", "scripts/verify_sourcing_integrity_postgres.py")
+    $result.sourcing_numeric_integrity = $true
+
+    Write-Output "[G-1] Verifying finance numeric integrity on PostgreSQL"
+    Invoke-External -Command uv -Arguments @("run", "python", "scripts/verify_finance_integrity_postgres.py")
+    $result.finance_numeric_integrity = $true
+
+    Write-Output "[G-1] Verifying decision and experiment numeric integrity on PostgreSQL"
+    Invoke-External -Command uv -Arguments @("run", "python", "scripts/verify_decision_experiment_integrity_postgres.py")
+    $result.decision_experiment_numeric_integrity = $true
+
     Write-Output "[G-1] Running Python quality gates"
+    Invoke-External -Command uv -Arguments @("run", "python", "scripts/validate_startup_package.py")
+    $result.startup_package_contract = $true
+    Invoke-External -Command uv -Arguments @("run", "python", "scripts/verify_secrets.py")
+    $result.secret_scan = $true
+    Invoke-External -Command uv -Arguments @("run", "python", "-m", "apps.control_plane.security")
+    $result.runtime_identity_config = $true
+
+    Write-Output "[G-1] Verifying the default-safe Evidence health task management contract"
+    $healthTaskPlan = (& (Join-Path $PSScriptRoot "manage-evidence-health-task.ps1") -Mode Plan | Out-String) |
+        ConvertFrom-Json
+    if (
+        $healthTaskPlan.status -ne "planned_no_mutation" -or
+        $healthTaskPlan.mutation_performed -ne $false -or
+        $healthTaskPlan.control_plane_only -ne $true -or
+        $healthTaskPlan.command_contains_secrets -ne $false -or
+        $healthTaskPlan.required_consecutive_successes -ne 3
+    ) {
+        throw "Evidence health task plan violated the no-mutation deployment contract"
+    }
+    $result.evidence_health_task_contract = $true
+    # Validate the current worktree, including newly added files.  A Git-index
+    # only list can silently omit untracked modules and tests during a smoke
+    # run, which would make the report weaker than the code it claims to gate.
     $pythonFiles = @(
-        git ls-files -- "*.py"
-        Get-ChildItem (Join-Path $Root "migrations\versions") -Filter "*.py" -File |
+        Get-ChildItem (Join-Path $Root "apps"), (Join-Path $Root "migrations"), `
+            (Join-Path $Root "tests"), (Join-Path $Root "scripts") -Recurse -Filter "*.py" -File |
+            Where-Object { $_.FullName -notmatch "\\(__pycache__|\.pytest_cache|\.venv|\.runtime)\\" } |
             ForEach-Object { $_.FullName.Substring($Root.Length + 1) }
     ) | Sort-Object -Unique
     Invoke-External -Command uv -Arguments (@("run", "ruff", "check") + $pythonFiles)
     $result.lint = $true
-    $testFiles = @(git ls-files -- "tests/test_*.py")
-    Invoke-External -Command uv -Arguments (@("run", "python", "-m", "pytest", "-q") + $testFiles)
+    $testFiles = @(
+        Get-ChildItem (Join-Path $Root "tests") -Filter "test_*.py" -File |
+            ForEach-Object { $_.FullName.Substring($Root.Length + 1) }
+    ) | Sort-Object
+    Invoke-External -Command uv -Arguments (@("run", "python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--basetemp=$PytestTemp") + $testFiles)
     $result.tests = $true
     $result.ozon_worker_contract_test = $true
     $result.ozon_credential_isolation = $true
 
+    Write-Output "[G-1] Running web security tests"
+    Invoke-External -Command npm.cmd -Arguments @("--prefix", $Web, "test")
+    $result.web_tests = $true
+
     Write-Output "[G-1] Building isolated web bundle"
     New-Item -ItemType Directory -Force $WebSmoke | Out-Null
     Copy-Item -LiteralPath (Join-Path $Web "app") -Destination $WebSmoke -Recurse
+    Copy-Item -LiteralPath (Join-Path $Web "lib") -Destination $WebSmoke -Recurse
     foreach ($file in @("next-env.d.ts", "next.config.ts", "package.json", "package-lock.json", "tsconfig.json")) {
         Copy-Item -LiteralPath (Join-Path $Web $file) -Destination (Join-Path $WebSmoke $file)
     }
     New-Item -ItemType Junction -Path (Join-Path $WebSmoke "node_modules") -Target (Join-Path $Web "node_modules") | Out-Null
-    Push-Location $WebSmoke
-    try {
-        Invoke-External -Command npm.cmd -Arguments @("run", "build", "--", "--webpack")
-        $result.web_build = $true
-    } finally {
-        Pop-Location
+    Invoke-External -Command npm.cmd -Arguments @("--prefix", $WebSmoke, "run", "build", "--", "--webpack")
+    $result.web_build = $true
+
+    Write-Output "[G-1] Verifying production API image contains required runtime assets"
+    Invoke-External -Command docker -Arguments @("compose", "build", "api", "web", "ozon-read-worker")
+    Invoke-External -Command docker -Arguments @(
+        "compose",
+        "run",
+        "--rm",
+        "--no-deps",
+        "api",
+        "python",
+        "-c",
+        "import apps.control_plane.api; print('container import ok')"
+    )
+    $result.container_import = $true
+
+    Write-Output "[G-1] Verifying Ozon Pilot remains offline until explicit execution"
+    $preflightOutput = & docker compose run --rm --no-deps `
+        -e KJDS_PILOT_READER_API_KEY=g1-pilot-reader `
+        -e OZON_CLIENT_ID=g1-seller-client `
+        -e OZON_API_KEY=g1-ozon-reader `
+        -e OZON_API_URL=https://api-seller.ozon.ru `
+        -e OZON_PRODUCT_ATTRIBUTES_PATH=/v4/product/info/attributes `
+        ozon-read-worker python -m apps.control_plane.ozon_read_worker `
+        --preflight --pilot-id G1-PILOT --offer-id G1-OFFER `
+        --idempotency-key g1-ozon-preflight
+    if ($LASTEXITCODE -ne 0) {
+        throw "Ozon Pilot offline preflight failed"
     }
+    $preflight = $preflightOutput | Select-Object -Last 1 | ConvertFrom-Json
+    $preflightText = $preflightOutput -join "`n"
+    if (
+        $preflight.status -ne "ready_for_explicit_execution" -or
+        $preflight.mode -ne "offline_preflight" -or
+        $preflight.network_calls_performed -ne $false -or
+        $preflight.contract_version -ne "ozon-product-read-v1" -or
+        $preflight.target_count -ne 1 -or
+        $preflight.explicit_execution_required -ne $true -or
+        $preflightText.Contains("g1-pilot-reader") -or
+        $preflightText.Contains("g1-seller-client") -or
+        $preflightText.Contains("g1-ozon-reader") -or
+        $preflightText.Contains("G1-OFFER")
+    ) {
+        throw "Ozon Pilot preflight safety contract failed"
+    }
+    $result.ozon_pilot_preflight = $true
+
+    Write-Output "[G-1] Verifying Ozon Worker cannot bypass explicit execution intent"
+    $missingModeOutput = & docker compose run --rm --no-deps `
+        -e KJDS_PILOT_READER_API_KEY=g1-intent-pilot-reader `
+        -e OZON_CLIENT_ID=g1-intent-seller-client `
+        -e OZON_API_KEY=g1-intent-ozon-reader `
+        ozon-read-worker python -m apps.control_plane.ozon_read_worker `
+        --pilot-id G1-INTENT-PILOT --offer-id G1-INTENT-OFFER `
+        --idempotency-key g1-intent-missing-mode 2>&1
+    $missingModeExit = $LASTEXITCODE
+    $missingModeText = $missingModeOutput -join "`n"
+    if (
+        $missingModeExit -eq 0 -or
+        -not $missingModeText.Contains("one of the arguments --preflight --execute is required") -or
+        $missingModeText.Contains("g1-intent-pilot-reader") -or
+        $missingModeText.Contains("g1-intent-seller-client") -or
+        $missingModeText.Contains("g1-intent-ozon-reader")
+    ) {
+        throw "Ozon Worker accepted missing execution intent or exposed credentials"
+    }
+
+    $revalidationOutput = & docker compose run --rm --no-deps `
+        -e KJDS_CONTROL_PLANE_URL=http://control.example.com `
+        -e KJDS_PILOT_READER_API_KEY=g1-revalidate-pilot-reader `
+        -e OZON_CLIENT_ID=g1-revalidate-seller-client `
+        -e OZON_API_KEY=g1-revalidate-ozon-reader `
+        ozon-read-worker python -m apps.control_plane.ozon_read_worker `
+        --execute --pilot-id G1-REVALIDATE-PILOT --offer-id G1-REVALIDATE-OFFER `
+        --idempotency-key g1-execution-revalidation 2>&1
+    $revalidationExit = $LASTEXITCODE
+    $revalidationText = $revalidationOutput -join "`n"
+    if (
+        $revalidationExit -eq 0 -or
+        -not $revalidationText.Contains("requires HTTPS") -or
+        $revalidationText.Contains("g1-revalidate-pilot-reader") -or
+        $revalidationText.Contains("g1-revalidate-seller-client") -or
+        $revalidationText.Contains("g1-revalidate-ozon-reader")
+    ) {
+        throw "Ozon Worker skipped execution-time revalidation or exposed credentials"
+    }
+    $result.ozon_worker_execution_intent = $true
+
+    Write-Output "[G-1] Verifying production Web image starts from its standalone bundle"
+    $WebContainer = "kjds-g1-web-" + [guid]::NewGuid().ToString("N")
+    Invoke-External -Command docker -Arguments @(
+        "run",
+        "--detach",
+        "--name",
+        $WebContainer,
+        "--env",
+        "KJDS_ENVIRONMENT=development",
+        "--env",
+        "KJDS_WEB_AUTH_MODE=legacy",
+        "--env",
+        "KJDS_API_KEY=$($env:KJDS_API_KEY)",
+        "kjds-web"
+    )
+    Wait-Until -Description "production Web container health" -Condition {
+        docker exec $WebContainer node -e "fetch('http://127.0.0.1:3000').then(async r=>{const t=await r.text();if(!r.ok||!t.includes('KJDS'))process.exit(1)}).catch(()=>process.exit(1))" 2>$null
+        $LASTEXITCODE -eq 0
+    }
+    $result.web_container_health = $true
 
     Write-Output "[G-1] Starting disposable API on port $ApiPort"
     $ApiProcess = Start-Process -FilePath (Get-Command uv).Source `
@@ -280,9 +514,23 @@ try {
     $body = @{ sku = $sku; name = "Disposable G-1 smoke product" } | ConvertTo-Json
     $headers = @{ "X-KJDS-API-Key" = $env:KJDS_API_KEY }
     $approverHeaders = @{ "X-KJDS-API-Key" = $ApproverApiKey }
+    $financeReviewerHeaders = @{ "X-KJDS-API-Key" = $FinanceReviewerApiKey }
     $knowledgeHeaders = @{ "X-KJDS-API-Key" = $KnowledgeApiKey }
     $executorHeaders = @{ "X-KJDS-API-Key" = $ExecutorApiKey }
     $monitorHeaders = @{ "X-KJDS-API-Key" = $MonitorApiKey }
+    $g1TraceId = "trace-g1-controlled-loop"
+    $executionClaimHeaders = $executorHeaders.Clone()
+    $executionClaimHeaders["X-Trace-ID"] = $g1TraceId
+    $executionClaimHeaders["X-Request-ID"] = "req-g1-execution-claim"
+    $executionReceiptHeaders = $executorHeaders.Clone()
+    $executionReceiptHeaders["X-Trace-ID"] = $g1TraceId
+    $executionReceiptHeaders["X-Request-ID"] = "req-g1-execution-receipt"
+    $pilotStartHeaders = $headers.Clone()
+    $pilotStartHeaders["X-Trace-ID"] = $g1TraceId
+    $pilotStartHeaders["X-Request-ID"] = "req-g1-pilot-start"
+    $pilotCompleteHeaders = $headers.Clone()
+    $pilotCompleteHeaders["X-Trace-ID"] = $g1TraceId
+    $pilotCompleteHeaders["X-Request-ID"] = "req-g1-pilot-complete"
     $unauthorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products"
     $invalid = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers @{ "X-KJDS-API-Key" = "invalid" }
     $authorized = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Headers $headers
@@ -291,13 +539,44 @@ try {
     }
     $result.api_auth = $true
 
+    $loopRegistry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/loop-engineering/registry" -Headers $headers
+    $loopModuleIds = @($loopRegistry.modules | ForEach-Object { $_.id })
+    if (
+        $loopRegistry.registry_id -ne "KJDS-LOOP-001" -or
+        $loopModuleIds.Count -ne 6 -or
+        "automations" -notin $loopModuleIds -or
+        "memory" -notin $loopModuleIds
+    ) {
+        throw "Loop Engineering registry smoke failed"
+    }
+    $result.loop_engineering_registry = $true
+
     $switchBody = @{ reason = "G-1 kill switch exercise" } | ConvertTo-Json
     $engaged = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch/engage" -Method Post -Headers $headers -ContentType "application/json" -Body $switchBody
+    $loopValidation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/loop-engineering/validate" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        module = "automations"
+        mode = "shadow"
+        controls = @{
+            idempotency_key = "g1-loop-smoke"
+            timeout = 30
+            retry_limit = 0
+            kill_switch = $false
+            run_id = "g1-loop-run"
+            evidence_id = "g1-loop-evidence"
+        }
+    } | ConvertTo-Json -Depth 4)
     $blocked = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/products" -Method Post -Headers $headers -ContentType "application/json" -Body $body
     $released = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch/release" -Method Post -Headers $headers -ContentType "application/json" -Body (@{ reason = "G-1 exercise completed" } | ConvertTo-Json)
-    if (-not $engaged.engaged -or $blocked -ne 423 -or $released.engaged) {
+    if (
+        -not $engaged.engaged -or
+        -not $loopValidation.allowed -or
+        $loopValidation.status -ne "shadow_ready" -or
+        $blocked -ne 423 -or
+        $released.engaged
+    ) {
         throw "Kill switch smoke failed"
     }
+    $result.loop_engineering_validation = $true
     $result.kill_switch = $true
 
     $product = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products" -Method Post -Headers $headers -ContentType "application/json" -Body $body
@@ -318,6 +597,15 @@ try {
         metadata_json = '{"purpose":"G-1"}'
     }
     $verification = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/verify" -Headers $headers
+    Set-Content -LiteralPath $BankEvidenceSmokeFile -Value "G-1 independent bank receipt evidence" -NoNewline -Encoding UTF8
+    $bankEvidenceRecord = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence" -Method Post -Headers $headers -Form @{
+        file = Get-Item $BankEvidenceSmokeFile
+        source = "g1_bank_export"
+        source_ref = "g1://verification/bank-receipt"
+        grade = "A"
+        effective_at = "2026-07-16T00:00:00+08:00"
+        metadata_json = '{"purpose":"G-1 finance reconciliation"}'
+    }
     $lineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/lineage" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         target_type = "product"
         target_id = $product.id
@@ -328,13 +616,121 @@ try {
     }
     $result.evidence_ledger = $true
 
+    $demandReport = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/gate-evidence" -Method Post -Headers $headers -Form @{
+        requirement_id = "SKU-000"
+        effective_at = "2026-07-16T00:00:00+08:00"
+        source_system = "ozon_data"
+        report_window_days = 28
+        file = Get-Item $EvidenceSmokeFile
+    }
+    $demandReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/demand-report-review" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        report_evidence_id = $demandReport.evidence.id
+        accepted = $true
+        rationale = "G-1 independent demand report contract verification"
+    } | ConvertTo-Json)
+    if (
+        $demandReport.review_status -ne "pending" -or
+        $demandReview.review.metadata.decision -ne "accepted"
+    ) {
+        throw "Demand report dual-control smoke failed"
+    }
+    $result.candidate_demand_report_gate = $true
+
+    $candidateRef = "g1-candidate-$sku"
+    $candidateEvidence = @()
+    foreach ($index in 1..5) {
+        $family = if ($index -le 3) { "market.example" } else { "supplier.example" }
+        $researchSignal = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/market/research-signals" -Method Post -Headers $headers -Form @{
+            file = Get-Item $EvidenceSmokeFile
+            provider = "g1_candidate_research"
+            provider_record_id = "provider://$family/g1/candidate/$index"
+            source_url = "https://$family/g1/candidate/$index"
+            observed_at = "2026-07-16T00:00:00+08:00"
+            declared_grade = "A"
+            license_status = "verified"
+            raw_fields_json = "{`"metric_index`":$index}"
+            candidate_refs_json = "[`"$candidateRef`"]"
+        }
+        if (
+            $researchSignal.decision_use -ne "auxiliary_only_pending_independent_authority_review" -or
+            $researchSignal.automatic_listing -ne $false -or
+            $researchSignal.automatic_procurement -ne $false -or
+            -not ($researchSignal.candidate_refs -contains $candidateRef)
+        ) {
+            throw "Research signal inbox smoke failed"
+        }
+        $candidateEvidence += $researchSignal.evidence
+    }
+    $result.research_signal_inbox = $true
+    $candidateMetrics = @("demand_signal", "competition_gap", "supplier_available", "compliance_redline", "return_risk")
+    foreach ($index in 0..4) {
+        $authorityReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/market/candidate-evidence/$($candidateEvidence[$index].id)/authority-review" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+            metric = $candidateMetrics[$index]
+            approved_grade = "A"
+            accepted = $true
+            authentic_original = $true
+            source_scope_matches = $true
+            authority_basis_verified = $true
+            rationale = "G-1 independent candidate evidence authority verification"
+        } | ConvertTo-Json)
+        $authorityStatus = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/market/candidate-evidence/$($candidateEvidence[$index].id)/authority-review?metric=$($candidateMetrics[$index])" -Headers $headers
+        if (
+            $authorityReview.review.metadata.decision -ne "accepted" -or
+            $authorityStatus.status -ne "accepted" -or
+            -not ($authorityStatus.accepted_grades -contains "A")
+        ) {
+            throw "Candidate evidence authority review smoke failed"
+        }
+    }
+    $candidateName = "G-1 evidence-backed candidate"
+    $candidateObservations = @(
+        @{ metric = "demand_signal"; value = 70; confidence = 0.8; evidence_id = $candidateEvidence[0].id; window_days = 30; sample_size = 30 },
+        @{ metric = "competition_gap"; value = 60; confidence = 0.8; evidence_id = $candidateEvidence[1].id; window_days = 30; sample_size = 30 },
+        @{ metric = "supplier_available"; value = 1; confidence = 0.8; evidence_id = $candidateEvidence[2].id; window_days = 30; sample_size = 1 },
+        @{ metric = "compliance_redline"; value = 0; confidence = 0.8; evidence_id = $candidateEvidence[3].id; window_days = 30; sample_size = 1 },
+        @{ metric = "return_risk"; value = 20; confidence = 0.8; evidence_id = $candidateEvidence[4].id; window_days = 30; sample_size = 30 }
+    )
+    $candidateBase = @{
+        candidate_ref = $candidateRef
+        candidate_name = $candidateName
+        market = "RU"
+        category = "g1-verification"
+        as_of = "2026-07-19T00:00:00+08:00"
+        demand_report_evidence_id = $demandReport.evidence.id
+        max_age_days = 90
+    }
+    $candidateIntakeBody = $candidateBase.Clone()
+    $candidateIntakeBody.observations = $candidateObservations
+    $candidateAssessment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/market/candidates/intake" -Method Post -Headers $headers -ContentType "application/json" -Body ($candidateIntakeBody | ConvertTo-Json -Depth 6)
+    $candidateHandoffBody = $candidateBase.Clone()
+    $candidateHandoffBody.sku = "$sku-CAND"
+    $candidateHandoffBody.confirmed = $true
+    $candidateHandoff = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/market/candidates/sourcing-handoff" -Method Post -Headers $headers -ContentType "application/json" -Body ($candidateHandoffBody | ConvertTo-Json -Depth 5)
+    $candidateHandoffRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/market/candidates/sourcing-handoff" -Method Post -Headers $headers -ContentType "application/json" -Body ($candidateHandoffBody | ConvertTo-Json -Depth 5)
+    $product = $candidateHandoff.product
+    $candidateLineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($candidateEvidence[0].id)/lineage" -Headers $headers
+    if (
+        $candidateAssessment.decision -ne "request_three_quotes" -or
+        $candidateAssessment.quote_policy_id -ne "ozon-ru-quote-screen-v1" -or
+        $candidateAssessment.threshold_failures.Count -ne 0 -or
+        $candidateHandoffRetry.product.id -ne $product.id -or
+        $candidateHandoffRetry.created -ne $false -or
+        -not ($candidateLineage | Where-Object { $_.to_type -eq "product" -and $_.to_id -eq $product.id -and $_.relationship -eq "candidate_basis" })
+    ) {
+        throw "Candidate sourcing handoff smoke failed"
+    }
+    $result.candidate_sourcing_handoff = $true
+
     $profiles = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/interaction-profiles" -Headers $headers
     $decisionProfile = $profiles | Where-Object { $_.id -eq "decision_review" }
+    $bestSolutionProfile = $profiles | Where-Object { $_.id -eq "best_solution" }
     if (
-        $profiles.Count -ne 5 -or
+        $profiles.Count -ne 6 -or
         "/x10think" -notin $decisionProfile.aliases -or
         "/oda" -notin $decisionProfile.aliases -or
-        $decisionProfile.version -ne "1.0.0"
+        $decisionProfile.version -ne "1.0.0" -or
+        "/best" -notin $bestSolutionProfile.aliases -or
+        $bestSolutionProfile.version -ne "1.0.0"
     ) {
         throw "Versioned interaction profile registry smoke failed"
     }
@@ -723,12 +1119,12 @@ try {
     $readyExecutionPlan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governed-execution-plans/$($executionPlan.id)" -Headers $headers
     $limitedCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governed-execution-plans/$($executionPlan.id)/commands" -Method Post -Headers $headers
     $limitedCommandRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governed-execution-plans/$($executionPlan.id)/commands" -Method Post -Headers $headers
-    $claimedCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($limitedCommand.id)/claim" -Method Post -Headers $executorHeaders -ContentType "application/json" -Body (@{
+    $claimedCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($limitedCommand.id)/claim" -Method Post -Headers $executionClaimHeaders -ContentType "application/json" -Body (@{
         current_state_hash = $executionStateHash
         lease_seconds = 120
     } | ConvertTo-Json)
     $resultingExecutionHash = "b" * 64
-    $executionReceipt = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($limitedCommand.id)/receipt" -Method Post -Headers $executorHeaders -ContentType "application/json" -Body (@{
+    $executionReceipt = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($limitedCommand.id)/receipt" -Method Post -Headers $executionReceiptHeaders -ContentType "application/json" -Body (@{
         outcome = "succeeded"
         remote_operation_id = "g1-simulated-ozon-operation"
         resulting_state_hash = $resultingExecutionHash
@@ -761,12 +1157,13 @@ try {
     $postExecutionSwitch = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/system/kill-switch" -Headers $headers
     $rollbackCommand = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/limited-execution-commands/$($guardrailObservation.rollback_command_id)" -Headers $headers
     $incident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($guardrailObservation.incident_id)" -Headers $headers
-    $operationsQueueDuringIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations-control/queue?as_of=2026-07-18T12:00:00%2B00:00" -Headers $headers
+    $operationsAsOf = (Get-Date).ToUniversalTime().AddHours(1).ToString("o")
+    $operationsQueueDuringIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations-control/queue?as_of=$([uri]::EscapeDataString($operationsAsOf))" -Headers $headers
     $operationsScan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations-control/escalation-scan" -Method Post -Headers $monitorHeaders -ContentType "application/json" -Body (@{
-        as_of = "2026-07-18T12:00:00+00:00"
+        as_of = $operationsAsOf
     } | ConvertTo-Json)
     $operationsScanRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations-control/escalation-scan" -Method Post -Headers $monitorHeaders -ContentType "application/json" -Body (@{
-        as_of = "2026-07-18T12:00:00+00:00"
+        as_of = $operationsAsOf
     } | ConvertTo-Json)
     $operationsEscalations = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations-control/escalations" -Headers $headers
     $claimedIncident = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operational-incidents/$($incident.id)/claim" -Method Post -Headers $headers
@@ -854,7 +1251,10 @@ try {
         idempotency_key = "g1-ozon-read-only-pilot"
         platform = "ozon"
         account_alias = "g1-ozon-ru-main"
-        allowed_operations = @("ozon.product.read", "ozon.inventory.read")
+        # The first production adapter is intentionally product-read only.
+        # Inventory/orders/analytics/finance remain contract-only until their
+        # dedicated worker scope is implemented and independently verified.
+        allowed_operations = @("ozon.product.read")
         max_daily_requests = 100
         max_targets = 10
         starts_at = "2026-07-17T00:00:00+00:00"
@@ -890,6 +1290,98 @@ try {
     $activePilot = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilots/$($readOnlyPilot.id)/activate" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         as_of = "2026-07-17T14:00:00+00:00"
     } | ConvertTo-Json)
+    $pilotRun = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilots/$($readOnlyPilot.id)/runs" -Method Post -Headers $pilotStartHeaders -ContentType "application/json" -Body (@{
+        idempotency_key = "g1-read-only-claim-run"
+        operation = "ozon.product.read"
+        target_ref = "G1-SYNTHETIC-OFFER"
+        as_of = "2026-07-17T14:00:00+00:00"
+    } | ConvertTo-Json)
+    $stateHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    Set-Content -LiteralPath $PilotResponseSmokeFile -Value '{"schema_version":"ozon-response-bundle-v2","contract_version":"ozon-product-read-v1","responses":[]}' -NoNewline -Encoding UTF8
+    $pilotResponseBytes = [System.IO.File]::ReadAllBytes($PilotResponseSmokeFile)
+    $pilotResponseSha = ([System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData($pilotResponseBytes))).Replace("-", "").ToLowerInvariant()
+    $pilotSummaryJson = (@{
+        contract_version = "ozon-product-read-v1"
+        state_sha256 = $stateHash
+        info_item_count = 1
+        attribute_item_count = 1
+    } | ConvertTo-Json -Compress)
+    $pilotCheckpoint = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilot-runs/$($pilotRun.id)/response-checkpoint" -Method Post -Headers $pilotCompleteHeaders -Form @{
+        file = Get-Item $PilotResponseSmokeFile
+        response_sha256 = $pilotResponseSha
+        response_byte_size = $pilotResponseBytes.Length
+        record_count = 2
+        summary_json = $pilotSummaryJson
+    }
+    $pilotCheckpointReplay = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilot-runs/$($pilotRun.id)/response-checkpoint" -Method Post -Headers $pilotCompleteHeaders -Form @{
+        file = Get-Item $PilotResponseSmokeFile
+        response_sha256 = $pilotResponseSha
+        response_byte_size = $pilotResponseBytes.Length
+        record_count = 2
+        summary_json = $pilotSummaryJson
+    }
+    $completedPilotRun = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilot-runs/$($pilotRun.id)/finalize" -Method Post -Headers $pilotCompleteHeaders
+    $completedPilotRunReplay = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilot-runs/$($pilotRun.id)/finalize" -Method Post -Headers $pilotCompleteHeaders
+    $pilotRunReplay = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilots/$($readOnlyPilot.id)/runs" -Method Post -Headers $pilotStartHeaders -ContentType "application/json" -Body (@{
+        idempotency_key = "g1-read-only-claim-run"
+        operation = "ozon.product.read"
+        target_ref = "G1-SYNTHETIC-OFFER"
+        as_of = "2026-07-17T14:01:00+00:00"
+    } | ConvertTo-Json)
+    $result.end_to_end_trace = (
+        $executionReceipt.command_id -eq $limitedCommand.id -and
+        $executionReceipt.request_id -eq "req-g1-execution-receipt" -and
+        $executionReceipt.trace_id -eq $g1TraceId -and
+        $pilotRun.request_id -eq "req-g1-pilot-start" -and
+        $pilotRun.trace_id -eq $g1TraceId -and
+        $pilotRun.execution_granted -eq $true -and
+        $pilotRun.idempotency_replay -eq $false -and
+        $completedPilotRun.id -eq $pilotRun.id -and
+        $completedPilotRun.trace_id -eq $g1TraceId -and
+        $completedPilotRun.raw_response_stored -eq $true -and
+        $completedPilotRun.raw_response_verified -eq $true -and
+        $completedPilotRun.raw_response_integrity_code -eq $null -and
+        $pilotCheckpoint.status -eq "response_captured" -and
+        $pilotCheckpoint.recovery_pending -eq $true -and
+        $pilotCheckpoint.raw_response_verified -eq $true -and
+        $pilotCheckpoint.checkpoint_evidence_id -eq $pilotCheckpointReplay.checkpoint_evidence_id -and
+        $completedPilotRun.raw_response_evidence_id -eq $pilotCheckpoint.checkpoint_evidence_id -and
+        $completedPilotRun.evidence_id -and
+        $completedPilotRunReplay.evidence_id -eq $completedPilotRun.evidence_id -and
+        $pilotRunReplay.id -eq $pilotRun.id -and
+        $pilotRunReplay.status -eq "completed" -and
+        $pilotRunReplay.execution_granted -eq $false -and
+        $pilotRunReplay.idempotency_replay -eq $true
+    )
+    if (-not $result.end_to_end_trace) {
+        throw "End-to-end request, trace, run, command, and evidence correlation failed"
+    }
+    $result.connector_safety = (
+        $pilotCheckpoint.response_sha256 -eq $pilotResponseSha -and
+        $pilotCheckpoint.response_byte_size -eq $pilotResponseBytes.Length -and
+        $completedPilotRun.response_sha256 -eq $pilotResponseSha
+    )
+    if (-not $result.connector_safety) {
+        throw "Ozon connector response evidence safety contract failed"
+    }
+    $result.ozon_run_replay_guard = $true
+    $result.ozon_response_recovery = $true
+    $result.ozon_response_integrity = $true
+    $claimBody = @{
+        idempotency_key = "g1-read-only-claim"
+        claim_type = "inventory_observation"
+        payload = @{ stock_count = 12; currency_code = "RUB" }
+        source_state_sha256 = $stateHash
+        effective_at = "2026-07-17T14:00:00+00:00"
+    } | ConvertTo-Json -Depth 5
+    $claim = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilot-runs/$($pilotRun.id)/claims" -Method Post -Headers $headers -ContentType "application/json" -Body $claimBody
+    $claimRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-pilot-runs/$($pilotRun.id)/claims" -Method Post -Headers $headers -ContentType "application/json" -Body $claimBody
+    $selfClaimReview = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/read-only-claims/$($claim.id)/review" -Method Post -Headers $headers -ContentType "application/json" -Body (@{ decision = "accepted"; rationale = "Self review must fail" } | ConvertTo-Json)
+    $reviewedClaim = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/read-only-claims/$($claim.id)/review" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{ decision = "accepted"; rationale = "Synthetic read evidence reviewed independently" } | ConvertTo-Json)
+    if ($pilotRun.status -ne "started" -or $completedPilotRun.outcome -ne "succeeded" -or $claim.id -ne $claimRetry.id -or $claim.status -ne "pending_review" -or $selfClaimReview -ne 422 -or $reviewedClaim.status -ne "accepted" -or $reviewedClaim.formal_fact_promoted -ne $false) {
+        throw "Read-only claim bridge smoke failed"
+    }
+    $result.read_only_claim_bridge = $true
     $capabilityAssessment = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/execution-observation-windows/$($observationWindow.id)/capability-economics" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
         realized_incremental_value = -20
         avoided_loss = 5
@@ -976,6 +1468,9 @@ try {
         $capabilitySummaries[0].governance_recommendation -eq "restrict_and_review" -and
         $capabilitySummaries[0].automatic_authority_change -eq $false
     )
+    Write-Output "[G-1] Verifying policy and capability numeric integrity on PostgreSQL"
+    Invoke-External -Command uv -Arguments @("run", "python", "scripts/verify_policy_capability_integrity_postgres.py")
+    $result.policy_capability_numeric_integrity = $true
     $result.operational_incident_auto_open = (
         $guardrailObservation.incident_id -eq $incident.id -and
         $incident.trigger_type -eq "post_execution_guardrail_breached" -and
@@ -1042,6 +1537,7 @@ try {
         -not $result.post_execution_guardrail_freeze -or
         -not $result.post_execution_rollback_trigger -or
         -not $result.capability_economic_ledger -or
+        -not $result.policy_capability_numeric_integrity -or
         -not $result.operational_incident_auto_open -or
         -not $result.recovery_checklist -or
         -not $result.recovery_dual_control -or
@@ -1098,6 +1594,31 @@ try {
             effective_at = "2026-07-16T00:00:00+08:00"
         } | Out-Null
     }
+
+    $gateReviewBody = @{
+        idempotency_key = "g1-structured-g0-review"
+        gate_id = "G0"
+        owner_id = "g1-verifier"
+        approver_id = "g1-independent-approver"
+        participants = @("g1-verifier", "g1-independent-approver", "g1-knowledge-publisher")
+        objective = "Confirm the G0 operating boundary before controlled SKU and Ozon work."
+        exit_criteria = "Owner, independent approver, evidence, risk budget, maximum loss, and rollback are explicit."
+        deliverables = @("G0 evidence pack", "Read-only pilot boundary")
+        evidence_ids = @()
+        unknowns = @("Live Ozon settlement sample")
+        blockers = @()
+        risk_budget = @{ amount = "10000"; currency = "CNY" }
+        max_loss = @{ amount = "3000"; currency = "CNY" }
+        rollback_plan = "Stop all writes, preserve evidence, and return to read-only mode."
+    } | ConvertTo-Json -Depth 6
+    $gateReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governance/gate-reviews" -Method Post -Headers $headers -ContentType "application/json" -Body $gateReviewBody
+    $gateReviewRetry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governance/gate-reviews" -Method Post -Headers $headers -ContentType "application/json" -Body $gateReviewBody
+    $submittedGateReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governance/gate-reviews/$($gateReview.id)/submit" -Method Post -Headers $headers -ContentType "application/json" -Body (@{ evidence_ids = @($evidenceRecord.id) } | ConvertTo-Json)
+    $decidedGateReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/governance/gate-reviews/$($gateReview.id)/decide" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{ decision = "CONDITIONAL"; rationale = "G0 is bounded; live finance evidence remains a G4 condition."; conditions = @("Attach live settlement evidence before G4.") } | ConvertTo-Json)
+    if ($gateReview.id -ne $gateReviewRetry.id -or $submittedGateReview.status -ne "submitted" -or $decidedGateReview.decision -ne "CONDITIONAL") {
+        throw "Structured G0 gate review smoke failed"
+    }
+    $result.governance_gate_review = $true
 
     $episodeSku = "G1-EPISODE-" + [guid]::NewGuid().ToString("N")
     @("product evidence", "compliance evidence", "quality evidence") | ForEach-Object -Begin { $index = 0 } -Process {
@@ -1193,32 +1714,129 @@ try {
         rub_per_cny = 12
         international_freight_cny_per_kg = 30
         packaging_cny = 2
+        warehousing_cny = 0
+        tax_cny = 0
         last_mile_cny = 10
+        fx_cost_cny = 0
+        capital_cost_cny = 0
+        aftersales_cny = 0
+        loss_reserve_cny = 0
         customs_rate = 0.10
         platform_fee_rate = 0.10
         advertising_rate = 0.05
         return_reserve_rate = 0.10
         other_cost_cny = 0
         evidence = @($evidenceRecord.id)
+        cost_evidence = @{
+            product_cost = $evidenceRecord.id
+            domestic_logistics = $evidenceRecord.id
+            international_logistics = $evidenceRecord.id
+            packaging = $evidenceRecord.id
+            warehousing = $evidenceRecord.id
+            customs = $evidenceRecord.id
+            tax = $evidenceRecord.id
+            last_mile = $evidenceRecord.id
+            platform_fee = $evidenceRecord.id
+            advertising = $evidenceRecord.id
+            return = $evidenceRecord.id
+            fx = $evidenceRecord.id
+            capital_cost = $evidenceRecord.id
+            aftersales = $evidenceRecord.id
+            loss = $evidenceRecord.id
+        }
+        template_id = "ozon-ru-full-cost-v1"
+        cost_states = @{
+            product_cost = "estimate"
+            domestic_logistics = "estimate"
+            international_logistics = "estimate"
+            packaging = "estimate"
+            warehousing = "estimate"
+            customs = "estimate"
+            tax = "estimate"
+            last_mile = "estimate"
+            platform_fee = "estimate"
+            advertising = "estimate"
+            return = "estimate"
+            fx = "estimate"
+            capital_cost = "estimate"
+            aftersales = "estimate"
+            loss = "estimate"
+        }
     }
     $scenario = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/profit-scenarios" -Method Post -Headers $headers -ContentType "application/json" -Body ($scenarioBody | ConvertTo-Json -Depth 5)
+    $profitTemplate = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/profit-template" -Headers $headers
+    $scenarioExplanation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/profit-scenarios/$($scenario.id)/explain" -Headers $headers
     $sourcingLineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/lineage" -Headers $headers
     if (
         $offer.id -ne $sameOffer.id -or
         $conflictStatus -ne 422 -or
         [decimal]$scenario.cm3_cny -le 0 -or
+        $profitTemplate.id -ne "ozon-ru-full-cost-v1" -or
+        $profitTemplate.fields.Count -ne 15 -or
+        $profitTemplate.automatic_pricing -ne $false -or
+        $scenarioExplanation.release_ready -ne $true -or
+        $scenarioExplanation.items.Count -ne 15 -or
+        $scenarioExplanation.automatic_pricing -ne $false -or
         -not ($sourcingLineage | Where-Object { $_.to_type -eq "supplier_offer" -and $_.to_id -eq $offer.id }) -or
         -not ($sourcingLineage | Where-Object { $_.to_type -eq "profit_scenario" -and $_.to_id -eq $scenario.id })
     ) {
         throw "Sourcing immutable evidence gate smoke failed"
     }
     $result.sourcing_evidence_gate = $true
+    $result.versioned_full_cost_template = $true
+
+    $actualCostCatalog = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/cost-authorities" -Headers $headers
+    $pendingActualCost = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/cost-evidence/$($evidenceRecord.id)/authority-review?cost_type=product_cost" -Headers $headers
+    $selfActualCostReview = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/finance/cost-evidence/$($evidenceRecord.id)/authority-review" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+        cost_type = "product_cost"
+        authority_id = "supplier_invoice_payment"
+        accepted = $true
+        authentic_original = $true
+        cost_scope_matches = $true
+        charging_party_matches = $true
+        amount_currency_period_matches = $true
+        rationale = "Uploader self-review must fail"
+    } | ConvertTo-Json)
+    $actualCostReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/cost-evidence/$($evidenceRecord.id)/authority-review" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        cost_type = "product_cost"
+        authority_id = "supplier_invoice_payment"
+        accepted = $true
+        authentic_original = $true
+        cost_scope_matches = $true
+        charging_party_matches = $true
+        amount_currency_period_matches = $true
+        rationale = "Independent G-1 review matched supplier invoice, payment, scope, party, currency and period"
+    } | ConvertTo-Json)
+    $actualScenarioBody = $scenarioBody.Clone()
+    $actualCostStates = $scenarioBody.cost_states.Clone()
+    $actualCostStates.product_cost = "actual"
+    $actualScenarioBody.cost_states = $actualCostStates
+    $actualScenario = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/sourcing/profit-scenarios" -Method Post -Headers $headers -ContentType "application/json" -Body ($actualScenarioBody | ConvertTo-Json -Depth 5)
+    if (
+        $actualCostCatalog.schema_version -ne "cost-actual-authority-v1" -or
+        $actualCostCatalog.items.Count -ne 15 -or
+        ($actualCostCatalog.items | Where-Object { $_.cost_type -eq "product_cost" }).authorities[0].id -ne "supplier_invoice_payment" -or
+        $actualCostCatalog.automatic_state_change -ne $false -or
+        $actualCostCatalog.automatic_finance_posting -ne $false -or
+        $actualCostCatalog.automatic_procurement -ne $false -or
+        $actualCostCatalog.automatic_listing -ne $false -or
+        $pendingActualCost.status -ne "pending" -or
+        $selfActualCostReview -ne 422 -or
+        $actualCostReview.review.metadata.cost_type -ne "product_cost" -or
+        $actualScenario.cost_states.product_cost -ne "actual" -or
+        [decimal]$actualScenario.cm3_cny -le 0
+    ) {
+        throw "Actual cost authority and independent review smoke failed"
+    }
+    $result.actual_cost_authority_gate = $true
+    $result.actual_cost_authority_catalog = $true
 
     $gateReadiness = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/readiness" -Headers $headers
     $gateProduct = $gateReadiness.products | Where-Object { $_.product.id -eq $product.id }
+    $gateException = $gateReadiness.exception_workspace.items | Where-Object { $_.source_id -eq "SKU-003" }
     if (
         $gateReadiness.status -ne "needs_input" -or
-        $gateReadiness.counts.bound_offers -ne 1 -or
+        $gateReadiness.counts.bound_offers -ne 2 -or
         $gateProduct.supplier_count -ne 1 -or
         $gateProduct.offer_count -ne 1 -or
         $gateProduct.positive_profit_scenario_count -ne 1 -or
@@ -1226,9 +1844,23 @@ try {
         -not ($gateReadiness.requirements | Where-Object { $_.id -eq "OZN-001" -and $_.ready }) -or
         -not ($gateReadiness.requirements | Where-Object { $_.id -eq "SKU-003" -and -not $_.ready })
     ) {
+        Write-Host ($gateReadiness | ConvertTo-Json -Depth 12)
         throw "G0-G1 operating readiness projection smoke failed"
     }
     $result.operations_readiness = $true
+    if (
+        -not $gateReadiness.exception_workspace.advisory_only -or
+        $gateReadiness.exception_workspace.automatic_resolution -ne $false -or
+        $gateReadiness.exception_workspace.platform_write_allowed -ne $false -or
+        -not $gateException -or
+        $gateException.source_type -ne "gate_requirement" -or
+        -not $gateException.owner_role -or
+        -not $gateException.next_action
+    ) {
+        Write-Host ($gateReadiness.exception_workspace | ConvertTo-Json -Depth 12)
+        throw "Evidence-backed exception workspace smoke failed"
+    }
+    $result.evidence_backed_exception_workspace = $true
 
     $passportBodies = @(
         @{
@@ -1343,6 +1975,24 @@ try {
     }
     $result.supplier_comparison_intake = $true
 
+    $portfolioReadiness = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/operations/readiness" -Headers $headers
+    $portfolioRow = $portfolioReadiness.candidate_portfolio.rows | Where-Object { $_.product.id -eq $product.id }
+    if (
+        -not $portfolioReadiness.candidate_portfolio.advisory_only -or
+        $portfolioReadiness.candidate_portfolio.automatic_product_selection -ne $false -or
+        $portfolioReadiness.candidate_portfolio.automatic_procurement -ne $false -or
+        $portfolioReadiness.candidate_portfolio.automatic_pricing -ne $false -or
+        $portfolioReadiness.candidate_portfolio.automatic_listing -ne $false -or
+        -not $portfolioRow -or
+        -not $portfolioRow.ready_for_g1_review -or
+        -not $portfolioRow.best_scenario.release_ready -or
+        $portfolioRow.best_scenario.supplier_ref -notlike "g1-factory-*"
+    ) {
+        Write-Host ($portfolioReadiness.candidate_portfolio | ConvertTo-Json -Depth 12)
+        throw "Qualified three-candidate portfolio smoke failed"
+    }
+    $result.three_candidate_portfolio = $true
+
     $selectedOffer = $comparisonIntake.offers[0]
     $selectedScenario = $comparisonIntake.scenarios[0]
     $procurementBody = @{
@@ -1411,11 +2061,13 @@ try {
     $orderExternalId = "G1-ORDER-" + [guid]::NewGuid().ToString("N")
     @(
         "order_id;sku;quantity;currency;gross_revenue;effective_at"
-        "$orderExternalId;$sku;2;RUB;1299.50;2026-07-16T10:00:00+03:00"
+        "$orderExternalId;$($product.sku);2;RUB;1299.50;2026-07-16T10:00:00+03:00"
     ) | Set-Content -LiteralPath $ImportSmokeFile -Encoding UTF8
     $import = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/ozon" -Method Post -Headers $headers -Form @{
         file = Get-Item $ImportSmokeFile
         effective_at = "2026-07-16T10:00:00+03:00"
+        report_period_start = "2026-07-01"
+        report_period_end = "2026-07-31"
     }
     $promotion = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/$($import.id)/promote" -Method Post -Headers $headers
     $formalFacts = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/facts?fact_type=ozon_order" -Headers $headers
@@ -1440,6 +2092,27 @@ try {
     }
     $result.formal_fact_promotion = $true
 
+    @(
+        "operation_id;fee_type;amount;currency;effective_at"
+        "$orderExternalId;g1_service;99.5;RUB;2026-07-16T10:00:00+03:00"
+    ) | Set-Content -LiteralPath $FeeImportSmokeFile -Encoding UTF8
+    $feeImport = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/ozon" -Method Post -Headers $headers -Form @{
+        file = Get-Item $FeeImportSmokeFile
+        effective_at = "2026-07-16T10:00:00+03:00"
+        report_period_start = "2026-07-01"
+        report_period_end = "2026-07-31"
+    }
+    $feePromotionBeforeReview = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/imports/$($feeImport.id)/promote" -Method Post -Headers $headers
+    $feeReview = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/$($feeImport.id)/finance-review" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        accepted = $true
+        authentic_account_export = $true
+        period_matches = $true
+        not_public_sample = $true
+        complete_export = $true
+        rationale = "Independent G-1 review of the accepted Ozon fee export"
+    } | ConvertTo-Json)
+    $feeCodesBefore = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/$($feeImport.id)/fee-codes" -Headers $headers
+    $feePromotionBeforeMapping = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/imports/$($feeImport.id)/promote" -Method Post -Headers $headers
     $feeMappingBody = @{
         provider = "ozon"
         raw_code = "g1_service"
@@ -1448,7 +2121,19 @@ try {
         effective_from = "2026-07-01T00:00:00+00:00"
         evidence_id = $evidenceRecord.id
     } | ConvertTo-Json
-    $feeMapping = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/fee-mappings" -Method Post -Headers $headers -ContentType "application/json" -Body $feeMappingBody
+    $genericOzonMappingStatus = Get-HttpStatus "http://127.0.0.1:$ApiPort/v1/finance/fee-mappings" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body $feeMappingBody
+    $feeMappingApproval = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/$($feeImport.id)/fee-mappings" -Method Post -Headers $approverHeaders -ContentType "application/json" -Body (@{
+        raw_code = "g1_service"
+        canonical_type = "platform_fee"
+        sign_rule = "absolute_outflow"
+        effective_from = "2026-07-01T00:00:00+00:00"
+        rationale = "Approve the observed G-1 Ozon service code as a platform fee"
+    } | ConvertTo-Json)
+    $feeCodesAfter = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/$($feeImport.id)/fee-codes" -Headers $headers
+    $feePromotion = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/imports/$($feeImport.id)/promote" -Method Post -Headers $headers
+    $formalFeeFacts = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/facts?fact_type=ozon_fee" -Headers $headers
+    $promotedFeeFact = $formalFeeFacts | Where-Object natural_key -eq "$orderExternalId`:g1_service"
+    $feeEntry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/facts/$($promotedFeeFact.id)/ingest" -Method Post -Headers $headers
     $fxBody = @{
         base_currency = "RUB"
         quote_currency = "CNY"
@@ -1460,9 +2145,8 @@ try {
     $fxRate = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/fx-rates" -Method Post -Headers $headers -ContentType "application/json" -Body $fxBody
     $orderEntry = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/facts/$($promotedFact.id)/ingest" -Method Post -Headers $headers
     foreach ($entry in @(
-        @{ entry_kind = "platform_fee"; source_ref = "g1-fee"; raw_fee_code = "g1_service"; amount = 99.5 },
-        @{ entry_kind = "platform_settlement"; source_ref = "g1-settlement"; amount = 1200 },
-        @{ entry_kind = "bank_receipt"; source_ref = "g1-bank"; amount = 1200 }
+        @{ entry_kind = "platform_settlement"; source_ref = "g1-settlement"; amount = 1200; evidence_id = $evidenceRecord.id },
+        @{ entry_kind = "bank_receipt"; source_ref = "g1-bank"; amount = 1200; evidence_id = $bankEvidenceRecord.id }
     )) {
         $entryBody = @{
             entry_kind = $entry.entry_kind
@@ -1472,25 +2156,53 @@ try {
             amount = $entry.amount
             currency = "RUB"
             effective_at = "2026-07-16T10:00:00+03:00"
-            evidence_id = $evidenceRecord.id
+            evidence_id = $entry.evidence_id
         }
-        if ($entry.raw_fee_code) { $entryBody.raw_fee_code = $entry.raw_fee_code }
         Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/entries" -Method Post -Headers $headers -ContentType "application/json" -Body ($entryBody | ConvertTo-Json) | Out-Null
     }
-    $reconciliation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/reconciliations/$orderExternalId" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
+    $reconciliation = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/reconciliations/$orderExternalId" -Method Post -Headers $financeReviewerHeaders -ContentType "application/json" -Body (@{
         quote_currency = "CNY"
         fx_source = "g1-fx"
         tolerance_ratio = 0.003
     } | ConvertTo-Json)
     if (
-        $feeMapping.raw_code -ne "g1_service" -or
+        $feeImport.record_type -ne "ozon_fee" -or
+        $feePromotionBeforeReview -ne 422 -or
+        $feeReview.review.metadata.decision -ne "accepted" -or
+        $feeCodesBefore.ready -ne $false -or
+        $feePromotionBeforeMapping -ne 422 -or
+        $genericOzonMappingStatus -ne 422 -or
+        $feeMappingApproval.mapping.raw_code -ne "g1_service" -or
+        $feeMappingApproval.approval.source -ne "ozon_fee_mapping_approval" -or
+        $feeCodesAfter.ready -ne $true -or
+        $feePromotion.promoted_count -ne 1 -or
+        $feeEntry.entry_kind -ne "platform_fee" -or
         $fxRate.base_currency -ne "RUB" -or
         $orderEntry.entry_kind -ne "order_receivable" -or
         $reconciliation.status -ne "matched" -or
-        $reconciliation.snapshot.unknown_fees.Count -ne 0
+        $reconciliation.snapshot.unknown_fees.Count -ne 0 -or
+        $reconciliation.snapshot.evidence_conflicts.Count -ne 0 -or
+        $reconciliation.snapshot.self_review_dependencies.Count -ne 0
     ) {
-        throw "Evidence-backed finance reconciliation smoke failed"
+        $diagnostic = @{
+            fee_import = $feeImport
+            promotion_before_review = $feePromotionBeforeReview
+            fee_review = $feeReview
+            codes_before = $feeCodesBefore
+            promotion_before_mapping = $feePromotionBeforeMapping
+            generic_mapping_status = $genericOzonMappingStatus
+            mapping_approval = $feeMappingApproval
+            codes_after = $feeCodesAfter
+            fee_promotion = $feePromotion
+            promoted_fee_fact = $promotedFeeFact
+            fee_entry = $feeEntry
+            fx_rate = $fxRate
+            order_entry = $orderEntry
+            reconciliation = $reconciliation
+        } | ConvertTo-Json -Depth 8 -Compress
+        throw "Evidence-backed finance reconciliation smoke failed: $diagnostic"
     }
+    $result.finance_fee_mapping_gate = $true
     $result.finance_reconciliation = $true
 
     $cashPlan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/finance/cash-plan" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
@@ -1510,11 +2222,81 @@ try {
     }
     $result.cash_forecast = $true
 
+    Write-Output "[G-1] Verifying bounded Evidence integrity monitoring"
+    $integrityScan = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/integrity-scan?limit=500&offset=0&as_of=2026-07-19T10%3A00%3A00%2B00%3A00" -Method Post -Headers $monitorHeaders
+    if (
+        $integrityScan.scanned -lt 1 -or
+        $integrityScan.invalid -ne 0 -or
+        -not $integrityScan.scan_evidence_id -or
+        $integrityScan.automatic_repair -ne $false -or
+        $integrityScan.automatic_delete -ne $false -or
+        $integrityScan.automatic_kill_switch_release -ne $false
+    ) {
+        throw "Evidence integrity monitor smoke failed"
+    }
+    $result.evidence_integrity_monitor = $true
+
+    Write-Output "[G-1] Verifying the 24x7 health loop with its dedicated monitor identity"
+    $healthLoop = (& (Join-Path $PSScriptRoot "run-24x7-health.ps1") -ControlPlaneOnly | Out-String) | ConvertFrom-Json
+    if (
+        -not $healthLoop.control_plane.ok -or
+        -not $healthLoop.operations_readiness.ok -or
+        -not $healthLoop.evidence_integrity.ok -or
+        -not $healthLoop.evidence_integrity.completed -or
+        $healthLoop.evidence_integrity.pages -lt 1 -or
+        $healthLoop.evidence_integrity.invalid -ne 0
+    ) {
+        throw (
+            "24x7 Evidence integrity health-loop smoke failed: " +
+            "control_plane=$($healthLoop.control_plane.ok) " +
+            "readiness=$($healthLoop.operations_readiness.ok) " +
+            "integrity=$($healthLoop.evidence_integrity.ok) " +
+            "completed=$($healthLoop.evidence_integrity.completed) " +
+            "pages=$($healthLoop.evidence_integrity.pages) " +
+            "invalid=$($healthLoop.evidence_integrity.invalid)"
+        )
+    }
+    $result.evidence_integrity_health_loop = $true
+
+    Write-Output "[G-1] Verifying legacy core numeric integrity on PostgreSQL"
+    Invoke-External -Command uv -Arguments @("run", "python", "scripts/verify_core_numeric_integrity_postgres.py")
+    $result.core_numeric_integrity = $true
+
+    if (-not $UseExistingPostgres) {
+        Write-Output "[G-1] Verifying backup and isolated restore at current migration head"
+        $backup = (& (Join-Path $PSScriptRoot "backup-postgres.ps1") `
+            -OutputDirectory $BackupSmokeDirectory -Database $DatabaseName | Out-String) | ConvertFrom-Json
+        & (Join-Path $PSScriptRoot "restore-postgres.ps1") `
+            -BackupPath $backup.archive -TargetDatabase $RestoreDatabaseName | Out-Null
+        $restore = Get-Content -LiteralPath (Join-Path $Runtime "RESTORE_VERIFICATION.json") -Raw | ConvertFrom-Json
+        $countSql = "SELECT concat_ws('|',(SELECT count(*) FROM products),(SELECT count(*) FROM orders),(SELECT count(*) FROM evidence_records),(SELECT count(*) FROM read_only_pilot_runs));"
+        $sourceCounts = (docker exec $PostgresContainer psql -U hermes -d $DatabaseName -Atc $countSql).Trim()
+        $restoredCounts = (docker exec $PostgresContainer psql -U hermes -d $RestoreDatabaseName -Atc $countSql).Trim()
+        if (
+            $restore.status -ne "PASS" -or
+            $restore.alembic_head -ne $result.migration -or
+            -not $sourceCounts -or
+            $sourceCounts -ne $restoredCounts
+        ) {
+            throw "Backup restore smoke failed: source=$sourceCounts restored=$restoredCounts head=$($restore.alembic_head)"
+        }
+        $countValues = $sourceCounts.Split("|")
+        $result.backup_restore = $true
+        $result.backup_restore_sha256 = $restore.sha256
+        $result.backup_restore_elapsed_seconds = $restore.elapsed_seconds
+        $result.backup_restore_counts = [ordered]@{
+            products = [int]$countValues[0]
+            orders = [int]$countValues[1]
+            evidence_records = [int]$countValues[2]
+            read_only_pilot_runs = [int]$countValues[3]
+        }
+    }
+
     Write-Output "[G-1] Starting disposable web UI on port $WebPort"
     $env:KJDS_API_URL = "http://127.0.0.1:$ApiPort"
     $WebProcess = Start-Process -FilePath (Get-Command npm.cmd).Source `
         -ArgumentList @("run", "dev", "--", "--webpack", "--hostname", "127.0.0.1", "--port", "$WebPort") `
-        -WorkingDirectory $WebSmoke -WindowStyle Hidden -PassThru `
+        -WorkingDirectory $Web -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $Runtime "g1-web.stdout.log") `
         -RedirectStandardError (Join-Path $Runtime "g1-web.stderr.log")
     Wait-Until -Description "G-1 web UI" -Condition { Test-HttpOk "http://127.0.0.1:$WebPort" }
@@ -1530,15 +2312,28 @@ try {
     $result.error = $_.Exception.Message
     throw
 } finally {
+    if ($WebContainer) {
+        docker rm --force $WebContainer 2>$null | Out-Null
+    }
     Stop-OwnedProcess $WebProcess
     Stop-OwnedProcess $ApiProcess
+    Stop-OwnedListener $WebProcess $WebPort
+    Stop-OwnedListener $ApiProcess $ApiPort
     Stop-SmokeProcesses
     $remainingListeners = Get-NetTCPConnection -LocalPort $ApiPort, $WebPort -State Listen -ErrorAction SilentlyContinue
     $result.cleanup_processes = $null -eq $remainingListeners
     if ($PostgresContainer) {
         docker exec $PostgresContainer dropdb --if-exists --force -U hermes $DatabaseName 2>$null | Out-Null
-        $remainingDatabase = docker exec $PostgresContainer psql -U hermes -d postgres -Atc "SELECT datname FROM pg_database WHERE datname='$DatabaseName';" 2>$null
+        docker exec $PostgresContainer dropdb --if-exists --force -U hermes $RestoreDatabaseName 2>$null | Out-Null
+        $remainingDatabase = docker exec $PostgresContainer psql -U hermes -d postgres -Atc "SELECT datname FROM pg_database WHERE datname IN ('$DatabaseName','$RestoreDatabaseName');" 2>$null
         $result.cleanup_database = $LASTEXITCODE -eq 0 -and -not $remainingDatabase
+    } elseif ($UseExistingPostgres) {
+        try {
+            & $Python "scripts/manage_g1_database.py" "drop" | Out-Null
+            $result.cleanup_database = $LASTEXITCODE -eq 0
+        } catch {
+            $result.cleanup_database = $false
+        }
     }
     if (Test-Path $WebSmoke) {
         $resolvedRuntime = [IO.Path]::GetFullPath($Runtime).TrimEnd("\") + "\"
@@ -1549,18 +2344,47 @@ try {
                 [IO.Directory]::Delete($nodeModulesJunction, $false)
             }
             if (Test-Path $WebSmoke) {
-                Remove-Item -LiteralPath $WebSmoke -Recurse -Force -ErrorAction SilentlyContinue
+                for ($attempt = 1; $attempt -le 16 -and (Test-Path $WebSmoke); $attempt++) {
+                    try {
+                        [IO.Directory]::Delete($resolvedSmoke, $true)
+                    } catch {
+                        $result.cleanup_file_errors += $_.Exception.Message
+                        Start-Sleep -Milliseconds 500
+                    }
+                }
             }
         }
     }
+    if (Test-Path $PytestTemp) {
+        $resolvedRuntime = [IO.Path]::GetFullPath($Runtime).TrimEnd("\") + "\"
+        $resolvedPytestTemp = [IO.Path]::GetFullPath($PytestTemp)
+        if ($resolvedPytestTemp.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
+            [IO.Directory]::Delete($resolvedPytestTemp, $true)
+        }
+    }
+    if (Test-Path $BackupSmokeDirectory) {
+        $resolvedRuntime = [IO.Path]::GetFullPath($Runtime).TrimEnd("\") + "\"
+        $resolvedBackup = [IO.Path]::GetFullPath($BackupSmokeDirectory)
+        if ($resolvedBackup.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
+            [IO.Directory]::Delete($resolvedBackup, $true)
+        }
+    }
     Remove-Item -LiteralPath $EvidenceSmokeFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $BankEvidenceSmokeFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $PilotResponseSmokeFile -Force -ErrorAction SilentlyContinue
     $EpisodeSmokeFiles | ForEach-Object { Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $ImportSmokeFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $FeeImportSmokeFile -Force -ErrorAction SilentlyContinue
     $result.cleanup_files =
         -not (Test-Path $WebSmoke) -and
+        -not (Test-Path $PytestTemp) -and
+        -not (Test-Path $BackupSmokeDirectory) -and
         -not (Test-Path $EvidenceSmokeFile) -and
+        -not (Test-Path $BankEvidenceSmokeFile) -and
+        -not (Test-Path $PilotResponseSmokeFile) -and
         -not ($EpisodeSmokeFiles | Where-Object { Test-Path $_ }) -and
-        -not (Test-Path $ImportSmokeFile)
+        -not (Test-Path $ImportSmokeFile) -and
+        -not (Test-Path $FeeImportSmokeFile)
     if ($result.status -eq "PASS" -and -not ($result.cleanup_processes -and $result.cleanup_database -and $result.cleanup_files)) {
         $result.status = "FAIL"
         $result.cleanup_error = "Disposable verification resources were not fully removed"

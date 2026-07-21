@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from sqlalchemy import (
@@ -54,6 +54,7 @@ class DecisionAnalysisRow(Base):
     assumptions_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     unknowns_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     evidence_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    selection_assessment_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     model_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     submitted_by: Mapped[str] = mapped_column(String, nullable=False)
     execution_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -154,6 +155,7 @@ class DecisionLifecycleService:
         forecast_due_at: str | None = None,
         assumptions: list[str] | None = None,
         unknowns: list[str] | None = None,
+        selection_assessment: dict[str, Any] | None = None,
         model_ref: str | None = None,
     ) -> dict[str, Any]:
         contract = self.contracts.get(contract_id)
@@ -165,7 +167,7 @@ class DecisionLifecycleService:
         submitted_by = submitted_by.strip()
         if not conclusion or not submitted_by:
             raise ValueError("Analysis requires a conclusion and submitting identity")
-        confidence = Decimal(confidence)
+        confidence = self._finite_decimal(confidence, "Analysis confidence")
         if not Decimal("0") <= confidence <= Decimal("1"):
             raise ValueError("Analysis confidence must be between 0 and 1")
         evidence_ids = self._evidence(evidence_ids)
@@ -179,11 +181,19 @@ class DecisionLifecycleService:
         recommended_option_id = (
             recommended_option_id.strip() if recommended_option_id else None
         )
-        if contract["profile_id"] == "decision_review":
+        if contract["profile_id"] in {"decision_review", "best_solution"}:
             if not recommended_option_id or recommended_option_id not in option_ids:
-                raise ValueError("Decision review analysis must select a registered option id")
+                raise ValueError("Decision analysis must select a registered option id")
         elif recommended_option_id:
-            raise ValueError("Recommended option is only valid for a decision review contract")
+            raise ValueError(
+                "Recommended option is only valid for an option-based decision contract"
+            )
+
+        normalized_assessment = self._selection_assessment(
+            contract=contract,
+            recommended_option_id=recommended_option_id,
+            value=selection_assessment,
+        )
 
         forecast = self._forecast(
             required=contract["profile_id"] in {"decision_review", "probabilistic_forecast"},
@@ -204,6 +214,7 @@ class DecisionLifecycleService:
             "forecast": forecast,
             "assumptions": clean_assumptions,
             "unknowns": clean_unknowns,
+            "selection_assessment": normalized_assessment,
             "evidence_ids": evidence_ids,
             "model_ref": model_ref.strip() if model_ref else None,
             "submitted_by": submitted_by,
@@ -240,6 +251,7 @@ class DecisionLifecycleService:
                 assumptions_json=clean_assumptions,
                 unknowns_json=clean_unknowns,
                 evidence_json=evidence_ids,
+                selection_assessment_json=normalized_assessment,
                 model_ref=model_ref.strip() if model_ref else None,
                 submitted_by=submitted_by,
                 execution_eligible=False,
@@ -272,6 +284,15 @@ class DecisionLifecycleService:
             raise ValueError("Analysis submitter cannot independently review their own work")
         evidence_ids = self._evidence(evidence_ids or [], required=verdict == "accepted")
         counterarguments = self._strings(counterarguments)
+        contract = self.contracts.get(analysis["contract_id"])
+        if (
+            verdict == "accepted"
+            and contract["profile_id"] == "best_solution"
+            and not counterarguments
+        ):
+            raise ValueError(
+                "Accepted best-solution review requires at least one counterargument"
+            )
         canonical = {
             "analysis_id": analysis_id,
             "verdict": verdict,
@@ -335,6 +356,7 @@ class DecisionLifecycleService:
         analysis = self.get_analysis(analysis_id)
         if contract["profile_id"] not in {
             "decision_review",
+            "best_solution",
             "probabilistic_forecast",
         }:
             raise ValueError("This interaction mode produces research, not a formal resolution")
@@ -426,7 +448,7 @@ class DecisionLifecycleService:
         due_at = self._datetime(forecast["due_at"], "forecast_due_at")
         if observed < due_at:
             raise ValueError("Outcome cannot be recorded before the registered forecast due date")
-        actual = Decimal(actual_value)
+        actual = self._finite_decimal(actual_value, "Actual outcome")
         evidence_ids = self._evidence(evidence_ids)
         notes = notes.strip()
         recorded_by = recorded_by.strip()
@@ -602,6 +624,161 @@ class DecisionLifecycleService:
         return [item.strip() for item in values or [] if item.strip()]
 
     @classmethod
+    def _selection_assessment(
+        cls,
+        *,
+        contract: dict[str, Any],
+        recommended_option_id: str | None,
+        value: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        if contract["profile_id"] != "best_solution":
+            if value:
+                raise ValueError(
+                    "Selection assessment is only valid for a best-solution contract"
+                )
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("Best-solution analysis requires a selection assessment")
+
+        options = contract["input"].get("options") or []
+        option_ids = [
+            str(item["id"]).strip()
+            for item in options
+            if isinstance(item, dict) and str(item.get("id", "")).strip()
+        ]
+        constraints = cls._strings(
+            contract["input"].get("context", {}).get("hard_constraints")
+        )
+        expected_pairs = {
+            (option_id, constraint)
+            for option_id in option_ids
+            for constraint in constraints
+        }
+
+        hard_results = value.get("hard_constraint_results")
+        if not isinstance(hard_results, list):
+            raise ValueError("Selection assessment requires hard_constraint_results")
+        normalized_hard_results = []
+        actual_pairs: set[tuple[str, str]] = set()
+        selected_passes = True
+        for item in hard_results:
+            if not isinstance(item, dict):
+                raise ValueError("Hard-constraint results must be objects")
+            option_id = str(item.get("option_id", "")).strip()
+            constraint = str(item.get("constraint", "")).strip()
+            rationale = str(item.get("rationale", "")).strip()
+            passed = item.get("passed")
+            pair = (option_id, constraint)
+            if pair not in expected_pairs or pair in actual_pairs:
+                raise ValueError(
+                    "Hard-constraint results must cover each registered option and constraint exactly once"
+                )
+            if not isinstance(passed, bool) or not rationale:
+                raise ValueError("Each hard-constraint result requires passed and rationale")
+            actual_pairs.add(pair)
+            if option_id == recommended_option_id and not passed:
+                selected_passes = False
+            normalized_hard_results.append(
+                {
+                    "option_id": option_id,
+                    "constraint": constraint,
+                    "passed": passed,
+                    "rationale": rationale,
+                }
+            )
+        if actual_pairs != expected_pairs:
+            raise ValueError(
+                "Hard-constraint results must cover each registered option and constraint exactly once"
+            )
+        if not selected_passes:
+            raise ValueError("Selected option must pass every registered hard constraint")
+
+        assessments = value.get("option_assessments")
+        if not isinstance(assessments, list):
+            raise ValueError("Selection assessment requires option_assessments")
+        required_fields = (
+            "expected_risk_adjusted_long_term_value",
+            "total_cost_of_ownership",
+            "maximum_loss",
+            "reversibility_and_rollback",
+            "time_to_value",
+            "operational_fit",
+        )
+        normalized_assessments = []
+        assessed_ids: set[str] = set()
+        for item in assessments:
+            if not isinstance(item, dict):
+                raise ValueError("Option assessments must be objects")
+            option_id = str(item.get("option_id", "")).strip()
+            evidence_quality = str(item.get("evidence_quality", "")).strip().upper()
+            if option_id not in option_ids or option_id in assessed_ids:
+                raise ValueError(
+                    "Option assessments must cover each registered option exactly once"
+                )
+            if evidence_quality not in {"A", "B", "C", "D", "UNKNOWN"}:
+                raise ValueError("Evidence quality must be A, B, C, D, or UNKNOWN")
+            normalized = {"option_id": option_id, "evidence_quality": evidence_quality}
+            for field in required_fields:
+                content = str(item.get(field, "")).strip()
+                if not content:
+                    raise ValueError(f"Option assessment requires {field}")
+                normalized[field] = content
+            assessed_ids.add(option_id)
+            normalized_assessments.append(normalized)
+        if assessed_ids != set(option_ids):
+            raise ValueError(
+                "Option assessments must cover each registered option exactly once"
+            )
+
+        rejected = value.get("rejected_options")
+        if not isinstance(rejected, list):
+            raise ValueError("Selection assessment requires rejected_options")
+        expected_rejected = set(option_ids) - {str(recommended_option_id)}
+        normalized_rejected = []
+        rejected_ids: set[str] = set()
+        for item in rejected:
+            if not isinstance(item, dict):
+                raise ValueError("Rejected options must be objects")
+            option_id = str(item.get("option_id", "")).strip()
+            reason = str(item.get("reason", "")).strip()
+            if option_id not in expected_rejected or option_id in rejected_ids or not reason:
+                raise ValueError("Every non-selected option requires one rejection reason")
+            rejected_ids.add(option_id)
+            normalized_rejected.append({"option_id": option_id, "reason": reason})
+        if rejected_ids != expected_rejected:
+            raise ValueError("Every non-selected option requires one rejection reason")
+
+        sensitivity = cls._strings(value.get("sensitivity_drivers"))
+        invalidation = cls._strings(value.get("invalidation_conditions"))
+        approval_requirement = str(value.get("approval_requirement", "")).strip()
+        if not sensitivity or not invalidation or not approval_requirement:
+            raise ValueError(
+                "Selection assessment requires sensitivity drivers, invalidation conditions, and approval requirement"
+            )
+        review_at = cls._datetime(str(value.get("review_at", "")), "review_at")
+
+        no_action_option_id = str(value.get("no_action_option_id") or "").strip() or None
+        omission_reason = str(value.get("no_action_omission_reason") or "").strip() or None
+        if no_action_option_id and no_action_option_id not in option_ids:
+            raise ValueError("No-action option must reference a registered option")
+        if not no_action_option_id and not omission_reason:
+            raise ValueError(
+                "Selection assessment requires a no-action option or an omission reason"
+            )
+
+        return {
+            "hard_constraint_results": normalized_hard_results,
+            "option_assessments": normalized_assessments,
+            "rejected_options": normalized_rejected,
+            "sensitivity_drivers": sensitivity,
+            "invalidation_conditions": invalidation,
+            "review_at": review_at.isoformat(),
+            "approval_requirement": approval_requirement,
+            "no_action_option_id": no_action_option_id,
+            "no_action_omission_reason": omission_reason,
+        }
+
+    @classmethod
     def _forecast(
         cls,
         *,
@@ -622,9 +799,9 @@ class DecisionLifecycleService:
         unit = str(unit).strip().upper()
         if not metric or not unit:
             raise ValueError("Forecast metric and unit cannot be blank")
-        value = Decimal(value)
-        low = Decimal(low)
-        high = Decimal(high)
+        value = cls._finite_decimal(value, "Forecast value")
+        low = cls._finite_decimal(low, "Forecast low")
+        high = cls._finite_decimal(high, "Forecast high")
         if low > value or value > high:
             raise ValueError("Forecast value must be inside its low/high interval")
         due = cls._datetime(str(due_at), "forecast_due_at")
@@ -636,6 +813,16 @@ class DecisionLifecycleService:
             "unit": unit,
             "due_at": due,
         }
+
+    @staticmethod
+    def _finite_decimal(value: object, name: str) -> Decimal:
+        try:
+            parsed = Decimal(value)
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be a finite number") from exc
+        if not parsed.is_finite():
+            raise ValueError(f"{name} must be a finite number")
+        return parsed
 
     @staticmethod
     def _datetime(value: str, name: str) -> datetime:
@@ -678,6 +865,7 @@ class DecisionLifecycleService:
             "forecast": forecast,
             "assumptions": row.assumptions_json,
             "unknowns": row.unknowns_json,
+            "selection_assessment": row.selection_assessment_json,
             "evidence_ids": row.evidence_json,
             "model_ref": row.model_ref,
             "submitted_by": row.submitted_by,

@@ -1,0 +1,37 @@
+{
+  "watchlist_version": "1.0",
+  "status": "needs_owner_approval",
+  "last_reviewed": "2026-07-16",
+  "sec_user_agent_env": "SEC_USER_AGENT",
+  "rules": {
+    "activate_only_when": [
+      "issuer identity and ticker are owner-approved",
+      "CIK or exchange identifier is verified against an official source",
+      "SEC_USER_AGENT contains an approved organization name and contact email",
+      "collection remains read-only"
+    ],
+    "events": ["8-K", "10-Q", "10-K", "20-F", "6-K", "S-1", "F-1", "13D", "13G"],
+    "dedupe": "accession_number",
+    "write_approval": "L3",
+    "financial_or_trading_action": "L4"
+  },
+  "official_sources": [
+    {"id":"sec_edgar","url":"https://data.sec.gov/","scope":"US filings and XBRL"},
+    {"id":"hkex_news","url":"https://www.hkexnews.hk/","scope":"Hong Kong issuer disclosures"},
+    {"id":"sse","url":"https://www.sse.com.cn/","scope":"Shanghai disclosures"},
+    {"id":"szse","url":"https://www.szse.cn/","scope":"Shenzhen disclosures"}
+  ],
+  "candidate_issuers": [
+    {"name":"NVIDIA","ticker":"NVDA","theme":"AI infrastructure","enabled":false,"official_id":null},
+    {"name":"Microsoft","ticker":"MSFT","theme":"enterprise AI","enabled":false,"official_id":null},
+    {"name":"Alphabet","ticker":"GOOGL","theme":"frontier model and cloud","enabled":false,"official_id":null},
+    {"name":"Amazon","ticker":"AMZN","theme":"cloud and commerce","enabled":false,"official_id":null},
+    {"name":"Meta Platforms","ticker":"META","theme":"open models and advertising","enabled":false,"official_id":null},
+    {"name":"Oracle","ticker":"ORCL","theme":"enterprise AI infrastructure","enabled":false,"official_id":null},
+    {"name":"Salesforce","ticker":"CRM","theme":"enterprise agents","enabled":false,"official_id":null},
+    {"name":"Alibaba Group","ticker":"BABA","theme":"China cloud and commerce","enabled":false,"official_id":null},
+    {"name":"Baidu","ticker":"BIDU","theme":"China foundation models","enabled":false,"official_id":null},
+    {"name":"JD.com","ticker":"JD","theme":"China commerce and logistics","enabled":false,"official_id":null},
+    {"name":"PDD Holdings","ticker":"PDD","theme":"China and cross-border commerce","enabled":false,"official_id":null}
+  ]
+}

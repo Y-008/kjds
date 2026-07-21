@@ -1,0 +1,67 @@
+{
+  "registry_id": "KJDS-LOOP-001",
+  "version": "1.0",
+  "status": "active",
+  "updated_at": "2026-07-17",
+  "principle": "automation must produce evidence, skills must be versioned, integrations must be least-privilege, subagents must be bounded, worktrees must be isolated, and memory must preserve provenance",
+  "modules": [
+    {
+      "id": "automations",
+      "purpose": "按时间、事件或人工批准触发有界任务",
+      "current_surfaces": ["scripts/verify-g1.ps1", "scripts/run-ozon-read-worker.ps1", "scripts/authority_radar", "OpenClaw command jobs"],
+      "state": "partial",
+      "required_controls": ["idempotency_key", "timeout", "retry_limit", "kill_switch", "run_id", "evidence_id"],
+      "promotion_gate": "G0 for read-only; G6 for production writes"
+    },
+    {
+      "id": "skills",
+      "purpose": "把已验证的业务能力封装为可复用、可评测、可回滚的程序记忆",
+      "current_surfaces": ["apps/control_plane application services", "causal policy registry", "docs/project/MASTER_SPEC.md"],
+      "state": "design_only",
+      "required_controls": ["skill_id", "version", "input_contract", "tool_allowlist", "success_metric", "failure_condition", "rollback", "evaluation_set", "owner"],
+      "promotion_gate": "Proposal -> Evaluation -> Shadow -> Audit -> Promotion"
+    },
+    {
+      "id": "integrations",
+      "purpose": "把外部平台、文件、模型和通知系统接入稳定协议",
+      "current_surfaces": ["apps/control_plane/ozon_worker.py", "apps/control_plane/ozon_read_worker.py", "apps/control_plane/connectors.py", "docs/project/registries/china_platform_connectors.json"],
+      "state": "partial",
+      "required_controls": ["credential_isolation", "allowed_operations", "schema_version", "timeout", "rate_limit", "response_evidence", "readback"],
+      "promotion_gate": "G0 read-only contract; G6 write connector"
+    },
+    {
+      "id": "subagents",
+      "purpose": "用受限专业角色分解任务，避免单一超级 Agent 持有全部权限",
+      "current_surfaces": ["Evidence/Compliance", "Product/Sourcing", "Finance/Cash", "Experiment", "Risk/Red-team", "Execution"],
+      "state": "design_only",
+      "required_controls": ["agent_identity", "role_scope", "budget", "tool_allowlist", "handoff_contract", "independent_review", "trace"],
+      "promotion_gate": "G5 shadow; G6 controlled execution"
+    },
+    {
+      "id": "worktrees",
+      "purpose": "隔离并行变更、实验分支、审查和回滚边界",
+      "current_surfaces": ["AGENTS.md", "docs/project/03_REMAINING_WORK_AND_PARALLEL_PLAN.md", "G-1 disposable database and web smoke"],
+      "state": "process_only",
+      "required_controls": ["single_owner_per_shared_schema", "clean_diff_review", "migration_replay", "artifact_retention", "no_destructive_git"],
+      "promotion_gate": "required for parallel code changes; no production promotion without review"
+    },
+    {
+      "id": "memory",
+      "purpose": "保存事实、知识、程序记忆及其来源、版本、置信度和失效条件",
+      "current_surfaces": ["Evidence Ledger", "Fact Promotion", "Decision Lifecycle", "Causal Knowledge", "Authority Radar SQLite"],
+      "state": "partial",
+      "required_controls": ["source", "captured_at", "effective_at", "hash", "confidence", "requires_review", "lineage", "retention"],
+      "promotion_gate": "Evidence Gate and independent review"
+    }
+  ],
+  "loop_contract": [
+    "Observe or propose",
+    "Validate inputs and permissions",
+    "Execute in bounded or shadow mode",
+    "Capture result and evidence",
+    "Review independently",
+    "Promote only after Gate",
+    "Record failure and expiry conditions",
+    "Re-evaluate before reuse"
+  ]
+}
