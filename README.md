@@ -2,7 +2,7 @@
 
 这是面向俄罗斯市场的 AI 跨境电商经营系统。生产数据平台采用 Supabase PostgreSQL，本机 PostgreSQL 保留作开发和离线备用。系统当前覆盖：
 
-- 市场原始观察、来源证据和可复算机会评分；
+- 市场原始观察、来源证据、可复算机会评分和新上新候选失败关闭预检；
 - Product / Compliance / Quality Passport；
 - 图片、视频、文案 Brief，生成资产和五项 QA；
 - 带预算封顶与止损线的增长实验；
@@ -11,7 +11,7 @@
 - 受模式和幂等约束的 Agent 任务；
 - 稳定的领域事件与外部连接器协议。
 - 1688、淘宝、天猫、京东、拼多多、Alibaba、AliExpress、Amazon、Temu、Shopify 和 WooCommerce 的统一供货连接器目录；
-- 采购价、国内运费、国际物流、包装、关税、尾程、平台费、广告与退货准备金的单品 CM3 和保本价；
+- 采购、国内物流、头程、包装、仓储、关税、税费、尾程、佣金、广告、退货、汇兑、资金占用、售后与损耗的版本化单品 CM3、逐项证据状态、保本价和敏感性；
 - 通过产品护照、正 CM3 和双人审批门禁生成 Ozon 上架草稿。
 
 整体边界见 [架构说明](docs/architecture.md)，经营执行见 [90 天执行总纲](Ozon_90天执行总纲.md)。
@@ -84,7 +84,11 @@ tests/
 
 `POST /v1/intake/sku-episodes` 与经营看板的“候选 SKU 一站式录入”会同时建立商品身份、Product / Compliance / Quality Passport 草稿、三份不可变原始证据及血缘。重复提交相同 SKU 与文件会恢复既有对象，不增加虚假版本；同一 SKU 更换商品身份会被拒绝。录入结果始终是待人工审核草稿，不会自动批准合规、采购或上架。
 
+`POST /v1/market/candidates/assess` 是新上新候选进入报价阶段前的失败关闭预检。它按 `candidate_ref` 隔离商品级观测，要求需求、竞争缺口、供货、合规红线和退货风险五类指标。每条观测必须在 `dimensions.evidence_id` 中引用 Evidence Ledger 原件，且原件哈希、来源、时效均通过复验；证据还须为正可信度、位于指定 `as_of` 前默认 90 天内，并来自至少两个独立来源族，同一机构的不同子域不会重复计数。输出只有 `reject`、`collect_evidence` 或 `request_three_quotes`；即使通过也不会创建 Product、采购单或 Listing，仍须进入现有三报价、Passport 和 CM3 链。
+
 `GET /v1/passport-reviews` 返回当前待审核队列；`POST /v1/products/{product_id}/passports/{kind}/review` 只允许审核角色提交批准、拒绝或阻断结论。审核会创建不可变新版本，使用预期版本防止覆盖并发修改，阻断或拒绝必须填写原因，重复提交同一结论可安全恢复原结果。
+
+`POST /v1/products/{product_id}/media-evidence` 与经营看板的“真实原图与权利证据”入口成对接收真实商品图片和独立授权/权利文件，校验文件签名、计算 SHA-256，并记录 SKU、变体、素材角色和来源血缘。每次上传只会追加 Quality Passport 草稿，不会生成图片或自动批准。`GET /v1/products/{product_id}/media-readiness` 按主图、背面、侧面、细节、配件、包装和比例参照七类素材显示缺口；只有七类素材全部进入已批准 Quality Passport 后，才允许进入完整图片生产。
 
 `POST /v1/sourcing/comparison-intake` 一次接收同一 SKU 的三家独立供应商报价、三份原始报价文件和一份共同利润假设证据，并为每家生成可比 CM3。`GET /v1/sourcing/comparisons/{product_id}` 返回排序后的报价比较；只有三家证据化供应商、完整利润场景、正 CM3 和三本已批准 Passport 同时满足时，`POST /v1/sourcing/procurement-candidates` 才能建立采购审批。采购申请仍须由不同身份通过双人控制，不会直接下单。
 
@@ -192,6 +196,8 @@ tests/
 
 `ozon.product.import.v3` 是首个支持命令投递的真实适配器。执行计划必须提供完整的 Ozon `import item`，而不是只提供标题差异，因为 Ozon 商品更新接口要求传递商品完整信息。Worker 在领取命令前分别读取 `/v3/product/info/list` 和 `/v4/product/info/attributes`，生成确定性状态指纹；通过后只调用一次 `/v3/product/import`，再用 `/v1/product/import/info` 确认异步任务。读取遇到 429 或服务端错误会有限退避重试；写请求遇到网络中断绝不盲重试，而是上报 `uncertain`，防止重复提交。
 
+只读 Worker 对传输错误、429 和 5xx 最多尝试三次，连续故障会开启进程内熔断；关键响应结构漂移以稳定错误码失败关闭。成功 run 必须先通过专用 `pilot_reader` 接口上传不含请求凭证的原始响应包，控制面复验 SHA-256 和大小并建立 `raw_response` 血缘后，才允许生成脱敏完成摘要。该闭环不代表已取得真实 Ozon 权限。
+
 本地启动前必须先保持 `KJDS_LIMITED_EXECUTION_ENABLED=false` 完成合同测试。准备真实试点时，为 API 注册独立 executor 密钥、上传本轮状态证据、设置 `KJDS_EXECUTION_EVIDENCE_ID`，最后显式运行 `docker compose --profile live-execution up ozon-worker`。没有真实 Ozon 凭证和人工批准时，Worker 不会启动。
 
 ## Ozon 数据合同与正式事实
@@ -232,13 +238,25 @@ uv run ruff check .
 uv run python -m pytest
 ```
 
-完整 G-1 验证（临时 PostgreSQL 迁移回放、API/DB/Web smoke、测试和构建）：
+完整 G-1 验证（临时 PostgreSQL 迁移回放、API/DB/Web smoke、测试、构建、生产 API 镜像运行时资源导入及生产 Web 镜像启动检查）：
 
 ```powershell
 .\scripts\verify-g1.ps1
 ```
 
 实时结果保存在 `.runtime/G1_VERIFICATION.json`。
+
+启动资料提交前，先把八份公开空模板复制到 Git 忽略的私密本地工作区，再校验结构、Ozon API 身份盘点、3 候选×5 指标、3 SKU×3 家报价覆盖和每个 SKU 的七类基础图片素材覆盖：
+
+```powershell
+.\scripts\prepare-startup-package.ps1
+uv run python scripts/validate_startup_package.py .runtime/startup-intake
+uv run python scripts/validate_startup_package.py .runtime/startup-intake --require-review-ready
+```
+
+准备命令会创建资料区，或只补充新版本缺失的模板；已有 CSV 永不覆盖。第一条校验命令检查文件合同，严格模式还会逐行报告哪些值、证据引用、负责人或素材角色尚未达到“可交人工证据录入”的最低完整度，并以退出码 3 失败关闭。两种校验都不读取引用文件、不写数据库、不自动导入或晋升事实。经营看板中的启动卡片是另一层状态，只认系统 Evidence、Passport、事实账和人工审批；它不会读取本地 CSV，本地预检通过也不会让卡片自动变绿或触发上架。不要修改 `web/public/startup/` 填写真实资料，也不要在 CSV 中保存密码、API Key、Token、完整银行账号或身份文件。`sku-media.csv` 只记录真实素材文件、来源授权和哈希的引用，不承载图片文件本身。
+
+当前基线为 Alembic `20260720_0038`、317 项 Python 测试、19 项 Web 测试、Next.js 与 G-1 验收链。候选研究已用版本化测量合同和 50/50/30 工程默认策略约束三报价资格；第三方研究信号只进入辅助收件箱。利润侧已落地 `ozon-ru-full-cost-v1`：15 项成本分别记录 `estimate/actual/unknown` 和 Evidence，未知、缺证据或未分类成本阻断采购与 Listing，只读解释返回 CM3、保本价、安全边际和售价 ±10% 敏感性。三候选组合台只汇总通过资格门的 Product，并用当前报价/当前场景展示 Passport、供应商、完整正 CM3、最佳场景和阻断原因；旧报价利润不会误放行。异常中心把服务端 Gate 阻断与真实 SLA 运行队列同屏展示，但不为资料缺口伪造逾期，也不自动补证、关事故、选品、采购、定价或上架。Ozon 财务待复核页现提供聚合核验包，展示原件哈希/大小/上传者、解析覆盖、逐币种精确合计、日期范围及实际计提组合，但不暴露原始业务行、不代替第二身份判断，也不自动分类或入账。计提分类进一步逐币种汇总并在批准和状态解析时逐行执行预期符号，不再跨币种相加或让符号失配批准误放行。三方对账还要求复核人独立于原件、分录、费用映射和 FX 的创建/批准者，并按 Blob 哈希隔离平台与银行原件。实际成本必须由非上传者按成本项核对原件、计费主体及金额—币种—期间，并在 readiness、采购、样品下单和 Listing 前复验；公开报价或规则不能冒充 `actual`。非技术复核工作台从后端读取 15 项唯一权威目录，Operator 只读，Reviewer/Compliance/Admin 提交不可变结论，且不会自动改场景、入账、采购、定价或上架。最新证据见 [BAS-077](docs/project/evidence/20260720_BAS_077_ACTUAL_COST_AUTHORITY_WORKBENCH.md)、[BAS-076](docs/project/evidence/20260720_BAS_076_ACTUAL_COST_AUTHORITY_GATE.md)、[BAS-075](docs/project/evidence/20260720_BAS_075_RECONCILIATION_DUAL_CONTROL.md)、[BAS-074](docs/project/evidence/20260720_BAS_074_ACCRUAL_CURRENCY_SIGN_INVARIANTS.md)、[BAS-073](docs/project/evidence/20260720_BAS_073_OZON_FINANCE_REVIEW_PACKET.md) 与 [BAS-065](docs/project/evidence/20260720_BAS_065_EVIDENCE_BACKED_EXCEPTION_WORKSPACE.md)。真实平台 Pilot、专用最小权限身份、真实需求报告、第二审批身份、三个候选原件、真实成本账单、经营负责人阈值复核和 G0 仍未放行。
 
 ## 当前成熟度
 

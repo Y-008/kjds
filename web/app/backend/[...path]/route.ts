@@ -1,3 +1,6 @@
+import { mutationOriginIsAllowed } from "../../../lib/identity-config";
+import { resolveWebIdentity, WebIdentityError } from "../../../lib/web-identity";
+
 type RouteContext = {
   params: Promise<{ path: string[] }>;
 };
@@ -7,9 +10,17 @@ const forwardedResponseHeaders = ["content-type", "content-disposition"];
 
 async function forward(request: Request, context: RouteContext): Promise<Response> {
   const apiBase = process.env.KJDS_API_URL ?? "http://127.0.0.1:8000";
-  const apiKey = process.env.KJDS_API_KEY;
-  if (!apiKey) {
-    return Response.json({ detail: "KJDS server identity is not configured" }, { status: 503 });
+  if (!mutationOriginIsAllowed(request)) {
+    return Response.json({ detail: "Cross-site or originless mutations are not allowed" }, { status: 403 });
+  }
+
+  let apiKey: string;
+  try {
+    apiKey = (await resolveWebIdentity()).apiKey;
+  } catch (error) {
+    const status = error instanceof WebIdentityError ? error.status : 503;
+    const detail = error instanceof Error ? error.message : "KJDS Web identity is unavailable";
+    return Response.json({ detail }, { status });
   }
 
   const { path } = await context.params;

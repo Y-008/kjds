@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Any
 
@@ -273,6 +273,21 @@ class FinanceService:
         with Session(self.engine) as session:
             return [self._fee_mapping(row) for row in session.scalars(query).all()]
 
+    def resolve_fee_mapping(self, *, provider: str, raw_code: str, effective_at: str) -> FeeMapping | None:
+        provider = provider.strip().lower()
+        raw_code = raw_code.strip()
+        if not provider or not raw_code:
+            raise ValueError("Fee mapping lookup requires provider and raw code")
+        effective = parse_timestamp(effective_at, "effective_at")
+        with Session(self.engine) as session:
+            row = self._resolve_fee_mapping(
+                session,
+                provider=provider,
+                raw_code=raw_code,
+                effective_at=effective,
+            )
+            return self._fee_mapping(row) if row is not None else None
+
     def add_fx_rate(
         self,
         *,
@@ -284,6 +299,7 @@ class FinanceService:
         evidence_id: str,
         created_by: str,
     ) -> FxRate:
+        rate = self._finite_decimal(rate, "FX rate")
         base = self._currency(base_currency)
         quote = self._currency(quote_currency)
         source = source.strip()
@@ -355,6 +371,10 @@ class FinanceService:
                 amount = Decimal(payload["amount"])
                 raw_fee_code = None
                 review_required = False
+            elif fact_type is OzonRecordType.ACCRUAL:
+                raise ValueError(
+                    "Ozon accrual facts require an approved accounting classification before finance ingestion"
+                )
             elif payload.get("amount") and payload.get("currency"):
                 entry_kind = FinanceEntryKind.RETURN_ADJUSTMENT
                 amount = Decimal(payload["amount"])
@@ -402,6 +422,7 @@ class FinanceService:
             raise ValueError("Finance entry requires source, source reference, and reconciliation key")
         if entry_kind is FinanceEntryKind.PLATFORM_FEE and not raw_fee_code:
             raise ValueError("Platform fee entry requires its raw fee code")
+        amount = self._finite_decimal(amount, "Finance entry amount")
         currency = self._currency(currency)
         effective = parse_timestamp(effective_at, "effective_at")
         now = datetime.now(UTC)
@@ -489,11 +510,13 @@ class FinanceService:
         tolerance_ratio: Decimal,
         created_by: str,
     ) -> dict[str, Any]:
+        tolerance_ratio = self._finite_decimal(tolerance_ratio, "Reconciliation tolerance")
         key = reconciliation_key.strip()
         quote = self._currency(quote_currency)
         fx_source = fx_source.strip()
-        if not key or not fx_source or tolerance_ratio < 0 or tolerance_ratio >= 1:
-            raise ValueError("Reconciliation requires key, FX source, and tolerance in [0, 1)")
+        created_by = created_by.strip()
+        if not key or not fx_source or not created_by or tolerance_ratio < 0 or tolerance_ratio >= 1:
+            raise ValueError("Reconciliation requires key, FX source, reviewer, and tolerance in [0, 1)")
         now = datetime.now(UTC)
         with Session(self.engine, expire_on_commit=False) as session, session.begin():
             entries = session.scalars(
@@ -511,7 +534,16 @@ class FinanceService:
             review_required: list[str] = []
             applied_fx: list[dict[str, str]] = []
             applied_mappings: list[dict[str, str]] = []
+            self_review_dependency_keys: set[tuple[str, str]] = set()
+            evidence_hash_by_id: dict[str, str] = {}
             for entry in entries:
+                if entry.created_by == created_by:
+                    self_review_dependency_keys.add(("finance_entry", entry.id))
+                evidence = session.get(EvidenceRecordRow, entry.evidence_id)
+                if evidence is not None:
+                    evidence_hash_by_id[evidence.id] = evidence.blob_sha256
+                    if evidence.created_by == created_by:
+                        self_review_dependency_keys.add(("evidence", evidence.id))
                 amount = entry.amount
                 if entry.entry_kind == FinanceEntryKind.PLATFORM_FEE.value:
                     mapping = self._resolve_fee_mapping(
@@ -530,6 +562,8 @@ class FinanceService:
                             "canonical_type": mapping.canonical_type,
                         }
                     )
+                    if mapping.approved_by == created_by:
+                        self_review_dependency_keys.add(("fee_mapping", mapping.id))
                 if entry.review_required:
                     review_required.append(entry.id)
                 try:
@@ -550,6 +584,9 @@ class FinanceService:
                 counts[entry.entry_kind] += 1
                 if rate_id:
                     applied_fx.append({"entry_id": entry.id, "fx_rate_id": rate_id})
+                    rate = session.get(FxRateRow, rate_id)
+                    if rate is not None and rate.created_by == created_by:
+                        self_review_dependency_keys.add(("fx_rate", rate.id))
 
             expected_settlement = (
                 totals[FinanceEntryKind.ORDER_RECEIVABLE.value]
@@ -570,6 +607,42 @@ class FinanceService:
                 )
                 if counts[kind.value] == 0
             ]
+            bank_evidence_ids = {
+                entry.evidence_id for entry in entries if entry.entry_kind == FinanceEntryKind.BANK_RECEIPT.value
+            }
+            platform_evidence_ids = {
+                entry.evidence_id
+                for entry in entries
+                if entry.entry_kind
+                in {
+                    FinanceEntryKind.ORDER_RECEIVABLE.value,
+                    FinanceEntryKind.PLATFORM_FEE.value,
+                    FinanceEntryKind.RETURN_ADJUSTMENT.value,
+                    FinanceEntryKind.PLATFORM_SETTLEMENT.value,
+                }
+            }
+            bank_evidence_by_hash = {
+                blob_hash: sorted(evidence_id for evidence_id in bank_evidence_ids if evidence_hash_by_id[evidence_id] == blob_hash)
+                for blob_hash in {evidence_hash_by_id[evidence_id] for evidence_id in bank_evidence_ids}
+            }
+            platform_evidence_by_hash = {
+                blob_hash: sorted(
+                    evidence_id for evidence_id in platform_evidence_ids if evidence_hash_by_id[evidence_id] == blob_hash
+                )
+                for blob_hash in {evidence_hash_by_id[evidence_id] for evidence_id in platform_evidence_ids}
+            }
+            evidence_conflicts = [
+                {
+                    "blob_sha256": blob_hash,
+                    "bank_evidence_ids": bank_evidence_by_hash[blob_hash],
+                    "platform_evidence_ids": platform_evidence_by_hash[blob_hash],
+                }
+                for blob_hash in sorted(bank_evidence_by_hash.keys() & platform_evidence_by_hash.keys())
+            ]
+            self_review_dependencies = [
+                {"type": dependency_type, "id": dependency_id}
+                for dependency_type, dependency_id in sorted(self_review_dependency_keys)
+            ]
             settlement_ratio = self._variance_ratio(settlement_variance, expected_settlement)
             bank_ratio = self._variance_ratio(bank_variance, settlement)
             if missing_fx:
@@ -580,6 +653,10 @@ class FinanceService:
                 status = "blocked_review_required"
             elif missing_legs:
                 status = "incomplete"
+            elif evidence_conflicts:
+                status = "blocked_evidence_independence"
+            elif self_review_dependencies:
+                status = "blocked_self_review"
             elif settlement_ratio <= tolerance_ratio and bank_ratio <= tolerance_ratio:
                 status = "matched"
             else:
@@ -599,6 +676,8 @@ class FinanceService:
                 "missing_fx": missing_fx,
                 "review_required": review_required,
                 "missing_legs": missing_legs,
+                "evidence_conflicts": evidence_conflicts,
+                "self_review_dependencies": self_review_dependencies,
                 "applied_fx": applied_fx,
                 "applied_fee_mappings": applied_mappings,
             }
@@ -641,6 +720,8 @@ class FinanceService:
         evidence_id: str,
         created_by: str,
     ) -> CashPlanItem:
+        amount = self._finite_decimal(amount, "Cash plan amount")
+        probability = self._finite_decimal(probability, "Cash plan probability")
         source = source.strip()
         source_ref = source_ref.strip()
         category = category.strip()
@@ -696,6 +777,7 @@ class FinanceService:
         quote_currency: str,
         fx_source: str,
     ) -> dict[str, Any]:
+        opening_balance = self._finite_decimal(opening_balance, "Opening balance")
         start = parse_timestamp(start_at, "start_at")
         end = start + timedelta(weeks=13)
         quote = self._currency(quote_currency)
@@ -775,9 +857,19 @@ class FinanceService:
     @staticmethod
     def _currency(value: str) -> str:
         currency = value.strip().upper()
-        if len(currency) != 3 or not currency.isalpha():
+        if len(currency) != 3 or not currency.isalpha() or not currency.isascii():
             raise ValueError("Currency must be a three-letter code")
         return currency
+
+    @staticmethod
+    def _finite_decimal(value: Decimal, name: str) -> Decimal:
+        try:
+            parsed = Decimal(value)
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be numeric") from exc
+        if not parsed.is_finite():
+            raise ValueError(f"{name} must be finite")
+        return parsed
 
     @staticmethod
     def _aware(value: datetime) -> datetime:

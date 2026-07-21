@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --extra dev --locked
+      - run: uv run python scripts/verify_secrets.py
+      - run: uv run ruff check .
+      - run: uv run pytest
+      - run: git diff --check
+
+  web-quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: hermes
+          POSTGRES_USER: hermes
+          POSTGRES_PASSWORD: hermes_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hermes -d hermes"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      KJDS_DATABASE_URL: postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/hermes
+      KJDS_DATABASE_PROVIDER: local-postgres
+      KJDS_REPOSITORY: postgres
+      KJDS_SHADOW_MODE: "true"
+      KJDS_LIMITED_EXECUTION_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --extra dev --locked
+      - name: Verify one migration head
+        run: test "$(uv run python -m alembic heads | grep -c '(head)')" -eq 1
+      - run: uv run python -m alembic upgrade head
+      - name: Verify API readiness
+        shell: bash
+        run: |
+          .venv/bin/python -m uvicorn apps.control_plane.api:app --host 127.0.0.1 --port 8000 > /tmp/kjds-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true; wait "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/health/ready; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/kjds-api.log
+          exit 1

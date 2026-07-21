@@ -1,0 +1,2 @@
+reconciliation_key,currency,order_receivable,explained_fees,adjustments,expected_settlement,platform_settlement,bank_receipt,fx_source,fx_rate,fx_effective_at,unknown_fee_amount,evidence_reference,owner,status
+sample-001,CNY,,,,,,,,,,,,,draft

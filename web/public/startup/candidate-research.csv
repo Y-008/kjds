@@ -1,0 +1,16 @@
+candidate_ref,candidate_name,market,channel,category,metric,value,confidence,window_days,sample_size,evidence_reference,source_family,observed_at,owner,status
+candidate://RU-001-v1,,RU,OZON,,demand_signal,,,28,30,,,,,draft
+candidate://RU-001-v1,,RU,OZON,,competition_gap,,,28,30,,,,,draft
+candidate://RU-001-v1,,RU,OZON,,supplier_available,,,1,1,,,,,draft
+candidate://RU-001-v1,,RU,OZON,,compliance_redline,,,1,1,,,,,draft
+candidate://RU-001-v1,,RU,OZON,,return_risk,,,28,30,,,,,draft
+candidate://RU-002-v1,,RU,OZON,,demand_signal,,,28,30,,,,,draft
+candidate://RU-002-v1,,RU,OZON,,competition_gap,,,28,30,,,,,draft
+candidate://RU-002-v1,,RU,OZON,,supplier_available,,,1,1,,,,,draft
+candidate://RU-002-v1,,RU,OZON,,compliance_redline,,,1,1,,,,,draft
+candidate://RU-002-v1,,RU,OZON,,return_risk,,,28,30,,,,,draft
+candidate://RU-003-v1,,RU,OZON,,demand_signal,,,28,30,,,,,draft
+candidate://RU-003-v1,,RU,OZON,,competition_gap,,,28,30,,,,,draft
+candidate://RU-003-v1,,RU,OZON,,supplier_available,,,1,1,,,,,draft
+candidate://RU-003-v1,,RU,OZON,,compliance_redline,,,1,1,,,,,draft
+candidate://RU-003-v1,,RU,OZON,,return_risk,,,28,30,,,,,draft

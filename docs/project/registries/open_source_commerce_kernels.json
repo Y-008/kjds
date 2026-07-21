@@ -1,0 +1,88 @@
+{
+  "registry_id": "KJDS-OSS-KERNEL-001",
+  "captured_at": "2026-07-20T00:00:00+08:00",
+  "status": "research_only",
+  "selection": {
+    "current": "kjds_ozon_vertical_slice",
+    "conditional_poc": "erpnext_sidecar",
+    "rule": "Keep KJDS as the evidence, decision, experiment and governed-execution control plane. Promote an ERP only after isolated reconciliation proves it can own deterministic operational documents without becoming a second mutable truth.",
+    "automatic_install": false
+  },
+  "hard_constraints": [
+    "Ozon official evidence and settlement provenance remain traceable",
+    "No shared seller password or unrestricted production credential",
+    "One authoritative owner for each mutable business object",
+    "API or webhook integration with least privilege and full audit",
+    "Decimal money, multi-currency, inventory and accounting controls",
+    "Export, backup, rollback and complete removal are proven",
+    "No automatic listing, procurement, payment or price change"
+  ],
+  "candidates": [
+    {
+      "id": "erpnext_sidecar",
+      "name": "ERPNext",
+      "repository": "https://github.com/frappe/erpnext",
+      "license": "GPL-3.0",
+      "fit": "best_erp_poc_candidate",
+      "strengths": ["accounting", "buying", "selling", "inventory", "suppliers", "multi_currency", "REST_API", "webhooks"],
+      "gaps": ["no_verified_native_ozon_adapter", "separate_frappe_mariadb_runtime", "china_russia_localization_requires_validation"],
+      "next_gate": "isolated_read_only_poc_and_sample_reconciliation",
+      "requires_review": true
+    },
+    {
+      "id": "odoo_community",
+      "name": "Odoo Community",
+      "repository": "https://github.com/odoo/odoo",
+      "license": "LGPL-3.0 core with edition and add-on boundaries requiring review",
+      "fit": "broad_erp_alternative",
+      "strengths": ["large_module_ecosystem", "inventory", "sales", "purchase", "accounting_primitives"],
+      "gaps": ["community_enterprise_feature_boundary", "higher_customization_and_upgrade_cost", "no_verified_native_ozon_adapter"],
+      "next_gate": "only_if_erpnext_fails_a_hard_constraint",
+      "requires_review": true
+    },
+    {
+      "id": "medusa",
+      "name": "Medusa",
+      "repository": "https://github.com/medusajs/medusa",
+      "license": "MIT",
+      "fit": "future_dtc_or_b2b_commerce_candidate",
+      "strengths": ["modular_commerce", "catalog", "orders", "pricing", "promotions", "TypeScript"],
+      "gaps": ["not_an_accounting_erp", "storefront_first_scope", "duplicates_current_ozon_priority_work"],
+      "next_gate": "defer_until_owned_storefront_is_a_funded_channel",
+      "requires_review": true
+    },
+    {
+      "id": "saleor",
+      "name": "Saleor",
+      "repository": "https://github.com/saleor/saleor",
+      "license": "BSD-3-Clause",
+      "fit": "future_multichannel_headless_commerce_candidate",
+      "strengths": ["API_only", "GraphQL", "multichannel", "multi_currency", "multi_warehouse"],
+      "gaps": ["not_an_accounting_erp", "service_and_graphql_complexity", "no_verified_native_ozon_adapter"],
+      "next_gate": "defer_until_owned_multichannel_storefront_need_is_real",
+      "requires_review": true
+    },
+    {
+      "id": "vendure",
+      "name": "Vendure Core",
+      "repository": "https://github.com/vendurehq/vendure",
+      "license": "GPL-3.0",
+      "fit": "future_plugin_based_commerce_candidate",
+      "strengths": ["catalog", "orders", "pricing", "promotions", "customers", "stock", "GraphQL", "plugin_contracts"],
+      "gaps": ["not_an_accounting_erp", "additional_Node_and_GraphQL_control_plane", "no_verified_native_ozon_adapter"],
+      "next_gate": "defer_until_commerce_backend_replacement_has_measured_value",
+      "requires_review": true
+    },
+    {
+      "id": "dolibarr",
+      "name": "Dolibarr",
+      "repository": "https://github.com/Dolibarr/dolibarr",
+      "license": "GPL-3.0",
+      "fit": "simpler_erp_fallback",
+      "strengths": ["suppliers", "invoices", "orders", "stock", "accounting", "official_docker"],
+      "gaps": ["PHP_runtime", "lower_architecture_fit", "no_verified_native_ozon_adapter"],
+      "next_gate": "only_if_erpnext_is_operationally_too_heavy",
+      "requires_review": true
+    }
+  ]
+}

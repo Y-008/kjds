@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -83,10 +84,21 @@ class PromotionResult:
 
 
 class FactPromotionService:
-    def __init__(self, engine) -> None:
+    def __init__(
+        self,
+        engine,
+        *,
+        finance_review_validator: Callable[[str], None] | None = None,
+        fee_mapping_validator: Callable[[str], None] | None = None,
+        accrual_classification_validator: Callable[[str], None] | None = None,
+    ) -> None:
         self.engine = engine
+        self.finance_review_validator = finance_review_validator
+        self.fee_mapping_validator = fee_mapping_validator
+        self.accrual_classification_validator = accrual_classification_validator
 
     def promote(self, import_id: str, *, created_by: str) -> PromotionResult:
+        self._require_finance_review(import_id)
         now = datetime.now(UTC)
         promoted = 0
         duplicate = 0
@@ -186,6 +198,31 @@ class FactPromotionService:
             session.add(run)
             session.flush()
             return self._promotion(run)
+
+    def _require_finance_review(self, import_id: str) -> None:
+        with Session(self.engine) as session:
+            job = session.get(ImportJobRow, import_id)
+            if job is None:
+                raise KeyError(f"Unknown import: {import_id}")
+            finance_types = {
+                OzonRecordType.FEE.value,
+                OzonRecordType.ACCRUAL.value,
+                OzonRecordType.RETURN.value,
+                OzonRecordType.SETTLEMENT.value,
+            }
+            if job.record_type not in finance_types:
+                return
+        if self.finance_review_validator is None:
+            raise ValueError("Finance import requires an independent accepted source review")
+        self.finance_review_validator(import_id)
+        if job.record_type == OzonRecordType.FEE.value:
+            if self.fee_mapping_validator is None:
+                raise ValueError("Ozon fee import requires approved fee mappings")
+            self.fee_mapping_validator(import_id)
+        if job.record_type == OzonRecordType.ACCRUAL.value:
+            if self.accrual_classification_validator is None:
+                raise ValueError("Ozon accrual import requires approved control classifications")
+            self.accrual_classification_validator(import_id)
 
     def get(self, fact_id: str) -> FactRecord:
         with Session(self.engine) as session:

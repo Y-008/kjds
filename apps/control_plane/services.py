@@ -21,6 +21,7 @@ from .domain import (
     ProductStatus,
     ProfitSnapshot,
 )
+from .numeric_semantics import ascii_currency, finite_decimal
 from .repository import Repository
 
 HIGH_RISK_ACTIONS = {
@@ -50,8 +51,9 @@ class CommerceService:
         self.evidence_validator = evidence_validator
 
     def create_product(self, *, sku: str, name: str) -> Product:
-        product = self.repo.add_product(Product(sku=sku.strip(), name=name.strip()))
-        self.repo.append_event("product.created", product.id, {"sku": product.sku})
+        with self.repo.transaction():
+            product = self.repo.add_product(Product(sku=sku.strip(), name=name.strip()))
+            self.repo.append_event("product.created", product.id, {"sku": product.sku})
         return product
 
     def add_passport(
@@ -94,8 +96,9 @@ class CommerceService:
             raise ValueError(
                 f"Approved {kind.value} passport missing required facts: {', '.join(passport.missing_required_facts)}"
             )
-        self.repo.add_passport(passport)
-        self.repo.append_event("passport.recorded", product_id, {"kind": kind, "version": passport.version})
+        with self.repo.transaction():
+            self.repo.add_passport(passport)
+            self.repo.append_event("passport.recorded", product_id, {"kind": kind, "version": passport.version})
         return passport
 
     def list_products(self) -> list[Product]:
@@ -230,8 +233,9 @@ class CommerceService:
         if missing:
             raise ValueError(f"Approved passports required: {', '.join(missing)}")
         product.status = ProductStatus.VALIDATED
-        self.repo.save_product(product)
-        self.repo.append_event("product.validated", product.id, {})
+        with self.repo.transaction():
+            self.repo.save_product(product)
+            self.repo.append_event("product.validated", product.id, {})
         return product
 
     def create_order(
@@ -247,6 +251,9 @@ class CommerceService:
         product = self.repo.get_product(product_id)
         if product.status not in {ProductStatus.VALIDATED, ProductStatus.APPROVED_FOR_LISTING, ProductStatus.ACTIVE}:
             raise ValueError("Product must pass all passports before an order can be recorded")
+        gross_revenue = finite_decimal(gross_revenue, "Gross revenue")
+        booked_fx_rate = finite_decimal(booked_fx_rate, "Booked FX rate")
+        currency = ascii_currency(currency)
         if quantity <= 0 or gross_revenue < 0 or booked_fx_rate <= 0:
             raise ValueError("Invalid order quantity, revenue, or FX rate")
         order = Order(
@@ -257,8 +264,9 @@ class CommerceService:
             gross_revenue=gross_revenue,
             booked_fx_rate=booked_fx_rate,
         )
-        self.repo.add_order(order)
-        self.repo.append_event("order.created", order.id, {"external_id": external_id})
+        with self.repo.transaction():
+            self.repo.add_order(order)
+            self.repo.append_event("order.created", order.id, {"external_id": external_id})
         return order
 
     def add_charge(
@@ -272,19 +280,23 @@ class CommerceService:
         evidence_ref: str,
     ) -> Charge:
         self.repo.get_order(order_id)
+        amount = finite_decimal(amount, "Charge amount")
+        fx_rate = finite_decimal(fx_rate, "Charge FX rate")
+        currency = ascii_currency(currency)
         if amount < 0 or fx_rate <= 0 or not evidence_ref.strip():
             raise ValueError("Charge requires non-negative amount, positive FX rate, and evidence")
-        charge = self.repo.add_charge(
-            Charge(
-                order_id=order_id,
-                kind=kind,
-                amount=amount,
-                currency=currency,
-                fx_rate=fx_rate,
-                evidence_ref=evidence_ref,
+        with self.repo.transaction():
+            charge = self.repo.add_charge(
+                Charge(
+                    order_id=order_id,
+                    kind=kind,
+                    amount=amount,
+                    currency=currency,
+                    fx_rate=fx_rate,
+                    evidence_ref=evidence_ref,
+                )
             )
-        )
-        self.repo.append_event("charge.recorded", order_id, {"kind": kind, "amount": str(amount)})
+            self.repo.append_event("charge.recorded", order_id, {"kind": kind, "amount": str(amount)})
         return charge
 
     def calculate_profit(self, order_id: str) -> ProfitSnapshot:
@@ -315,16 +327,17 @@ class CommerceService:
                 and existing.status == ApprovalStatus.PENDING
             ):
                 return existing
-        approval = self.repo.add_approval(
-            Approval(
-                action=action,
-                resource_type=resource_type,
-                resource_id=resource_id,
-                requested_by=requested_by,
-                payload=payload,
+        with self.repo.transaction():
+            approval = self.repo.add_approval(
+                Approval(
+                    action=action,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    requested_by=requested_by,
+                    payload=payload,
+                )
             )
-        )
-        self.repo.append_event("approval.requested", approval.id, {"action": action})
+            self.repo.append_event("approval.requested", approval.id, {"action": action})
         return approval
 
     def decide_approval(self, approval_id: str, *, approved: bool, decided_by: str, reason: str) -> Approval:
@@ -336,8 +349,9 @@ class CommerceService:
         approval.status = ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
         approval.decided_by = decided_by
         approval.decision_reason = reason
-        self.repo.save_approval(approval)
-        self.repo.append_event("approval.decided", approval.id, {"status": approval.status})
+        with self.repo.transaction():
+            self.repo.save_approval(approval)
+            self.repo.append_event("approval.decided", approval.id, {"status": approval.status})
         return approval
 
     def submit_agent_task(
@@ -356,7 +370,8 @@ class CommerceService:
         if not idempotency_key.strip():
             raise ValueError("Agent task requires an idempotency key")
         task = AgentTask(agent, mode, task_type, input_data, requested_by, idempotency_key)
-        stored = self.repo.add_agent_task(task)
-        if stored.id == task.id:
-            self.repo.append_event("agent_task.submitted", task.id, {"agent": agent, "mode": mode})
+        with self.repo.transaction():
+            stored = self.repo.add_agent_task(task)
+            if stored.id == task.id:
+                self.repo.append_event("agent_task.submitted", task.id, {"agent": agent, "mode": mode})
         return stored

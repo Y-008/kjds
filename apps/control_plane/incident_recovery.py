@@ -232,7 +232,11 @@ class IncidentRecoveryService:
         missing = [check for check in RECOVERY_CHECKS if not incident["checks"].get(check, {}).get("passed")]
         if missing:
             raise ValueError(f"Recovery checklist is incomplete: {', '.join(missing)}")
-        if incident["mode"] == "live" and not self.kill_switch.current().engaged:
+        if (
+            incident["mode"] == "live"
+            and incident["severity"] in {"critical", "high"}
+            and not self.kill_switch.current().engaged
+        ):
             raise ValueError("Live recovery must be independently reviewed before kill switch release")
         with Session(self.engine) as session, session.begin():
             row = self._row(session, incident_id, lock=True)

@@ -6,7 +6,7 @@ import json
 import math
 import secrets
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from sqlalchemy import (
@@ -194,9 +194,9 @@ class CausalExperimentService:
         variants = self._variants(variants)
         if target_sample_size < 20:
             raise ValueError("Target sample size must be at least 20")
-        mde = Decimal(minimum_detectable_effect)
-        budget = Decimal(budget_cap_amount)
-        stop_loss = Decimal(stop_loss_amount)
+        mde = self._finite_decimal(minimum_detectable_effect, "Minimum detectable effect")
+        budget = self._finite_decimal(budget_cap_amount, "Budget cap")
+        stop_loss = self._finite_decimal(stop_loss_amount, "Stop loss")
         if mde <= 0 or budget <= 0 or stop_loss <= 0 or stop_loss > budget:
             raise ValueError("Experiment requires positive MDE and a stop loss within budget")
         currency = currency.strip().upper()
@@ -487,7 +487,7 @@ class CausalExperimentService:
         allowed_metrics = {item["metric"] for item in protocol["effect_metrics"]}
         if metric not in allowed_metrics:
             raise ValueError("Metric is not part of the preregistered effect model")
-        numeric_value = Decimal(value)
+        numeric_value = self._finite_decimal(value, "Observation value")
         canonical = {
             "assignment_id": assignment_id,
             "metric": metric,
@@ -552,7 +552,7 @@ class CausalExperimentService:
         created_by = created_by.strip()
         if not metric or not created_by:
             raise ValueError("Safety check requires metric and recording identity")
-        numeric_value = Decimal(value)
+        numeric_value = self._finite_decimal(value, "Safety check value")
         direction, threshold = self._safety_threshold(protocol, metric)
         if metric in {"budget_spend_amount", "cumulative_loss_amount"} and numeric_value < 0:
             raise ValueError("Budget spend and cumulative loss must be non-negative")
@@ -836,7 +836,9 @@ class CausalExperimentService:
         for item in values:
             variant_id = str(item.get("id", "")).strip()
             label = str(item.get("label", "")).strip()
-            allocation = Decimal(str(item.get("allocation", "0")))
+            allocation = CausalExperimentService._finite_decimal(
+                item.get("allocation", "0"), "Variant allocation"
+            )
             control_value = item.get("control", False)
             if not isinstance(control_value, bool):
                 raise ValueError("Variant control flag must be boolean")
@@ -895,7 +897,9 @@ class CausalExperimentService:
         for item in values:
             metric = str(item.get("metric", "")).strip()
             role = str(item.get("role", "")).strip().lower()
-            multiplier = Decimal(str(item.get("multiplier", "0")))
+            multiplier = CausalExperimentService._finite_decimal(
+                item.get("multiplier", "0"), "Effect metric multiplier"
+            )
             required_value = item.get("required", True)
             if not metric or role not in allowed_roles or multiplier == 0:
                 raise ValueError(
@@ -938,16 +942,29 @@ class CausalExperimentService:
             threshold = item.get("threshold")
             if not metric or direction not in {"max", "min"} or threshold is None:
                 raise ValueError("Guardrail requires metric, min/max direction, and threshold")
+            numeric_threshold = CausalExperimentService._finite_decimal(
+                threshold, "Guardrail threshold"
+            )
             result.append(
                 {
                     "metric": metric,
                     "direction": direction,
-                    "threshold": str(Decimal(str(threshold))),
+                    "threshold": str(numeric_threshold),
                 }
             )
         if not result:
             raise ValueError("Experiment requires at least one preregistered guardrail")
         return result
+
+    @staticmethod
+    def _finite_decimal(value: object, name: str) -> Decimal:
+        try:
+            parsed = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be a finite number") from exc
+        if not parsed.is_finite():
+            raise ValueError(f"{name} must be a finite number")
+        return parsed
 
     def _evidence(self, values: list[str]) -> list[str]:
         result = sorted({item.strip() for item in values if item.strip()})

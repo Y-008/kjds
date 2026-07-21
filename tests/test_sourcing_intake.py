@@ -4,10 +4,10 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
-from apps.control_plane.evidence import EvidenceService
+from apps.control_plane.evidence import EvidenceGrade, EvidenceService
 from apps.control_plane.repository import InMemoryRepository
 from apps.control_plane.services import CommerceService
-from apps.control_plane.sourcing import ProfitInputs, SourcePlatform, SourcingService
+from apps.control_plane.sourcing import REQUIRED_COST_EVIDENCE_KEYS, ProfitInputs, SourcePlatform, SourcingService
 from apps.control_plane.sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeService
 from apps.control_plane.sql_repository import Base
 
@@ -50,6 +50,31 @@ def make_intake():
     repository = InMemoryRepository()
     commerce = CommerceService(repository, evidence_validator=evidence.require_valid)
     product = commerce.create_product(sku="RU-001", name="Storage box")
+    candidate_basis = evidence.capture(
+        content=b"candidate research basis",
+        filename="candidate-basis.txt",
+        content_type="text/plain",
+        source="candidate_research",
+        source_ref="https://market.example/candidates/RU-001",
+        grade=EvidenceGrade.A,
+        effective_at="2026-07-16T00:00:00+08:00",
+        effective_until=None,
+        created_by="operator-1",
+    )
+    repository.append_event(
+        "product.candidate_sourcing_workspace_created",
+        product.id,
+        {"candidate_ref": "candidate-RU-001"},
+        actor_id="operator-1",
+        source_evidence_id=candidate_basis.id,
+    )
+    evidence.link(
+        evidence_id=candidate_basis.id,
+        target_type="product",
+        target_id=product.id,
+        relationship="candidate_basis",
+        created_by="operator-1",
+    )
     store = MemorySourcingStore()
     sourcing = SourcingService(store, repository, evidence_validator=evidence.require_valid)
     return product, store, SupplierComparisonIntakeService(sourcing=sourcing, evidence=evidence)
@@ -140,6 +165,26 @@ def test_supplier_comparison_rejects_duplicate_supplier_identity():
         )
 
 
+def test_supplier_comparison_rejects_product_without_candidate_handoff_before_capture():
+    product, store, intake = make_intake()
+    intake.sourcing.repository.events.clear()
+
+    with pytest.raises(ValueError, match="candidate sourcing handoff"):
+        intake.ingest(
+            product_id=product.id,
+            effective_at="2026-07-16T00:00:00+08:00",
+            offers=offers(),
+            profit_inputs=profit_inputs(),
+            assumption_content=b"assumptions",
+            assumption_filename="assumptions.txt",
+            assumption_content_type="text/plain",
+            created_by="operator-1",
+        )
+
+    assert store.offers == {}
+    assert len(intake.evidence.list()) == 1
+
+
 def test_identical_procurement_approval_request_is_idempotent():
     product, _, intake = make_intake()
     payload = {"product_id": product.id, "offer_id": "offer-1", "quantity": 100}
@@ -161,3 +206,24 @@ def test_identical_procurement_approval_request_is_idempotent():
     )
     assert retry.id == requested.id
     assert len(first.list_approvals()) == 1
+
+
+def test_supplier_comparison_preserves_unknown_cost_state_and_blocks_procurement():
+    product, _, intake = make_intake()
+    states = {key: "estimate" for key in REQUIRED_COST_EVIDENCE_KEYS}
+    states["tax"] = "unknown"
+    result = intake.ingest(
+        product_id=product.id,
+        effective_at="2026-07-16T00:00:00+08:00",
+        offers=offers(),
+        profit_inputs=profit_inputs(),
+        cost_states=states,
+        assumption_content=b"approved assumptions except unknown tax",
+        assumption_filename="assumptions.txt",
+        assumption_content_type="text/plain",
+        created_by="operator-1",
+    )
+
+    assert result["comparison"]["ready_for_procurement_review"] is False
+    assert all(item.cost_states["tax"] == "unknown" for item in result["scenarios"])
+    assert all("tax" not in item.cost_evidence for item in result["scenarios"])

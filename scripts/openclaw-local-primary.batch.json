@@ -1,0 +1,352 @@
+[
+  {
+    "path": "agents.defaults.model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.defaults.model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[0].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[0].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[2].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[2].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[3].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[3].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[4].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[4].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[5].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[5].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[6].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[6].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[7].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[7].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[8].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[8].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[9].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[9].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[10].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[10].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[11].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[11].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[12].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[12].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[13].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[13].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[14].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[14].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[15].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[15].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[16].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[16].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[17].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[17].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[18].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[18].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[19].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[19].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[20].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[20].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[21].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[21].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[22].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[22].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[23].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[23].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[24].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[24].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[25].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[25].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[26].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[26].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[27].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[27].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[28].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[28].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[29].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[29].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[30].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[30].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[31].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[31].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[32].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[32].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[33].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[33].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  },
+  {
+    "path": "agents.list[34].model.primary",
+    "value": "hermes-gateway/hermes-agent"
+  },
+  {
+    "path": "agents.list[34].model.fallbacks",
+    "value": [
+      "ollama-direct/gemma4:26b"
+    ]
+  }
+]

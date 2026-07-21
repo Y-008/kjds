@@ -20,6 +20,12 @@ def test_record_type_detection_covers_order_fee_return_and_settlement_exports():
     assert detect_record_type("transactions.csv", ["fee_type"]) is OzonRecordType.FEE
     assert detect_record_type("returns.csv", ["return_reason"]) is OzonRecordType.RETURN
     assert detect_record_type("payouts.csv", ["amount"]) is OzonRecordType.SETTLEMENT
+    assert (
+        detect_record_type(
+            "Отчет по начислениям.xlsx", ["ID начисления", "Группа услуг", "Тип начисления"]
+        )
+        is OzonRecordType.ACCRUAL
+    )
 
 
 def test_normalization_is_strict_and_time_zone_aware():
@@ -55,3 +61,21 @@ def test_normalization_rejects_ambiguous_time_and_invalid_money():
     assert "amount: invalid decimal" in errors
     assert "currency: must be a three-letter code" in errors
     assert "effective_at must include a timezone" in errors
+
+
+def test_normalization_rejects_non_finite_numbers_and_non_ascii_currency():
+    _, order_errors = normalize_record(
+        OzonRecordType.ORDER,
+        {
+            "external_id": "order-unsafe",
+            "sku": "sku-1",
+            "quantity": "Infinity",
+            "gross_revenue": "NaN",
+            "currency": "РУБ",
+            "effective_at": "2026-07-16T10:00:00+03:00",
+        },
+    )
+
+    assert "quantity: must be a positive integer" in order_errors
+    assert "gross_revenue: invalid decimal" in order_errors
+    assert "currency: must be a three-letter code" in order_errors

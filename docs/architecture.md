@@ -78,6 +78,8 @@ Brief 只能读取已批准的 Product、Compliance、Quality Passport，避免�
 - 商标、著作权、肖像和素材授权；
 - 品牌一致性。
 
+商品图片以真实样品图或已授权供应商原图为事实源，不允许用纯文本重新生成商品本体。主图只做 `retouch`；场景图以真实商品为锁定前景做 `composite`；尺寸、配件和俄语卖点使用固定 SVG/HTML 模板做 `infographic`。每个图片 Brief 必须引用 Passport 内的原图和权利 Evidence，输出也必须先写成不可变 Evidence，并记录来源图片、处理方式、生成时间和 ContentAsset ID。图片另需通过 `product_fidelity`、`source_provenance`、`text_accuracy` 三项 QA。
+
 生成模型被放在适配器层。以后替换图片或视频模型，只增加 Provider，不改变 ContentAsset、审核、实验和发布流程。
 
 ## 不重搭的关键约束

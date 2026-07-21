@@ -1,0 +1,12 @@
+{
+  "responses": {
+    "/v3/product/info/list": {
+      "items": {
+        "offer_id": "fixture-offer-1"
+      }
+    },
+    "/v4/product/info/attributes": {
+      "result": []
+    }
+  }
+}

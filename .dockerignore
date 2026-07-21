@@ -9,7 +9,12 @@ __pycache__
 *.docx
 *.png
 *.tmp
-docs
+docs/*
+!docs/project/
+docs/project/*
+!docs/project/registries/
+docs/project/registries/*
+!docs/project/registries/loop_engineering_registry.json
 tests
 scripts
 ENVIRONMENT_*.md

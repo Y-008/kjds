@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -29,6 +34,7 @@ from .domain import (
     PassportType,
     Product,
     ProductStatus,
+    new_id,
     utc_now,
 )
 
@@ -151,6 +157,7 @@ class ContentAssetRow(Base):
     status: Mapped[str] = mapped_column(String)
     artifact_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     qa_results_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    generation_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -170,11 +177,24 @@ class ExperimentRow(Base):
 
 class EventRow(Base):
     __tablename__ = "outbox_events"
-    sequence: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    sequence: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    event_id: Mapped[str] = mapped_column(String, unique=True)
     event_type: Mapped[str] = mapped_column(String)
     aggregate_id: Mapped[str] = mapped_column(String)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    payload_hash: Mapped[str] = mapped_column(String(64))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    actor_id: Mapped[str] = mapped_column(String)
+    source_evidence_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    schema_version: Mapped[str] = mapped_column(String)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    claimed_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -186,11 +206,77 @@ def _iso(value: datetime) -> str:
     return value.isoformat()
 
 
+def _payload_hash(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def add_outbox_event(
+    session: Session,
+    event_type: str,
+    aggregate_id: str,
+    payload: dict[str, Any],
+    *,
+    actor_id: str = "system",
+    source_evidence_id: str | None = None,
+) -> EventRow:
+    """Stage an outbox event in the caller's business transaction."""
+    now = _dt(utc_now())
+    row = EventRow(
+        event_id=new_id("evt"),
+        event_type=event_type,
+        aggregate_id=aggregate_id,
+        payload_json=payload,
+        payload_hash=_payload_hash(payload),
+        occurred_at=now,
+        recorded_at=now,
+        actor_id=actor_id,
+        source_evidence_id=source_evidence_id,
+        schema_version="v1",
+        attempt_count=0,
+        available_at=now,
+        claimed_by=None,
+        claimed_until=None,
+        last_error=None,
+        published_at=None,
+    )
+    session.add(row)
+    return row
+
+
 class SqlAlchemyRepository:
     """PostgreSQL adapter for the stable domain repository contract."""
 
     def __init__(self, engine=None) -> None:
         self.engine = engine or create_database_engine()
+        self._active_session: ContextVar[Session | None] = ContextVar(
+            f"kjds_repository_session_{id(self)}", default=None
+        )
+
+    @contextmanager
+    def transaction(self) -> Iterator[SqlAlchemyRepository]:
+        if self._active_session.get() is not None:
+            yield self
+            return
+        with Session(self.engine) as session, session.begin():
+            token = self._active_session.set(session)
+            try:
+                yield self
+            finally:
+                self._active_session.reset(token)
+
+    @contextmanager
+    def _session(self, *, write: bool = False) -> Iterator[Session]:
+        active = self._active_session.get()
+        if active is not None:
+            yield active
+            return
+        with Session(self.engine) as session:
+            if write:
+                with session.begin():
+                    yield session
+            else:
+                yield session
 
     def add_product(self, product: Product) -> Product:
         row = ProductRow(
@@ -203,14 +289,15 @@ class SqlAlchemyRepository:
             created_at=_dt(product.created_at),
         )
         try:
-            with Session(self.engine) as session, session.begin():
+            with self._session(write=True) as session:
                 session.add(row)
+                session.flush()
         except IntegrityError as exc:
             raise ValueError(f"SKU already exists: {product.sku}") from exc
         return product
 
     def get_product(self, product_id: str) -> Product:
-        with Session(self.engine) as session:
+        with self._session() as session:
             row = session.get(ProductRow, product_id)
             if row is None:
                 raise KeyError(f"Unknown product: {product_id}")
@@ -219,7 +306,7 @@ class SqlAlchemyRepository:
             )
 
     def list_products(self) -> list[Product]:
-        with Session(self.engine) as session:
+        with self._session() as session:
             rows = session.scalars(select(ProductRow).order_by(ProductRow.created_at, ProductRow.id)).all()
         return [
             Product(row.sku, row.name, row.market, row.channel, ProductStatus(row.status), row.id, _iso(row.created_at))
@@ -227,7 +314,7 @@ class SqlAlchemyRepository:
         ]
 
     def save_product(self, product: Product) -> Product:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             row = session.get(ProductRow, product.id)
             if row is None:
                 raise KeyError(f"Unknown product: {product.id}")
@@ -236,7 +323,7 @@ class SqlAlchemyRepository:
         return product
 
     def add_passport(self, passport: Passport) -> Passport:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             session.add(
                 PassportRow(
                     id=passport.id,
@@ -252,7 +339,7 @@ class SqlAlchemyRepository:
         return passport
 
     def latest_passports(self, product_id: str) -> dict[PassportType, Passport]:
-        with Session(self.engine) as session:
+        with self._session() as session:
             rows = session.scalars(
                 select(PassportRow).where(PassportRow.product_id == product_id).order_by(PassportRow.version)
             ).all()
@@ -273,7 +360,7 @@ class SqlAlchemyRepository:
 
     def add_order(self, order: Order) -> Order:
         try:
-            with Session(self.engine) as session, session.begin():
+            with self._session(write=True) as session:
                 session.add(
                     OrderRow(
                         id=order.id,
@@ -287,12 +374,13 @@ class SqlAlchemyRepository:
                         created_at=_dt(order.created_at),
                     )
                 )
+                session.flush()
         except IntegrityError as exc:
             raise ValueError(f"External order already exists: {order.external_id}") from exc
         return order
 
     def get_order(self, order_id: str) -> Order:
-        with Session(self.engine) as session:
+        with self._session() as session:
             row = session.get(OrderRow, order_id)
             if row is None:
                 raise KeyError(f"Unknown order: {order_id}")
@@ -309,7 +397,7 @@ class SqlAlchemyRepository:
             )
 
     def add_charge(self, charge: Charge) -> Charge:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             session.add(
                 ChargeRow(
                     id=charge.id,
@@ -325,7 +413,7 @@ class SqlAlchemyRepository:
         return charge
 
     def charges_for_order(self, order_id: str) -> list[Charge]:
-        with Session(self.engine) as session:
+        with self._session() as session:
             rows = session.scalars(select(ChargeRow).where(ChargeRow.order_id == order_id)).all()
         return [
             Charge(
@@ -342,7 +430,7 @@ class SqlAlchemyRepository:
         ]
 
     def add_approval(self, approval: Approval) -> Approval:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             session.add(
                 ApprovalRow(
                     id=approval.id,
@@ -360,7 +448,7 @@ class SqlAlchemyRepository:
         return approval
 
     def get_approval(self, approval_id: str) -> Approval:
-        with Session(self.engine) as session:
+        with self._session() as session:
             row = session.get(ApprovalRow, approval_id)
             if row is None:
                 raise KeyError(f"Unknown approval: {approval_id}")
@@ -378,7 +466,7 @@ class SqlAlchemyRepository:
             )
 
     def list_approvals(self) -> list[Approval]:
-        with Session(self.engine) as session:
+        with self._session() as session:
             rows = session.scalars(select(ApprovalRow).order_by(ApprovalRow.created_at.desc())).all()
         return [
             Approval(
@@ -397,7 +485,7 @@ class SqlAlchemyRepository:
         ]
 
     def save_approval(self, approval: Approval) -> Approval:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             row = session.get(ApprovalRow, approval.id)
             if row is None:
                 raise KeyError(f"Unknown approval: {approval.id}")
@@ -407,7 +495,7 @@ class SqlAlchemyRepository:
         return approval
 
     def add_agent_task(self, task: AgentTask) -> AgentTask:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             existing = session.scalar(select(AgentTaskRow).where(AgentTaskRow.idempotency_key == task.idempotency_key))
             if existing:
                 return self._agent(existing)
@@ -438,39 +526,55 @@ class SqlAlchemyRepository:
             _iso(row.created_at),
         )
 
-    def append_event(self, event_type: str, aggregate_id: str, payload: dict) -> None:
-        with Session(self.engine) as session, session.begin():
-            session.add(
-                EventRow(
-                    event_type=event_type,
-                    aggregate_id=aggregate_id,
-                    payload_json=payload,
-                    occurred_at=_dt(utc_now()),
-                    published_at=None,
-                )
+    def append_event(
+        self,
+        event_type: str,
+        aggregate_id: str,
+        payload: dict,
+        *,
+        actor_id: str = "system",
+        source_evidence_id: str | None = None,
+    ) -> None:
+        with self._session(write=True) as session:
+            add_outbox_event(
+                session,
+                event_type,
+                aggregate_id,
+                payload,
+                actor_id=actor_id,
+                source_evidence_id=source_evidence_id,
             )
 
     def event_count(self) -> int:
-        with Session(self.engine) as session:
+        with self._session() as session:
             return int(session.scalar(select(func.count()).select_from(EventRow)) or 0)
 
     def events_after(self, sequence: int) -> list[dict]:
-        with Session(self.engine) as session:
+        with self._session() as session:
             rows = session.scalars(
                 select(EventRow).where(EventRow.sequence > sequence).order_by(EventRow.sequence)
             ).all()
         return [
             {
                 "sequence": row.sequence,
+                "event_id": row.event_id,
                 "type": row.event_type,
                 "aggregate_id": row.aggregate_id,
                 "payload": row.payload_json,
+                "payload_hash": row.payload_hash,
+                "occurred_at": _iso(row.occurred_at),
+                "recorded_at": _iso(row.recorded_at),
+                "actor_id": row.actor_id,
+                "source_evidence_id": row.source_evidence_id,
+                "schema_version": row.schema_version,
+                "attempt_count": row.attempt_count,
+                "published_at": _iso(row.published_at) if row.published_at else None,
             }
             for row in rows
         ]
 
     def add_observation(self, observation: MarketObservation) -> MarketObservation:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             session.add(
                 ObservationRow(
                     id=observation.id,
@@ -492,7 +596,7 @@ class SqlAlchemyRepository:
         query = select(ObservationRow).where(ObservationRow.market == market, ObservationRow.category == category)
         if metric is not None:
             query = query.where(ObservationRow.metric == metric)
-        with Session(self.engine) as session:
+        with self._session() as session:
             rows = session.scalars(query).all()
         return [
             MarketObservation(
@@ -512,7 +616,7 @@ class SqlAlchemyRepository:
         ]
 
     def add_opportunity(self, opportunity: OpportunityInsight) -> OpportunityInsight:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             session.add(
                 OpportunityRow(
                     id=opportunity.id,
@@ -529,7 +633,7 @@ class SqlAlchemyRepository:
         return opportunity
 
     def add_content_asset(self, asset: ContentAsset) -> ContentAsset:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             session.add(
                 ContentAssetRow(
                     id=asset.id,
@@ -542,13 +646,14 @@ class SqlAlchemyRepository:
                     status=asset.status.value,
                     artifact_ref=asset.artifact_ref,
                     qa_results_json=asset.qa_results,
+                    generation_json=asset.generation,
                     created_at=_dt(asset.created_at),
                 )
             )
         return asset
 
     def get_content_asset(self, asset_id: str) -> ContentAsset:
-        with Session(self.engine) as session:
+        with self._session() as session:
             row = session.get(ContentAssetRow, asset_id)
             if row is None:
                 raise KeyError(f"Unknown content asset: {asset_id}")
@@ -566,27 +671,29 @@ class SqlAlchemyRepository:
             ContentStatus(row.status),
             row.artifact_ref,
             row.qa_results_json,
+            row.generation_json,
             row.id,
             _iso(row.created_at),
         )
 
     def save_content_asset(self, asset: ContentAsset) -> ContentAsset:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             row = session.get(ContentAssetRow, asset.id)
             if row is None:
                 raise KeyError(f"Unknown content asset: {asset.id}")
             row.status = asset.status.value
             row.artifact_ref = asset.artifact_ref
             row.qa_results_json = asset.qa_results
+            row.generation_json = asset.generation
         return asset
 
     def content_assets_for_product(self, product_id: str) -> list[ContentAsset]:
-        with Session(self.engine) as session:
+        with self._session() as session:
             rows = session.scalars(select(ContentAssetRow).where(ContentAssetRow.product_id == product_id)).all()
             return [self._asset(row) for row in rows]
 
     def add_experiment(self, experiment: GrowthExperiment) -> GrowthExperiment:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             session.add(
                 ExperimentRow(
                     id=experiment.id,
@@ -604,7 +711,7 @@ class SqlAlchemyRepository:
         return experiment
 
     def get_experiment(self, experiment_id: str) -> GrowthExperiment:
-        with Session(self.engine) as session:
+        with self._session() as session:
             row = session.get(ExperimentRow, experiment_id)
             if row is None:
                 raise KeyError(f"Unknown experiment: {experiment_id}")
@@ -626,7 +733,7 @@ class SqlAlchemyRepository:
         )
 
     def save_experiment(self, experiment: GrowthExperiment) -> GrowthExperiment:
-        with Session(self.engine) as session, session.begin():
+        with self._session(write=True) as session:
             row = session.get(ExperimentRow, experiment.id)
             if row is None:
                 raise KeyError(f"Unknown experiment: {experiment.id}")

@@ -38,11 +38,12 @@ def test_registry_resolves_shortcuts_to_versioned_profiles():
     _, service = setup_service()
     profiles = service.profiles()
 
-    assert len(profiles) == 5
+    assert len(profiles) == 6
     assert service.resolve_profile("/x10think").id == "decision_review"
     assert service.resolve_profile("/oda").id == "decision_review"
     assert service.resolve_profile("/truth").version == "1.0.0"
     assert service.resolve_profile("/socrates").max_questions == 3
+    assert service.resolve_profile("/best").id == "best_solution"
 
 
 def test_evidence_research_stays_pending_without_verified_evidence():
@@ -114,6 +115,74 @@ def test_missing_material_inputs_force_clarification_before_analysis():
         "maximum_loss_amount",
     ]
     assert contract["compiler_policy"]["critical_risk_forces_advisory_only"] is True
+
+
+def test_best_solution_requires_constraints_criteria_and_evidence_before_selection():
+    evidence, service = setup_service()
+    incomplete = service.create(
+        profile="/best",
+        objective="选择 Ozon 财务事实来源",
+        decision_domain="architecture",
+        risk_level="medium",
+        options=[
+            {"id": "A", "label": "官方原始报表"},
+            {"id": "B", "label": "第三方计算器"},
+        ],
+        requested_by="operator-1",
+    )
+    assert incomplete["status"] == "clarification_required"
+    assert incomplete["missing_inputs"] == [
+        "context.hard_constraints",
+        "context.decision_criteria",
+    ]
+
+    source = capture(evidence, "official-accrual-report")
+    ready = service.create(
+        profile="best_solution",
+        objective="选择 Ozon 财务事实来源",
+        decision_domain="architecture",
+        risk_level="medium",
+        options=[
+            {"id": "A", "label": "官方原始报表"},
+            {"id": "B", "label": "第三方计算器"},
+            {"id": "C", "label": "暂不晋升财务事实"},
+        ],
+        context={
+            "hard_constraints": ["可追溯到 Ozon 一手原件", "不得自动入账"],
+            "decision_criteria": [
+                "长期风险调整价值",
+                "证据质量",
+                "总拥有成本",
+                "可逆性与回滚",
+                "落地时间",
+                "运维适配",
+            ],
+        },
+        evidence_ids=[source.id],
+        requested_by="operator-1",
+    )
+
+    assert ready["status"] == "ready_for_analysis"
+    assert ready["compiler_policy"]["selection_rule"] == (
+        "HARD_CONSTRAINTS_THEN_RISK_ADJUSTED_LONG_TERM_VALUE"
+    )
+    assert ready["compiler_policy"]["automatic_equal_weight_score"] is False
+    assert ready["compiler_policy"]["latest_or_most_complex_is_not_best"] is True
+    assert "rejected_options_and_reasons" in ready["output_requirements"]
+
+
+def test_contract_rejects_non_finite_maximum_loss():
+    _, service = setup_service()
+
+    with pytest.raises(ValueError, match="Maximum loss must be a finite number"):
+        service.create(
+            profile="/oda",
+            objective="验证风险数字边界",
+            decision_domain="risk",
+            risk_level="high",
+            maximum_loss_amount=Decimal("NaN"),
+            requested_by="operator-1",
+        )
 
 
 def test_forecast_requires_horizon_baseline_scenarios_and_evidence():

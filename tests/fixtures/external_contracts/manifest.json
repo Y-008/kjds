@@ -1,0 +1,55 @@
+{
+  "fixture_set_id": "external-contract-replay-v1",
+  "schema_version": "external-contract-fixture-manifest-v1",
+  "contains_sensitive_data": false,
+  "cases": [
+    {
+      "id": "ozon.offer-state.success.v1",
+      "system": "ozon_seller_api",
+      "contract_version": "ozon-product-read-v1",
+      "path": "ozon_offer_state_v1.json",
+      "sha256": "81ab49f9eaabe31338d48dcdbcfbb58ab4d10fefaa2b4d7ab4ba8f84dc397bcb",
+      "expected_outcome": "accepted"
+    },
+    {
+      "id": "ozon.offer-state.schema-drift.v1",
+      "system": "ozon_seller_api",
+      "contract_version": "ozon-product-read-v1",
+      "path": "ozon_offer_state_schema_drift_v1.json",
+      "sha256": "f8467b6ed07566e2f85e621c22dca0f51e44fd1076d78c0736956634a588ff73",
+      "expected_outcome": "schema_drift"
+    },
+    {
+      "id": "comfy.history.success.v1",
+      "system": "comfyui",
+      "contract_version": "comfy-history-v1",
+      "path": "comfy_history_success_v1.json",
+      "sha256": "23e949e961553c996c5b942644b1cb46cae62a8a4bc906539ac2f5da9b97722b",
+      "expected_outcome": "accepted"
+    },
+    {
+      "id": "comfy.history.schema-drift.v1",
+      "system": "comfyui",
+      "contract_version": "comfy-history-v1",
+      "path": "comfy_history_schema_drift_v1.json",
+      "sha256": "d156d22e1e639fbb93d60c38ea0cb3af0fd2b925968046a6ff5c89a4d3ed75da",
+      "expected_outcome": "schema_drift"
+    },
+    {
+      "id": "ozon.finance.success.v1",
+      "system": "ozon_finance_export",
+      "contract_version": "ozon-fee-import-v1",
+      "path": "ozon_finance_transactions_v1.csv",
+      "sha256": "d57f06ded07221b9fbc1d01a754c50c60d43334f06025d4af1c4f3e6049d28d6",
+      "expected_outcome": "accepted"
+    },
+    {
+      "id": "ozon.finance.schema-drift.v1",
+      "system": "ozon_finance_export",
+      "contract_version": "ozon-fee-import-v1",
+      "path": "ozon_finance_schema_drift_v1.csv",
+      "sha256": "b76f570ae0b93c77034896902dd2ccd3871eea56c4cdc3a99c48c5ee1438d473",
+      "expected_outcome": "schema_drift"
+    }
+  ]
+}

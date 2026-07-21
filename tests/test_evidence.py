@@ -1,5 +1,5 @@
 import pytest
-from sqlalchemy import create_engine, update
+from sqlalchemy import create_engine, delete, update
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -13,9 +13,14 @@ def make_service():
     return engine, EvidenceService(engine)
 
 
-def capture(service: EvidenceService, *, source_ref: str = "ozon-export://orders/2026-07-16"):
+def capture(
+    service: EvidenceService,
+    *,
+    source_ref: str = "ozon-export://orders/2026-07-16",
+    content: bytes = b"order_id,amount\n1001,50\n",
+):
     return service.capture(
-        content=b"order_id,amount\n1001,50\n",
+        content=content,
         filename="orders.csv",
         content_type="text/csv",
         source="ozon_export",
@@ -48,6 +53,87 @@ def test_hash_verification_detects_blob_tampering():
             update(EvidenceBlobRow).where(EvidenceBlobRow.sha256 == record.sha256).values(content_bytes=b"tampered")
         )
     assert service.verify(record.id).valid is False
+
+
+def test_bounded_integrity_scan_detects_hash_size_and_missing_blob_failures():
+    engine, service = make_service()
+    healthy = capture(service, source_ref="scan://healthy", content=b"healthy")
+    corrupt = capture(service, source_ref="scan://corrupt", content=b"corrupt")
+    missing = service.capture(
+        content=b"missing blob",
+        filename="missing.txt",
+        content_type="text/plain",
+        source="test",
+        source_ref="scan://missing",
+        grade=EvidenceGrade.B,
+        effective_at="2026-07-15T00:00:00Z",
+        effective_until=None,
+        created_by="monitor",
+    )
+    with Session(engine) as session, session.begin():
+        session.execute(
+            update(EvidenceBlobRow)
+            .where(EvidenceBlobRow.sha256 == corrupt.sha256)
+            .values(content_bytes=b"x", byte_size=99)
+        )
+        session.execute(delete(EvidenceBlobRow).where(EvidenceBlobRow.sha256 == missing.sha256))
+
+    first = service.scan_integrity(limit=2)
+    second = service.scan_integrity(limit=2, offset=2)
+    findings = {item.evidence_id: item for item in (*first.findings, *second.findings)}
+
+    assert first.total == 3
+    assert first.scanned == 2
+    assert first.next_offset == 2
+    assert second.scanned == 1
+    assert second.next_offset is None
+    assert healthy.id not in findings
+    assert findings[corrupt.id].codes == (
+        "EVIDENCE_HASH_MISMATCH",
+        "EVIDENCE_SIZE_MISMATCH",
+    )
+    assert findings[missing.id].codes == ("EVIDENCE_BLOB_MISSING",)
+
+
+def test_retention_requires_classification_and_never_allows_automatic_deletion():
+    _, service = make_service()
+    unclassified = capture(service)
+    assert service.retention(unclassified.id).status == "classification_required"
+
+    classified = service.capture(
+        content=b"settlement",
+        filename="settlement.csv",
+        content_type="text/csv",
+        source="finance",
+        source_ref="bank://settlement/1",
+        grade=EvidenceGrade.A,
+        effective_at="2026-07-15T00:00:00Z",
+        effective_until=None,
+        created_by="finance-operator",
+        metadata={"retention_class": "financial", "legal_hold": True},
+    )
+    assessment = service.retention(classified.id)
+    assert assessment.status == "legal_hold"
+    assert assessment.archive_eligible is False
+    assert assessment.automatic_delete_allowed is False
+    assert assessment.review_due_at is not None
+
+
+def test_capture_rejects_unknown_retention_class():
+    _, service = make_service()
+    with pytest.raises(ValueError, match="Unsupported retention_class"):
+        service.capture(
+            content=b"x",
+            filename="x.txt",
+            content_type="text/plain",
+            source="test",
+            source_ref="test://retention",
+            grade=EvidenceGrade.C,
+            effective_at="2026-07-15T00:00:00Z",
+            effective_until=None,
+            created_by="tester",
+            metadata={"retention_class": "forever"},
+        )
 
 
 def test_evidence_gate_rejects_unknown_duplicate_and_tampered_references():

@@ -105,6 +105,8 @@ class ContentType(StrEnum):
 
 class ContentStatus(StrEnum):
     BRIEF = "brief"
+    QUEUED = "queued"
+    EXECUTION_FAILED = "execution_failed"
     GENERATED = "generated"
     QA_FAILED = "qa_failed"
     APPROVED = "approved"
@@ -125,7 +127,9 @@ class ChargeType(StrEnum):
     PLATFORM_FEE = "platform_fee"
     DOMESTIC_LOGISTICS = "domestic_logistics"
     PACKAGING = "packaging"
+    WAREHOUSING = "warehousing"
     CUSTOMS = "customs"
+    TAX = "tax"
     INTERNATIONAL_LOGISTICS = "international_logistics"
     LAST_MILE = "last_mile"
     FX = "fx"
@@ -141,7 +145,9 @@ CM2_COSTS = {
     ChargeType.PLATFORM_FEE,
     ChargeType.DOMESTIC_LOGISTICS,
     ChargeType.PACKAGING,
+    ChargeType.WAREHOUSING,
     ChargeType.CUSTOMS,
+    ChargeType.TAX,
     ChargeType.INTERNATIONAL_LOGISTICS,
     ChargeType.LAST_MILE,
     ChargeType.FX,
@@ -300,6 +306,7 @@ class ContentAsset:
     status: ContentStatus = ContentStatus.BRIEF
     artifact_ref: str | None = None
     qa_results: list[dict[str, Any]] = field(default_factory=list)
+    generation: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: new_id("asset"))
     created_at: str = field(default_factory=utc_now)
 

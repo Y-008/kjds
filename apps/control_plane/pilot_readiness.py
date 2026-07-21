@@ -18,6 +18,9 @@ READ_ONLY_OPERATIONS = {
     "ozon.analytics.read",
     "ozon.finance.read",
 }
+IMPLEMENTED_READ_ONLY_OPERATIONS = {"ozon.product.read", "ozon.finance.read"}
+OZON_PRODUCT_READ_CONTRACT_VERSION = "ozon-product-read-v1"
+OZON_FINANCE_READ_CONTRACT_VERSION = "ozon-finance-transactions-v1"
 PILOT_CONTROLS = (
     "credentials_isolated",
     "least_privilege_scope",
@@ -245,8 +248,12 @@ class PilotReadinessService:
                 "no_open_live_incident": not open_live,
                 "kill_switch_released": not self.kill_switch.current().engaged,
                 "recent_recovery_drill": bool(recent_drills),
-                "window_not_expired": now <= self._datetime(pilot["ends_at"], "ends_at"),
+                "window_active": self._datetime(pilot["starts_at"], "starts_at")
+                <= now
+                <= self._datetime(pilot["ends_at"], "ends_at"),
                 "read_only_allowlist": set(pilot["allowed_operations"]) <= READ_ONLY_OPERATIONS,
+                "worker_implemented_scope": set(pilot["allowed_operations"])
+                <= IMPLEMENTED_READ_ONLY_OPERATIONS,
             }
         )
         blockers = [name for name, passed in requirements.items() if not passed]
@@ -254,6 +261,7 @@ class PilotReadinessService:
             "pilot_id": pilot_id,
             "ready_for_review": not blockers,
             "ready_for_activation": not blockers and pilot["status"] == "approved",
+            "runtime_allowed": not blockers and pilot["status"] == "active",
             "requirements": requirements,
             "blockers": blockers,
             "open_live_incident_ids": [item["id"] for item in open_live],

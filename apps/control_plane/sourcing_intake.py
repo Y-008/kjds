@@ -4,7 +4,7 @@ import hashlib
 from dataclasses import dataclass
 
 from .evidence import EvidenceGrade
-from .sourcing import ProfitInputs, SupplierOffer
+from .sourcing import PROFIT_TEMPLATE_ID, REQUIRED_COST_EVIDENCE_KEYS, ProfitInputs, SupplierOffer
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,11 +27,14 @@ class SupplierComparisonIntakeService:
         effective_at: str,
         offers: list[OfferEvidencePayload],
         profit_inputs: ProfitInputs,
+        cost_states: dict[str, str] | None = None,
+        template_id: str = PROFIT_TEMPLATE_ID,
         assumption_content: bytes,
         assumption_filename: str,
         assumption_content_type: str,
         created_by: str,
     ) -> dict:
+        self._require_candidate_handoff(product_id)
         if len(offers) != 3:
             raise ValueError("Supplier comparison intake requires exactly three offers")
         supplier_refs = {str(item.offer_data.get("supplier_ref", "")).strip() for item in offers}
@@ -84,7 +87,23 @@ class SupplierComparisonIntakeService:
                 relationship="source_for",
                 created_by=created_by,
             )
-            scenario = self.sourcing.calculate_profit(offer.id, profit_inputs, [assumption.id])
+            normalized_states = cost_states or {
+                key: "estimate" for key in REQUIRED_COST_EVIDENCE_KEYS
+            }
+            assumption_cost_evidence = {
+                key: assumption.id
+                for key in REQUIRED_COST_EVIDENCE_KEYS
+                if key not in {"product_cost", "domestic_logistics"}
+                and normalized_states.get(key, "unknown") != "unknown"
+            }
+            scenario = self.sourcing.calculate_profit(
+                offer.id,
+                profit_inputs,
+                [assumption.id],
+                assumption_cost_evidence,
+                normalized_states,
+                template_id or PROFIT_TEMPLATE_ID,
+            )
             for evidence_id in scenario.evidence:
                 self.evidence.link(
                     evidence_id=evidence_id,
@@ -102,3 +121,22 @@ class SupplierComparisonIntakeService:
             "evidence": evidence_records,
             "comparison": self.sourcing.compare_product_offers(product_id),
         }
+
+    def _require_candidate_handoff(self, product_id: str) -> None:
+        repository = self.sourcing.repository
+        repository.get_product(product_id)
+        handoff_recorded = any(
+            event["type"] == "product.candidate_sourcing_workspace_created"
+            and event["aggregate_id"] == product_id
+            for event in repository.events_after(0)
+        )
+        if not handoff_recorded:
+            raise ValueError("Supplier comparison requires the candidate sourcing handoff")
+        evidence_ids = self.evidence.target_evidence_ids(
+            target_type="product",
+            target_id=product_id,
+            relationship="candidate_basis",
+        )
+        if not evidence_ids:
+            raise ValueError("Supplier comparison requires candidate basis evidence")
+        self.evidence.require_valid(evidence_ids)

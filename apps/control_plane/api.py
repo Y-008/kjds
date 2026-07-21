@@ -4,16 +4,19 @@ import hashlib
 import json
 import os
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .automation import AutomationService, RiskLevel
+from .candidate_evidence_review import CandidateEvidenceAuthorityService
 from .capability_economics import CapabilityEconomicsService
 from .causal_experiments import CausalExperimentService, ExperimentEvent
 from .causal_knowledge import (
@@ -26,6 +29,12 @@ from .causal_policies import (
     StageOutcomeVerdict,
 )
 from .content_growth import ContentGrowthService
+from .correlation import correlation_id
+from .cost_evidence_review import (
+    ACTUAL_COST_AUTHORITIES,
+    ACTUAL_COST_AUTHORITY_LABELS,
+    CostEvidenceAuthorityService,
+)
 from .database import create_database_engine, database_health
 from .decision_contracts import DecisionContractService
 from .decision_contracts import RiskLevel as DecisionRiskLevel
@@ -34,25 +43,41 @@ from .decision_lifecycle import (
     DecisionLifecycleService,
     ReviewVerdict,
 )
+from .demand_report_gate import DemandReportGateService
 from .domain import AgentMode, ChargeType, ContentType, PassportType
 from .evidence import EvidenceGrade, EvidenceService
+from .evidence_integrity import EvidenceIntegrityMonitorService
 from .execution_plans import ExecutionPlanService
 from .facts import FactPromotionService
 from .finance import CashPlanStatus, FeeSignRule, FinanceEntryKind, FinanceService
+from .governance import GovernanceService
+from .image_execution import ComfyImageExecutionService
 from .imports import MAX_IMPORT_BYTES, OzonImportService
 from .incident_recovery import IncidentRecoveryService
-from .intake import PassportEvidencePayload, SkuEpisodeIntakeService
+from .intake import PassportEvidencePayload, ProductMediaEvidenceService, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .limited_executor import LimitedExecutorService
+from .loop_engineering import LoopEngineeringService
 from .operations_queue import OperationsQueueService
+from .outbox import OutboxService
 from .ozon_contracts import contract_catalog
+from .ozon_finance_review import (
+    AccrualAccountingClass,
+    AccrualExpectedSign,
+    OzonAccrualClassificationService,
+    OzonFeeMappingApprovalService,
+    OzonFinanceReportReviewService,
+)
 from .pilot_readiness import PilotReadinessService
+from .pilot_runs import PilotRunService
 from .policy_shadow import PolicyShadowService
 from .post_execution import PostExecutionService
 from .procurement import ProcurementService
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
+from .read_only_claims import ReadOnlyClaimService
 from .readiness import GateReadinessService
 from .repository import InMemoryRepository
+from .research_inbox import ResearchInboxService
 from .security import (
     ApiKeyAuthenticator,
     AuthenticationFailure,
@@ -63,12 +88,22 @@ from .security import (
 )
 from .services import CommerceService
 from .source_connectors import source_connector_catalog
-from .sourcing import ProfitInputs, SourcePlatform, SourcingService, SupplierOffer
+from .sourcing import (
+    PROFIT_TEMPLATE_FIELDS,
+    PROFIT_TEMPLATE_ID,
+    ProfitInputs,
+    SourcePlatform,
+    SourcingService,
+    SupplierOffer,
+    listing_approval_payload,
+    profit_template_contract,
+)
 from .sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeService
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 
-APP_VERSION = "0.26.0"
+APP_VERSION = "0.47.0"
+API_SCHEMA_VERSION = "v1"
 app = FastAPI(title="KJDS Control Plane", version=APP_VERSION)
 
 
@@ -81,6 +116,9 @@ def build_repository():
 repo = build_repository()
 engine = getattr(repo, "engine", None) or create_database_engine()
 evidence = EvidenceService(engine)
+research_inbox = ResearchInboxService(evidence=evidence)
+demand_reports = DemandReportGateService(evidence=evidence)
+outbox = OutboxService(engine)
 decision_contracts = DecisionContractService(engine=engine, evidence=evidence)
 decision_lifecycle = DecisionLifecycleService(
     engine=engine,
@@ -109,22 +147,83 @@ policy_shadow = PolicyShadowService(
     evidence=evidence,
     commerce=commerce,
 )
+
+
+def execution_readiness_context(
+    _action: str, _target: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    demand = demand_reports.status()["readiness"]["real_execution"]
+    return {
+        "demand.real_execution": {
+            "ready": demand["ready"],
+            "evidence_ids": demand["evidence_ids"],
+            "blocking_reasons": demand["blocking_reasons"],
+        }
+    }
+
+
 execution_plans = ExecutionPlanService(
     engine=engine,
     policy_shadow=policy_shadow,
     policies=causal_policies,
     evidence=evidence,
     commerce=commerce,
+    readiness_provider=execution_readiness_context,
 )
 intake = SkuEpisodeIntakeService(commerce=commerce, evidence=evidence)
-market = MarketIntelligenceService(repo)
-content = ContentGrowthService(repo)
+product_media = ProductMediaEvidenceService(commerce=commerce, evidence=evidence)
+candidate_evidence_authority = CandidateEvidenceAuthorityService(
+    evidence=evidence,
+    allowed_metrics=set(MarketIntelligenceService.CANDIDATE_METRICS),
+)
+market = MarketIntelligenceService(
+    repo,
+    evidence_validator=evidence.require_valid,
+    evidence_lookup=evidence.get,
+    demand_report_validator=lambda evidence_id: demand_reports.require_accepted(
+        evidence_id,
+        scope="research",
+    ),
+    evidence_authority_lookup=candidate_evidence_authority.require_approved_grade,
+)
+content = ContentGrowthService(
+    repo,
+    evidence_validator=evidence.require_valid,
+    evidence_lookup=evidence.get,
+    image_readiness=product_media.readiness,
+)
 imports = OzonImportService(engine)
-facts = FactPromotionService(engine)
+finance_report_reviews = OzonFinanceReportReviewService(engine=engine, evidence=evidence, imports=imports)
 finance = FinanceService(engine)
+ozon_fee_mappings = OzonFeeMappingApprovalService(
+    engine=engine,
+    evidence=evidence,
+    imports=imports,
+    reviews=finance_report_reviews,
+    finance=finance,
+)
+ozon_accrual_classifications = OzonAccrualClassificationService(
+    engine=engine,
+    evidence=evidence,
+    imports=imports,
+    reviews=finance_report_reviews,
+)
+facts = FactPromotionService(
+    engine,
+    finance_review_validator=finance_report_reviews.require_accepted,
+    fee_mapping_validator=ozon_fee_mappings.require_mapped,
+    accrual_classification_validator=ozon_accrual_classifications.require_classified,
+)
 automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
+loop_engineering = LoopEngineeringService()
 sourcing_store = SqlSourcingStore(engine)
-sourcing = SourcingService(sourcing_store, repo, evidence_validator=evidence.require_valid)
+cost_evidence_authority = CostEvidenceAuthorityService(evidence=evidence)
+sourcing = SourcingService(
+    sourcing_store,
+    repo,
+    evidence_validator=evidence.require_valid,
+    actual_cost_validator=cost_evidence_authority.require_actual,
+)
 sourcing_intake = SupplierComparisonIntakeService(sourcing=sourcing, evidence=evidence)
 procurement = ProcurementService(
     engine=engine,
@@ -133,12 +232,17 @@ procurement = ProcurementService(
     sourcing=sourcing,
     evidence=evidence,
 )
+governance = GovernanceService(engine=engine, evidence=evidence)
+read_only_claims = ReadOnlyClaimService(engine=engine, evidence=evidence)
 readiness = GateReadinessService(
     commerce=commerce,
     sourcing_store=sourcing_store,
     evidence=evidence,
     facts=facts,
     finance=finance,
+    governance=governance,
+    demand_reports=demand_reports,
+    scenario_release_validator=sourcing.require_release_ready,
 )
 authenticator = ApiKeyAuthenticator.from_environment()
 kill_switch = KillSwitchService(engine)
@@ -168,6 +272,10 @@ incident_recovery = IncidentRecoveryService(
     evidence=evidence,
     kill_switch=kill_switch,
 )
+evidence_integrity = EvidenceIntegrityMonitorService(
+    evidence=evidence,
+    incidents=incident_recovery,
+)
 operations_queue = OperationsQueueService(
     engine=engine,
     incidents=incident_recovery,
@@ -180,6 +288,12 @@ pilot_readiness = PilotReadinessService(
     incidents=incident_recovery,
     kill_switch=kill_switch,
 )
+pilot_runs = PilotRunService(
+    engine=engine,
+    pilots=pilot_readiness,
+    evidence=evidence,
+    lease_seconds=int(os.getenv("KJDS_PILOT_RUN_LEASE_SECONDS", "900")),
+)
 providers = {
     "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
     "comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189")),
@@ -189,11 +303,19 @@ providers = {
         os.getenv("FIRECRAWL_API_KEY") or None,
     ),
 }
+image_execution = ComfyImageExecutionService(
+    repository=repo,
+    content=content,
+    evidence=evidence,
+    provider=providers["comfyui"],
+)
 
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 KILL_SWITCH_CONTROL_PATHS = {
     "/v1/system/kill-switch/engage",
     "/v1/system/kill-switch/release",
+    "/v1/loop-engineering/validate",
+    "/v1/evidence/integrity-scan",
 }
 
 
@@ -205,13 +327,97 @@ def is_write_safety_control_path(path: str) -> bool:
     )
 
 
+def request_id_for(request: Request) -> str:
+    """Return a bounded correlation id without trusting arbitrary header text."""
+    return correlation_id(request.headers.get("X-Request-ID"), "req")
+
+
+def trace_id_for(request: Request) -> str:
+    return correlation_id(request.headers.get("X-Trace-ID"), "trace")
+
+
+ERROR_CODES = {
+    400: "BAD_REQUEST",
+    401: "AUTHENTICATION_REQUIRED",
+    403: "PERMISSION_DENIED",
+    404: "NOT_FOUND",
+    409: "CONFLICT",
+    413: "PAYLOAD_TOO_LARGE",
+    422: "VALIDATION_FAILED",
+    423: "WRITES_LOCKED",
+    429: "RATE_LIMITED",
+    503: "SERVICE_UNAVAILABLE",
+}
+
+
+def contract_error(
+    *,
+    status_code: int,
+    detail: Any,
+    request_id: str,
+    trace_id: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
+    encoded_detail = jsonable_encoder(detail)
+    error = {
+        "code": ERROR_CODES.get(status_code, "INTERNAL_ERROR" if status_code >= 500 else "REQUEST_FAILED"),
+        "message": detail if isinstance(detail, str) else "Request validation failed",
+    }
+    if not isinstance(detail, str):
+        error["details"] = encoded_detail
+    response = JSONResponse(
+        status_code=status_code,
+        content={
+            "detail": encoded_detail,
+            "error": error,
+            "request_id": request_id,
+            **({"trace_id": trace_id} if trace_id else {}),
+            "schema_version": API_SCHEMA_VERSION,
+        },
+        headers=headers,
+    )
+    response.headers["X-Request-ID"] = request_id
+    if trace_id:
+        response.headers["X-Trace-ID"] = trace_id
+    response.headers["X-KJDS-Schema-Version"] = API_SCHEMA_VERSION
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def contract_http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    return contract_error(
+        status_code=exc.status_code,
+        detail=exc.detail,
+        request_id=getattr(request.state, "request_id", request_id_for(request)),
+        trace_id=getattr(request.state, "trace_id", trace_id_for(request)),
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def contract_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return contract_error(
+        status_code=422,
+        detail=exc.errors(),
+        request_id=getattr(request.state, "request_id", request_id_for(request)),
+        trace_id=getattr(request.state, "trace_id", trace_id_for(request)),
+    )
+
+
 @app.middleware("http")
 async def enforce_control_plane_security(request: Request, call_next):
+    request.state.request_id = request_id_for(request)
+    request.state.trace_id = trace_id_for(request)
     if request.url.path.startswith("/v1/"):
         try:
             request.state.principal = authenticator.authenticate(request.headers.get("X-KJDS-API-Key"))
         except AuthenticationFailure as exc:
-            return JSONResponse(status_code=exc.status_code, content={"detail": str(exc)})
+            return contract_error(
+                status_code=exc.status_code,
+                detail=str(exc),
+                request_id=request.state.request_id,
+                trace_id=request.state.trace_id,
+            )
 
         if request.method in WRITE_METHODS and not is_write_safety_control_path(request.url.path):
             if not request.state.principal.has_any_role(
@@ -222,19 +428,36 @@ async def enforce_control_plane_security(request: Request, call_next):
                 "risk",
                 "executor",
                 "monitor",
+                "pilot_reader",
                 "admin",
             ):
-                return JSONResponse(status_code=403, content={"detail": "Authenticated actor has no write role"})
+                return contract_error(
+                    status_code=403,
+                    detail="Authenticated actor has no write role",
+                    request_id=request.state.request_id,
+                    trace_id=request.state.trace_id,
+                )
             try:
                 kill_switch.ensure_writes_allowed()
             except WritesDisabled as exc:
-                return JSONResponse(status_code=423, content={"detail": str(exc)})
-            except Exception:
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": "Write safety state is unavailable; writes fail closed"},
+                return contract_error(
+                    status_code=423,
+                    detail=str(exc),
+                    request_id=request.state.request_id,
+                    trace_id=request.state.trace_id,
                 )
-    return await call_next(request)
+            except Exception:
+                return contract_error(
+                    status_code=503,
+                    detail="Write safety state is unavailable; writes fail closed",
+                    request_id=request.state.request_id,
+                    trace_id=request.state.trace_id,
+                )
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request.state.request_id
+    response.headers["X-Trace-ID"] = request.state.trace_id
+    response.headers["X-KJDS-Schema-Version"] = API_SCHEMA_VERSION
+    return response
 
 
 def current_principal(request: Request) -> Principal:
@@ -320,6 +543,91 @@ class OpportunityInput(BaseModel):
     recommended_action: str
 
 
+class CandidateResearchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_ref: str = Field(min_length=1, max_length=120)
+    candidate_name: str = Field(min_length=1, max_length=240)
+    market: str = Field(min_length=2, max_length=20)
+    category: str = Field(min_length=1, max_length=120)
+    as_of: str
+    demand_report_evidence_id: str = Field(min_length=1, max_length=120)
+    max_age_days: int = Field(default=90, ge=1, le=365)
+
+
+class CandidateMetricInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: Literal[
+        "demand_signal",
+        "competition_gap",
+        "supplier_available",
+        "compliance_redline",
+        "return_risk",
+    ]
+    value: Decimal
+    confidence: Decimal = Field(default=Decimal("0.8"), ge=0, le=1)
+    evidence_id: str = Field(min_length=1, max_length=120)
+    window_days: int = Field(ge=1, le=90)
+    sample_size: int = Field(ge=1)
+
+
+class CandidateResearchSubmissionInput(CandidateResearchInput):
+    observations: list[CandidateMetricInput] = Field(min_length=5, max_length=5)
+
+
+class CandidateSourcingHandoffInput(CandidateResearchInput):
+    sku: str = Field(min_length=1, max_length=80)
+    confirmed: Literal[True]
+
+
+class CandidateEvidenceAuthorityReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metric: Literal[
+        "demand_signal",
+        "competition_gap",
+        "supplier_available",
+        "compliance_redline",
+        "return_risk",
+    ]
+    approved_grade: Literal[EvidenceGrade.A, EvidenceGrade.B]
+    accepted: bool
+    authentic_original: bool
+    source_scope_matches: bool
+    authority_basis_verified: bool
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
+class CostEvidenceAuthorityReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cost_type: Literal[
+        "product_cost",
+        "domestic_logistics",
+        "international_logistics",
+        "packaging",
+        "warehousing",
+        "customs",
+        "tax",
+        "last_mile",
+        "platform_fee",
+        "advertising",
+        "return",
+        "fx",
+        "capital_cost",
+        "aftersales",
+        "loss",
+    ]
+    authority_id: str = Field(min_length=1, max_length=120)
+    accepted: bool
+    authentic_original: bool
+    cost_scope_matches: bool
+    charging_party_matches: bool
+    amount_currency_period_matches: bool
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
 class ContentBriefInput(BaseModel):
     product_id: str
     content_type: ContentType
@@ -332,8 +640,19 @@ class AssetAttachInput(BaseModel):
     artifact_ref: str
 
 
+class ContentQACheckInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    check: str = Field(min_length=1, max_length=80)
+    passed: bool
+    notes: str = Field(min_length=1, max_length=2000)
+    evidence_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
 class AssetReviewInput(BaseModel):
-    checks: list[dict[str, Any]]
+    model_config = ConfigDict(extra="forbid")
+
+    checks: list[ContentQACheckInput] = Field(min_length=1, max_length=8)
 
 
 class ExperimentInput(BaseModel):
@@ -404,6 +723,8 @@ class SupplierOfferInput(BaseModel):
 
 
 class ProfitScenarioInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     offer_id: str
     sale_price_rub: Decimal
     rub_per_cny: Decimal
@@ -414,8 +735,17 @@ class ProfitScenarioInput(BaseModel):
     platform_fee_rate: Decimal
     advertising_rate: Decimal = Decimal("0")
     return_reserve_rate: Decimal = Decimal("0")
+    warehousing_cny: Decimal = Decimal("0")
+    tax_cny: Decimal = Decimal("0")
+    fx_cost_cny: Decimal = Decimal("0")
+    capital_cost_cny: Decimal = Decimal("0")
+    aftersales_cny: Decimal = Decimal("0")
+    loss_reserve_cny: Decimal = Decimal("0")
     other_cost_cny: Decimal = Decimal("0")
     evidence: list[str] = Field(min_length=1)
+    cost_evidence: dict[str, str] = Field(default_factory=dict)
+    template_id: str = PROFIT_TEMPLATE_ID
+    cost_states: dict[str, Literal["estimate", "actual", "unknown"]] = Field(default_factory=dict)
 
 
 class ProcurementCandidateInput(BaseModel):
@@ -440,6 +770,7 @@ class OzonListingDraftInput(BaseModel):
     product_id: str
     offer_id: str
     scenario_id: str
+    content_asset_ids: list[str] = Field(min_length=1, max_length=20)
     listing_data: dict[str, Any]
 
 
@@ -449,12 +780,46 @@ class KillSwitchInput(BaseModel):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+class LoopValidationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    module: Literal[
+        "automations",
+        "skills",
+        "integrations",
+        "subagents",
+        "worktrees",
+        "memory",
+    ]
+    mode: Literal["proposal", "shadow", "active"]
+    controls: dict[str, Any]
+
+
 class LineageLinkInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_type: str = Field(min_length=1, max_length=100)
     target_id: str = Field(min_length=1, max_length=300)
     relationship: str = Field(min_length=1, max_length=100)
+
+
+class DemandReportReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_evidence_id: str = Field(min_length=1, max_length=100)
+    accepted: bool
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
+class OzonFinanceReportReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: bool
+    authentic_account_export: bool
+    period_matches: bool
+    not_public_sample: bool
+    complete_export: bool
+    rationale: str = Field(min_length=1, max_length=2000)
 
 
 class DecisionContractInput(BaseModel):
@@ -476,6 +841,49 @@ class DecisionContractInput(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
 
 
+class BestSolutionHardConstraintResultInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    option_id: str = Field(min_length=1, max_length=200)
+    constraint: str = Field(min_length=1, max_length=1000)
+    passed: bool
+    rationale: str = Field(min_length=1, max_length=5000)
+
+
+class BestSolutionOptionAssessmentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    option_id: str = Field(min_length=1, max_length=200)
+    evidence_quality: Literal["A", "B", "C", "D", "UNKNOWN"]
+    expected_risk_adjusted_long_term_value: str = Field(min_length=1, max_length=5000)
+    total_cost_of_ownership: str = Field(min_length=1, max_length=5000)
+    maximum_loss: str = Field(min_length=1, max_length=5000)
+    reversibility_and_rollback: str = Field(min_length=1, max_length=5000)
+    time_to_value: str = Field(min_length=1, max_length=5000)
+    operational_fit: str = Field(min_length=1, max_length=5000)
+
+
+class BestSolutionRejectedOptionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    option_id: str = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=1, max_length=5000)
+
+
+class BestSolutionAssessmentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    hard_constraint_results: list[BestSolutionHardConstraintResultInput]
+    option_assessments: list[BestSolutionOptionAssessmentInput]
+    rejected_options: list[BestSolutionRejectedOptionInput]
+    sensitivity_drivers: list[str] = Field(min_length=1)
+    invalidation_conditions: list[str] = Field(min_length=1)
+    review_at: str = Field(min_length=1)
+    approval_requirement: str = Field(min_length=1, max_length=5000)
+    no_action_option_id: str | None = None
+    no_action_omission_reason: str | None = None
+
+
 class DecisionAnalysisInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -490,6 +898,7 @@ class DecisionAnalysisInput(BaseModel):
     forecast_due_at: str | None = None
     assumptions: list[str] = Field(default_factory=list)
     unknowns: list[str] = Field(default_factory=list)
+    selection_assessment: BestSolutionAssessmentInput | None = None
     evidence_ids: list[str] = Field(min_length=1)
     model_ref: str | None = None
 
@@ -717,11 +1126,21 @@ class CausalPolicyContextInput(BaseModel):
     context: dict[str, Any]
 
 
+class PolicyShadowBaselineInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["champion", "human"]
+    actor_id: str = Field(min_length=1, max_length=300)
+    result: dict[str, Any]
+    evidence_ids: list[str] = Field(min_length=1)
+
+
 class PolicyEvaluationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     idempotency_key: str = Field(min_length=1, max_length=300)
     context: dict[str, Any]
+    baseline: PolicyShadowBaselineInput | None = None
     observed_at: str
     evidence_ids: list[str] = Field(min_length=1)
 
@@ -731,6 +1150,7 @@ class PolicyShadowBatchInput(BaseModel):
 
     batch_key: str = Field(min_length=1, max_length=300)
     contexts: list[dict[str, Any]] = Field(min_length=1, max_length=100)
+    baselines: list[PolicyShadowBaselineInput] | None = None
     observed_at: str
     evidence_ids: list[str] = Field(min_length=1)
 
@@ -752,6 +1172,9 @@ class GovernedExecutionPlanInput(BaseModel):
     intended_patch: dict[str, Any]
     rollback_patch: dict[str, Any]
     evidence_ids: list[str] = Field(min_length=1)
+    risk_limits: dict[str, Any] | None = None
+    risk_values: dict[str, Any] | None = None
+    risk_currency: str | None = Field(default=None, min_length=3, max_length=3)
 
 
 class GovernedExecutionDryRunInput(BaseModel):
@@ -919,6 +1342,88 @@ class PilotActivationInput(BaseModel):
     as_of: str | None = None
 
 
+class PilotRunStartInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    operation: Literal["ozon.product.read", "ozon.finance.read"]
+    target_ref: str = Field(min_length=1, max_length=500)
+    as_of: str | None = None
+
+
+class PilotRunCompletionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["succeeded", "failed"]
+    response_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    response_byte_size: int = Field(ge=0)
+    record_count: int = Field(ge=0)
+    summary: dict[str, Any]
+    error_code: str | None = Field(default=None, max_length=120)
+
+
+class PilotRunReapInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    as_of: str | None = None
+    limit: int = Field(default=100, ge=1, le=1000)
+
+
+class ReadOnlyClaimInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    claim_type: Literal[
+        "product_identity",
+        "product_attribute",
+        "inventory_observation",
+        "price_observation",
+    ]
+    payload: dict[str, Any]
+    source_state_sha256: str = Field(min_length=64, max_length=64)
+    effective_at: str
+
+
+class ReadOnlyClaimReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["accepted", "rejected"]
+    rationale: str = Field(min_length=1, max_length=5000)
+
+
+class GateReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    gate_id: Literal["G0", "G1", "G4"]
+    owner_id: str = Field(min_length=1, max_length=120)
+    approver_id: str = Field(min_length=1, max_length=120)
+    participants: list[str] = Field(min_length=1, max_length=50)
+    objective: str = Field(min_length=1, max_length=5000)
+    exit_criteria: str = Field(min_length=1, max_length=5000)
+    deliverables: list[str] = Field(min_length=1, max_length=100)
+    evidence_ids: list[str] = Field(default_factory=list, max_length=100)
+    unknowns: list[str] = Field(default_factory=list, max_length=100)
+    blockers: list[str] = Field(default_factory=list, max_length=100)
+    risk_budget: dict[str, Any]
+    max_loss: dict[str, Any]
+    rollback_plan: str = Field(min_length=1, max_length=5000)
+
+
+class GateReviewSubmitInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class GateReviewDecisionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["PASS", "CONDITIONAL", "FAIL", "STOP"]
+    rationale: str = Field(min_length=1, max_length=5000)
+    conditions: list[str] = Field(default_factory=list, max_length=100)
+
+
 class FeeMappingInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -929,6 +1434,29 @@ class FeeMappingInput(BaseModel):
     effective_from: str
     effective_until: str | None = None
     evidence_id: str = Field(min_length=1)
+
+
+class OzonFeeMappingApprovalInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    raw_code: str = Field(min_length=1, max_length=300)
+    canonical_type: ChargeType
+    sign_rule: FeeSignRule
+    effective_from: str
+    effective_until: str | None = None
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
+class OzonAccrualClassificationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accrual_group: str = Field(min_length=1, max_length=300)
+    accrual_type: str = Field(min_length=1, max_length=500)
+    accounting_class: AccrualAccountingClass
+    expected_sign: AccrualExpectedSign
+    effective_from: str
+    effective_until: str | None = None
+    rationale: str = Field(min_length=1, max_length=2000)
 
 
 class FxRateInput(BaseModel):
@@ -1009,6 +1537,7 @@ def version() -> dict:
     return {
         "service": "kjds-control-plane",
         "version": APP_VERSION,
+        "schema_version": API_SCHEMA_VERSION,
         "database_provider": os.getenv("KJDS_DATABASE_PROVIDER", "local-postgres"),
         "shadow_mode": automation.shadow_mode,
         "api_identity_configured": authenticator.configured,
@@ -1026,8 +1555,51 @@ def ready() -> dict:
 
 
 @app.get("/v1/integrations/health")
-def integration_health() -> dict:
+def integration_health(
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(principal, "operator", "monitor", "reviewer", "admin")
     return {name: asdict(provider.healthcheck()) for name, provider in providers.items()}
+
+
+@app.get("/v1/loop-engineering/registry")
+def loop_engineering_registry(
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return loop_engineering.registry_snapshot()
+
+
+@app.post("/v1/loop-engineering/validate")
+def validate_loop_engineering(
+    body: LoopValidationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "admin",
+    )
+    return run(
+        lambda: loop_engineering.validate(
+            module=body.module,
+            mode=body.mode,
+            controls=body.controls,
+        ).to_dict()
+    )
 
 
 @app.get("/v1/system/kill-switch")
@@ -1059,6 +1631,12 @@ async def capture_evidence(
     metadata_json: Annotated[str, Form()] = "{}",
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    if source.strip().lower() in {
+        "candidate_evidence_authority_review",
+        "gate_requirement_review",
+        "ozon_finance_report_review",
+    }:
+        raise HTTPException(status_code=422, detail="Reserved evidence source requires its dedicated workflow")
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
     content_bytes = await file.read(max_bytes + 1)
     if len(content_bytes) > max_bytes:
@@ -1069,6 +1647,8 @@ async def capture_evidence(
         raise HTTPException(status_code=422, detail="metadata_json must be valid JSON") from exc
     if not isinstance(metadata, dict):
         raise HTTPException(status_code=422, detail="metadata_json must be a JSON object")
+    if str(metadata.get("evidence_role", "")).strip().lower() == ResearchInboxService.EVIDENCE_ROLE:
+        raise HTTPException(status_code=422, detail="Reserved research evidence role requires its dedicated workflow")
     return run(
         lambda: evidence.capture(
             content=content_bytes,
@@ -1090,6 +1670,24 @@ def list_evidence(limit: int = 100):
     return [asdict(item) for item in evidence.list(min(max(limit, 1), 500))]
 
 
+@app.post("/v1/evidence/integrity-scan")
+def scan_evidence_integrity(
+    principal: Annotated[Principal, Depends(current_principal)],
+    limit: int = 500,
+    offset: int = 0,
+    as_of: str | None = None,
+):
+    ensure_role(principal, "monitor", "risk", "admin")
+    return run(
+        lambda: evidence_integrity.scan(
+            actor_id=principal.actor_id,
+            limit=limit,
+            offset=offset,
+            as_of=as_of,
+        )
+    )
+
+
 @app.get("/v1/evidence/{evidence_id}")
 def get_evidence(evidence_id: str):
     return run(lambda: evidence.get(evidence_id))
@@ -1098,6 +1696,11 @@ def get_evidence(evidence_id: str):
 @app.get("/v1/evidence/{evidence_id}/verify")
 def verify_evidence(evidence_id: str):
     return run(lambda: evidence.verify(evidence_id))
+
+
+@app.get("/v1/evidence/{evidence_id}/retention")
+def evidence_retention(evidence_id: str):
+    return run(lambda: evidence.retention(evidence_id))
 
 
 @app.get("/v1/evidence/{evidence_id}/content")
@@ -1120,6 +1723,14 @@ def link_evidence(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    if body.target_type.strip().lower() == "gate_requirement" or (
+        body.target_type.strip().lower() == "evidence"
+        and body.relationship.strip().lower() in {"candidate_authority_review", "reviews"}
+    ) or (
+        body.target_type.strip().lower() == ResearchInboxService.TARGET_TYPE
+        and body.relationship.strip().lower() == ResearchInboxService.RELATIONSHIP
+    ):
+        raise HTTPException(status_code=422, detail="Reserved lineage requires its dedicated workflow")
     return run(lambda: evidence.link(evidence_id=evidence_id, **body.model_dump(), created_by=principal.actor_id))
 
 
@@ -1456,9 +2067,8 @@ def record_causal_policy_stage_outcome(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "admin")
-    run(lambda: policy_shadow.validate_stage_outcome(release_id, body.observation_count))
     return run(
-        lambda: causal_policies.record_stage_outcome(
+        lambda: policy_shadow.record_stage_outcome(
             release_id,
             **body.model_dump(),
             recorded_by=principal.actor_id,
@@ -1636,6 +2246,7 @@ def claim_limited_execution_command(
 def record_limited_execution_receipt(
     command_id: str,
     body: LimitedExecutionReceiptInput,
+    request: Request,
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "executor", "admin")
@@ -1644,6 +2255,8 @@ def record_limited_execution_receipt(
             command_id,
             **body.model_dump(),
             recorded_by=principal.actor_id,
+            request_id=request.state.request_id,
+            trace_id=request.state.trace_id,
         )
     )
 
@@ -1973,8 +2586,201 @@ def activate_read_only_pilot(
     )
 
 
+@app.post("/v1/read-only-pilots/{pilot_id}/runs", status_code=201)
+def start_read_only_pilot_run(
+    pilot_id: str,
+    body: PilotRunStartInput,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "pilot_reader", "admin")
+    return run(
+        lambda: pilot_runs.start(
+            pilot_id,
+            **body.model_dump(),
+            worker_id=principal.actor_id,
+            request_id=request.state.request_id,
+            trace_id=request.state.trace_id,
+        )
+    )
+
+
+@app.post("/v1/read-only-pilot-runs/{run_id}/complete")
+def complete_read_only_pilot_run(
+    run_id: str,
+    body: PilotRunCompletionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "pilot_reader", "admin")
+    return run(
+        lambda: pilot_runs.complete(
+            run_id,
+            **body.model_dump(),
+            worker_id=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/read-only-pilot-runs/{run_id}/response-evidence", status_code=201)
+async def capture_read_only_pilot_response(
+    run_id: str,
+    response_sha256: Annotated[str, Form(min_length=64, max_length=64)],
+    file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "pilot_reader", "admin")
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    content_bytes = await file.read(max_bytes + 1)
+    if len(content_bytes) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Evidence file exceeds {max_bytes} bytes")
+    return run(
+        lambda: pilot_runs.capture_response(
+            run_id,
+            content=content_bytes,
+            response_sha256=response_sha256,
+            worker_id=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/read-only-pilot-runs/{run_id}/response-checkpoint", status_code=201)
+async def checkpoint_read_only_pilot_response(
+    run_id: str,
+    response_sha256: Annotated[str, Form(min_length=64, max_length=64)],
+    response_byte_size: Annotated[int, Form(ge=1)],
+    record_count: Annotated[int, Form(ge=0)],
+    summary_json: Annotated[str, Form(min_length=2, max_length=8192)],
+    file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "pilot_reader", "admin")
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    content_bytes = await file.read(max_bytes + 1)
+    if len(content_bytes) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Evidence file exceeds {max_bytes} bytes")
+    try:
+        summary = json.loads(summary_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="summary_json must be valid JSON") from exc
+    return run(
+        lambda: pilot_runs.checkpoint_success(
+            run_id,
+            content=content_bytes,
+            response_sha256=response_sha256,
+            response_byte_size=response_byte_size,
+            record_count=record_count,
+            summary=summary,
+            worker_id=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/read-only-pilot-runs/{run_id}/finalize")
+def finalize_read_only_pilot_response(
+    run_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "pilot_reader", "admin")
+    return run(lambda: pilot_runs.finalize_captured(run_id, worker_id=principal.actor_id))
+
+
+@app.get("/v1/read-only-pilot-runs")
+def list_read_only_pilot_runs(
+    pilot_id: str | None = None,
+    principal: Annotated[Principal, Depends(current_principal)] = None,
+):
+    ensure_role(principal, "pilot_reader", "operator", "reviewer", "admin")
+    return run(lambda: pilot_runs.list(pilot_id=pilot_id))
+
+
+@app.get("/v1/read-only-pilot-runs/{run_id}")
+def get_read_only_pilot_run(
+    run_id: str,
+    principal: Annotated[Principal, Depends(current_principal)] = None,
+):
+    ensure_role(principal, "pilot_reader", "operator", "reviewer", "admin")
+    return run(lambda: pilot_runs.get(run_id))
+
+
+@app.post("/v1/read-only-pilot-runs/{run_id}/claims", status_code=201)
+def propose_read_only_claim(
+    run_id: str,
+    body: ReadOnlyClaimInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: read_only_claims.propose(
+            run_id,
+            **body.model_dump(),
+            proposed_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/read-only-claims")
+def list_read_only_claims(
+    run_id: str | None = None,
+    status: str | None = None,
+    principal: Annotated[Principal, Depends(current_principal)] = None,
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(lambda: read_only_claims.list(run_id=run_id, status=status))
+
+
+@app.get("/v1/read-only-claims/{claim_id}")
+def get_read_only_claim(
+    claim_id: str,
+    principal: Annotated[Principal, Depends(current_principal)] = None,
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(lambda: read_only_claims.get(claim_id))
+
+
+@app.post("/v1/read-only-claims/{claim_id}/review")
+def review_read_only_claim(
+    claim_id: str,
+    body: ReadOnlyClaimReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(
+        lambda: read_only_claims.review(
+            claim_id,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/read-only-pilot-runs/reap")
+def reap_read_only_pilot_runs(
+    body: PilotRunReapInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "admin")
+    return run(
+        lambda: pilot_runs.reap_expired(
+            as_of=body.as_of,
+            limit=body.limit,
+            actor_id=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/read-only-pilots/{pilot_id}/usage")
+def get_read_only_pilot_usage(
+    pilot_id: str,
+    as_of: str | None = None,
+    principal: Annotated[Principal, Depends(current_principal)] = None,
+):
+    ensure_role(principal, "pilot_reader", "operator", "reviewer", "admin")
+    return run(lambda: pilot_runs.usage(pilot_id, as_of=as_of))
+
+
 @app.post("/v1/models/discover")
-def discover_models():
+def discover_models(principal: Annotated[Principal, Depends(current_principal)]):
+    ensure_role(principal, "operator", "admin")
     return run(lambda: automation.sync_ollama_models(providers["ollama"]))
 
 
@@ -1984,7 +2790,11 @@ def list_models():
 
 
 @app.post("/v1/recommendations", status_code=201)
-def create_recommendation(body: RecommendationInput):
+def create_recommendation(
+    body: RecommendationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
     return run(lambda: automation.create_recommendation(**body.model_dump()))
 
 
@@ -2003,22 +2813,95 @@ def operations_readiness():
     return run(readiness.report)
 
 
+@app.post("/v1/governance/gate-reviews", status_code=201)
+def create_gate_review(
+    body: GateReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: governance.create(
+            **body.model_dump(),
+            actor_id=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/governance/gate-reviews")
+def list_gate_reviews(gate_id: str | None = None):
+    return run(lambda: governance.list(gate_id=gate_id))
+
+
+@app.get("/v1/governance/gate-reviews/{review_id}")
+def get_gate_review(review_id: str):
+    return run(lambda: governance.get(review_id))
+
+
+@app.post("/v1/governance/gate-reviews/{review_id}/submit")
+def submit_gate_review(
+    review_id: str,
+    body: GateReviewSubmitInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: governance.submit(
+            review_id,
+            evidence_ids=body.evidence_ids,
+            actor_id=principal.actor_id,
+        )
+    )
+
+
+@app.post("/v1/governance/gate-reviews/{review_id}/decide")
+def decide_gate_review(
+    review_id: str,
+    body: GateReviewDecisionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "approver", "admin")
+    return run(
+        lambda: governance.decide(
+            review_id,
+            **body.model_dump(),
+            actor_id=principal.actor_id,
+        )
+    )
+
+
 @app.post("/v1/operations/gate-evidence", status_code=201)
 async def capture_gate_requirement_evidence(
     requirement_id: Annotated[str, Form()],
     effective_at: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     principal: Annotated[Principal, Depends(current_principal)],
+    source_system: Annotated[str | None, Form()] = None,
+    source_locator: Annotated[str | None, Form()] = None,
+    report_window_days: Annotated[int | None, Form()] = None,
 ):
     requirement_id = requirement_id.strip().upper()
     allowed = {
         "GOV-001": ("approver", "admin"),
         "OZN-001": ("reviewer", "compliance", "admin"),
+        "SKU-000": ("operator", "reviewer", "compliance", "admin"),
     }
     roles = allowed.get(requirement_id)
     if roles is None:
         raise HTTPException(status_code=422, detail="Unsupported gate requirement")
     ensure_role(principal, *roles)
+    normalized_source_system = (source_system or "").strip().lower()
+    if requirement_id == "SKU-000" and (
+        normalized_source_system not in demand_reports.supported_source_systems
+        or report_window_days is None
+        or report_window_days < 28
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "SKU-000 requires a supported demand evidence source_system "
+                "and report_window_days >= 28"
+            ),
+        )
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
     content_bytes = await file.read(max_bytes + 1)
     if len(content_bytes) > max_bytes:
@@ -2026,6 +2909,22 @@ async def capture_gate_requirement_evidence(
     digest = hashlib.sha256(content_bytes).hexdigest()
 
     def capture_and_link():
+        if requirement_id == "SKU-000":
+            result = demand_reports.capture_report(
+                content=content_bytes,
+                filename=file.filename or "SKU-000-ozon-data-report.bin",
+                content_type=file.content_type or "application/octet-stream",
+                effective_at=effective_at,
+                report_window_days=report_window_days or 0,
+                created_by=principal.actor_id,
+                source_system=normalized_source_system,
+                source_locator=source_locator,
+            )
+            return {
+                "evidence": asdict(result["evidence"]),
+                "lineage": asdict(result["lineage"]),
+                "review_status": result["review_status"],
+            }
         record = evidence.capture(
             content=content_bytes,
             filename=file.filename or f"{requirement_id}-evidence.bin",
@@ -2036,7 +2935,11 @@ async def capture_gate_requirement_evidence(
             effective_at=effective_at,
             effective_until=None,
             created_by=principal.actor_id,
-            metadata={"requirement_id": requirement_id},
+            metadata={
+                "requirement_id": requirement_id,
+                "source_system": source_system,
+                "report_window_days": report_window_days,
+            },
         )
         edge = evidence.link(
             evidence_id=record.id,
@@ -2048,6 +2951,25 @@ async def capture_gate_requirement_evidence(
         return {"evidence": asdict(record), "lineage": asdict(edge)}
 
     return run(capture_and_link)
+
+
+@app.post("/v1/operations/demand-report-review", status_code=201)
+def review_demand_report(
+    body: DemandReportReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "approver", "admin")
+
+    def review():
+        result = demand_reports.review(**body.model_dump(), reviewed_by=principal.actor_id)
+        return {
+            "report": asdict(result["report"]),
+            "review": asdict(result["review"]),
+            "lineage": [asdict(item) for item in result.get("lineage", [])],
+            "idempotent": result["idempotent"],
+        }
+
+    return run(review)
 
 
 @app.post("/v1/sourcing/offers", status_code=201)
@@ -2116,6 +3038,9 @@ async def capture_supplier_comparison(
     ).model_dump()
     validated_inputs.pop("offer_id")
     validated_inputs.pop("evidence")
+    validated_inputs.pop("cost_evidence")
+    template_id = validated_inputs.pop("template_id")
+    cost_states = validated_inputs.pop("cost_states")
     uploads = [offer_evidence_1, offer_evidence_2, offer_evidence_3]
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
     payloads = []
@@ -2140,6 +3065,8 @@ async def capture_supplier_comparison(
             effective_at=effective_at,
             offers=payloads,
             profit_inputs=ProfitInputs(**validated_inputs),
+            cost_states=cost_states,
+            template_id=template_id,
             assumption_content=assumption_content,
             assumption_filename=assumption_evidence.filename or "profit-assumptions.bin",
             assumption_content_type=assumption_evidence.content_type or "application/octet-stream",
@@ -2178,6 +3105,9 @@ def request_procurement_candidate(
             raise ValueError("Selected offer and scenario are not part of this product comparison")
         if selected["scenario"].cm3_cny <= 0:
             raise ValueError("Procurement candidate requires positive expected CM3")
+        if not selected["scenario"].cost_complete:
+            raise ValueError("Procurement candidate requires complete, classified cost evidence")
+        sourcing.require_release_ready(selected["scenario"])
         if body.quantity < selected["offer"].min_order_quantity:
             raise ValueError("Procurement quantity is below supplier MOQ")
         if not commerce.product_readiness(body.product_id)["ready_for_validation"]:
@@ -2187,6 +3117,10 @@ def request_procurement_candidate(
             "supplier_ref": selected["offer"].supplier_ref,
             "expected_cm3_cny": str(selected["scenario"].cm3_cny),
             "expected_cm3_rate": str(selected["scenario"].cm3_rate),
+            "cost_breakdown_cny": selected["scenario"].cost_breakdown(),
+            "cost_evidence": selected["scenario"].cost_evidence,
+            "cost_states": selected["scenario"].cost_states,
+            "profit_template_id": selected["scenario"].template_id,
             "comparison_offer_ids": [item["offer"].id for item in comparison["rows"]],
             "evidence": selected["scenario"].evidence,
         }
@@ -2241,6 +3175,7 @@ async def record_sample_procurement_event(
     if len(content) > max_bytes:
         raise HTTPException(status_code=413, detail=f"Event evidence exceeds {max_bytes} bytes")
     digest = hashlib.sha256(content).hexdigest()
+
     def capture_and_record():
         record = evidence.capture(
             content=content,
@@ -2285,9 +3220,19 @@ def calculate_sourcing_profit(
     values = body.model_dump()
     offer_id = values.pop("offer_id")
     assumption_evidence = values.pop("evidence")
+    cost_evidence = values.pop("cost_evidence")
+    template_id = values.pop("template_id")
+    cost_states = values.pop("cost_states")
 
     def calculate():
-        result = sourcing.calculate_profit(offer_id, ProfitInputs(**values), assumption_evidence)
+        result = sourcing.calculate_profit(
+            offer_id,
+            ProfitInputs(**values),
+            assumption_evidence,
+            cost_evidence,
+            cost_states,
+            template_id,
+        )
         for evidence_id in result.evidence:
             evidence.link(
                 evidence_id=evidence_id,
@@ -2301,6 +3246,16 @@ def calculate_sourcing_profit(
     return run(calculate)
 
 
+@app.get("/v1/sourcing/profit-template")
+def get_sourcing_profit_template():
+    return profit_template_contract()
+
+
+@app.get("/v1/sourcing/profit-scenarios/{scenario_id}/explain")
+def explain_sourcing_profit_scenario(scenario_id: str):
+    return run(lambda: sourcing_store.get_scenario(scenario_id).explain())
+
+
 @app.post("/v1/listings/ozon/drafts", status_code=201)
 def create_ozon_listing_draft(
     body: OzonListingDraftInput,
@@ -2310,16 +3265,13 @@ def create_ozon_listing_draft(
 
     def create():
         draft = sourcing.create_ozon_listing_draft(**body.model_dump(), requested_by=principal.actor_id)
+        scenario = sourcing_store.get_scenario(draft.scenario_id)
         approval = commerce.request_approval(
             action="listing.publish",
             resource_type="listing_draft",
             resource_id=draft.id,
             requested_by=principal.actor_id,
-            payload={
-                "target_platform": "OZON",
-                "product_id": body.product_id,
-                "scenario_id": body.scenario_id,
-            },
+            payload=listing_approval_payload(draft, scenario),
         )
         draft.approval_id = approval.id
         sourcing_store.attach_listing_approval(draft)
@@ -2334,7 +3286,11 @@ def list_ozon_listing_drafts(limit: int = 100):
 
 
 @app.post("/v1/products", status_code=201)
-def create_product(body: ProductInput):
+def create_product(
+    body: ProductInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
     return run(lambda: commerce.create_product(**body.model_dump()))
 
 
@@ -2407,6 +3363,48 @@ def product_readiness(product_id: str):
     return run(lambda: commerce.product_readiness(product_id))
 
 
+@app.post("/v1/products/{product_id}/media-evidence", status_code=201)
+async def capture_product_media(
+    product_id: str,
+    variant_id: Annotated[str, Form()],
+    asset_role: Annotated[str, Form()],
+    source_kind: Annotated[str, Form()],
+    source_ref: Annotated[str, Form()],
+    effective_at: Annotated[str, Form()],
+    image: Annotated[UploadFile, File()],
+    rights_file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    image_content = await image.read(max_bytes + 1)
+    rights_content = await rights_file.read(max_bytes + 1)
+    if len(image_content) > max_bytes or len(rights_content) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Product media file exceeds {max_bytes} bytes")
+    return run(
+        lambda: product_media.ingest(
+            product_id=product_id,
+            variant_id=variant_id,
+            asset_role=asset_role,
+            source_kind=source_kind,
+            source_ref=source_ref,
+            effective_at=effective_at,
+            image_content=image_content,
+            image_filename=image.filename or "product-image.bin",
+            image_content_type=image.content_type or "application/octet-stream",
+            rights_content=rights_content,
+            rights_filename=rights_file.filename or "product-rights.bin",
+            rights_content_type=rights_file.content_type or "application/octet-stream",
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/products/{product_id}/media-readiness")
+def product_media_readiness(product_id: str):
+    return run(lambda: product_media.readiness(product_id))
+
+
 @app.get("/v1/passport-reviews")
 def passport_review_queue(principal: Annotated[Principal, Depends(current_principal)]):
     ensure_role(principal, "reviewer", "compliance", "admin")
@@ -2436,18 +3434,77 @@ def ozon_contracts():
     return contract_catalog()
 
 
+def validated_report_period(start_value: str, end_value: str) -> dict[str, str]:
+    if not start_value or not end_value:
+        raise HTTPException(status_code=422, detail="Report period requires both start and end dates")
+    try:
+        period_start = date.fromisoformat(start_value)
+        period_end = date.fromisoformat(end_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Report period dates must use YYYY-MM-DD") from exc
+    if period_end < period_start or (period_end - period_start).days > 30:
+        raise HTTPException(status_code=422, detail="Report period must be ordered and no longer than 31 days")
+    return {
+        "report_period_start": period_start.isoformat(),
+        "report_period_end": period_end.isoformat(),
+    }
+
+
+async def ozon_upload_bytes(file: UploadFile) -> bytes:
+    content = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(content) > MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail=f"Import file exceeds {MAX_IMPORT_BYTES} bytes")
+    return content
+
+
+@app.post("/v1/imports/ozon/preflight")
+async def preflight_ozon_import(
+    file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+    report_period_start: Annotated[str, Form()],
+    report_period_end: Annotated[str, Form()],
+):
+    ensure_role(principal, "operator", "admin")
+    content_bytes = await ozon_upload_bytes(file)
+    report_period = validated_report_period(report_period_start, report_period_end)
+    preview = run(
+        lambda: imports.preview_file(filename=file.filename or "ozon-export", content=content_bytes)
+    )
+    return {**preview, **report_period}
+
+
 @app.post("/v1/imports/ozon", status_code=201)
 async def import_ozon(
     file: Annotated[UploadFile, File()],
     principal: Annotated[Principal, Depends(current_principal)],
+    report_period_start: Annotated[str, Form()],
+    report_period_end: Annotated[str, Form()],
     effective_at: Annotated[str | None, Form()] = None,
 ):
     ensure_role(principal, "operator", "admin")
-    content_bytes = await file.read(MAX_IMPORT_BYTES + 1)
-    if len(content_bytes) > MAX_IMPORT_BYTES:
-        raise HTTPException(status_code=413, detail=f"Import file exceeds {MAX_IMPORT_BYTES} bytes")
+    content_bytes = await ozon_upload_bytes(file)
+    report_period = validated_report_period(report_period_start, report_period_end)
+    preview = run(
+        lambda: imports.preview_file(filename=file.filename or "ozon-export", content=content_bytes)
+    )
+    if not preview["ready"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Ozon import preflight failed; preserve the original file",
+                "missing_columns": preview["missing_columns"],
+            },
+        )
     existing = imports.find_by_content(content_bytes)
     if existing is not None:
+        if not existing.evidence_id:
+            raise HTTPException(status_code=409, detail="Existing import has no immutable source evidence")
+        try:
+            existing_source = evidence.get(existing.evidence_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=409, detail="Existing import source evidence is missing") from exc
+        if any(existing_source.metadata.get(key) != value for key, value in report_period.items()):
+            raise HTTPException(status_code=409, detail="Duplicate file conflicts with its immutable report period")
         return asdict(existing)
 
     filename = file.filename or "ozon-export"
@@ -2465,7 +3522,12 @@ async def import_ozon(
             effective_at=captured_at,
             effective_until=None,
             created_by=principal.actor_id,
-            metadata={"filename": filename, "sha256": digest},
+            metadata={
+                "filename": filename,
+                "sha256": digest,
+                "retention_class": "financial",
+                **report_period,
+            },
         )
         result = imports.import_file(filename=filename, content=content_bytes, evidence_id=source.id)
         evidence.link(
@@ -2485,6 +3547,36 @@ def get_import(import_id: str):
     return run(lambda: imports.get(import_id))
 
 
+@app.get("/v1/imports/{import_id}/finance-review")
+def get_finance_report_review(import_id: str):
+    return run(lambda: finance_report_reviews.status(import_id))
+
+
+@app.post("/v1/imports/{import_id}/finance-review", status_code=201)
+def review_finance_report(
+    import_id: str,
+    body: OzonFinanceReportReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+
+    def review():
+        result = finance_report_reviews.review(
+            import_id=import_id,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+        return {
+            "import": asdict(result["import"]),
+            "report": asdict(result["report"]),
+            "review": asdict(result["review"]),
+            "lineage": [asdict(item) for item in result.get("lineage", [])],
+            "idempotent": result["idempotent"],
+        }
+
+    return run(review)
+
+
 @app.post("/v1/imports/{import_id}/promote", status_code=201)
 def promote_import(
     import_id: str,
@@ -2492,6 +3584,62 @@ def promote_import(
 ):
     ensure_role(principal, "operator", "admin")
     return run(lambda: facts.promote(import_id, created_by=principal.actor_id))
+
+
+@app.get("/v1/imports/{import_id}/fee-codes")
+def get_import_fee_codes(import_id: str):
+    return run(lambda: ozon_fee_mappings.status(import_id))
+
+
+@app.post("/v1/imports/{import_id}/fee-mappings", status_code=201)
+def approve_import_fee_mapping(
+    import_id: str,
+    body: OzonFeeMappingApprovalInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+
+    def approve():
+        result = ozon_fee_mappings.approve(
+            import_id=import_id,
+            **body.model_dump(),
+            approved_by=principal.actor_id,
+        )
+        return {
+            "mapping": asdict(result["mapping"]),
+            "approval": asdict(result["approval"]),
+            "lineage": [asdict(item) for item in result["lineage"]],
+        }
+
+    return run(approve)
+
+
+@app.get("/v1/imports/{import_id}/accrual-classifications")
+def get_import_accrual_classifications(import_id: str):
+    return run(lambda: ozon_accrual_classifications.status(import_id))
+
+
+@app.post("/v1/imports/{import_id}/accrual-classifications", status_code=201)
+def approve_import_accrual_classification(
+    import_id: str,
+    body: OzonAccrualClassificationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+
+    def approve():
+        result = ozon_accrual_classifications.approve(
+            import_id=import_id,
+            **body.model_dump(),
+            approved_by=principal.actor_id,
+        )
+        return {
+            "approval": asdict(result["approval"]),
+            "lineage": [asdict(item) for item in result.get("lineage", [])],
+            "idempotent": result["idempotent"],
+        }
+
+    return run(approve)
 
 
 @app.get("/v1/facts")
@@ -2510,6 +3658,8 @@ def register_fee_mapping(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "reviewer", "compliance", "admin")
+    if body.provider.strip().lower() == "ozon":
+        raise HTTPException(status_code=422, detail="Use an accepted Ozon import fee-mapping workflow")
     return run(lambda: finance.register_fee_mapping(**body.model_dump(), approved_by=principal.actor_id))
 
 
@@ -2615,6 +3765,7 @@ def add_passport(
     reviewed = decision in {"approved", "rejected", "blocked"}
     if reviewed:
         ensure_role(principal, "reviewer", "compliance", "admin")
+
     def create_and_link():
         passport = commerce.add_passport(
             product_id=product_id,
@@ -2644,47 +3795,324 @@ def validate_product(
 
 
 @app.post("/v1/market/observations", status_code=201)
-def ingest_observation(body: ObservationInput):
+def ingest_observation(
+    body: ObservationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
     return run(lambda: market.ingest(**body.model_dump()))
 
 
 @app.post("/v1/market/opportunities", status_code=201)
-def score_opportunity(body: OpportunityInput):
+def score_opportunity(
+    body: OpportunityInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
     return run(lambda: market.score_opportunity(**body.model_dump()))
 
 
+@app.post("/v1/market/research-signals", status_code=201)
+async def capture_research_signal(
+    file: Annotated[UploadFile, File()],
+    provider: Annotated[str, Form()],
+    provider_record_id: Annotated[str, Form()],
+    source_url: Annotated[str, Form()],
+    observed_at: Annotated[str, Form()],
+    declared_grade: Annotated[EvidenceGrade, Form()],
+    license_status: Annotated[str, Form()],
+    principal: Annotated[Principal, Depends(current_principal)],
+    raw_fields_json: Annotated[str, Form()] = "{}",
+    candidate_refs_json: Annotated[str, Form()] = "[]",
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    content_bytes = await file.read(max_bytes + 1)
+    if len(content_bytes) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Research file exceeds {max_bytes} bytes")
+    try:
+        raw_fields = json.loads(raw_fields_json)
+        candidate_refs = json.loads(candidate_refs_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="Research JSON fields must be valid JSON") from exc
+    if not isinstance(raw_fields, dict) or not isinstance(candidate_refs, list):
+        raise HTTPException(status_code=422, detail="raw_fields_json must be an object and candidate_refs_json a list")
+    return run(
+        lambda: research_inbox.capture(
+            content=content_bytes,
+            filename=file.filename or "research-signal.bin",
+            content_type=file.content_type or "application/octet-stream",
+            provider=provider,
+            provider_record_id=provider_record_id,
+            source_url=source_url,
+            observed_at=observed_at,
+            declared_grade=declared_grade,
+            license_status=license_status,
+            raw_fields=raw_fields,
+            candidate_refs=candidate_refs,
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@app.get("/v1/market/research-signals")
+def list_research_signals(
+    principal: Annotated[Principal, Depends(current_principal)],
+    candidate_ref: str | None = None,
+    limit: int = 100,
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(lambda: research_inbox.list(candidate_ref=candidate_ref, limit=limit))
+
+
+@app.post("/v1/market/candidates/assess")
+def assess_candidate_research(
+    body: CandidateResearchInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(lambda: market.assess_candidate_research(**body.model_dump()))
+
+
+@app.get("/v1/market/candidate-evidence/{evidence_id}/authority-review")
+def candidate_evidence_authority_status(
+    evidence_id: str,
+    metric: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(lambda: candidate_evidence_authority.status(evidence_id, metric))
+
+
+@app.get("/v1/finance/cost-evidence/{evidence_id}/authority-review")
+def cost_evidence_authority_status(
+    evidence_id: str,
+    cost_type: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(lambda: cost_evidence_authority.status(evidence_id, cost_type))
+
+
+@app.get("/v1/finance/cost-authorities")
+def cost_authority_catalog(
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    labels = {key: label for key, label, *_ in PROFIT_TEMPLATE_FIELDS}
+    return {
+        "schema_version": "cost-actual-authority-v1",
+        "items": [
+            {
+                "cost_type": cost_type,
+                "label": labels[cost_type],
+                "authorities": [
+                    {
+                        "id": authority_id,
+                        "label": ACTUAL_COST_AUTHORITY_LABELS[authority_id],
+                    }
+                    for authority_id in sorted(authority_ids)
+                ],
+            }
+            for cost_type, authority_ids in ACTUAL_COST_AUTHORITIES.items()
+        ],
+        "automatic_state_change": False,
+        "automatic_finance_posting": False,
+        "automatic_procurement": False,
+        "automatic_listing": False,
+    }
+
+
+@app.post("/v1/finance/cost-evidence/{evidence_id}/authority-review", status_code=201)
+def review_cost_evidence_authority(
+    evidence_id: str,
+    body: CostEvidenceAuthorityReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+
+    def review():
+        result = cost_evidence_authority.review(
+            evidence_id=evidence_id,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+        return {
+            "evidence": asdict(result["evidence"]),
+            "review": asdict(result["review"]),
+            "lineage": asdict(result["lineage"]) if result.get("lineage") else None,
+            "idempotent": result["idempotent"],
+        }
+
+    return run(review)
+
+
+@app.post("/v1/market/candidate-evidence/{evidence_id}/authority-review", status_code=201)
+def review_candidate_evidence_authority(
+    evidence_id: str,
+    body: CandidateEvidenceAuthorityReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+
+    def review():
+        result = candidate_evidence_authority.review(
+            evidence_id=evidence_id,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+        return {
+            "evidence": asdict(result["evidence"]),
+            "review": asdict(result["review"]),
+            "lineage": asdict(result["lineage"]) if result.get("lineage") else None,
+            "idempotent": result["idempotent"],
+        }
+
+    return run(review)
+
+
+@app.post("/v1/market/candidates/intake", status_code=201)
+def submit_candidate_research(
+    body: CandidateResearchSubmissionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: market.submit_candidate_research(
+            **body.model_dump(exclude={"observations"}),
+            observations=[item.model_dump() for item in body.observations],
+        )
+    )
+
+
+@app.post("/v1/market/candidates/sourcing-handoff", status_code=201)
+def handoff_candidate_to_sourcing(
+    body: CandidateSourcingHandoffInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+
+    def handoff():
+        result = market.handoff_candidate_to_sourcing(
+            **body.model_dump(),
+            confirmed_by=principal.actor_id,
+        )
+        for evidence_id in result["evidence_ids"]:
+            evidence.link(
+                evidence_id=evidence_id,
+                target_type="product",
+                target_id=result["product"].id,
+                relationship="candidate_basis",
+                created_by=principal.actor_id,
+            )
+        evidence.link(
+            evidence_id=result["demand_report_evidence_id"],
+            target_type="product",
+            target_id=result["product"].id,
+            relationship="demand_report_basis",
+            created_by=principal.actor_id,
+        )
+        return result
+
+    return run(handoff)
+
+
 @app.post("/v1/content/assets", status_code=201)
-def create_content_asset(body: ContentBriefInput):
+def create_content_asset(
+    body: ContentBriefInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
     return run(lambda: content.create_content_brief(**body.model_dump()))
 
 
+@app.get("/v1/products/{product_id}/content-assets")
+def list_product_content_assets(
+    product_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "monitor", "admin")
+    return run(lambda: content.repo.content_assets_for_product(product_id))
+
+
+@app.post("/v1/content/assets/{asset_id}/generation", status_code=202)
+def queue_content_asset_generation(
+    asset_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(lambda: image_execution.queue(asset_id, requested_by=principal.actor_id))
+
+
+@app.post("/v1/content/assets/{asset_id}/generation/sync")
+def sync_content_asset_generation(
+    asset_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(lambda: image_execution.sync(asset_id, requested_by=principal.actor_id))
+
+
 @app.post("/v1/content/assets/{asset_id}/generated")
-def attach_content_asset(asset_id: str, body: AssetAttachInput):
+def attach_content_asset(
+    asset_id: str,
+    body: AssetAttachInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
     return run(lambda: content.attach_generated_asset(asset_id, **body.model_dump()))
 
 
 @app.post("/v1/content/assets/{asset_id}/review")
-def review_content_asset(asset_id: str, body: AssetReviewInput):
-    return run(lambda: content.review_asset(asset_id, **body.model_dump()))
+def review_content_asset(
+    asset_id: str,
+    body: AssetReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+    return run(
+        lambda: content.review_asset(
+            asset_id,
+            checks=[item.model_dump() for item in body.checks],
+            reviewed_by=principal.actor_id,
+        )
+    )
 
 
 @app.post("/v1/experiments", status_code=201)
-def create_experiment(body: ExperimentInput):
+def create_experiment(
+    body: ExperimentInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
     return run(lambda: content.create_experiment(**body.model_dump()))
 
 
 @app.post("/v1/experiments/{experiment_id}/start")
-def start_experiment(experiment_id: str):
+def start_experiment(
+    experiment_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
     return run(lambda: content.start_experiment(experiment_id))
 
 
 @app.post("/v1/orders", status_code=201)
-def create_order(body: OrderInput):
+def create_order(
+    body: OrderInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
     return run(lambda: commerce.create_order(**body.model_dump()))
 
 
 @app.post("/v1/orders/{order_id}/charges", status_code=201)
-def add_charge(order_id: str, body: ChargeInput):
+def add_charge(
+    order_id: str,
+    body: ChargeInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
     return run(lambda: commerce.add_charge(order_id=order_id, **body.model_dump()))
 
 
@@ -2712,7 +4140,18 @@ def decide_approval(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "approver", "admin")
-    return run(lambda: commerce.decide_approval(approval_id, **body.model_dump(), decided_by=principal.actor_id))
+
+    def decide():
+        approval = repo.get_approval(approval_id)
+        if body.approved and approval.action == "listing.publish":
+            sourcing.verify_listing_approval(
+                draft_id=approval.resource_id,
+                approval_id=approval.id,
+                approval_payload=approval.payload,
+            )
+        return commerce.decide_approval(approval_id, **body.model_dump(), decided_by=principal.actor_id)
+
+    return run(decide)
 
 
 @app.post("/v1/agent-tasks", status_code=201)
@@ -2724,3 +4163,9 @@ def submit_agent_task(body: AgentTaskInput, principal: Annotated[Principal, Depe
 @app.get("/v1/events")
 def events(after: int = 0):
     return repo.events_after(after)
+
+
+@app.get("/v1/outbox/status")
+def outbox_status(principal: Annotated[Principal, Depends(current_principal)]):
+    ensure_role(principal, "monitor", "reviewer", "admin")
+    return outbox.status()

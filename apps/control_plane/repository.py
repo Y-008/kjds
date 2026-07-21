@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import AbstractContextManager, contextmanager
+from copy import deepcopy
 from typing import Protocol
 
 from .domain import (
@@ -19,6 +21,7 @@ from .domain import (
 
 
 class Repository(Protocol):
+    def transaction(self) -> AbstractContextManager[Repository]: ...
     def add_product(self, product: Product) -> Product: ...
     def get_product(self, product_id: str) -> Product: ...
     def list_products(self) -> list[Product]: ...
@@ -34,7 +37,15 @@ class Repository(Protocol):
     def list_approvals(self) -> list[Approval]: ...
     def save_approval(self, approval: Approval) -> Approval: ...
     def add_agent_task(self, task: AgentTask) -> AgentTask: ...
-    def append_event(self, event_type: str, aggregate_id: str, payload: dict) -> None: ...
+    def append_event(
+        self,
+        event_type: str,
+        aggregate_id: str,
+        payload: dict,
+        *,
+        actor_id: str = "system",
+        source_evidence_id: str | None = None,
+    ) -> None: ...
     def event_count(self) -> int: ...
     def events_after(self, sequence: int) -> list[dict]: ...
     def add_observation(self, observation: MarketObservation) -> MarketObservation: ...
@@ -65,6 +76,16 @@ class InMemoryRepository:
         self.content_assets: dict[str, ContentAsset] = {}
         self.experiments: dict[str, GrowthExperiment] = {}
         self.events: list[dict] = []
+
+    @contextmanager
+    def transaction(self) -> Iterator[InMemoryRepository]:
+        snapshot = deepcopy(self.__dict__)
+        try:
+            yield self
+        except Exception:
+            self.__dict__.clear()
+            self.__dict__.update(snapshot)
+            raise
 
     def add_product(self, product: Product) -> Product:
         if any(item.sku == product.sku for item in self.products.values()):
@@ -139,9 +160,24 @@ class InMemoryRepository:
         self.agent_tasks_by_key[task.idempotency_key] = task.id
         return task
 
-    def append_event(self, event_type: str, aggregate_id: str, payload: dict) -> None:
+    def append_event(
+        self,
+        event_type: str,
+        aggregate_id: str,
+        payload: dict,
+        *,
+        actor_id: str = "system",
+        source_evidence_id: str | None = None,
+    ) -> None:
         self.events.append(
-            {"sequence": len(self.events) + 1, "type": event_type, "aggregate_id": aggregate_id, "payload": payload}
+            {
+                "sequence": len(self.events) + 1,
+                "type": event_type,
+                "aggregate_id": aggregate_id,
+                "payload": payload,
+                "actor_id": actor_id,
+                "source_evidence_id": source_evidence_id,
+            }
         )
 
     def event_count(self) -> int:

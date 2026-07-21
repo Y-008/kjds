@@ -1,0 +1,59 @@
+{
+  "contract_id": "KJDS-ERPNEXT-POC-001",
+  "version": 1,
+  "mode": "poc_dry_run",
+  "remote_write_enabled": false,
+  "automatic_submit": false,
+  "current_owners": {
+    "canonical_product": "kjds",
+    "evidence": "kjds",
+    "cm3": "kjds",
+    "decision": "kjds",
+    "approval": "kjds",
+    "audit": "kjds"
+  },
+  "candidate_erpnext_owners": {
+    "Item": "erpnext",
+    "Purchase Order": "erpnext",
+    "Purchase Receipt": "erpnext",
+    "Landed Cost Voucher": "erpnext",
+    "Sales Invoice": "erpnext",
+    "Journal Entry": "erpnext",
+    "Payment Entry": "erpnext"
+  },
+  "allowed_doctypes": [
+    "Item",
+    "Purchase Order",
+    "Purchase Receipt",
+    "Landed Cost Voucher",
+    "Sales Invoice",
+    "Journal Entry",
+    "Payment Entry"
+  ],
+  "required_envelope_fields": [
+    "contract_version",
+    "mode",
+    "doctype",
+    "external_id",
+    "idempotency_key",
+    "payload_sha256",
+    "source_type",
+    "source_id",
+    "source_version",
+    "evidence_ids",
+    "current_owner",
+    "candidate_owner",
+    "automatic_submit",
+    "payload"
+  ],
+  "hard_rejections": [
+    "production_write_mode",
+    "automatic_submit",
+    "missing_evidence",
+    "floating_point_money",
+    "invalid_currency",
+    "cross_currency_without_rate_evidence",
+    "same_idempotency_key_with_different_payload",
+    "unsupported_doctype"
+  ]
+}

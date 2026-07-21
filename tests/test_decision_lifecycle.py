@@ -78,6 +78,67 @@ def analysis(lifecycle, contract_id, evidence_id, *, submitted_by="analyst-1"):
     )
 
 
+def best_solution_contract(contracts, evidence_id):
+    return contracts.create(
+        profile="/best",
+        objective="选择 Ozon 财务事实来源",
+        decision_domain="architecture",
+        risk_level="medium",
+        options=[
+            {"id": "official", "label": "Ozon 官方原始报表"},
+            {"id": "third-party", "label": "第三方计算器"},
+            {"id": "no-action", "label": "暂不晋升财务事实"},
+        ],
+        context={
+            "hard_constraints": ["原始证据可追溯", "不得自动入账"],
+            "decision_criteria": ["长期价值", "总拥有成本", "可逆性"],
+        },
+        evidence_ids=[evidence_id],
+        requested_by="operator-1",
+    )
+
+
+def best_solution_assessment(*, selected="official"):
+    option_ids = ["official", "third-party", "no-action"]
+    constraints = ["原始证据可追溯", "不得自动入账"]
+    return {
+        "hard_constraint_results": [
+            {
+                "option_id": option_id,
+                "constraint": constraint,
+                "passed": option_id != "third-party" or constraint == "不得自动入账",
+                "rationale": f"{option_id} 对 {constraint} 的证据判断",
+            }
+            for option_id in option_ids
+            for constraint in constraints
+        ],
+        "option_assessments": [
+            {
+                "option_id": option_id,
+                "evidence_quality": "A" if option_id == "official" else "C",
+                "expected_risk_adjusted_long_term_value": f"{option_id} 长期价值",
+                "total_cost_of_ownership": f"{option_id} 总拥有成本",
+                "maximum_loss": f"{option_id} 最大损失",
+                "reversibility_and_rollback": f"{option_id} 回滚方案",
+                "time_to_value": f"{option_id} 落地时间",
+                "operational_fit": f"{option_id} 运维适配",
+            }
+            for option_id in option_ids
+        ],
+        "rejected_options": [
+            {"option_id": option_id, "reason": f"未选择 {option_id} 的原因"}
+            for option_id in option_ids
+            if option_id != selected
+        ],
+        "sensitivity_drivers": ["官方字段或账单口径变化"],
+        "invalidation_conditions": ["无法复核原始报表哈希"],
+        "review_at": "2026-08-20T00:00:00+00:00",
+        "approval_requirement": "独立复核后由负责人批准",
+        "no_action_option_id": "no-action",
+        "no_action_omission_reason": None,
+    }
+
+
 def test_full_decision_lifecycle_is_separated_idempotent_and_calibrated():
     evidence, contracts, lifecycle = setup_services()
     source = capture(evidence, "analysis")
@@ -113,6 +174,15 @@ def test_full_decision_lifecycle_is_separated_idempotent_and_calibrated():
         conditions=["最大损失不超过30000 CNY"],
         decided_by="reviewer-2",
     )
+    with pytest.raises(ValueError, match="Actual outcome must be a finite number"):
+        lifecycle.record_outcome(
+            resolution["id"],
+            actual_value=Decimal("NaN"),
+            observed_at="2026-07-19T00:00:00+00:00",
+            evidence_ids=[outcome_source.id],
+            notes="无效数值不应进入结果账",
+            recorded_by="finance-1",
+        )
     outcome = lifecycle.record_outcome(
         resolution["id"],
         actual_value=Decimal("10000"),
@@ -179,6 +249,32 @@ def test_analysis_requires_registered_option_forecast_and_evidence():
             conclusion="choose A without prediction",
             confidence=Decimal("0.5"),
             recommended_option_id="A",
+            evidence_ids=[source.id],
+            submitted_by="analyst",
+        )
+
+    with pytest.raises(ValueError, match="Analysis confidence must be a finite number"):
+        lifecycle.submit_analysis(
+            contract["id"],
+            conclusion="invalid confidence",
+            confidence=Decimal("NaN"),
+            recommended_option_id="A",
+            evidence_ids=[source.id],
+            submitted_by="analyst",
+        )
+
+    with pytest.raises(ValueError, match="Forecast value must be a finite number"):
+        lifecycle.submit_analysis(
+            contract["id"],
+            conclusion="invalid forecast",
+            confidence=Decimal("0.5"),
+            recommended_option_id="A",
+            forecast_metric="sample_cm3_cny",
+            forecast_value=Decimal("Infinity"),
+            forecast_low=Decimal("0"),
+            forecast_high=Decimal("100"),
+            forecast_unit="CNY",
+            forecast_due_at="2026-07-20T00:00:00+00:00",
             evidence_ids=[source.id],
             submitted_by="analyst",
         )
@@ -335,4 +431,124 @@ def test_research_contract_can_be_analyzed_but_not_formally_resolved():
             disposition="adopt",
             rationale="should not resolve research",
             decided_by="reviewer-2",
+        )
+
+
+def test_best_solution_requires_complete_structured_assessment():
+    evidence, contracts, lifecycle = setup_services()
+    source = capture(evidence, "best-structured")
+    contract = best_solution_contract(contracts, source.id)
+
+    with pytest.raises(ValueError, match="requires a selection assessment"):
+        lifecycle.submit_analysis(
+            contract["id"],
+            conclusion="选择官方原始报表",
+            confidence=Decimal("0.9"),
+            recommended_option_id="official",
+            evidence_ids=[source.id],
+            submitted_by="analyst-1",
+        )
+
+    failed_constraint = best_solution_assessment()
+    failed_constraint["hard_constraint_results"][0]["passed"] = False
+    with pytest.raises(ValueError, match="must pass every registered hard constraint"):
+        lifecycle.submit_analysis(
+            contract["id"],
+            conclusion="选择官方原始报表",
+            confidence=Decimal("0.9"),
+            recommended_option_id="official",
+            selection_assessment=failed_constraint,
+            evidence_ids=[source.id],
+            submitted_by="analyst-1",
+        )
+
+    incomplete = best_solution_assessment()
+    incomplete["option_assessments"] = incomplete["option_assessments"][:-1]
+    with pytest.raises(ValueError, match="cover each registered option exactly once"):
+        lifecycle.submit_analysis(
+            contract["id"],
+            conclusion="选择官方原始报表",
+            confidence=Decimal("0.9"),
+            recommended_option_id="official",
+            selection_assessment=incomplete,
+            evidence_ids=[source.id],
+            submitted_by="analyst-1",
+        )
+
+    submitted = lifecycle.submit_analysis(
+        contract["id"],
+        conclusion="官方原始报表满足硬约束且长期风险最低",
+        confidence=Decimal("0.9"),
+        recommended_option_id="official",
+        selection_assessment=best_solution_assessment(),
+        evidence_ids=[source.id],
+        submitted_by="analyst-1",
+    )
+    assert submitted["forecast"] is None
+    assert submitted["selection_assessment"]["no_action_option_id"] == "no-action"
+    assert len(submitted["selection_assessment"]["rejected_options"]) == 2
+
+
+def test_best_solution_acceptance_requires_counterargument_before_resolution():
+    evidence, contracts, lifecycle = setup_services()
+    source = capture(evidence, "best-review")
+    contract = best_solution_contract(contracts, source.id)
+    submitted = lifecycle.submit_analysis(
+        contract["id"],
+        conclusion="官方报表是当前最佳来源",
+        confidence=Decimal("0.9"),
+        recommended_option_id="official",
+        selection_assessment=best_solution_assessment(),
+        evidence_ids=[source.id],
+        submitted_by="analyst-1",
+    )
+
+    with pytest.raises(ValueError, match="requires at least one counterargument"):
+        lifecycle.review_analysis(
+            submitted["id"],
+            verdict="accepted",
+            rationale="同意结论",
+            evidence_ids=[source.id],
+            reviewed_by="reviewer-2",
+        )
+
+    lifecycle.review_analysis(
+        submitted["id"],
+        verdict="accepted",
+        rationale="官方报表仍需保持人工复核",
+        counterarguments=["字段映射错误时，官方来源仍可能被错误解释"],
+        evidence_ids=[source.id],
+        reviewed_by="reviewer-2",
+    )
+    resolved = lifecycle.resolve(
+        contract["id"],
+        analysis_id=submitted["id"],
+        disposition="adopt",
+        rationale="采纳官方原件作为事实来源，保持人工批准",
+        conditions=["禁止自动入账"],
+        decided_by="approver-3",
+    )
+    assert resolved["execution_eligible"] is False
+
+
+def test_non_best_contract_rejects_selection_assessment():
+    evidence, contracts, lifecycle = setup_services()
+    source = capture(evidence, "not-best")
+    contract = decision_contract(contracts, source.id)
+
+    with pytest.raises(ValueError, match="only valid for a best-solution"):
+        lifecycle.submit_analysis(
+            contract["id"],
+            conclusion="错误附带最佳方案评估",
+            confidence=Decimal("0.7"),
+            recommended_option_id="A",
+            forecast_metric="sample_cm3_cny",
+            forecast_value=Decimal("12000"),
+            forecast_low=Decimal("5000"),
+            forecast_high=Decimal("18000"),
+            forecast_unit="CNY",
+            forecast_due_at="2026-07-18T00:00:00+00:00",
+            selection_assessment=best_solution_assessment(),
+            evidence_ids=[source.id],
+            submitted_by="analyst-1",
         )

@@ -1,0 +1,10 @@
+sku,supplier_ref,platform,external_quote_id,source_url,title,currency,unit_price,source_to_cny_rate,moq,weight_kg,length_cm,width_cm,height_cm,domestic_logistics_per_unit,evidence_reference,quoted_at,owner,status
+RU-001,supplier-1,1688,,,,CNY,,1,,,,,,,,,,draft
+RU-001,supplier-2,1688,,,,CNY,,1,,,,,,,,,,draft
+RU-001,supplier-3,1688,,,,CNY,,1,,,,,,,,,,draft
+RU-002,supplier-1,1688,,,,CNY,,1,,,,,,,,,,draft
+RU-002,supplier-2,1688,,,,CNY,,1,,,,,,,,,,draft
+RU-002,supplier-3,1688,,,,CNY,,1,,,,,,,,,,draft
+RU-003,supplier-1,1688,,,,CNY,,1,,,,,,,,,,draft
+RU-003,supplier-2,1688,,,,CNY,,1,,,,,,,,,,draft
+RU-003,supplier-3,1688,,,,CNY,,1,,,,,,,,,,draft

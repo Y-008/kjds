@@ -1,0 +1,190 @@
+{
+  "contract": "kjds-outbox-coverage-v1",
+  "as_of": "2026-07-18",
+  "scope": "apps/control_plane 中直接创建 SQLAlchemy Session 且开启 session.begin() 的模块",
+  "full_system_outbox": false,
+  "status_definitions": {
+    "covered": "业务状态与最小脱敏 Outbox 事件在同一事务提交",
+    "polling_contract": "当前跨进程交付由显式领取、租约或轮询接口完成，不重复制造通知事件",
+    "deferred_until_gate": "未来 Gate 启用跨边界副作用前必须迁移，当前没有获批消费者",
+    "internal_only": "当前只维护控制面内部事实或账本，没有外部投递合同",
+    "infrastructure": "实现事务仓储或 Outbox 机制本身，不是待迁移业务领域"
+  },
+  "modules": [
+    {
+      "module": "automation.py",
+      "status": "covered",
+      "delivery_contract": "transactional_outbox:decision.recommended",
+      "rationale": "自动化建议需要在业务事务提交后可靠交付给后续消费者。",
+      "activation_trigger": "none"
+    },
+    {
+      "module": "capability_economics.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "能力成本和价值记录当前只供控制面查询与审计。",
+      "activation_trigger": "出现独立计费或资源分配消费者"
+    },
+    {
+      "module": "causal_experiments.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "实验注册和观测当前保存在控制面事实账内。",
+      "activation_trigger": "实验运行器改为独立服务"
+    },
+    {
+      "module": "causal_knowledge.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "因果知识只在控制面内晋级和读取。",
+      "activation_trigger": "外部知识索引或策略消费者上线"
+    },
+    {
+      "module": "causal_policies.py",
+      "status": "deferred_until_gate",
+      "delivery_contract": "none",
+      "rationale": "策略发布尚未获得生产执行消费者。",
+      "activation_trigger": "G5 策略发布放行前"
+    },
+    {
+      "module": "decision_contracts.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "决策合同当前由同一控制面 API 创建和读取。",
+      "activation_trigger": "外部审批或执行消费者上线"
+    },
+    {
+      "module": "decision_lifecycle.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "决策状态转换当前没有跨服务通知合同。",
+      "activation_trigger": "状态转换驱动独立执行服务"
+    },
+    {
+      "module": "evidence.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "不可变证据由控制面同步写入并按引用读取。",
+      "activation_trigger": "独立证据存储或索引消费者上线"
+    },
+    {
+      "module": "execution_plans.py",
+      "status": "deferred_until_gate",
+      "delivery_contract": "none",
+      "rationale": "执行计划尚不能直接触发生产动作。",
+      "activation_trigger": "G6 有限执行放行前"
+    },
+    {
+      "module": "facts.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "事实晋级当前在控制面内完成且可直接查询。",
+      "activation_trigger": "外部事实投影或分析消费者上线"
+    },
+    {
+      "module": "finance.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "财务分录、对账和现金计划当前只形成内部账本。",
+      "activation_trigger": "独立会计导出或付款消费者上线"
+    },
+    {
+      "module": "governance.py",
+      "status": "covered",
+      "delivery_contract": "transactional_outbox:gate_review.*",
+      "rationale": "Gate Review 创建、提交和决定会改变放行结论。",
+      "activation_trigger": "none"
+    },
+    {
+      "module": "imports.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "导入结果当前只写暂存事实并由控制面复核。",
+      "activation_trigger": "导入完成驱动独立下游处理"
+    },
+    {
+      "module": "incident_recovery.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "事故、熔断和恢复记录当前在控制面内同步生效。",
+      "activation_trigger": "独立告警或恢复执行器上线"
+    },
+    {
+      "module": "limited_executor.py",
+      "status": "polling_contract",
+      "delivery_contract": "lease_claim_api",
+      "rationale": "执行命令通过有界领取、租约和回执合同交付。",
+      "activation_trigger": "领取模式替换为事件推送"
+    },
+    {
+      "module": "operations_queue.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "运营队列由显式扫描生成并在控制面内处理。",
+      "activation_trigger": "独立队列消费者或主动告警上线"
+    },
+    {
+      "module": "outbox.py",
+      "status": "infrastructure",
+      "delivery_contract": "outbox_publisher",
+      "rationale": "该模块实现事件领取、发布、重试和状态查询。",
+      "activation_trigger": "none"
+    },
+    {
+      "module": "pilot_readiness.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "试点就绪度是控制面内部批准和检查状态。",
+      "activation_trigger": "批准结果驱动独立编排器"
+    },
+    {
+      "module": "pilot_runs.py",
+      "status": "polling_contract",
+      "delivery_contract": "lease_claim_api",
+      "rationale": "只读试点运行通过显式领取、租约和完成接口交付。",
+      "activation_trigger": "领取模式替换为事件推送"
+    },
+    {
+      "module": "policy_shadow.py",
+      "status": "deferred_until_gate",
+      "delivery_contract": "none",
+      "rationale": "影子策略当前只生成评估记录，不触发生产执行。",
+      "activation_trigger": "G6 影子策略转执行前"
+    },
+    {
+      "module": "post_execution.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "执行后观测和处置当前在控制面调用链内完成。",
+      "activation_trigger": "独立监控或补偿执行器上线"
+    },
+    {
+      "module": "procurement.py",
+      "status": "deferred_until_gate",
+      "delivery_contract": "none",
+      "rationale": "报价和采购场景尚不允许触发外部供应商动作。",
+      "activation_trigger": "G3 采购动作放行前"
+    },
+    {
+      "module": "read_only_claims.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "候选声明和复核当前在同一控制面内完成。",
+      "activation_trigger": "外部事实晋级或分析消费者上线"
+    },
+    {
+      "module": "security.py",
+      "status": "internal_only",
+      "delivery_contract": "none",
+      "rationale": "安全审计和 Kill Switch 当前在请求事务内同步生效。",
+      "activation_trigger": "独立安全告警或策略执行器上线"
+    },
+    {
+      "module": "sql_repository.py",
+      "status": "infrastructure",
+      "delivery_contract": "transactional_repository",
+      "rationale": "该模块提供共享事务上下文和 Repository Outbox 写入。",
+      "activation_trigger": "none"
+    }
+  ]
+}

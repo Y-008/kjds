@@ -162,7 +162,7 @@ def test_read_only_pilot_requires_controls_drill_clean_state_and_independent_rev
         idempotency_key="read-only-pilot-1",
         platform="ozon",
         account_alias="ozon-ru-main",
-        allowed_operations=["ozon.product.read", "ozon.inventory.read"],
+        allowed_operations=["ozon.product.read"],
         max_daily_requests=100,
         max_targets=10,
         starts_at="2026-07-17T00:00:00+00:00",
@@ -205,3 +205,43 @@ def test_read_only_pilot_requires_controls_drill_clean_state_and_independent_rev
     assert pilot["platform_write_allowed"] is False
     assert pilot["execution_eligible"] is False
     assert pilot["credential_material_stored"] is False
+    assert service.evaluate(pilot["id"], as_of="2026-07-17T01:00:00+00:00")[
+        "runtime_allowed"
+    ] is True
+
+
+def test_read_only_pilot_cannot_activate_an_unimplemented_read_adapter():
+    database = engine()
+    evidence = EvidenceService(database)
+    source = evidence_record(evidence)
+    service = PilotReadinessService(
+        engine=database,
+        evidence=evidence,
+        incidents=FakeIncidents(
+            [
+                {
+                    "id": "inc-drill",
+                    "mode": "drill",
+                    "status": "closed",
+                    "updated_at": "2026-07-16T00:00:00+00:00",
+                }
+            ]
+        ),
+        kill_switch=FakeKillSwitch(),
+    )
+    pilot = service.create(
+        idempotency_key="future-inventory-pilot",
+        platform="ozon",
+        account_alias="ozon-ru-main",
+        allowed_operations=["ozon.inventory.read"],
+        max_daily_requests=10,
+        max_targets=3,
+        starts_at="2026-07-17T00:00:00+00:00",
+        ends_at="2026-07-20T00:00:00+00:00",
+        evidence_ids=[source.id],
+        requested_by="pilot-owner",
+    )
+    evaluation = service.evaluate(pilot["id"], as_of="2026-07-17T01:00:00+00:00")
+    assert evaluation["requirements"]["read_only_allowlist"] is True
+    assert evaluation["requirements"]["worker_implemented_scope"] is False
+    assert evaluation["runtime_allowed"] is False

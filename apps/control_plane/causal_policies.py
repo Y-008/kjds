@@ -331,7 +331,7 @@ class CausalPolicyService:
         self._link(evidence_ids, "causal_policy_release", result["id"], approved_by)
         return result
 
-    def record_stage_outcome(
+    def _record_stage_outcome(
         self,
         release_id: str,
         *,
@@ -348,7 +348,7 @@ class CausalPolicyService:
             raise ValueError("Invalid rollout stage outcome verdict")
         if observation_count < 0:
             raise ValueError("Observation count cannot be negative")
-        incremental_value = Decimal(incremental_value)
+        incremental_value = self._finite_decimal(incremental_value, "Incremental value")
         notes = self._required(notes, "Stage outcome notes")
         recorded_by = self._required(recorded_by, "Stage outcome recorder")
         evidence_ids = self._evidence(evidence_ids)
@@ -532,8 +532,8 @@ class CausalPolicyService:
             raise ValueError(f"{name} must use a recommend_* type and structured parameters")
         return {"type": action_type, "parameters": parameters}
 
-    @staticmethod
-    def _guardrails(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    @classmethod
+    def _guardrails(cls, values: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not values:
             raise ValueError("Policy requires at least one guardrail")
         result = []
@@ -542,22 +542,26 @@ class CausalPolicyService:
             direction = str(item.get("direction", "")).strip()
             if not metric or direction not in {"min", "max"} or "threshold" not in item:
                 raise ValueError("Each guardrail requires metric, min/max direction, and threshold")
-            result.append(
-                {"metric": metric, "direction": direction, "threshold": str(Decimal(item["threshold"]))}
-            )
+            threshold = cls._finite_decimal(item["threshold"], "Guardrail threshold")
+            result.append({"metric": metric, "direction": direction, "threshold": str(threshold)})
         return result
 
-    @staticmethod
-    def _stages(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    @classmethod
+    def _stages(cls, values: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if len(values) < 2:
             raise ValueError("Controlled rollout requires at least shadow and limited stages")
         result = []
         previous_fraction = Decimal("-1")
         for index, item in enumerate(values):
             name = str(item.get("name", "")).strip()
-            fraction = Decimal(item.get("max_exposure_fraction", "-1"))
+            fraction = cls._finite_decimal(
+                item.get("max_exposure_fraction", "-1"), "Rollout exposure fraction"
+            )
             observation_count = int(item.get("minimum_observation_count", -1))
-            minimum_value = Decimal(item.get("minimum_incremental_value", "0"))
+            minimum_value = cls._finite_decimal(
+                item.get("minimum_incremental_value", "0"),
+                "Minimum incremental value",
+            )
             if not name or fraction < 0 or fraction > 1 or observation_count < 0:
                 raise ValueError("Invalid rollout stage")
             if fraction <= previous_fraction:
@@ -598,12 +602,24 @@ class CausalPolicyService:
             right = Decimal(str(expected))
         except (InvalidOperation, TypeError, ValueError):
             return False
+        if not left.is_finite() or not right.is_finite():
+            return False
         return {
             "gt": left > right,
             "gte": left >= right,
             "lt": left < right,
             "lte": left <= right,
         }[operator]
+
+    @staticmethod
+    def _finite_decimal(value: Any, name: str) -> Decimal:
+        try:
+            parsed = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be decimal") from exc
+        if not parsed.is_finite():
+            raise ValueError(f"{name} must be finite")
+        return parsed
 
     def _evidence(self, values: list[str]) -> list[str]:
         normalized = sorted({item.strip() for item in values if item.strip()})

@@ -1,0 +1,177 @@
+{
+  "registry_version": "1.0",
+  "last_reviewed": "2026-07-20",
+  "principle": "A public rule or quote may estimate a cost, but only the actual charging party's immutable bill, settlement, tax, customs, or payment record may confirm it.",
+  "actual_authority_ids": {
+    "product_cost": ["supplier_invoice_payment"],
+    "domestic_logistics": ["domestic_carrier_final_bill"],
+    "international_logistics": ["crossborder_carrier_final_bill"],
+    "packaging": ["packaging_supplier_invoice_payment"],
+    "warehousing": ["warehouse_final_bill"],
+    "customs": ["customs_declaration_payment"],
+    "tax": ["tax_return_notice_payment"],
+    "last_mile": ["last_mile_final_bill"],
+    "platform_fee": ["ozon_transaction_settlement"],
+    "advertising": ["ozon_advertising_report"],
+    "return": ["ozon_return_refund_report"],
+    "fx": ["booked_conversion_rate_fee"],
+    "capital_cost": ["approved_finance_policy_and_actual_days"],
+    "aftersales": ["aftersales_case_or_service_bill"],
+    "loss": ["inventory_adjustment_or_inspection"]
+  },
+  "sources": [
+    {
+      "id": "supplier_procurement_actual",
+      "cost_types": ["product_cost"],
+      "official_urls": [],
+      "estimate_authority": "supplier_quote",
+      "actual_authority": "supplier_purchase_order_invoice_and_payment",
+      "usage": "scenario_then_actual",
+      "requires_account_or_document": true,
+      "note": "There is no universal public procurement authority; bind each SKU to the selected supplier's original documents."
+    },
+    {
+      "id": "kuajing84_fulfillment",
+      "cost_types": ["domestic_logistics", "warehousing", "international_logistics", "last_mile"],
+      "official_urls": [
+        "https://www.kuajing84.com/index/login/login.html",
+        "https://api.service.kuajing84.com",
+        "https://www.kuajing84.com/index/index/help_details/help_id/MDAwMDAwMDAwMH7QtWE.html",
+        "https://www.kuajing84.com/ueditor/php/upload/file/20250614/1749900962377937.pdf"
+      ],
+      "estimate_authority": "kuajing84_quote_or_service_price",
+      "actual_authority": "kuajing84_order_service_and_final_bill_when_it_is_the_charging_party",
+      "usage": "raw_capture_then_approved_mapping",
+      "requires_account_or_document": true,
+      "note": "Public supplier and help pages are estimate and risk-rule sources only. Preserve raw price and weight fields; actual cost requires the handled order and final bill. The reviewed warehouse help caps certain compensation at CNY 100 per parcel/tracking order and excludes packing-fee refunds."
+    },
+    {
+      "id": "ozon_seller_finance",
+      "cost_types": ["platform_fee", "advertising", "refund", "return", "last_mile"],
+      "official_urls": [
+        "https://seller.ozon.ru/",
+        "https://seller.ozon.ru/app/finances/accruals?tab=ACCRUALS_DETAILS",
+        "https://seller.ozon.ru/app/finances/accruals?tab=UNIT_ECONOMY",
+        "https://seller.ozon.ru/app/finances/balance",
+        "https://seller.ozon.ru/app/returns/rfbs/united",
+        "https://docs.ozon.ru/global/",
+        "https://global-help.ozon.com/zh/policies?region=CHN",
+        "https://docs.ozon.ru/api/seller/",
+        "https://docs.ozon.ru/legal/en/partners/logistics/contract/?__rr=1",
+        "https://docs.ozon.ru/global/promotion/product-promotions/pay-per-click/edit-and-pause/"
+      ],
+      "estimate_authority": "ozon_official_tariff_and_policy",
+      "actual_authority": "ozon_transaction_settlement_advertising_and_return_reports",
+      "usage": "rule_version_for_scenario_report_for_actual",
+      "requires_account_or_document": true,
+      "requires_review": true,
+      "seller_account_verified_at": "2026-07-19",
+      "seller_account_verification": "Authenticated read-only inspection confirmed the accrual details report supports period and accrual-type filters plus report download. The page states that after 2026-08-03 the legacy product report will be fully replaced by the accrual report.",
+      "reporting_contract_verified_at": "2026-07-20",
+      "reporting_contract": "The May 6, 2026 agency agreement defines a calendar-month reporting period and requires the monthly agent report, service document, applicable invoice, and payment invoice in the personal account by the fifth business day and no later than the eighth calendar day of the following month. Accrual details do not replace those reporting documents or bank settlement evidence.",
+      "note": "The reviewed 2026-05-06 logistics contract says remuneration depends on Commercial Terms and Annex 5 and monthly reporting documents are provided in the personal account. Public contract examples are scope-bound estimates, never seller-wide actuals. Some tariff pages still redirect in this environment, so category commission, storage, last-mile and seller-applicable terms remain requires_review. Final profit must use original account reports or Seller API responses."
+    },
+    {
+      "id": "eaeu_customs",
+      "cost_types": ["customs"],
+      "official_urls": [
+        "https://eec.eaeunion.org/comission/department/catr/ett/",
+        "https://eec.eaeunion.org/comission/department/catr/tamozhennaya-stoimost/",
+        "https://eec.eaeunion.org/comission/department/dep_tamoj_zak/tk_eaes.php"
+      ],
+      "estimate_authority": "eaeu_tariff_and_customs_value_rules",
+      "actual_authority": "customs_declaration_and_customs_payment_document",
+      "usage": "rule_and_hs_code_for_scenario_declaration_for_actual",
+      "requires_account_or_document": true
+    },
+    {
+      "id": "russian_federal_tax_service",
+      "cost_types": ["tax"],
+      "official_urls": [
+        "https://www.nalog.gov.ru/rn77/about_fts/about_nalog/15318105/",
+        "https://www.nalog.gov.ru/rn77/about_fts/inttax/nds-office/"
+      ],
+      "estimate_authority": "applicable_tax_law_and_official_guidance",
+      "actual_authority": "tax_return_tax_notice_and_payment_document",
+      "usage": "jurisdiction_specific_rule_for_scenario_tax_record_for_actual",
+      "requires_account_or_document": true,
+      "requires_review": true,
+      "note": "The applicable taxpayer and VAT treatment depend on seller entity, goods location, marketplace role, and transaction date; no global flat rate is allowed."
+    },
+    {
+      "id": "bank_of_russia_fx_reference",
+      "cost_types": ["fx"],
+      "official_urls": [
+        "https://www.cbr.ru/eng/currency_base/",
+        "https://www.cbr.ru/eng/currency_base/daily/"
+      ],
+      "estimate_authority": "bank_of_russia_official_reference_rate",
+      "actual_authority": "bank_payment_provider_or_platform_booked_exchange_rate_and_fee",
+      "usage": "reference_for_scenario_booked_fx_for_actual",
+      "requires_account_or_document": true,
+      "note": "The Bank of Russia states that its official rate is not a commitment to buy or sell; it cannot replace the booked conversion rate."
+    }
+  ],
+  "external_candidates": [
+    {
+      "id": "ozon_marketplace_observation",
+      "url": "https://www.ozon.ru/category/supermarket-25000/?miniapp=supermarket&__rr=1",
+      "class": "official_public_marketplace_observation",
+      "allowed_usage": ["timestamped_price", "listing_content", "rating", "review", "availability_signal"],
+      "forbidden_usage": ["actual_sales", "seller_cost", "platform_fee", "settlement", "demand_truth"],
+      "integration_status": "observe_only",
+      "requires_review": true,
+      "note": "Preserve observation time, URL, screenshot or raw response hash. Public storefront state is not seller finance or settlement evidence."
+    },
+    {
+      "id": "bdm_ozon_data",
+      "url": "https://www.bdmozon.com/",
+      "class": "third_party_market_intelligence",
+      "allowed_usage": ["candidate_discovery", "cross_check"],
+      "forbidden_usage": ["sole_demand_evidence", "actual_sales", "actual_cost", "automatic_listing"],
+      "integration_status": "evaluate_before_access",
+      "requires_review": true,
+      "note": "The public page identifies the product as BDM Ozon Data V2, but its method, API contract, provenance, terms and current accuracy are not yet verified."
+    },
+    {
+      "id": "menglar_ozon_tools",
+      "url": "https://ozon.menglar.com/tools/",
+      "class": "third_party_scenario_calculator",
+      "allowed_usage": ["manual_scenario_cross_check", "field_discovery"],
+      "forbidden_usage": ["official_tariff", "actual_cost", "settlement", "automatic_pricing"],
+      "integration_status": "no_adapter",
+      "requires_review": true,
+      "note": "Its calculator covers procurement, package weight and volume, domestic freight, category commission, advertising, other cost and international logistics inputs. Formula versions and rates must be independently reconciled to official rules and actual bills."
+    },
+    {
+      "id": "seerfar",
+      "url": "https://www.seerfar.cn/",
+      "class": "third_party_market_intelligence",
+      "allowed_usage": ["candidate_discovery", "keyword_research", "competitor_observation", "cross_check"],
+      "forbidden_usage": ["sole_demand_evidence", "actual_sales", "actual_profit", "automatic_listing"],
+      "integration_status": "open_api_due_diligence_required",
+      "requires_review": true,
+      "note": "The provider advertises 30-90 day trends, market and keyword analysis, monitoring, a browser plugin and an Open API. API schema, data provenance, terms, rate limits and reproducibility must be reviewed before any read-only adapter."
+    },
+    {
+      "id": "miaoshou_erp",
+      "url": "https://erp.91miaoshou.com/",
+      "class": "third_party_erp_execution_candidate",
+      "allowed_usage": ["workflow_comparison", "manual_export_candidate", "read_only_integration_evaluation"],
+      "forbidden_usage": ["canonical_fact_owner", "credential_sharing", "unapproved_listing", "unapproved_purchase", "unapproved_price_change"],
+      "integration_status": "open_platform_security_and_contract_review_required",
+      "requires_review": true,
+      "note": "The provider advertises Ozon support and listing, pricing, order, inventory, procurement, logistics and finance functions. Do not authorize stores until scopes, revocation, audit logs, data export, API contract and incident responsibility are accepted."
+    },
+    {
+      "id": "selling51_erp",
+      "url": "https://www.51selling.com/main",
+      "class": "third_party_erp_execution_candidate",
+      "allowed_usage": ["workflow_comparison", "manual_export_candidate", "read_only_integration_evaluation"],
+      "forbidden_usage": ["canonical_fact_owner", "credential_sharing", "unapproved_listing", "unapproved_purchase", "unapproved_price_change"],
+      "integration_status": "api_security_and_contract_review_required",
+      "requires_review": true,
+      "note": "The public login page advertises listing, procurement, inventory, order and analytics functions. Ozon coverage, API contract, permission model and export completeness have not yet been verified."
+    }
+  ]
+}

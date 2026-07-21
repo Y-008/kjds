@@ -9,9 +9,10 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Numeric, String, Tex
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
+from .numeric_semantics import finite_decimal
 from .providers import OllamaProvider
 from .repository import Repository
-from .sql_repository import Base
+from .sql_repository import Base, add_outbox_event
 
 RiskLevel = Literal["low", "medium", "high"]
 
@@ -154,6 +155,8 @@ class AutomationService:
             raise ValueError("Recommendation requires evidence")
         if not rationale.strip() or not action.strip():
             raise ValueError("Recommendation requires an action and rationale")
+        if expected_cm3_delta is not None:
+            expected_cm3_delta = finite_decimal(expected_cm3_delta, "Expected CM3 delta")
         row = RecommendationRow(
             id=new_id("rec"),
             product_id=product_id,
@@ -170,11 +173,12 @@ class AutomationService:
         )
         with Session(self.engine, expire_on_commit=False) as session, session.begin():
             session.add(row)
-        self.repo.append_event(
-            "decision.recommended",
-            row.id,
-            {"agent": agent, "action": action, "risk": risk, "shadow_mode": self.shadow_mode},
-        )
+            add_outbox_event(
+                session,
+                "decision.recommended",
+                row.id,
+                {"agent": agent, "action": action, "risk": risk, "shadow_mode": self.shadow_mode},
+            )
         return self._recommendation(row)
 
     def list_recommendations(self) -> list[Recommendation]:

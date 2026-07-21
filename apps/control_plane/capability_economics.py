@@ -77,8 +77,8 @@ class CapabilityEconomicsService:
         maintenance = self._nonnegative(maintenance_cost, "Maintenance cost")
         net_value = realized + avoided - model_cost - review_cost - incident - maintenance
         currency = currency.strip().upper()
-        if len(currency) != 3 or not currency.isalpha():
-            raise ValueError("Currency must be a three-letter code")
+        if len(currency) != 3 or any(character < "A" or character > "Z" for character in currency):
+            raise ValueError("Currency must be a three-letter ASCII code")
         evidence_ids = sorted({item.strip() for item in evidence_ids if item.strip()})
         if not evidence_ids:
             raise ValueError("Capability economics evidence is required")
