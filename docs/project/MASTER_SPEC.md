@@ -4,13 +4,12 @@
 |---|---|
 | doc_id | KJDS-MASTER-SPEC-001 |
 | status | Active |
-| version | 7.5 |
-| last_reviewed | 2026-07-20 |
+| version | 7.6 |
+| last_reviewed | 2026-07-21 |
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
-| current_gate | G-1 PASS；G0 尚未放行 |
-| current_migration | `20260720_0038` |
 | source_of_truth | 本文件定义需求、产品、架构、数据和验收边界；运行事实以代码、迁移、测试和证据账为准 |
+| live_task_status | [03_REMAINING_WORK_AND_PARALLEL_PLAN.md](03_REMAINING_WORK_AND_PARALLEL_PLAN.md) |
 
 > 本文件是 KJDS 的工程主规格，把需求、产品、系统架构、前后端模式、API 合同、核心业务流程、治理、安全、运行和阶段门集中在一个文件中。现有专题文档保留为证据和操作附件；新增工作必须先在本文件中找到对应的需求、Gate、Owner 和验收标准。
 
@@ -658,18 +657,18 @@ Digital CEO（目标/调度，不拥有全部写权限）
 
 ## 11. Gate 路线与放行标准
 
-| Gate | 目的 | 状态 | 退出证据 |
+| Gate | 目的 | 退出证据 | 状态来源 |
 |---|---|---|---|
-| G-1 | 可信工程基线 | PASS | 0038 迁移与回放、隔离备份恢复与关键表计数、事务 Outbox PostgreSQL 竞态/恢复、Gate Review 原子事件、Outbox 覆盖清单防漂移、全部显式 NUMERIC 列结构审计、端到端关联链、连接器安全、运行身份与密钥扫描、启动资料包双层预检、三候选×五指标离线证据包、Ozon API 身份盘点、Ozon 单 SKU 目标绑定、Ozon Pilot 离线预检、Ozon Worker 显式执行意图与执行时复验、候选研究 Evidence 原子录入、版本化测量/报价筛选与不可绕过的三报价交接、Ozon 原始财务文件无状态预检、Ozon 应计分类与防重复确认、最佳方案结构化复核、ERPNext 防双写合同、证据支撑的异常工作台、生产 API 镜像运行时资源导入、生产 Web standalone 容器启动、303 项 Python 测试、16 项 Web 测试/构建、Web/API smoke |
-| G0 | 合法启动 | NOT_STARTED | Owner/RACI、风险预算、Ozon 权限、3 SKU 红线 |
-| G1 | 商品与证据准入 | NOT_STARTED | 3× Passport、报价、样品、包装、物流、合规人工批准 |
-| G2 | 内容与草稿 | NOT_STARTED | 事实锁定、俄语/IP/素材审核、草稿回读 |
-| G3 | 小批量履约 | NOT_STARTED | 采购、发货、签收、退货/异常证据 |
-| G4 | 到账与利润 | NOT_STARTED | 订单—结算—银行对账、CM3、13 周现金 |
-| G5 | 影子实验 | NOT_STARTED | 14 天影子、因果质量、建议质量和风险门 |
-| G6 | 低风险受控执行 | FROZEN | 命令、审批、执行、回读、回滚、故障注入 |
-| G7 | 三 SKU 可复制 | FROZEN | 三 SKU 同口径结果和复盘 |
-| G8 | 扩展 | FROZEN | Build/Buy/Partner、第二平台/国家和风险预算 |
+| G-1 | 可信工程基线 | 当前迁移 head 的升级/回放、隔离恢复、核心质量门、API/Web/PostgreSQL smoke | 动态状态只见任务真源 |
+| G0 | 合法启动 | Owner/RACI、风险预算、Ozon 权限、3 SKU 红线 | 动态状态只见任务真源 |
+| G1 | 商品与证据准入 | 3× Passport、报价、样品、包装、物流、合规人工批准 | 动态状态只见任务真源 |
+| G2 | 内容与草稿 | 事实锁定、俄语/IP/素材审核、草稿回读 | 动态状态只见任务真源 |
+| G3 | 小批量履约 | 采购、发货、签收、退货/异常证据 | 动态状态只见任务真源 |
+| G4 | 到账与利润 | 订单—结算—银行对账、CM3、13 周现金 | 动态状态只见任务真源 |
+| G5 | 影子实验 | 14 天影子、因果质量、建议质量和风险门 | 动态状态只见任务真源 |
+| G6 | 低风险受控执行 | 命令、审批、执行、回读、回滚、故障注入 | 动态状态只见任务真源 |
+| G7 | 三 SKU 可复制 | 三 SKU 同口径结果和复盘 | 动态状态只见任务真源 |
+| G8 | 扩展 | Build/Buy/Partner、第二平台/国家和风险预算 | 动态状态只见任务真源 |
 
 依赖：`G-1 → G0 → G1 → G2 → G3 → G4 → G5 → G6 → G7 → G8`。可以提前准备模板，不能提前宣告后续 Gate 通过。
 
@@ -716,12 +715,14 @@ git diff --check
 
 ---
 
-## 13. 当前状态、阻塞与下一执行队列
+## 13. 历史实现证据索引（非动态状态）
 
-### 13.1 已完成工程基线
+本节只保留当时版本的实现与经营阻塞背景，不维护当前迁移号、测试数量、任务状态或下一执行队列。当前状态、Owner、依赖和下一动作只见 [03_REMAINING_WORK_AND_PARALLEL_PLAN.md](03_REMAINING_WORK_AND_PARALLEL_PLAN.md)；本地最新验证只见 `.runtime/G1_VERIFICATION.json`。
 
-- 当前 Alembic head `20260720_0038` 已在真实 PostgreSQL 完成迁移回放和隔离恢复；此前 `20260718_0036 → 0035 → 0036` 回滚演练及受控 ComfyUI 队列/历史/下载烟测仍作为历史证据保留。ComfyUI Prompt `f0d6cec6-a436-456f-901b-d70363c4e28e` 成功产生 PNG，但只证明技术合同，不代表任何 SKU 素材、商品视觉或 Listing 已获批准。
-- 当前验证基线：迁移回放、隔离备份恢复、Lint、303 项 Python 测试、16 项 Web 测试与 build、生产 API/Web 镜像、API health/auth、Kill Switch、证据链、主动 Evidence 完整性巡检与事件升级、治理门、Outbox、NUMERIC、端到端关联、连接器安全、运行身份、启动资料、三候选×五指标离线证据包、Ozon 单 SKU 绑定、离线预检、显式执行、一次性执行授权、成功响应检查点/恢复及实际 Blob 完整性复验全通过。真实 Compose API→Web 健康链、首页与服务端代理均返回 200；候选原件录入、版本化测量/报价筛选、人工报价工作区交接、三报价前置门、Ozon 原始财务文件预检、Ozon 应计分类与防重复确认、最佳方案结构化复核、ERPNext 防双写合同以及证据支撑的经营异常工作台均包含在回归链中。最近一次隔离恢复摘要以 `.runtime/G1_VERIFICATION.json` 为准，不把运行时文件提交为长期事实。
+### 13.1 历史工程基线
+
+- 当时的 Alembic head `20260720_0038` 已在真实 PostgreSQL 完成迁移回放和隔离恢复；此前 `20260718_0036 → 0035 → 0036` 回滚演练及受控 ComfyUI 队列/历史/下载烟测作为历史证据保留。ComfyUI Prompt `f0d6cec6-a436-456f-901b-d70363c4e28e` 成功产生 PNG，但只证明当时的技术合同，不代表任何 SKU 素材、商品视觉或 Listing 已获批准。
+- 该次验证包含迁移回放、隔离备份恢复、Lint、当时的测试与构建、API/Web 镜像、健康检查、Kill Switch、Evidence、Outbox、连接器和受控执行链。精确数量与结果只属于对应证据版本，不作为当前状态来源。
 - BAS-065 已将 Gate requirement 阻断与真实 SLA 运行工作同屏展示：资料/证据缺口直接复用服务端 readiness，提供稳定来源、当前/目标、责任角色与下一动作，但不伪造发生时间或截止时间；事故、受限执行与观察窗口继续使用既有运营队列。异常中心只读，不自动补证、关闭事故、释放 Kill Switch 或执行平台写入；验收见 `docs/project/evidence/20260720_BAS_065_EVIDENCE_BACKED_EXCEPTION_WORKSPACE.md`。
 - BAS-058 已增加 Ozon 原始财务文件无状态预检：正式存证前返回文件哈希、类型、行数、字段映射和缺列，失败不写数据库/Evidence/事实/映射，也不要求操作员改动原件；正式导入重新执行全部校验。2025 年 10 月真实计提原件现已形成 Evidence `evd_902fe12a454e4703b88b6ad7314ed652` 和 import `imp_76eab9701e954896a6f67ccdbb845cb6`，15/15 行、Blob/哈希/血缘复验通过；但来源复核仍为 pending，正式事实与财务分录均为 0。验收见 `docs/project/evidence/20260720_BAS_058_OZON_IMPORT_PREFLIGHT.md`、`20260720_BAS_066_OZON_OFFICIAL_ACCRUAL_EXPORT.md` 与 `20260720_BAS_068_OZON_ACCRUAL_FORMAL_PENDING_REVIEW.md`。这不代表已批准来源、会计分类或完成结算对账。
 - BAS-059 已把 Evidence 权威等级纳入候选询价门：C/D 级第三方选品、ERP、计算器和探索资料可以保留为观测，但不进入指标聚合、来源族或三报价放行；需求、竞争、供货和退货至少需要 A/B，合规红线需要 A。验收见 `docs/project/evidence/20260720_BAS_059_CANDIDATE_EVIDENCE_AUTHORITY_GATE.md`。这不代表第三方工具已正式接入，也不解除真实需求报告、候选、报价、合规和利润证据阻塞。
@@ -742,7 +743,7 @@ git diff --check
 - 业务写入口和只读控制对象均执行 endpoint 级角色检查。
 - API 已为每个请求生成或复用安全的 `X-Request-ID` 与 `X-Trace-ID`，认证/写安全失败也返回关联头；Ozon worker 的同一操作保持稳定 trace、每次 HTTP 调用生成独立 request，试运行与执行回执持久化并索引关联 ID。
 
-### 13.2 当前业务阻塞
+### 13.2 历史业务阻塞记录
 
 | 阻塞 | 所需输入 | 责任人 | 影响 |
 |---|---|---|---|
@@ -754,7 +755,7 @@ git diff --check
 | 真实报价/物流 | 至少三家报价、样品实测、主备物流 | 供应链负责人 | G1/G3 |
 | 结算/银行/FX | 现有计提原件先由不同身份完成来源复核和 9 类会计分类；再补 Ozon 结算、银行到账与实际 FX 原件和口径 | 财务负责人 | G4 |
 
-### 13.3 下一批执行队列
+### 13.3 当时的执行队列
 
 1. 经营负责人决定 Ozon Data 条款或可导出全市场/类目报告的订阅支出；取得真实 28 天原件并固化为 `SKU-000` Evidence 后，再按启动模板研究 3 个真实 SKU，经过五指标预检和人工报价交接建立候选。`product-queries` 只留作未来现有 Listing 诊断，不进入本 Gate。
 2. 用真实 Ozon 结果验证字段映射、候选声明、独立复核和正式事实转换边界。
@@ -817,7 +818,7 @@ Owner / Approver：
 
 KJDS 的成功不是拥有最多 Agent，而是在真实跨境经营中，用可验证证据把商品、现金、供应链、平台和客户决策连接起来；每次动作可审计、可回滚，每次失败沉淀为负知识，每个平台学习都能在受控边界内反哺下一次决策。
 
-当前最重要的下一步不是继续增加宏大模块，而是拿到真实 SKU、真实权限和真实结算文件，把 G0→G4 从工程骨架推进成可复核经营事实。
+工程成功必须用真实 SKU、真实权限和真实结算文件，把 G0→G4 从工程骨架推进成可复核经营事实；具体执行顺序只在任务真源维护。
 
 ---
 
@@ -883,7 +884,7 @@ KJDS 的成功不是拥有最多 Agent，而是在真实跨境经营中，用可
 
 第五批收口旧核心账：`20260717_0034` 为订单、费用、市场观测、机会分、旧增长实验、自动化建议和样品采购增加 7 条 CHECK，统一数量、有限值、置信度/评分范围、预算—止损、正价格和 ASCII 币种语义；共享标准库辅助函数在入口拒绝非有限 Decimal。七类绕过服务层的非法写入均被 PostgreSQL 拒绝，完整回归为 127 passed；见 `docs/project/evidence/2026-07-17-core-numeric-integrity-verification.md`。至此当前 ORM 显式 NUMERIC 列已完成结构层审计，但真实税务、银行、Ozon 结算、币种换算和舍入口径仍必须由一手数据与责任人冻结，不能将结构完整性等同于会计正确性。
 
-备份与恢复已纳入默认 G-1：`pg_dump` 自定义格式、SHA-256 清单、隔离目标恢复、当前 Alembic head `20260720_0038` 校验，以及商品/订单/证据/只读运行四张关键表计数一致均通过；源库、恢复库和临时备份自动清理。见 `docs/adr/ADR-0005-postgres-backup-recovery.md`、`docs/project/07_BACKUP_RECOVERY_RUNBOOK.md` 与 `docs/project/evidence/2026-07-18-postgres-restore-drill.md`。自动计划、异地加密副本、保留周期和托管环境正式 RPO/RTO 仍未完成，因此本项尚不能作为生产灾备承诺。
+备份与恢复的历史 G-1 演练使用 `pg_dump` 自定义格式、SHA-256 清单、隔离目标恢复，并校验当时的 Alembic head `20260720_0038` 与关键表计数；该结果只证明对应版本。当前 head 必须由实时 G-1 重新确认。见 `docs/adr/ADR-0005-postgres-backup-recovery.md`、`docs/project/07_BACKUP_RECOVERY_RUNBOOK.md` 与 `docs/project/evidence/2026-07-18-postgres-restore-drill.md`。自动计划、异地加密副本、保留周期和托管环境正式 RPO/RTO 仍未完成，因此本项尚不能作为生产灾备承诺。
 
 证据保留已增加机器可执行的分类与复审评估，未知分类被拒绝、未分类进入 `classification_required`、legal hold 阻止归档，且所有证据一律 `automatic_delete_allowed=false`；见 `docs/adr/ADR-0006-evidence-retention.md` 与 `tests/test_evidence.py`。当前天数是内部复审最短间隔，不是法定期限；真实财务/客户数据进入前仍须由合规负责人冻结正式保留矩阵。
 

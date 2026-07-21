@@ -6,7 +6,7 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 8.1 |
+| version | 8.2 |
 | last_reviewed | 2026-07-21 |
 | next_review | 2026-07-23 |
 | gate | G-1–G1 |
@@ -18,7 +18,7 @@
 | ID | Gate | 任务 | Owner | 验收 | 依赖 | 状态 |
 |---|---|---|---|---|---|---|
 | BAS-001 | G-1 | 审阅并分层冻结当前工作区 | 工程负责人 | 可回滚提交；无不明来源改动 | 无 | DONE |
-| BAS-002 | G-1 | PostgreSQL 迁移与回滚验证 | 工程负责人 | 迁移到当前 Alembic head（0038）；迁移回放与历史 upgrade/downgrade 证据 | BAS-001 | DONE |
+| BAS-002 | G-1 | PostgreSQL 迁移与回滚验证 | 工程负责人 | 当时迁移到 Alembic head（0038）；保留迁移回放与历史 upgrade/downgrade 证据 | BAS-001 | DONE |
 | BAS-005 | G-1 | 事务 Outbox 第一批 | 工程负责人 | 业务/事件原子提交；并发独占；租约恢复；失败重试；稳定 event ID | BAS-002 | DONE_FIRST_BATCH |
 | BAS-006 | G-1 | 供应商时间/金额语义第一批 | 工程负责人 | UTC/Decimal/有限值；领域与数据库双重拒绝非法输入 | BAS-002 | DONE |
 | BAS-007 | G-1 | Ozon/财务金额语义第二批 | 工程负责人 | 非有限导入/FX/账本/容差/概率被领域与数据库拒绝 | BAS-006 | DONE |
@@ -28,7 +28,7 @@
 | BAS-011 | G-1 | 端到端关联基线 | 工程负责人 | request/trace/run/command/evidence 可从一次受控链互相追溯 | BAS-003 | DONE |
 | BAS-012 | G-1 | Ozon 连接器安全闭环 | 工程负责人 | 有界重试、熔断、schema 漂移拒绝、成功响应先存原件再完成 run | BAS-011 | DONE |
 | BAS-013 | G-1 | 运行身份与密钥扫描 | 工程负责人 | 启动配置失败关闭；生产禁止共享密钥；工作区高置信 secret scan | SEC-001 | DONE |
-| BAS-014 | G-1 | 当前 head 隔离恢复 | 工程负责人 | 备份哈希、0038 恢复、四张关键表计数一致、资源清理 | BAS-002 | DONE |
+| BAS-014 | G-1 | head 隔离恢复演练 | 工程负责人 | 当时的备份哈希、0038 恢复、四张关键表计数一致、资源清理 | BAS-002 | DONE |
 | BAS-015 | G0 | 启动资料包结构合同 | 工程负责人 | 八份 CSV 的文件名、列、关键行、三候选×五指标、三 SKU×三供应商覆盖和敏感字段名拒绝可重复校验；不晋升证据 | BAS-004 | DONE |
 | BAS-016 | G-1 | Gate Review 事务 Outbox | 工程负责人 | 创建/提交/决定各产生一个最小脱敏事件；事件失败时业务状态回滚；不新增消息基础设施 | BAS-005 | DONE |
 | BAS-017 | G-1 | Outbox 覆盖清单与防漂移 | 工程负责人 | 所有直接 Session 事务模块逐项分类并说明升级触发条件；代码集合与清单精确一致；不增加运行基础设施 | BAS-016 | DONE |
@@ -90,7 +90,7 @@
 | BAS-079 | G0 | SKU-000 单任务双作用域操作界面 | 工程+商品 | 现有 G0–G1 页面同时展示研究闭环与真实经营状态；上传时选择官方/历史/固定测试来源并保存来源定位；测试数据只能放行研究，不能放行任何真实副作用；不新增后台或 Gate | BAS-048、BAS-078 | DONE_ENGINEERING |
 | BAS-080 | G0–G4 | Readiness 依据冻结进 DecisionPacket | 工程+控制面 | 执行计划申请时把精确需求原件与独立接受证明自动并入计划 Evidence/Lineage，并把每项 readiness 的状态、证据 ID、阻塞码和快照哈希冻结进现有 Approval payload 与 DecisionPacket；读取时另算当前状态但不改写历史依据；任一冻结证据损坏均阻断旧计划 | BR-061、BAS-078 | DONE_ENGINEERING |
 | BAS-081 | G0–G4 | 受限执行组合风险预留与快照 | 工程+控制面 | 复用 Action Policy 与 Limited Executor；同动作同 UTC 日排队在 PostgreSQL 事务中串行预留每日次数，固化同动作/同币种累计风险、派生上限、覆盖边界和快照哈希，授权摘要绑定快照，Worker claim 前重新复验；不新增风险注册表、不虚构店铺/法人/现金阈值；[工程证据](evidence/20260721_LIMITED_EXECUTION_AGGREGATE_RISK_RESERVATION.md) | BR-062、BAS-080 | DONE_ENGINEERING |
-| BAS-082 | G-1–G4 | 外部合同固定样本回放门 | 工程+集成 | 复用现有 Ozon 客户端、ComfyUI 结果解析、财务导入预检和测试运行器；版本化脱敏样本声明合同、预期与 SHA-256；自动测试回放成功/漂移并失败关闭；现有限流、超时、写入不确定、幂等与回读专项测试保持通过；不新增运行时服务、录制代理或依赖；本地工程已完成，但仓库无 Git remote/CI 配置，待交付平台确定后接入流水线；[工程证据](evidence/20260721_BAS_082_EXTERNAL_CONTRACT_REPLAY.md) | BR-063、BAS-081、交付平台 | PARTIAL_BLOCKED |
+| BAS-082 | G-1–G4 | 外部合同固定样本回放门 | 工程+集成 | 复用现有 Ozon 客户端、ComfyUI 结果解析、财务导入预检和测试运行器；版本化脱敏样本声明合同、预期与 SHA-256；自动测试回放成功/漂移并失败关闭；现有限流、超时、写入不确定、幂等与回读专项测试保持通过；GitHub 私有仓库、真实 PR 与 `backend-quality`、`web-quality`、`postgres-smoke` 已运行成功；[工程证据](evidence/20260721_BAS_082_EXTERNAL_CONTRACT_REPLAY.md)、[CI](https://github.com/Y-008/kjds/actions/runs/29807719392) | BR-063、BAS-081 | DONE_ENGINEERING |
 | BAS-083 | G5 | Champion/Challenger 独立影子对照账 | 工程+能力治理 | 复用既有 Policy Evaluation `result_json` 和 Evidence/Lineage，冻结不同身份产生的 champion/人工基线、双方哈希、精确差异路径及一致性；缺基线或基线证据失效时禁止记录影子阶段结果和申请激活；不新增表、服务或依赖 | BR-061、BR-064、BAS-082 | IN_PROGRESS |
 | BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |
 | BAS-004 | G-1 | 环境状态自动生成 | 工程负责人 | 不再依赖过时静态 PASS 文档 | BAS-003 | DONE |
@@ -180,7 +180,7 @@
 
 `BAS-013` 按 ADR-0011 收口运行身份和仓库密钥的最小门禁：空身份映射安全回退开发密钥；未知角色、占位密钥、生产共享密钥和未登记 Web 代理密钥启动失败关闭；G-1 只输出非敏感身份摘要，并用标准库扫描当前 277 个已跟踪或未忽略的新文件。最新 G-1 的 `runtime_identity_config=true`、`secret_scan=true`，不提前引入 Vault/KMS；首次托管生产部署再评审轮换与撤销。
 
-`BAS-014` 将当前 head 恢复演练纳入默认 G-1：业务 smoke 后用官方 `pg_dump/pg_restore` 生成带 SHA-256 清单的临时备份，恢复到隔离库，校验当前 `20260720_0038` 并比较商品、订单、证据和只读运行四张关键表的精确行数。最新 G-1 的 `backup_restore=true`，源库、恢复库和备份目录均清理；自动计划、异地副本和生产 RPO/RTO 仍不在本地基线内。
+`BAS-014` 将 head 恢复演练纳入默认 G-1：该次业务 smoke 后用官方 `pg_dump/pg_restore` 生成带 SHA-256 清单的临时备份，恢复到隔离库，校验当时的 `20260720_0038` 并比较商品、订单、证据和只读运行四张关键表的精确行数。该次 G-1 的 `backup_restore=true`，源库、恢复库和备份目录均清理；当前结果必须以 `.runtime/G1_VERIFICATION.json` 为准，自动计划、异地副本和生产 RPO/RTO 仍不在本地基线内。
 
 `BAS-015` 只冻结外部资料进入正式证据链之前的结构合同：标准库校验器不写数据库、不读取凭证、不把 CSV 当作原件或正式事实；领域值、证据哈希和人工批准仍由现有后端入口负责。供应商模板已补齐 3 SKU×3 家占位行，负向回归会拒绝报价覆盖缺口和敏感字段名；最新 G-1 的 `startup_package_contract=true`、138 项测试通过，文档同步后的当前密钥扫描覆盖 231 个文件。
 
