@@ -4,7 +4,7 @@ import os
 from dataclasses import asdict
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..api_contracts import (
     API_SCHEMA_VERSION,
@@ -109,7 +109,10 @@ def release_kill_switch(body: KillSwitchInput, principal: Annotated[Principal, D
 @router.post("/v1/models/discover")
 def discover_models(principal: Annotated[Principal, Depends(current_principal)]):
     ensure_role(principal, "operator", "admin")
-    return run(lambda: runtime.automation.sync_ollama_models(runtime.providers["ollama"]))
+    provider = runtime.providers.get("ollama")
+    if provider is None:
+        raise HTTPException(status_code=503, detail="ollama is not configured")
+    return run(lambda: runtime.automation.sync_ollama_models(provider))
 
 
 @router.get("/v1/models")

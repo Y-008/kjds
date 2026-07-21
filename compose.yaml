@@ -28,9 +28,9 @@ services:
       KJDS_API_ROLES: ${KJDS_API_ROLES:-operator}
       KJDS_PILOT_RUN_LEASE_SECONDS: ${KJDS_PILOT_RUN_LEASE_SECONDS:-900}
       KJDS_COMFYUI_URL: ${KJDS_COMFYUI_URL:-http://host.docker.internal:8189}
-      KJDS_OLLAMA_URL: ${KJDS_OLLAMA_URL:-http://host.docker.internal:11434}
-      KJDS_N8N_URL: ${KJDS_N8N_URL:-http://host.docker.internal:5678}
-      FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-http://host.docker.internal:3002}
+      KJDS_OLLAMA_URL: ${KJDS_OLLAMA_URL:-}
+      KJDS_N8N_URL: ${KJDS_N8N_URL:-}
+      FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
       KJDS_LIMITED_EXECUTION_ENABLED: ${KJDS_LIMITED_EXECUTION_ENABLED:-false}
     depends_on:
