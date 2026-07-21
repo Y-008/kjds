@@ -90,7 +90,7 @@ def test_research_signal_endpoint_preserves_raw_fields_and_never_returns_an_acti
         captured.update(values)
         return {"automatic_listing": False, "automatic_procurement": False}
 
-    monkeypatch.setattr(api_module, "research_inbox", SimpleNamespace(capture=record))
+    monkeypatch.setattr(api_module.app.state.runtime, "research_inbox", SimpleNamespace(capture=record))
     result = asyncio.run(
         api_module.capture_research_signal(
             file=UploadFile(file=io.BytesIO(b"raw export"), filename="signal.csv"),
@@ -120,7 +120,7 @@ def test_ozon_import_period_is_required_and_duplicate_conflicts_fail_closed(monk
         validated_report_period("", "2025-10-31")
 
     monkeypatch.setattr(
-        api_module,
+        api_module.app.state.runtime,
         "imports",
         SimpleNamespace(
             preview_file=lambda **_: ImportPreview(
@@ -136,7 +136,7 @@ def test_ozon_import_period_is_required_and_duplicate_conflicts_fail_closed(monk
         ),
     )
     monkeypatch.setattr(
-        api_module,
+        api_module.app.state.runtime,
         "evidence",
         SimpleNamespace(
             get=lambda _: SimpleNamespace(
@@ -169,7 +169,7 @@ def test_ozon_import_preflight_serializes_and_formal_import_fails_before_persist
     )
     import_calls: list[str] = []
     monkeypatch.setattr(
-        api_module,
+        api_module.app.state.runtime,
         "imports",
         SimpleNamespace(
             preview_file=lambda **_: preview,

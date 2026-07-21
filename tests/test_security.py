@@ -135,7 +135,7 @@ def test_kill_switch_is_append_only_and_blocks_writes():
 
 
 def test_business_write_endpoints_declare_endpoint_level_minimum_roles():
-    from apps.control_plane.api import app
+    from apps.control_plane.api import registered_routes
 
     expected_paths = {
         "/v1/models/discover",
@@ -155,7 +155,7 @@ def test_business_write_endpoints_declare_endpoint_level_minimum_roles():
     }
     routes = {
         route.path: route.endpoint
-        for route in app.routes
+        for route in registered_routes()
         if hasattr(route, "endpoint") and "POST" in getattr(route, "methods", set())
     }
     for path in expected_paths:
@@ -165,7 +165,7 @@ def test_business_write_endpoints_declare_endpoint_level_minimum_roles():
 
 
 def test_read_only_control_plane_reads_declare_endpoint_level_roles():
-    from apps.control_plane.api import app
+    from apps.control_plane.api import registered_routes
 
     expected_paths = {
         "/v1/integrations/health",
@@ -178,7 +178,7 @@ def test_read_only_control_plane_reads_declare_endpoint_level_roles():
     }
     routes = {
         route.path: route.endpoint
-        for route in app.routes
+        for route in registered_routes()
         if hasattr(route, "endpoint") and "GET" in getattr(route, "methods", set())
     }
     for path in expected_paths:
@@ -188,13 +188,11 @@ def test_read_only_control_plane_reads_declare_endpoint_level_roles():
 
 
 def test_loop_validation_remains_available_as_a_safety_control():
-    from apps.control_plane.api import app, is_write_safety_control_path
+    from apps.control_plane.api import is_write_safety_control_path, registered_routes
 
     assert is_write_safety_control_path("/v1/loop-engineering/validate") is True
     route = next(
-        route
-        for route in app.routes
-        if getattr(route, "path", None) == "/v1/loop-engineering/validate"
+        route for route in registered_routes() if getattr(route, "path", None) == "/v1/loop-engineering/validate"
     )
     source = inspect.getsource(route.endpoint)
     assert "current_principal" in source
@@ -202,11 +200,11 @@ def test_loop_validation_remains_available_as_a_safety_control():
 
 
 def test_evidence_integrity_scan_remains_available_as_a_safety_control():
-    from apps.control_plane.api import app, is_write_safety_control_path
+    from apps.control_plane.api import is_write_safety_control_path, registered_routes
 
     path = "/v1/evidence/integrity-scan"
     assert is_write_safety_control_path(path) is True
-    route = next(route for route in app.routes if getattr(route, "path", None) == path)
+    route = next(route for route in registered_routes() if getattr(route, "path", None) == path)
     source = inspect.getsource(route.endpoint)
     assert "current_principal" in source
     assert "ensure_role" in source
@@ -217,15 +215,15 @@ def test_correlation_ids_are_bounded_and_reused_when_safe():
 
     from apps.control_plane.api import request_id_for, trace_id_for
 
-    safe = Request({"type": "http", "headers": [(b"x-request-id", b"pilot-001") ]})
+    safe = Request({"type": "http", "headers": [(b"x-request-id", b"pilot-001")]})
     assert request_id_for(safe) == "pilot-001"
 
-    unsafe = Request({"type": "http", "headers": [(b"x-request-id", b"bad value\n") ]})
+    unsafe = Request({"type": "http", "headers": [(b"x-request-id", b"bad value\n")]})
     generated = request_id_for(unsafe)
     assert generated.startswith("req_")
     assert len(generated) <= 128
 
-    unsafe_trace = Request({"type": "http", "headers": [(b"x-trace-id", b"bad trace") ]})
+    unsafe_trace = Request({"type": "http", "headers": [(b"x-trace-id", b"bad trace")]})
     generated_trace = trace_id_for(unsafe_trace)
     assert generated_trace.startswith("trace_")
     assert len(generated_trace) <= 128
