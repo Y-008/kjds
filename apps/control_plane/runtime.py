@@ -297,15 +297,13 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
         lease_seconds=int(os.getenv("KJDS_PILOT_RUN_LEASE_SECONDS", "900")),
     )
-    providers = {
-        "ollama": OllamaProvider(os.getenv("KJDS_OLLAMA_URL", "http://127.0.0.1:11434")),
-        "comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189")),
-        "n8n": N8nProvider(os.getenv("KJDS_N8N_URL", "http://127.0.0.1:5678")),
-        "firecrawl": FirecrawlProvider(
-            os.getenv("FIRECRAWL_API_URL", "http://127.0.0.1:3002"),
-            os.getenv("FIRECRAWL_API_KEY") or None,
-        ),
-    }
+    providers = {"comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189"))}
+    if url := os.getenv("KJDS_OLLAMA_URL", "").strip():
+        providers["ollama"] = OllamaProvider(url)
+    if url := os.getenv("KJDS_N8N_URL", "").strip():
+        providers["n8n"] = N8nProvider(url)
+    if url := os.getenv("FIRECRAWL_API_URL", "").strip():
+        providers["firecrawl"] = FirecrawlProvider(url, os.getenv("FIRECRAWL_API_KEY") or None)
     image_execution = ComfyImageExecutionService(
         repository=repo,
         content=content,
