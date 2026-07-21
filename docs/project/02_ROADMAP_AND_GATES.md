@@ -6,25 +6,27 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 4.2 |
-| last_reviewed | 2026-07-20 |
+| version | 5.0 |
+| last_reviewed | 2026-07-21 |
 | next_review | 2026-07-23 |
 | gate | G-1–G8 |
 
 ## 总览
 
-| Gate | 目标 | 关键交付 | 放行标准 | 当前判断 |
-|---|---|---|---|---|
-| G-1 | 可信工程基线 | 分层提交、PostgreSQL 迁移、API/UI smoke、实时状态 | 干净基线可复现；迁移到当前 Alembic head（0037）；API/DB/UI 启动可证 | PASS |
-| G0 | 可以合法启动 | Owner/RACI、预算、最大损失、Ozon 权限、3 SKU 红线 | 所有任务有 Owner/验收；3 SKU 有继续/条件继续/淘汰结论 | NOT_STARTED |
-| G1 | 三 SKU 证据与准入 | 三类 Passport、供应商/样品/包装/物流证据 | 3/3 可追溯且人工批准；否决 SKU 必须替换 | NOT_STARTED |
-| G2 | 内容与上架草稿 | 事实锁定、真实原图/权利证据、俄语 Listing、Ozon 草稿 | 硬事实编造为 0；图片来源与输出哈希可追溯；变体/外观一致；人工审核通过 | NOT_STARTED |
-| G3 | 小批量真实履约 | 采购、物流、订单、签收、退货/异常状态 | 风险预算内完成测试单和真实订单；异常有 Owner | NOT_STARTED |
-| G4 | 到账与利润可证明 | 结算/银行导入、三方对账、实际人民币 CM3、13 周现金 | 费用解释率 ≥99.5%；汇总差 ≤0.3%；未知费用隔离 | NOT_STARTED |
-| G5 | 14 天影子与实验 | 预测—结果误差、至少 2 个对照实验 | 合规漏检 0；硬事实编造 0；每日高优先建议 ≤5；重复 <10% | NOT_STARTED |
-| G6 | 低风险受控自动化 | Command→Policy→Approval→Execution→Readback→Rollback | 幂等、超时、重复、半失败、审批超时故障注入通过 | NOT_STARTED |
-| G7 | 三 SKU 可复制 | 三个 SKU 使用同一口径完成闭环 | 经营结果、现金、合规、物流和质量均可复核 | NOT_STARTED |
-| G8 | 扩展决策 | SKU/库存/第二渠道/工具采购评估 | 每项通过 Build/Buy/Partner 与风险预算审批 | FROZEN |
+| Gate | 目标 | 关键交付 | 放行标准 |
+|---|---|---|---|
+| G-1 | 可信工程基线 | 分层提交、PostgreSQL 迁移、API/UI smoke、实时状态 | 干净基线可复现；迁移到当前 Alembic head；API/DB/UI 启动可证 |
+| G0 | 可以合法启动 | Owner/RACI、预算、最大损失、Ozon 权限、3 SKU 红线 | 所有任务有 Owner/验收；3 SKU 有继续/条件继续/淘汰结论 |
+| G1 | 三 SKU 证据与准入 | 三类 Passport、供应商/样品/包装/物流证据 | 3/3 可追溯且人工批准；否决 SKU 必须替换 |
+| G2 | 内容与上架草稿 | 事实锁定、真实原图/权利证据、俄语 Listing、Ozon 草稿 | 硬事实编造为 0；图片来源与输出哈希可追溯；变体/外观一致；人工审核通过 |
+| G3 | 小批量真实履约 | 采购、物流、订单、签收、退货/异常状态 | 风险预算内完成测试单和真实订单；异常有 Owner |
+| G4 | 到账与利润可证明 | 结算/银行导入、三方对账、实际人民币 CM3、13 周现金 | 费用解释率 ≥99.5%；汇总差 ≤0.3%；未知费用隔离 |
+| G5 | 14 天影子与实验 | 预测—结果误差、至少 2 个对照实验 | 合规漏检 0；硬事实编造 0；每日高优先建议 ≤5；重复 <10% |
+| G6 | 低风险受控自动化 | Command→Policy→Approval→Execution→Readback→Rollback | 幂等、超时、重复、半失败、审批超时故障注入通过 |
+| G7 | 三 SKU 可复制 | 三个 SKU 使用同一口径完成闭环 | 经营结果、现金、合规、物流和质量均可复核 |
+| G8 | 扩展决策 | SKU/库存/第二渠道/工具采购评估 | 每项通过 Build/Buy/Partner 与风险预算审批 |
+
+Gate 的当前状态只在 [03_REMAINING_WORK_AND_PARALLEL_PLAN.md](03_REMAINING_WORK_AND_PARALLEL_PLAN.md) 维护。
 
 ## Gate 依赖
 
@@ -32,13 +34,13 @@
 
 允许在不制造重做的前提下提前准备后续数据合同和模板，但不得提前宣告后续 Gate 通过。
 
-## G-1：可信工程基线（2–3 天）
+## G-1：可信工程基线
 
-- 将现有 13 个修改和 21 个未跟踪条目按领域分层审阅并形成可回滚提交。
-- PostgreSQL 实际迁移到当前 Alembic head `20260720_0038`，验证全新升级、迁移回放与隔离恢复路径。
-- 通过专用临时数据库运行 PostgreSQL/API/UI smoke；当前 G-1 放行报告为 `.runtime/G1_VERIFICATION.json`，状态 `PASS`，全量 Python 测试 `317 passed`，19 项 Web 测试、Web build、容器导入与健康、API health/auth、密钥扫描均通过。验证范围覆盖迁移回放、隔离备份恢复、API/OpenAPI、事务 Outbox、NUMERIC、端到端关联、Ozon 连接器安全、单 SKU 绑定、三候选×五指标离线证据包、候选测量/报价筛选、离线预检、显式执行、一次性执行授权、成功响应检查点/恢复、实际 Blob 完整性复验、主动 Evidence 巡检与事件升级、运行身份、启动资料、图片/Listing 审批、Web 身份与生产镜像、SKU/Passport/采购、实际成本独立权威证明及其人工工作台、财务、计提币种/符号不变量、对账双人控制和 Loop Engineering 安全态合同。最近一次隔离恢复 SHA-256 为 `b45228f5486b489c5dd7e7a79b7f488010b3b896fdfae919bf2afd99918e8fb1`。
-- 修正静态 `ENVIRONMENT_GATE.md` 与实时环境不一致问题，状态由检查结果生成。
-- 退出证据：提交哈希、迁移输出、健康检查、API/UI 截图或测试记录。
+- 工作区按领域审阅并形成可回滚提交。
+- PostgreSQL 迁移到代码声明的唯一 Alembic head，并验证全新升级、迁移回放与隔离恢复。
+- 在隔离数据库运行 PostgreSQL/API/UI smoke、密钥扫描、测试和生产构建。
+- 状态由实时检查生成，不从静态文档推断。
+- 退出证据包括提交哈希、迁移输出、健康检查和测试记录；本地汇总写入 `.runtime/G1_VERIFICATION.json`。
 
 ## G0–G1：合法启动与商品准入（3–5 周）
 

@@ -104,13 +104,11 @@ Brief 只能读取已批准的 Product、Compliance、Quality Passport，避免�
 
 推荐未来首先拆出 `connectors`、`content-workers` 和 `analytics-pipeline`。商品主数据、审批、订单状态与财务账本保持强一致核心。
 
-## 当前实现与下一增量
+## 当前状态入口
 
-当前已经建立领域模型、API 契约、事件名称、数据库迁移和测试用内存适配器。下一增量应按以下顺序实现：
+本文件只定义稳定架构，不维护当前完成度或下一执行顺序：
 
-1. PostgreSQL 持久化适配器和事务 outbox；
-2. Ozon 手工导入连接器，随后替换为 API 连接器；
-3. 对象存储和图片/视频 Worker；
-4. 原始数据分区、标准化任务与机会看板；
-5. 身份、角色、密钥托管和生产审计；
-6. 广告、物流、结算连接器及自动对账。
+- 当前任务、依赖、Owner 和状态见 [project/03_REMAINING_WORK_AND_PARALLEL_PLAN.md](project/03_REMAINING_WORK_AND_PARALLEL_PLAN.md)；
+- 已批准的架构变化见 [adr/](adr/)；
+- 对应版本的验收证据见 [project/evidence/](project/evidence/)；
+- 当前本地运行结果见 `.runtime/G1_VERIFICATION.json`，该文件不提交。
