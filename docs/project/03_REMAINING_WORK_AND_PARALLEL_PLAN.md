@@ -120,6 +120,8 @@
 
 2026-07-20 再次只读核验 Ozon Data 与 Seller：Ozon Data 仍要求账户主体接受要约、个人信息处理条件并确认已满 18 岁；Seller“销售漏斗”可切换 28 天并做类目/竞争对手对比，但仍是“我的商店”经营分析，不能替代新候选的全市场原件。默认解阻路径收敛为 Ozon Data；Premium 和 `product-queries` 不为 `SKU-000` 扩权或采购。账户负责人的两项最小决定、失败关闭条件和 OZN-003 身份收敛步骤见 `docs/project/evidence/20260720_SKU_000_OZN_003_OWNER_DECISION_PACKET.md`。
 
+2026-07-22 使用现有登录态再次只读复验：免费 Seller Analytics 的 28 天销售漏斗可用，但当前店铺订购金额和订购数量为零；竞争对手销售、类目数据、热门商品、搜索查询、Ozon 尚无商品及售罄需求等能力仍位于 Premium 订阅区。页面存在免费试用和多档付费方案，本次未点击、未订阅、未付款。由于用户已明确不升级付费，`SKU-000 research` 改走“免费 Ozon 官方信号 + 公共市场证据 + 第三方辅助信号 + 供应商实价”的研究路径，结果始终标记 `research_signal/estimate/simulation`；`real_execution` 继续失败关闭。证据见 `docs/project/evidence/20260722_SKU_000_FREE_ANALYTICS_PREMIUM_GATE.md`。
+
 为减少外部资料准备摩擦，Web 首屏已增加按 readiness 实时驱动的七步启动路径：治理、Ozon 权限、真实需求报告、候选研究、Passport/素材、三报价和财务。`web/public/startup/` 提供治理、Ozon 权限、Ozon API 身份盘点、三候选五指标、三 SKU、图片素材、三报价、财务对账八份 CSV 模板；真实需求报告没有伪模板，只链接 Ozon Data 正式入口。该增量只改善收集与导航，不把模板、公开示例、引用或 `verified` 文本当作原始证据，也不改变上述 `BLOCKED/PARTIAL_BLOCKED` 状态。
 
 `OZN-002` 的工程侧已完成 `ozon-v1` 订单、费用、计提、退货、结算五类版本化合同、CSV/XLSX 暂存校验、原文件证据绑定、不可变事实晋升和真实 PostgreSQL smoke。2026-07-20 首份真实官方计提 XLSX 已通过专用合同预检与隔离复算，但尚未正式存证、独立复核或完成会计分类；订单、结算、退货和银行/FX 原件仍缺，因此保持阻塞，不能用猜测补齐。
