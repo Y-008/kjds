@@ -377,3 +377,28 @@ class ActionAuthorizationService:
         if not isinstance(parsed, datetime):
             raise ActionPolicyError("Action occurrence time must be a datetime")
         return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
+def require_action_authorization(
+    service: ActionAuthorizationService,
+    repository: Any,
+    **context: Any,
+) -> dict[str, Any]:
+    """Evaluate and immutably audit a governed action before continuing."""
+    decision = service.authorize_action(**context)
+    blocking_codes = list(decision["blocking_reasons"])
+    repository.append_event(
+        "governance.action_authorization_evaluated",
+        decision["subject_id"],
+        {
+            "action_id": decision["action_id"],
+            "phase": decision["phase"],
+            "allowed": decision["allowed"],
+            "audit_code": "ACTION_AUTHORIZED" if decision["allowed"] else blocking_codes[0],
+            "blocking_codes": blocking_codes,
+            "policy_version": decision["policy_version"],
+            "risk_tier": decision["risk_tier"],
+        },
+        actor_id=decision["actor_id"],
+    )
+    return service.require_allowed(decision)

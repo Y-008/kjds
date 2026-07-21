@@ -501,6 +501,32 @@ class CoreFlowTest(TestCase):
         with self.assertRaisesRegex(ValueError, "explicit human confirmation"):
             self.market.handoff_candidate_to_sourcing(**arguments, confirmed=False)
 
+        with self.assertRaisesRegex(ValueError, "Action authorization denied"):
+            self.market.handoff_candidate_to_sourcing(**arguments, confirmed=True)
+        self.assertFalse(any(item.sku == "RU-QUOTE-001" for item in self.repo.list_products()))
+
+        approval = self.commerce.request_approval(
+            action="candidate.promote",
+            resource_type="market_candidate",
+            resource_id=candidate,
+            requested_by=arguments["confirmed_by"],
+            payload={
+                "candidate_ref": candidate,
+                "candidate_name": arguments["candidate_name"],
+                "market": "RU",
+                "category": arguments["category"],
+                "as_of": arguments["as_of"],
+                "demand_report_evidence_id": arguments["demand_report_evidence_id"],
+                "sku": arguments["sku"],
+                "max_age_days": 90,
+            },
+        )
+        self.commerce.decide_approval(
+            approval.id,
+            approved=True,
+            decided_by="reviewer@example.com",
+            reason="Independent candidate promotion review passed",
+        )
         first = self.market.handoff_candidate_to_sourcing(**arguments, confirmed=True)
         second = self.market.handoff_candidate_to_sourcing(**arguments, confirmed=True)
 

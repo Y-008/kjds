@@ -25,6 +25,7 @@ from .numeric_semantics import ascii_currency, finite_decimal
 from .repository import Repository
 
 HIGH_RISK_ACTIONS = {
+    "candidate.promote",
     "causal_policy.activate_stage",
     "platform_execution.execute_plan",
     "listing.publish",

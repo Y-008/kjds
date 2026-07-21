@@ -10,6 +10,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from typing import Any, Protocol
 
+from .action_policies import ActionAuthorizationService, require_action_authorization
 from .domain import ContentStatus, ContentType, ProductStatus, new_id, utc_now
 from .repository import Repository
 
@@ -420,11 +421,13 @@ class SourcingService:
         repository: Repository,
         evidence_validator: Callable[[list[str]], None],
         actual_cost_validator: Callable[[str, str], Any] | None = None,
+        action_authorization: ActionAuthorizationService | None = None,
     ) -> None:
         self.store = store
         self.repository = repository
         self.evidence_validator = evidence_validator
         self.actual_cost_validator = actual_cost_validator
+        self.action_authorization = action_authorization or ActionAuthorizationService()
 
     def capture_offer(self, offer: SupplierOffer) -> SupplierOffer:
         self.repository.get_product(offer.product_id)
@@ -651,6 +654,15 @@ class SourcingService:
         listing_data: dict[str, Any],
         requested_by: str,
     ) -> ListingDraft:
+        require_action_authorization(
+            self.action_authorization,
+            self.repository,
+            action="listing_draft",
+            subject_id=product_id,
+            actor_id=requested_by,
+            occurred_at=datetime.now(UTC),
+            phase="request",
+        )
         product = self.repository.get_product(product_id)
         if product.status not in {ProductStatus.VALIDATED, ProductStatus.APPROVED_FOR_LISTING}:
             raise ValueError("Product must pass all approved passports before listing")
@@ -689,16 +701,44 @@ class SourcingService:
         self.require_release_ready(scenario)
         listing_data = dict(listing_data)
         listing_data["content_asset_ids"] = list(content_asset_ids)
-        return self.store.save_listing_draft(
-            ListingDraft(
-                product_id=product_id,
-                offer_id=offer.id,
-                scenario_id=scenario.id,
-                target_platform="OZON",
-                listing_data=listing_data,
-                requested_by=requested_by,
-            )
+        draft_id = "lst_" + hashlib.sha256(
+            json.dumps(
+                {
+                    "product_id": product_id,
+                    "offer_id": offer.id,
+                    "scenario_id": scenario.id,
+                    "target_platform": "OZON",
+                    "listing_data": listing_data,
+                    "requested_by": requested_by,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()[:32]
+        require_action_authorization(
+            self.action_authorization,
+            self.repository,
+            action="listing_draft",
+            subject_id=product_id,
+            actor_id=requested_by,
+            occurred_at=datetime.now(UTC),
+            phase="execute",
+            executor_id="control_plane",
         )
+        draft = ListingDraft(
+            product_id=product_id,
+            offer_id=offer.id,
+            scenario_id=scenario.id,
+            target_platform="OZON",
+            listing_data=listing_data,
+            requested_by=requested_by,
+            id=draft_id,
+        )
+        saved = self.store.save_listing_draft(draft)
+        if listing_snapshot(saved) != listing_snapshot(draft):
+            raise ValueError("Listing draft idempotency conflict")
+        return self.store.get_listing_draft(saved.id)
 
     def verify_listing_approval(
         self,

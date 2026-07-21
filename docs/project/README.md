@@ -50,6 +50,7 @@ uv run python scripts/validate_startup_package.py .runtime/startup-intake --requ
 
 ```powershell
 uv run python scripts/verify_secrets.py
+uv run python scripts/validate_write_paths.py
 uv run ruff check .
 uv run pytest -q -p no:cacheprovider --basetemp=.runtime/pytest-local
 git diff --check
@@ -73,6 +74,7 @@ npm run build
 ## 长期边界
 
 - KJDS 拥有商品、利润、Evidence、Gate、审批和执行授权真相。
+- [动作政策注册表](registries/action_policy_registry.json) 定义动作风险，[写路径注册表](registries/write_path_registry.json) 定义实际入口、写点、执行器、回读和补偿；两者必须一一对应。
 - ComfyUI 只执行受控媒体工作流，输出必须回到 KJDS 的 Blob、Evidence、Lineage、QA 和审批。
 - n8n 只能承担定时、通知和外围触发，不得直写数据库或直接调用平台写端点。
 - Word 文档和研究母稿保持只读参考，不作为任务、运行或经营事实真源。

@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from urllib.parse import urlparse
 
-from .domain import MarketObservation, OpportunityInsight, Product
+from .action_policies import ActionAuthorizationService, require_action_authorization
+from .domain import ApprovalStatus, MarketObservation, OpportunityInsight, Product
 from .evidence import EvidenceGrade, EvidenceRecord
 from .numeric_semantics import finite_decimal
 from .repository import Repository
@@ -84,12 +85,14 @@ class MarketIntelligenceService:
         evidence_lookup: Callable[[str], EvidenceRecord] | None = None,
         demand_report_validator: Callable[[str], None] | None = None,
         evidence_authority_lookup: Callable[[str, str], EvidenceGrade] | None = None,
+        action_authorization: ActionAuthorizationService | None = None,
     ) -> None:
         self.repo = repository
         self.evidence_validator = evidence_validator
         self.evidence_lookup = evidence_lookup
         self.demand_report_validator = demand_report_validator
         self.evidence_authority_lookup = evidence_authority_lookup
+        self.action_authorization = action_authorization or ActionAuthorizationService()
 
     def ingest(
         self,
@@ -557,6 +560,26 @@ class MarketIntelligenceService:
         if market.strip().upper() != "RU":
             raise ValueError("Candidate sourcing handoff currently supports the Ozon RU vertical slice only")
 
+        approval_payload = {
+            "candidate_ref": candidate_ref,
+            "candidate_name": candidate_name,
+            "market": "RU",
+            "category": category,
+            "as_of": as_of,
+            "demand_report_evidence_id": demand_report_evidence_id,
+            "sku": sku,
+            "max_age_days": max_age_days,
+        }
+        require_action_authorization(
+            self.action_authorization,
+            self.repo,
+            action="candidate_promote",
+            subject_id=candidate_ref,
+            actor_id=confirmed_by,
+            occurred_at=datetime.now(UTC),
+            phase="request",
+        )
+
         assessment = self.assess_candidate_research(
             candidate_ref=candidate_ref,
             candidate_name=candidate_name,
@@ -580,6 +603,31 @@ class MarketIntelligenceService:
             separators=(",", ":"),
         ).encode()
         product_id = f"prd_{hashlib.sha256(identity).hexdigest()[:32]}"
+        approval = next(
+            (
+                item
+                for item in self.repo.list_approvals()
+                if item.action == "candidate.promote"
+                and item.resource_type == "market_candidate"
+                and item.resource_id == candidate_ref
+                and item.requested_by == confirmed_by
+                and item.payload == approval_payload
+                and item.status == ApprovalStatus.APPROVED
+                and item.decided_by
+            ),
+            None,
+        )
+        require_action_authorization(
+            self.action_authorization,
+            self.repo,
+            action="candidate_promote",
+            subject_id=candidate_ref,
+            actor_id=confirmed_by,
+            occurred_at=datetime.now(UTC),
+            phase="execute",
+            approval_actor_ids=[approval.decided_by] if approval and approval.decided_by else [],
+            executor_id="control_plane",
+        )
         existing = next((item for item in self.repo.list_products() if item.sku == sku), None)
         if existing is not None:
             if (

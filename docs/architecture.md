@@ -89,6 +89,7 @@ Brief 只能读取已批准的 Product、Compliance、Quality Passport，避免�
 - 领域事件使用稳定命名，例如 `market.observation_ingested`、`content.reviewed`、`order.created`。
 - 金额使用十进制定点数，保存原币、汇率、日期和证据。
 - 高风险动作走 Approval，申请人与批准人分离。
+- L1–L4 动作必须同时登记在 [动作政策注册表](project/registries/action_policy_registry.json) 与 [写路径注册表](project/registries/write_path_registry.json)；缺入口、正式写点、执行复验、幂等、回读或影响范围时 CI 失败。
 - Agent 调用必须有 idempotency key，失败可以安全重试。
 - 内容文件进入对象存储，业务库只保存引用和元数据。
 - 分析库、向量库、消息队列都是可替换基础设施，不拥有业务事实。

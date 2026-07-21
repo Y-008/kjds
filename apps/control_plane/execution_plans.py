@@ -99,6 +99,7 @@ class ExecutionPlanService:
         evidence,
         commerce,
         action_policies: ActionPolicyRegistry | None = None,
+        action_authorization: ActionAuthorizationService | None = None,
         readiness_provider: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
     ) -> None:
         self.engine = engine
@@ -106,8 +107,12 @@ class ExecutionPlanService:
         self.policies = policies
         self.evidence = evidence
         self.commerce = commerce
-        self.action_policies = action_policies or ActionPolicyRegistry()
-        self.action_authorization = ActionAuthorizationService(self.action_policies)
+        if action_authorization is not None:
+            self.action_authorization = action_authorization
+            self.action_policies = action_authorization.registry
+        else:
+            self.action_policies = action_policies or ActionPolicyRegistry()
+            self.action_authorization = ActionAuthorizationService(self.action_policies)
         self.readiness_provider = readiness_provider
 
     @staticmethod

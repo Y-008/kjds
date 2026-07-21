@@ -288,7 +288,7 @@ class SqlSourcingStore:
         import json
 
         with self.engine.begin() as connection:
-            connection.execute(
+            inserted_id = connection.execute(
                 text("""
                 INSERT INTO listing_drafts (
                     id, product_id, offer_id, scenario_id, target_platform, listing_json,
@@ -297,6 +297,8 @@ class SqlSourcingStore:
                     :id, :product_id, :offer_id, :scenario_id, :target, CAST(:listing AS jsonb),
                     :requested_by, :status, :approval_id, :created_at
                 )
+                ON CONFLICT (id) DO NOTHING
+                RETURNING id
             """),
                 {
                     "id": draft.id,
@@ -310,8 +312,8 @@ class SqlSourcingStore:
                     "approval_id": draft.approval_id,
                     "created_at": datetime.fromisoformat(draft.created_at),
                 },
-            )
-        return draft
+            ).scalar_one_or_none()
+        return draft if inserted_id is not None else self.get_listing_draft(draft.id)
 
     def list_listing_drafts(self, limit: int = 100) -> list[ListingDraft]:
         with self.engine.connect() as connection:
