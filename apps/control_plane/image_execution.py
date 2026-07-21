@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .action_policies import ActionAuthorizationService, require_action_authorization
 from .content_growth import ContentGrowthService
 from .domain import ContentAsset, ContentStatus, ContentType
 from .evidence import EvidenceGrade, EvidenceService
@@ -21,14 +22,17 @@ class ComfyImageExecutionService:
         content: ContentGrowthService,
         evidence: EvidenceService,
         provider: ComfyUIProvider,
+        action_authorization: ActionAuthorizationService | None = None,
     ) -> None:
         self.repo = repository
         self.content = content
         self.evidence = evidence
         self.provider = provider
+        self.action_authorization = action_authorization or ActionAuthorizationService()
 
     def queue(self, asset_id: str, *, requested_by: str) -> ContentAsset:
         asset = self.repo.get_content_asset(asset_id)
+        self._authorize(asset.id, requested_by, phase="request")
         if asset.content_type != ContentType.IMAGE:
             raise ValueError("Only image content assets can use ComfyUI")
         if asset.status == ContentStatus.QUEUED:
@@ -44,6 +48,7 @@ class ComfyImageExecutionService:
         self.evidence.require_valid([source_id, *asset.brief["rights_evidence_ids"]])
         source_content, source = self.evidence.content(source_id)
         extension = self._extension(source.content_type)
+        self._authorize(asset.id, requested_by, phase="execute")
         uploaded = self.provider.upload_image(
             content=source_content,
             filename=f"{asset.id}{extension}",
@@ -83,11 +88,13 @@ class ComfyImageExecutionService:
 
     def sync(self, asset_id: str, *, requested_by: str) -> ContentAsset:
         asset = self.repo.get_content_asset(asset_id)
+        self._authorize(asset.id, requested_by, phase="request")
         if asset.status != ContentStatus.QUEUED:
             return asset
         prompt_id = str(asset.generation.get("prompt_id", "")).strip()
         if not prompt_id:
             raise ValueError("Queued image asset is missing its ComfyUI prompt_id")
+        self._authorize(asset.id, requested_by, phase="execute")
         history = self.provider.history(prompt_id)
         result = history.get(prompt_id)
         if not isinstance(result, dict):
@@ -170,6 +177,18 @@ class ComfyImageExecutionService:
                 source_evidence_id=record.id,
             )
         return generated
+
+    def _authorize(self, asset_id: str, requested_by: str, *, phase: str) -> None:
+        require_action_authorization(
+            self.action_authorization,
+            self.repo,
+            action="content_generate",
+            subject_id=asset_id,
+            actor_id=requested_by,
+            occurred_at=datetime.now(UTC),
+            phase=phase,
+            executor_id="comfyui_worker" if phase == "execute" else None,
+        )
 
     @staticmethod
     def _workflow(*, input_name: str, asset_id: str) -> dict[str, Any]:

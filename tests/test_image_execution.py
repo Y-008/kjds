@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest import TestCase
 
+from apps.control_plane.action_policies import ActionPolicyError
 from apps.control_plane.content_growth import ContentGrowthService
 from apps.control_plane.domain import ContentAsset, ContentStatus, ContentType
 from apps.control_plane.image_execution import TEMPLATE_ID, ComfyImageExecutionService
@@ -46,11 +47,13 @@ class FakeEvidence:
 
 class FakeComfyUI:
     def __init__(self):
+        self.upload_calls = 0
         self.queue_calls = 0
         self.workflow = None
         self.history_payload = {}
 
     def upload_image(self, **_):
+        self.upload_calls += 1
         return {"name": "asset.png", "subfolder": "kjds/asset", "type": "input"}
 
     def queue_workflow(self, *, workflow, client_id):
@@ -140,3 +143,18 @@ class ImageExecutionTest(TestCase):
 
         self.assertEqual(failed.status, ContentStatus.EXECUTION_FAILED)
         self.assertEqual(failed.generation["failure_code"], "execution_error")
+
+    def test_execution_authorization_denial_prevents_provider_call(self):
+        with self.assertRaisesRegex(ActionPolicyError, "Executor identity"):
+            self.service.queue(self.asset.id, requested_by="comfyui_worker")
+
+        self.assertEqual(self.provider.upload_calls, 0)
+        self.assertEqual(self.provider.queue_calls, 0)
+        self.assertEqual(self.asset.status, ContentStatus.BRIEF)
+        denied = [
+            event
+            for event in self.repo.events
+            if event["type"] == "governance.action_authorization_evaluated"
+            and event["payload"]["allowed"] is False
+        ]
+        self.assertEqual(denied[-1]["payload"]["audit_code"], "EXECUTOR_INDEPENDENCE_REQUIRED")

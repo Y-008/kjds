@@ -15,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from .action_policies import ActionAuthorizationService, ActionPolicyRegistry
 from .automation import AutomationService, RiskLevel
 from .candidate_evidence_review import CandidateEvidenceAuthorityService
 from .capability_economics import CapabilityEconomicsService
@@ -141,6 +142,8 @@ causal_policies = CausalPolicyService(
     evidence=evidence,
 )
 commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
+action_policies = ActionPolicyRegistry()
+action_authorization = ActionAuthorizationService(action_policies)
 policy_shadow = PolicyShadowService(
     engine=engine,
     policies=causal_policies,
@@ -168,6 +171,7 @@ execution_plans = ExecutionPlanService(
     policies=causal_policies,
     evidence=evidence,
     commerce=commerce,
+    action_authorization=action_authorization,
     readiness_provider=execution_readiness_context,
 )
 intake = SkuEpisodeIntakeService(commerce=commerce, evidence=evidence)
@@ -185,6 +189,7 @@ market = MarketIntelligenceService(
         scope="research",
     ),
     evidence_authority_lookup=candidate_evidence_authority.require_approved_grade,
+    action_authorization=action_authorization,
 )
 content = ContentGrowthService(
     repo,
@@ -223,6 +228,7 @@ sourcing = SourcingService(
     repo,
     evidence_validator=evidence.require_valid,
     actual_cost_validator=cost_evidence_authority.require_actual,
+    action_authorization=action_authorization,
 )
 sourcing_intake = SupplierComparisonIntakeService(sourcing=sourcing, evidence=evidence)
 procurement = ProcurementService(
@@ -308,6 +314,7 @@ image_execution = ComfyImageExecutionService(
     content=content,
     evidence=evidence,
     provider=providers["comfyui"],
+    action_authorization=action_authorization,
 )
 
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}

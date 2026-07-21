@@ -466,6 +466,17 @@ class SourcingFlowTest(TestCase):
         self.assertEqual(draft.status, "approval_pending")
         self.assertEqual(draft.listing_data["content_asset_ids"], [approved_asset.id])
 
+        repeated = self.sourcing.create_ozon_listing_draft(
+            product_id=product.id,
+            offer_id=self.offer.id,
+            scenario_id=result.id,
+            content_asset_ids=[approved_asset.id],
+            listing_data=payload,
+            requested_by="owner",
+        )
+        self.assertEqual(repeated.id, draft.id)
+        self.assertEqual(len(self.store.list_listing_drafts()), 1)
+
         result.cost_evidence = {}
         with self.assertRaisesRegex(ValueError, "full cost evidence"):
             self.sourcing.create_ozon_listing_draft(
