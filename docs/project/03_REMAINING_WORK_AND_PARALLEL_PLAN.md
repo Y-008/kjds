@@ -93,7 +93,7 @@
 | BAS-082 | G-1–G4 | 外部合同固定样本回放门 | 工程+集成 | 复用现有 Ozon 客户端、ComfyUI 结果解析、财务导入预检和测试运行器；版本化脱敏样本声明合同、预期与 SHA-256；自动测试回放成功/漂移并失败关闭；现有限流、超时、写入不确定、幂等与回读专项测试保持通过；GitHub 私有仓库、真实 PR 与 `backend-quality`、`web-quality`、`postgres-smoke` 已运行成功；[工程证据](evidence/20260721_BAS_082_EXTERNAL_CONTRACT_REPLAY.md)、[CI](https://github.com/Y-008/kjds/actions/runs/29807719392) | BR-063、BAS-081 | DONE_ENGINEERING |
 | BAS-083 | G5 | Champion/Challenger 独立影子对照账 | 工程+能力治理 | 复用既有 Policy Evaluation `result_json` 和 Evidence/Lineage，冻结不同身份产生的 champion/人工基线、双方哈希、精确差异路径及一致性；缺基线或基线证据失效时禁止记录影子阶段结果和申请激活；不新增表、服务或依赖；真实收益与跨 SKU 复现仍在 G5/G7 验收 | BR-061、BR-064、BAS-082 | DONE_ENGINEERING |
 | BAS-084 | G-1 | 后端组合根收敛 | 工程负责人 | 新增单一 `RuntimeServices`；`api.py` 只保留应用创建、中间件、异常边界和领域 Router 注册；公共路径、响应、operation ID 与 OpenAPI 精确不变；不新增依赖或迁移；[工程证据](evidence/20260721_BAS_084_BACKEND_COMPOSITION_ROOT.md) | BAS-083 | DONE_ENGINEERING |
-| BAS-085 | G-1 | Web 组合根收敛 | 工程负责人 | `page.tsx` 只保留认证、布局和领域面板组合；统一原生 `fetchJson` 与实际使用的合同类型；领域失败隔离；页面不重算 Gate、利润、权限或 Evidence | BAS-084 | PENDING |
+| BAS-085 | G-1 | Web 组合根收敛 | 工程负责人 | `page.tsx` 只保留 Dashboard 组合入口；统一原生 `fetchJson` 与实际使用的合同类型；按财务、运营、决策科学、研究门禁、商品内容和采购拆分领域面板；请求失败按领域隔离；页面不重算 Gate、利润、权限或 Evidence；[工程证据](evidence/20260721_BAS_085_WEB_COMPOSITION_ROOT.md) | BAS-084 | DONE_ENGINEERING |
 | BAS-086 | G-1 | 可选 Provider 运行边界 | 工程负责人 | n8n、Firecrawl、Ollama 仅在显式配置后构造、展示和检查；核心 readiness 不依赖可选 Provider；ComfyUI 继续受控且不得直传平台；删除无调用方配置 | BAS-085 | PENDING |
 | BAS-087 | G-1 | G1 Harness 收敛 | 工程负责人 | 先冻结场景清单；PowerShell 只保留基础设施生命周期、迁移、恢复、Worker 与清理；领域场景迁入集成测试且能力覆盖不减少 | BAS-086 | PENDING |
 | BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |
