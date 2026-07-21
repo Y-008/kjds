@@ -1,4 +1,4 @@
-# Hermes repository instructions
+# KJDS repository instructions
 
 ## Project source of truth
 
@@ -27,11 +27,15 @@
 Before finishing a code change, run:
 
 ```text
+uv run python scripts/verify_secrets.py
 uv run ruff check .
-uv run pytest
+uv run pytest -q -p no:cacheprovider --basetemp=.runtime/pytest-local
+git diff --check
 ```
 
-For database/API changes also run PostgreSQL, migrate to head, and verify `/health`.
+For Web changes also run `npm ci`, `npm test`, and `npm run build` from `web/`.
+
+For database/API changes also run PostgreSQL, verify there is one Alembic head, migrate to head, and verify `/health/ready`.
 
 For every change, perform both review and verification:
 
@@ -39,6 +43,13 @@ For every change, perform both review and verification:
 - Verification: tests, lint/type/build checks, migration replay, smoke tests, and `git diff --check` as applicable.
 
 Do not treat a passing test as proof that the requirement was implemented correctly; record unresolved findings as `P0/P1/P2/Info` with `auto-fix`, `ask-user`, `defer`, or `no-op` handling.
+
+## GitHub delivery
+
+- Put shared changes on a branch and merge them through a pull request; do not push directly to `main`.
+- Do not merge while `backend-quality`, `web-quality`, or `postgres-smoke` is failing, or while review conversations remain unresolved.
+- Use squash merge, then synchronize the local `main` with `origin/main`.
+- The current private-repository plan cannot enforce branch protection. Treat these rules as mandatory team policy and never report `main` as protected until GitHub confirms an active ruleset or branch-protection rule.
 
 ## Safety
 
