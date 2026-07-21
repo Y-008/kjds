@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readDashboardSource } from "./dashboard-source.ts";
 
-const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+const page = readDashboardSource();
 
 test("candidate research UI keeps the evidence-first five-metric preflight", () => {
   assert.match(page, /\/backend\/v1\/evidence/);

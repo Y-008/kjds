@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readDashboardSource } from "./dashboard-source.ts";
 
-const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
+const page = readDashboardSource();
 
 test("best solution mode captures constraints and criteria without execution rights", () => {
   assert.match(page, /best_solution/);
