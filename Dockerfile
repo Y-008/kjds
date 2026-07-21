@@ -6,7 +6,7 @@ COPY apps ./apps
 RUN pip install --no-cache-dir uv==0.11.26 && uv sync --frozen --no-dev
 COPY alembic.ini ./
 COPY migrations ./migrations
-COPY docs/project/registries/loop_engineering_registry.json ./docs/project/registries/loop_engineering_registry.json
+COPY docs/project/registries ./docs/project/registries
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH=/app

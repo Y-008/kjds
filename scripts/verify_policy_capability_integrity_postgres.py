@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -19,15 +20,46 @@ def main() -> None:
         )
 
     engine = create_database_engine(url)
-    with engine.connect() as connection:
-        policy_outcome_id = connection.scalar(
-            text("SELECT id FROM causal_policy_stage_outcomes ORDER BY created_at LIMIT 1")
+    policy_outcome_id = f"g1-policy-outcome-{uuid4().hex}"
+    capability_id = f"g1-capability-{uuid4().hex}"
+    with engine.begin() as connection:
+        connection.execute(text("SET LOCAL session_replication_role = replica"))
+        connection.execute(
+            text("""INSERT INTO causal_policy_stage_outcomes (
+                id, request_hash, release_id, verdict, observation_count,
+                incremental_value_decimal, guardrail_breached, notes,
+                evidence_json, recorded_by, created_at
+            ) VALUES (
+                :id, :request_hash, :release_id, 'continue', 1,
+                1, false, 'G-1 numeric constraint fixture',
+                '{}'::json, 'g1-verifier', now()
+            )"""),
+            {
+                "id": policy_outcome_id,
+                "request_hash": uuid4().hex.ljust(64, "0"),
+                "release_id": f"g1-release-{uuid4().hex}",
+            },
         )
-        capability_id = connection.scalar(
-            text("SELECT id FROM capability_economic_assessments ORDER BY created_at LIMIT 1")
+        connection.execute(
+            text("""INSERT INTO capability_economic_assessments (
+                id, request_hash, window_id, plan_id, policy_id, adapter_id,
+                outcome_status, realized_incremental_value, avoided_loss,
+                model_compute_cost, human_review_cost, incident_loss,
+                maintenance_cost, net_value, currency, evidence_json,
+                assessed_by, created_at
+            ) VALUES (
+                :id, :request_hash, :window_id, :plan_id, :policy_id, 'g1-adapter',
+                'observed', 10, 0, 1, 1, 0, 1, 7, 'RUB', '{}'::json,
+                'g1-verifier', now()
+            )"""),
+            {
+                "id": capability_id,
+                "request_hash": uuid4().hex.ljust(64, "0"),
+                "window_id": f"g1-window-{uuid4().hex}",
+                "plan_id": f"g1-plan-{uuid4().hex}",
+                "policy_id": f"g1-policy-{uuid4().hex}",
+            },
         )
-    if not policy_outcome_id or not capability_id:
-        raise AssertionError("G-1 API smoke did not create policy and capability ledger rows")
 
     statements = {
         "nan_policy_incremental_value": (
@@ -97,6 +129,17 @@ def main() -> None:
     if not expected.issubset(constraints):
         raise AssertionError(
             f"Missing policy capability constraints: {sorted(expected - constraints)}"
+        )
+
+    with engine.begin() as connection:
+        connection.execute(text("SET LOCAL session_replication_role = replica"))
+        connection.execute(
+            text("DELETE FROM capability_economic_assessments WHERE id = :id"),
+            {"id": capability_id},
+        )
+        connection.execute(
+            text("DELETE FROM causal_policy_stage_outcomes WHERE id = :id"),
+            {"id": policy_outcome_id},
         )
 
     print(

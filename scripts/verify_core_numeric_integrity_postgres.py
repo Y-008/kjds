@@ -22,6 +22,9 @@ def main() -> None:
     suffix = uuid4().hex
     now = datetime.now(UTC)
     ids = {
+        "product": f"g1_prd_{suffix}",
+        "approval": f"g1_apr_{suffix}",
+        "sample_order": f"g1_smp_{suffix}",
         "order": f"g1_ord_{suffix}",
         "charge": f"g1_chg_{suffix}",
         "observation": f"g1_obs_{suffix}",
@@ -30,12 +33,40 @@ def main() -> None:
         "recommendation": f"g1_rec_{suffix}",
     }
     with engine.begin() as connection:
-        product_id = connection.scalar(text("SELECT id FROM products ORDER BY created_at LIMIT 1"))
-        sample_order_id = connection.scalar(
-            text("SELECT id FROM sample_purchase_orders ORDER BY created_at LIMIT 1")
+        # These rows only exercise CHECK constraints. Keep the fixture independent from
+        # domain workflow ordering and bypass unrelated sourcing foreign keys locally.
+        connection.execute(text("SET LOCAL session_replication_role = replica"))
+        connection.execute(
+            text("""INSERT INTO products (
+                id, sku, name, market, channel, status, created_at
+            ) VALUES (:id, :sku, 'G-1 numeric fixture', 'RU', 'OZON', 'draft', :now)"""),
+            {"id": ids["product"], "sku": f"G1-{suffix}", "now": now},
         )
-        if not product_id or not sample_order_id:
-            raise AssertionError("G-1 API smoke did not create product and sample order rows")
+        connection.execute(
+            text("""INSERT INTO approvals (
+                id, action, resource_type, resource_id, requested_by, payload_json,
+                status, decided_by, decision_reason, created_at
+            ) VALUES (:id, 'sample_purchase', 'product', :product, 'g1', '{}'::jsonb,
+                'approved', 'g1', 'numeric fixture', :now)"""),
+            {
+                "id": ids["approval"],
+                "product": ids["product"],
+                "now": now,
+            },
+        )
+        connection.execute(
+            text("""INSERT INTO sample_purchase_orders (
+                id, approval_id, product_id, offer_id, scenario_id, supplier_ref,
+                quantity, currency, unit_price, requested_by, created_at
+            ) VALUES (:id, :approval, :product, 'g1-offer', 'g1-scenario', 'g1-supplier',
+                1, 'CNY', 10, 'g1', :now)"""),
+            {
+                "id": ids["sample_order"],
+                "approval": ids["approval"],
+                "product": ids["product"],
+                "now": now,
+            },
+        )
         connection.execute(
             text("""INSERT INTO orders (
                 id, external_id, product_id, quantity, currency, gross_revenue_decimal,
@@ -44,7 +75,7 @@ def main() -> None:
             {
                 "id": ids["order"],
                 "external": f"g1-{suffix}",
-                "product": product_id,
+                "product": ids["product"],
                 "now": now,
             },
         )
@@ -74,7 +105,7 @@ def main() -> None:
                 id, product_id, channel, hypothesis, primary_metric,
                 budget_cap_cny_decimal, stop_loss_cny_decimal, variants_json, status, created_at
             ) VALUES (:id, :product, 'OZON', 'g1', 'cm3', 100, 10, '[]'::jsonb, 'draft', :now)"""),
-            {"id": ids["experiment"], "product": product_id, "now": now},
+            {"id": ids["experiment"], "product": ids["product"], "now": now},
         )
         connection.execute(
             text("""INSERT INTO decision_recommendations (
@@ -82,7 +113,7 @@ def main() -> None:
                 expected_cm3_delta_decimal, risk, status, shadow_mode, created_at, decided_at
             ) VALUES (:id, :product, 'g1', 'observe', 'g1', '[]'::jsonb, 5,
                 'low', 'observing', true, :now, NULL)"""),
-            {"id": ids["recommendation"], "product": product_id, "now": now},
+            {"id": ids["recommendation"], "product": ids["product"], "now": now},
         )
 
     statements = {
@@ -120,7 +151,7 @@ def main() -> None:
         "negative_sample_price": (
             "sample_purchase_orders",
             "UPDATE sample_purchase_orders SET unit_price = -1 WHERE id = :id",
-            sample_order_id,
+            ids["sample_order"],
         ),
     }
     rejected = []
@@ -167,6 +198,7 @@ def main() -> None:
         raise AssertionError(f"Missing core constraints: {sorted(expected - constraints)}")
 
     with engine.begin() as connection:
+        connection.execute(text("SET LOCAL session_replication_role = replica"))
         for table, key in (
             ("decision_recommendations", "recommendation"),
             ("growth_experiments", "experiment"),
@@ -174,6 +206,9 @@ def main() -> None:
             ("market_observations", "observation"),
             ("charges", "charge"),
             ("orders", "order"),
+            ("sample_purchase_orders", "sample_order"),
+            ("approvals", "approval"),
+            ("products", "product"),
         ):
             connection.execute(text(f"DELETE FROM {table} WHERE id = :id"), {"id": ids[key]})
 
