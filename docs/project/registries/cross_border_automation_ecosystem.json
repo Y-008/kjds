@@ -1,6 +1,6 @@
 {
   "registry_id": "KJDS-CROSS-BORDER-OSS-001",
-  "captured_at": "2026-07-22T18:36:53+08:00",
+  "captured_at": "2026-07-22T20:32:00+08:00",
   "status": "active_research_registry",
   "selection_rule": "Reuse only a capability that closes a current Gate bottleneck without creating a second owner, approval system, backend, or ungoverned write path.",
   "automatic_install": false,
@@ -28,10 +28,12 @@
       "kind": ["cli", "browser_harness"],
       "repository": "https://github.com/superjack2050/1688-cli",
       "package": "1688-cli@0.1.47",
+      "package_integrity": "sha512-gisdVCgBafV9ueIAXZhA470EAg72capiAOYD2g64vf2hSduPUVwwaJeJaatrlkQCOmc46DVAvdzTg0QHviRQkQ==",
+      "repository_commit": "5f958211c002ba3f210bfd88d9d838080c4593f0",
       "license": "MIT",
       "repository_snapshot": {"stars": 44, "archived": false, "pushed_at": "2026-06-27T15:14:06Z"},
       "use": "Logged-in 1688 offer reads, supplier inquiry readback, server-message-id deduplication and read-only order preparation.",
-      "current_state": "installed_in_gitignored_runtime_and_real_readback_verified",
+      "current_state": "installed_in_gitignored_runtime_out_of_band_manual_send_readback_observed_not_kjds_permit_verified",
       "write_boundary": "No cart, checkout, order, payment or duplicate supplier message without the existing KJDS permit chain.",
       "requires_review": true
     },
@@ -43,6 +45,7 @@
       "package_integrity": "sha512-2+phJOV7JkSeQR4uOnapAkhSwQDjNzHYzlCXZJBYiYi7bUxQz95nGbGuXeTseprZWES0kysVGySH63B1HG51hw==",
       "extension": {
         "version": "1.0.22",
+        "release_asset_url": "https://github.com/jackwener/OpenCLI/releases/download/v1.8.6/opencli-extension-v1.0.22.zip",
         "sha256": "9d2e3d053948beab5d97124aa79b1532d2122e33e461eca56cac113afd33207a",
         "permissions": ["debugger", "tabs", "cookies", "activeTab", "alarms", "storage", "tabGroups", "downloads"],
         "host_permissions": ["<all_urls>"]
@@ -327,7 +330,7 @@
       {
         "id": "mcp_apps",
         "repository": "https://github.com/modelcontextprotocol/ext-apps",
-        "license": "MIT specification and SDK repository; verify package license at pin time",
+        "license": "mixed: Apache-2.0 current packages, MIT legacy contributions, CC-BY-4.0 documentation; verify package path at pin time",
         "maturity": "stable_extension_spec_with_active_sdk",
         "stable_spec": "2026-01-26",
         "latest_release": "v1.7.4",
@@ -424,7 +427,8 @@
   },
   "collection_chain": {
     "production_owner": "KJDS Evidence pipeline and persisted state machine",
-    "current_readiness": "partial_external_inputs_blocked",
+    "implementation_status": "machine_readable_contract_blueprint_not_end_to_end_runtime_implementation",
+    "current_readiness": "contract_complete_runtime_coverage_partial_external_inputs_blocked",
     "lane_order": [
       "official API or platform export",
       "deterministic authenticated browser or CLI adapter",
@@ -451,7 +455,7 @@
         "fallback": "visible human-confirmed session with whoami readback",
         "owner": "KJDS operator boundary",
         "boundary": "Never export cookies, passwords, MFA secrets or reuse the personal CPA/2FA profile.",
-        "status": "verified_for_1688_cli_partial_for_ozon",
+        "status": "out_of_band_1688_session_observed_not_dedicated_profile_verified_partial_for_ozon",
         "verification": "account identifier, nick or store, domain, region and session timestamp",
         "provenance": "private session attestation and hashed readback"
       },
@@ -473,7 +477,7 @@
         "fallback": "visible manual export or screenshot with account context",
         "owner": "single KJDS browser operator",
         "boundary": "Domain allowlist, loopback control, one writer and no checkout, order or payment action.",
-        "status": "real_1688_readback_verified_ozon_not_connected",
+        "status": "out_of_band_1688_readback_observed_not_kjds_permit_chain_ozon_not_connected",
         "verification": "10 of 10 runs across two restarts, exact account and item, zero cross-account leakage",
         "provenance": "tool version, commit, run event, server message ID and artifact hash"
       },
@@ -627,9 +631,9 @@
         "fallback": "visible page readback with artifact hash",
         "owner": "KJDS Readback",
         "boundary": "A click, local success message or user attestation alone is not completion.",
-        "status": "verified_for_ru001_send_not_for_quote_or_purchase",
+        "status": "out_of_band_ru001_manual_send_readback_observed_not_authorize_action_verified_not_for_quote_or_purchase",
         "verification": "request hash, target, server ID, response, timestamps and reconciliation result",
-        "provenance": "Readback linked to ExecutionPermit when a write is authorized"
+        "provenance": "RU-001 private readback has no KJDS ExecutionPermit; future authorized writes must link Readback to ExecutionPermit"
       },
       {
         "id": "retention_revocation",
@@ -671,7 +675,7 @@
         "fallback": "documented non-reusable reason with an owner",
         "owner": "KJDS reusable asset registry",
         "boundary": "Reusable assets cannot weaken approval, permit, provenance or readback controls.",
-        "status": "active_contract",
+        "status": "contract_only_runtime_registry_pending",
         "verification": "asset IDs referenced by the next SKU and measured reuse ratio",
         "provenance": "asset manifest linked to originating run"
       }

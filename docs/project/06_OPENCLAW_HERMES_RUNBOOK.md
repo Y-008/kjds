@@ -49,7 +49,7 @@ OpenClaw（控制面、角色 Agent、飞书入口）
 - Hermes 为 `v0.19.0 (2026.7.20, 86fb0463)`，129 个组件无已知漏洞；skills/memory 写入需审批、agent-created skill 保护和 checkpoint 已开启；
 - Hermes 中高风险的 `oss-forensics`、`watchers` 已移除，保留 9 个已扫描的工程技能。当前配置模型最小调用返回 HTTP 429“余额不足或无可用资源包”，因此只证明 CLI 与错误回读正常，不证明当前模型可用；
 - OpenClaw 中一条 2026-07-07 的旧 Task/Flow 仍因存在 backing session 被维护预览保留。未直接修改 SQLite，也不把“清理未发生”伪报为完成；
-- ComfyUI 已升至官方 `v0.28.2`，默认只加载固定第三方白名单，另有纯核心回滚模式。Triton 补丁经 30 对 A/B 后因中位耗时慢 25.07% 未晋升默认路径。
+- ComfyUI 已升至官方 `v0.28.2`；生产默认仍为纯核心 `ozon-retouch-v1`。固定第三方白名单只作为本机隔离实验，Triton 补丁经 30 对 A/B 后因中位耗时慢 25.07% 未晋升默认路径。
 
 上述 2026-07-16 项保留为历史基线；任何与 2026-07-22 复验冲突的“成功”不得当作当前状态。
 
@@ -173,14 +173,14 @@ Hermes CLI 的原生 `venv\Scripts\hermes.exe` 被 Windows 应用控制策略阻
 ### ComfyUI 受控模式
 
 ```powershell
-# 默认：官方核心 + 固定、已审查第三方白名单；loopback 8189
-pwsh -NoProfile -File D:\AI\Apps\OpenClaw\workspace-chief\scripts\start-comfyui-latest.ps1 -Mode trusted
-
-# 回滚/排障：只加载官方核心节点
+# 默认/生产边界：只加载官方核心节点；loopback 8189
 pwsh -NoProfile -File D:\AI\Apps\OpenClaw\workspace-chief\scripts\start-comfyui-latest.ps1 -Mode core
+
+# 显式隔离实验：不得用于 KJDS 生产 workflow
+pwsh -NoProfile -File D:\AI\Apps\OpenClaw\workspace-chief\scripts\start-comfyui-latest.ps1 -Mode trusted
 ```
 
-`trusted` 模式的节点数为 1186，`core` 为 807；两个模式均已从修改后的启动脚本真实启动并读取 `/object_info`。Manager 的任意 Git URL 和 pip 安装均关闭。`PatchTritonVAE` 虽在 trusted 模式可见，但 A/B 未达到性能晋升阈值，默认 workflow 不引用它。合成夹具只能验工具链；真实商品保真验收必须使用供应商授权原图，并通过 KJDS 素材 readiness、Evidence、QA 与审批。
+`core` 为 807 个官方节点，是当前唯一生产默认；`trusted` 的 1186 nodes 只证明仓库外实验脚本可加载。六个第三方节点尚未在共享仓库固化逐项 commit、许可证、hash、SBOM 与可复现启动配置，因此不得进入 KJDS 生产 workflow。Manager 的任意 Git URL 和 pip 安装均关闭。`PatchTritonVAE` A/B 未达到性能晋升阈值。合成夹具只能验工具链；真实商品保真验收必须使用供应商授权原图，并通过 KJDS 素材 readiness、Evidence、QA 与审批。
 
 ### 已登录浏览器边界
 

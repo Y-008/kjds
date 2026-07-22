@@ -26,6 +26,9 @@ def test_cross_border_ecosystem_reuses_tools_without_creating_a_second_control_p
 
     cli = next(item for item in registry["active_now"] if item["id"] == "1688_cli")
     assert cli["package"] == "1688-cli@0.1.47"
+    assert cli["package_integrity"].startswith("sha512-")
+    assert len(cli["repository_commit"]) == 40
+    assert "out_of_band_manual_send" in cli["current_state"]
     assert "No cart, checkout, order, payment" in cli["write_boundary"]
 
     for target in registry["official_api_targets"]:
@@ -137,7 +140,7 @@ def test_frontier_snapshot_is_date_bounded_and_distinguishes_maturity():
     assert implementations["trigger_dev"]["latest_release"] == "v4.5.6"
 
 
-def test_collection_chain_is_end_to_end_fail_closed_and_compounding():
+def test_collection_contract_is_fail_closed_and_does_not_claim_runtime_completion():
     path = (
         Path(__file__).parents[1]
         / "docs"
@@ -148,6 +151,7 @@ def test_collection_chain_is_end_to_end_fail_closed_and_compounding():
     chain = json.loads(path.read_text(encoding="utf-8"))["collection_chain"]
 
     assert chain["production_owner"] == "KJDS Evidence pipeline and persisted state machine"
+    assert chain["implementation_status"].endswith("not_end_to_end_runtime_implementation")
     assert "cannot create formal facts" in chain["global_boundary"]
 
     stages = {item["id"]: item for item in chain["stages"]}
@@ -188,6 +192,8 @@ def test_collection_chain_is_end_to_end_fail_closed_and_compounding():
     assert all(required <= set(stage) for stage in stages.values())
     assert stages["official_api_export"]["status"].startswith("blocked_ozon")
     assert stages["promotion_gate"]["status"] == "active_formal_fact_promoted_false"
+    assert stages["readback_reconciliation"]["status"].startswith("out_of_band_ru001")
+    assert "no KJDS ExecutionPermit" in stages["readback_reconciliation"]["provenance"]
     assert "No CAPTCHA" in stages["resilience_human_takeover"]["boundary"]
 
     targets = chain["compounding_contract"]["targets"]

@@ -24,7 +24,7 @@
 | 开发 Agent Harness | Codex 主执行；Grok Build 隔离试点 | Reuse/Pilot | 只比较安全有效交付率；不得接入生产凭证或成为业务控制平面 |
 | Agent 运行时 | 现有壳层；后续评估官方 Agents SDK/PydanticAI | Defer | 先完成真实闭环和 Agent 需求合同 |
 | Durable Workflow / 任务队列 | 当前服务+状态机；Postgres 原生库为后备 | Build/Defer | 先比较 PgQueuer/Procrastinate；只有长事务、补偿、重放压力实证后才评估 DBOS/Temporal 并走 ADR |
-| 商品图片执行器 | 官方 `Comfy-Org/ComfyUI` 本地 API | Reuse/Wrap | 已验证本机 `0.28.2`、RTX 4060、纯核心模式与固定第三方白名单模式；loopback 监听。KJDS 持有事实、证据、Brief、QA 和审批 |
+| 商品图片执行器 | 官方 `Comfy-Org/ComfyUI` 本地 API | Reuse/Wrap | 生产继续只开放 core `ozon-retouch-v1`；第三方白名单仅为本机隔离实验。KJDS 持有事实、证据、Brief、QA 和审批 |
 | 可观测/评测 | 业务审计账本优先；Langfuse/Promptfoo 候选 | Defer | 不能替代业务证据和黄金 Oracle |
 | AI 网关 | 官方 API/现有本地 Provider | Reuse | 不采用共享订阅池 |
 | 标准 ERP 交易内核 | ERPNext 隔离 PoC 候选 | Reuse/Defer | 当前不安装生产实例；只在真实 Ozon 竖切后验证采购、库存、供应商、多币种与会计单据，避免 KJDS 重造 ERP |
@@ -51,7 +51,7 @@
 
 不自研图片生成引擎，也不让 ComfyUI/MCP 持有商品事实。生产基线直接复用官方 `Comfy-Org/ComfyUI` 的本地 HTTP/队列能力；KJDS 只向它提交已冻结、版本化、受控模板产生的 workflow，不开放任意 workflow 输入。当前唯一自动模板是 `ozon-retouch-v1`，只使用官方核心节点对已批准真实原图做 4MP 等比保真处理并回收 Evidence，不加载生成模型、不改变商品结构、颜色、配件或文字。背景合成与信息图待真实 SKU 模板复验后再开放；所有输出仍须人工 QA 后才能用于 Listing。
 
-`artokun/comfyui-mcp` 仍保持研究候选，因为原生 `/prompt` 与历史接口尚未形成实际编排瓶颈；第三方自定义节点不再一概否定，而是固定到已审查仓库白名单并逐项做代表性效果测试。默认 `trusted` 模式只加载 `comfyui_controlnet_aux`、`ComfyUI-GGUF`、`ComfyUI-KJNodes`、`ComfyUI-Manager`、`ComfyUI-VideoHelperSuite` 与 `rgthree-comfy`，另有 `core` 模式可一键回到 807 个官方节点；Manager 禁止任意 Git URL 与 pip 安装。
+`artokun/comfyui-mcp` 仍保持研究候选，因为原生 `/prompt` 与历史接口尚未形成实际编排瓶颈。生产默认继续使用只含官方节点的 `core` 模式和唯一 `ozon-retouch-v1`；本机 `trusted` 白名单只用于隔离效果实验，未提交逐节点 commit、许可证、hash、SBOM 和共享启动配置前不得晋升默认路径。Manager 禁止任意 Git URL 与 pip 安装。
 
 `triton-windows 3.7.1.post27` 已按同一 Flux2 潜变量、同一 VAE、`cache-none` 做 30 对 A/B。重启后两组均为 30/30 成功，但补丁中位耗时 `476.5 ms`，对照为 `381 ms`，慢 `25.07%`；输出差异极小（PSNR `61.16 dB`），却没有质量收益。因此保留为显式实验能力，不进入默认 workflow，也不削弱 Windows Application Control。该结果只是合成技术夹具的性能证据，不是 RU-001 商品图、Listing 资产或业务验收。任何执行器仍不得绕过七类素材 readiness、ContentAsset 状态机和 G2 审核。
 
@@ -94,11 +94,11 @@ Playwright 继续作为确定性底座复用；Stagehand `3.7.0`/server `v3.7.4`
 
 Agent 工作流同样按缺口复用：若现有 Agent 壳层确实缺少 handoff、guardrail、session 或 tracing，优先评估官方 OpenAI Agents SDK；LangGraph/PydanticAI 不并行引入，已进入维护模式的 AutoGen 不用于新开发。多源数据达到真实的增量加载与 schema evolution 瓶颈后才引入轻量 `dlt`，其输出仍是 research evidence，不能自动晋升为 formal fact 或 actual。
 
-### 完整采集链与复利合同
+### 采集合同蓝图与复利指标
 
-采集不再按“某个 CLI 能否抓到一页”验收，而按 22 个连续环节验收：来源权威与许可、账户/会话范围、官方 API/导出、确定性登录浏览器、AI 浏览器后备、原始响应留存、文件安全与隐私、解析与 schema 版本、SKU/供应商身份、时间窗/分页/控制总数、哈希去重与历史、字段级来源与置信度、独立复核、Evidence 血缘、research→formal→actual 晋升、漂移隔离与回放、限流/重试/熔断/人工接管、服务端回读与对账、保留与撤销、监控/SLO/事件、人工分钟与成本、复用资产登记。每一环都在 [`registries/cross_border_automation_ecosystem.json`](registries/cross_border_automation_ecosystem.json) 固定 `primary`、`fallback`、`owner`、`boundary`、`status`、`verification` 和 `provenance`；任一关键环节缺失即保持 blocked 或 requires_review。
+注册表先冻结 22 个连续环节的验收合同：来源权威与许可、账户/会话范围、官方 API/导出、确定性登录浏览器、AI 浏览器后备、原始响应留存、文件安全与隐私、解析与 schema 版本、SKU/供应商身份、时间窗/分页/控制总数、哈希去重与历史、字段级来源与置信度、独立复核、Evidence 血缘、research→formal→actual 晋升、漂移隔离与回放、限流/重试/熔断/人工接管、服务端回读与对账、保留与撤销、监控/SLO/事件、人工分钟与成本、复用资产登记。每一环都在 [`registries/cross_border_automation_ecosystem.json`](registries/cross_border_automation_ecosystem.json) 固定 `primary`、`fallback`、`owner`、`boundary`、`status`、`verification` 和 `provenance`；当前只是机器可读合同，不是统一运行时实现，任一关键环节缺失即保持 blocked 或 requires_review。
 
-浏览器路径固定为“官方 API/导出优先 → 专用 KJDS 浏览器 Profile 的确定性适配器 → Stagehand/browser-use/Skyvern 等 AI 浏览器隔离试验 → 登录、MFA、CAPTCHA 或账户歧义时可见人工接管”。不得导出 Edge 主 Profile 的 Cookie、密码或 2FA，不得混用个人 CPA/金融会话；AI 浏览器没有反爬绕过权限，也没有独立写权限。当前 1688 RU-001 已取得发送正文、服务端消息 ID、目标供应商与回复“您好，稍等”的真实回读，但这只证明询价送达与供应商确认，正式书面报价仍为 0，不能晋升 actual。Ozon 连续至少 28 天官方数据仍缺获批身份或原始导出。
+浏览器路径固定为“官方 API/导出优先 → 专用 KJDS 浏览器 Profile 的确定性适配器 → Stagehand/browser-use/Skyvern 等 AI 浏览器隔离试验 → 登录、MFA、CAPTCHA 或账户歧义时可见人工接管”。不得导出 Edge 主 Profile 的 Cookie、密码或 2FA，不得混用个人 CPA/金融会话；AI 浏览器没有反爬绕过权限，也没有独立写权限。当前 1688 RU-001 是用户人工发送后的带外只读回读，虽取得服务端消息 ID、目标供应商与回复“您好，稍等”，但没有 KJDS ExecutionPermit/`authorize_action()` 记录，不能算受控写链验收；正式书面报价仍为 0，不能晋升 actual。Ozon 连续至少 28 天官方数据仍缺获批身份或原始导出。
 
 “复利”是验收指标：每次运行必须留下适配器或明确缺口、字段映射、原始/标准化金样、失败签名与接管规则、回放测试、Evidence/Readback 模板以及人工分钟/机器成本。第二个同类 SKU 的流程与适配器复用率不得低于 70%，第三个不得低于 85%；第三个 SKU 人工分钟不得高于第一个的 50%；已知失败复发率低于 5%，重复外部动作与未经复核事实晋升均为 0，回滚成功率为 100%。工具只有在代表性结果测试同时通过稳定性、质量、权限、来源、回滚和总成本后，才从实验能力晋升默认路径。
 

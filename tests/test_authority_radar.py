@@ -77,10 +77,29 @@ def test_parse_github_commits_preserves_head_identity_and_marks_review() -> None
         source,
     )
     assert len(events) == 1
-    assert events[0].title.endswith("spec: add capability Details")
+    assert events[0].title.endswith("spec: add capability")
+    assert events[0].excerpt == "spec: add capability Details"
+    assert len(events[0].title) <= len(source["repo"]) + 202
     assert events[0].published_at == "2026-07-22T01:02:03+00:00"
     assert events[0].requires_review is True
     assert events[0].raw == {"sha": "a" * 40, "verified": True}
+
+
+def test_parse_github_commits_bounds_untrusted_title() -> None:
+    source = {
+        "id": "head",
+        "repo": "owner/repo",
+        "category": "agentic_commerce",
+        "source_tier": "official_repo",
+        "confidence": 0.95,
+        "impact": 4,
+    }
+    event = parse_github_commits(
+        [{"commit": {"message": "x" * 500, "committer": {"date": "2026-07-22T00:00:00Z"}}}],
+        source,
+    )[0]
+    assert event.title == f"{source['repo']}: " + "x" * 200
+    assert len(event.excerpt) == 500
 
 
 def test_report_separates_failures_from_events() -> None:

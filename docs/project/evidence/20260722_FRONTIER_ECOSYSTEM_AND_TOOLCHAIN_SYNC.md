@@ -3,7 +3,7 @@
 | 字段 | 值 |
 |---|---|
 | evidence_id | KJDS-OPS-20260722-FRONTIER-TOOLCHAIN |
-| recorded_at | 2026-07-22T20:23:48+08:00 |
+| recorded_at | 2026-07-22T20:32:00+08:00 |
 | status | `partial_pass / real_external_inputs_blocked / requires_review` |
 | formal_fact_promoted | `false` |
 | actual_promoted | `false` |
@@ -11,9 +11,9 @@
 
 ## 结论
 
-本轮没有再建后台、审批、Gate、事实库或工作流 Owner。KJDS 模块化单体继续独占 Evidence → Approval → DecisionPacket → ExecutionPermit → `authorize_action()` → Readback；n8n 仍只负责既有计时与通知。新增成果是把 2026-07-22 官方/开源生态、现有 OpenClaw/Hermes/ComfyUI、1688 真实回读以及完整采集链统一纳入“先复用、代表性实测、按结果晋升”的合同。
+本轮没有再建后台、审批、Gate、事实库或工作流 Owner。KJDS 模块化单体继续独占 Evidence → Approval → DecisionPacket → ExecutionPermit → `authorize_action()` → Readback；n8n 仍只负责既有计时与通知。新增成果是把 2026-07-22 官方/开源生态、现有 OpenClaw/Hermes/ComfyUI、1688 真实回读以及采集合同蓝图统一纳入“先复用、代表性实测、按结果晋升”的研究注册表。该蓝图尚不是端到端运行时实现。
 
-首个真实 SKU 闭环仍未完成：Ozon 连续至少 28 天官方研究数据缺获批只读身份或原始导出；RU-001 的冻结询价已真实发送并通过服务端消息 ID 回读，供应商只回复“您好，稍等”，正式书面报价仍为 0。该回复只能证明送达和确认，不能形成价格、交期、库存、采购或 `actual`。
+首个真实 SKU 闭环仍未完成：Ozon 连续至少 28 天官方研究数据缺获批只读身份或原始导出；RU-001 的冻结询价由用户在平台内人工发送，随后取得服务端消息 ID 和供应商“您好，稍等”的只读回读，正式书面报价仍为 0。该动作没有 KJDS DecisionPacket、Approval、ExecutionPermit 或 `authorize_action()` 记录，只能登记为带外人工试验和治理偏差，不能证明受控写链通过，也不能形成价格、交期、库存、采购或 `actual`。
 
 ## 外部生态快照
 
@@ -32,9 +32,9 @@
 
 这些项目不被拼成第二控制平面。只有出现可量化缺口时，才选择一个最小组件：Agent handoff/guardrail 缺口优先评估 OpenAI Agents SDK；Python/Postgres 崩溃恢复缺口优先对 DBOS 做 ADR/隔离 PoC；多源 schema evolution 达到实测瓶颈后再评估 `dlt`。
 
-## 完整采集链
+## 采集合同蓝图
 
-注册表新增 22 个连续环节，每个环节均有 `primary`、`fallback`、`owner`、`boundary`、`status`、`verification` 和 `provenance`：
+注册表新增 22 个连续环节的机器可读合同，每个环节均有 `primary`、`fallback`、`owner`、`boundary`、`status`、`verification` 和 `provenance`。当前测试只校验合同结构与关键边界；尚无统一 manifest 消费者或端到端 Evidence intake/replay，因此不能表述为采集链已经实现：
 
 1. 来源权威/许可；
 2. 账户/会话范围；
@@ -59,7 +59,7 @@
 21. 人工分钟与总成本；
 22. 复用资产登记。
 
-采集 lane 固定为：官方 API/导出 → 专用 KJDS Profile 的确定性适配器 → AI 浏览器隔离后备 → 登录/MFA/CAPTCHA/账户歧义时可见人工接管。任何 collector 只能生成 immutable research artifact；不能创建 formal fact、Approval、Permit、采购、付款、Listing 或广告。
+合同规定的采集 lane 为：官方 API/导出 → 专用 KJDS Profile 的确定性适配器 → AI 浏览器隔离后备 → 登录/MFA/CAPTCHA/账户歧义时可见人工接管。任何 collector 只能生成 immutable research artifact；不能创建 formal fact、Approval、Permit、采购、付款、Listing 或广告。
 
 ## 本机实测结果
 
@@ -94,7 +94,7 @@
 
 - 官方 ComfyUI：`v0.28.2` / `306af3a8771a8232d26bd20acbfc6b07f862ad2b`；
 - Manager：`3f159c5f651f6f3cf14ee0d51267bc433ade9a85`；
-- loopback `8189`，默认 trusted 白名单 1186 nodes，core 回滚模式 807 nodes，两个模式均由修改后的启动脚本真实启动并读取 `/object_info`；
+- loopback `8189`；生产边界继续只允许 core 模式和 `ozon-retouch-v1`，807 个官方节点的 core 模式已读取 `/object_info`；1186 nodes 的 trusted 白名单只作为仓库外隔离实验，不是默认或生产路径；
 - Manager 禁止任意 Git URL 与 pip 安装；
 - `triton-windows 3.7.1.post27` 经同一 Flux2 潜变量、同一 VAE、`cache-none` 的 30 对 A/B：两组均 30/30 成功；baseline 中位 `381 ms`，patched `476.5 ms`，patched 慢 `25.07%`；像素差异 PSNR `61.16 dB`，无业务质量收益；
 - Triton 保留为显式实验能力，不进入默认 workflow，也不绕过 Windows Application Control；
@@ -116,7 +116,7 @@
 - 未经复核事实晋升 =0；
 - 回滚成功率 =100%。
 
-本轮已经形成可复用资产：生态注册表、22 环节采集合同、浏览器权限边界、RU-001 回读范式、OpenCLI 的版本/扩展哈希/BROWSER_CONNECT 失败签名/Skill 资产、Comfy 技术金样与失败签名、双模式启动脚本、A/B 阈值、回归测试和运行手册。由于第一个完整 SKU 仍被真实外部输入阻断，人工分钟的首轮基线尚不能虚构。
+本轮已经形成可复用资产：生态注册表、22 环节采集合同蓝图、浏览器权限边界、RU-001 带外回读样例、OpenCLI 的版本/扩展哈希/BROWSER_CONNECT 失败签名/Skill 资产、Comfy 技术金样与失败签名、A/B 阈值、回归测试和运行手册。仓库外启动脚本与第三方节点未形成共享、可复现的生产资产。由于第一个完整 SKU 仍被真实外部输入阻断，人工分钟的首轮基线尚不能虚构。
 
 ## 剩余阻断
 
