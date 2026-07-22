@@ -13,6 +13,7 @@ class DemandReportGateService:
     minimum_window_days = 28
     research_source_systems = {
         "ozon_data",
+        "ozon_seller_analytics",
         "ozon_category_analytics",
         "ozon_trends",
         "ozon_what_to_sell",
