@@ -21,6 +21,7 @@
 
 - Ozon 公开类目页：[旅行收纳袋套装](https://www.ozon.ru/category/dorozhnye-organayzery-nabor-veshchey/)。公开搜索索引摘要显示约 `323–835 RUB` 的套装和多款千级评价商品，只能说明值得继续核验，不能推出 28 天销量或供需缺口。
 - Alibaba 发现页：[6 件旅行收纳袋](https://www.alibaba.com/showroom/6-piece-packing-cubes-sets-travel.html)。展示页存在约 `$1.49–3.50/套`、MOQ `2–100` 的多种条目；这只是询价线索，不是可入账报价。
+- 精确标题发现页：[双拉链压缩收纳袋聚合页](https://www.alibaba.com/wholesale/double-compression-packing-cubes.html)可关联 Shangrao Xinrui、Jinhua Chicapo 和 Anhui Dicaron 三个独立主体及其 6 件压缩/双拉链条目。该页仍是聚合发现信号，不能证明固定六件 BOM、材料、净重、包装或签约主体；只有取得各自独立商品原件和同一规格书面回函后才计入精确供应商覆盖。
 - 值得继续：非电、非液体、易演示、可通过面料、拉链、压缩结构和套装配置形成差异。
 - 主要风险：拉链/缝线失效、尺寸误导、面料气味、颜色偏差、季节性；需实测净重、折叠体积和装箱体积。
 
@@ -29,6 +30,7 @@
 - Ozon 公开类目页：[真空收纳袋](https://www.ozon.ru/category/pakety-dlya-vakuumirovaniya-veshchey/)。公开搜索索引摘要显示约 `542–1,727 RUB`，部分商品有 `1,444–27,713` 条评价；这只能形成需求和竞争发现信号。
 - Ozon 评价页：[真空袋评价样本](https://www.ozon.ru/category/vakuumnye-pakety-14760/review/)。公开评价同时出现持续密封的正面反馈，以及薄膜、破损、尺寸搭配和漏气风险。
 - Alibaba 发现页：[手动泵真空袋](https://www.alibaba.com/showroom/vacuum-bag-with-hand-suction-pump.html)。展示页存在多种低 MOQ 条目和约 `$7.50–7.70`、MOQ `20` 的 11 件套；必须向供应商核实实际套装、泵型、厚度和报价。
+- 可联系主体发现页：[Qingdao Tongda 10 件含手泵独立商品页](https://tongdahome.en.made-in-china.com/product/rTHYCpBJTnUu/China-Combo-Pack-Vacuum-Storage-Bags-with-Hand-Pump-10-Pack.html)明确 PA+PE、`70 μm`、手泵和询盘入口；[Alibaba 手泵供应商聚合页](https://www.alibaba.com/vacuum-bag-hand-pump-suppliers.html)可关联 Yiwu City Dazzle 的 `400112` 十件含手泵条目。二者都未证明冻结的五种尺寸各两件 BOM；Tongda 页面也未解释外箱对应套数，Dazzle 独立商品页当前无法稳定复核，因此仍不构成同规格报价。
 - 值得继续：客单价和视频演示能力优于简单收纳件；限定手动泵版本，避免第一轮引入电器合规和电池风险。
 - 主要风险：阀门和封边漏气、薄膜厚度虚标、破损、尺寸理解偏差、体积重和高退货；样品需做 72 小时保压、跌落、重复开合和不同尺寸装载测试。
 
