@@ -74,7 +74,7 @@ npm run build
 .\scripts\verify-g1.ps1
 ```
 
-远程交付固定经过真实 Pull Request，并等待 `backend-quality`、`web-quality`、`postgres-smoke` 三项检查通过。私有免费仓库若无法强制分支保护，此规则仍是团队交付政策，不得描述为平台已强制执行。
+远程交付固定经过真实 Pull Request，并等待 `backend-quality`、`web-quality`、`postgres-smoke` 三项检查通过。公开仓库 `Y-008/kjds` 已对 `main` 启用 GitHub 分支保护，禁止强推和删除，并要求解决 Review 会话。
 
 ## 真实资料准备
 

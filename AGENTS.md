@@ -49,7 +49,7 @@ Do not treat a passing test as proof that the requirement was implemented correc
 - Put shared changes on a branch and merge them through a pull request; do not push directly to `main`.
 - Do not merge while `backend-quality`, `web-quality`, or `postgres-smoke` is failing, or while review conversations remain unresolved.
 - Use squash merge, then synchronize the local `main` with `origin/main`.
-- The current private-repository plan cannot enforce branch protection. Treat these rules as mandatory team policy and never report `main` as protected until GitHub confirms an active ruleset or branch-protection rule.
+- GitHub branch protection is active on public repository `Y-008/kjds`: changes to `main` require a pull request, the three required CI checks, resolved review conversations, linear history, and no force push or branch deletion. Administrators do not bypass the rule.
 
 ## Safety
 
