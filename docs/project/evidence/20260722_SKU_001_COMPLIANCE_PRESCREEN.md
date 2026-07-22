@@ -2,7 +2,8 @@
 
 ## 裁决
 
-- 观察时间：`2026-07-22`
+- 首次观察：`2026-07-22`
+- 官方来源复验：`2026-07-22T12:33:34+08:00`
 - 范围：俄罗斯 / Ozon / RU-HYP-001～003。
 - 三个候选的 `compliance_redline` 均保持 `UNKNOWN`，不得写成 `0`，也不得进入真实询价交接、采购、发布或广告。
 - 本页只证明当前适用的监管与平台框架，不能替代具体商品的 TN VED 归类、符合性评价结论、Ozon 类目文件要求或独立合规复核。
@@ -13,7 +14,13 @@
 1. [EEC：ТР ТС 017/2011 轻工业产品安全](https://eec.eaeunion.org/comission/department/deptexreg/tr/bezopProductLegkProm.php)自 2012 年生效，并列出 2016 年修订及 2025 年第 75 号修订。旧版摘要不能作为当前商品归类依据。
 2. [EEC：ТР ТС 005/2011 包装安全](https://eec.eaeunion.org/comission/department/deptexreg/tr/bezopypakovki.php)列出 2024 年第 61 号修订，并给出含 TN VED 代码的产品清单入口。真空收纳袋作为被售商品是否属于该法规中的“包装”，仍需按用途和归类确认，不能只因名称含“袋”而推定。
 3. [EEC：第 299 号决定统一卫生要求](https://eec.eaeunion.org/comission/department/depsanmer/regulation/P2_299.php)按产品用途和接触场景分章规定要求。三个候选是否落入具体章节，仍需以材料、用途和 TN VED 归类核对。
-4. [Ozon 跨境物流标准条款](https://docs.ozon.ru/legal/en/partners/logistics/contract/)的 2026-05-06 修订要求：商品适用符合性确认时，卖家须在 Ozon 要求后 3 个工作日内提供证书或声明；禁止交付目的国法律禁止、需特殊许可或特殊运输条件的商品。平台包装、标签、重量和尺寸要求仍独立适用。
+4. [EEC：TN VED EAEU 商品归类说明](https://eec.eaeunion.org/comission/department/dep_tamoj_zak/klassifikatsiya-tovarov-v-sootvetstvii-s-tn-ved-eaes/)明确指出，准确归类需要掌握材料、结构、用途，有时还需要制造工艺和专业术语；商品描述必须足以支持归类，成员国海关还可能对同类商品作出不同判断。因此本预审不填写任何猜测代码。
+5. [俄罗斯政府第 2425 号决议官方发布页](https://publication.pravo.gov.ru/Document/View/0001202112300200)证明俄罗斯存在强制认证和符合性声明的统一清单。只有取得候选商品的可辨识 TN VED、材料和用途后，才能逐项核对该清单；清单标题本身不能证明候选适用或豁免。
+
+## 暂未形成 A 级结论的来源
+
+- [Ozon 跨境物流标准条款](https://docs.ozon.ru/legal/en/partners/logistics/contract/)在本次复验中未能由独立抓取器稳定读取。因此旧记录中的“3 个工作日”和具体修订日期只保留为 `requires_review` 线索，不参与候选合规放行。应由账户主体在当前 Ozon 页面导出或截图原文，再经非上传者复核。
+- EEC 页面证明法规和归类框架存在，但没有具体商品身份、材料声明和 TN VED，不能据此为 RU-HYP-001～003 生成证书/声明/豁免结论。
 
 ## 候选逐项缺口
 
