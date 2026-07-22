@@ -1,6 +1,6 @@
 {
   "registry_id": "KJDS-CROSS-BORDER-OSS-001",
-  "captured_at": "2026-07-22T18:28:00+08:00",
+  "captured_at": "2026-07-22T20:32:00+08:00",
   "status": "active_research_registry",
   "selection_rule": "Reuse only a capability that closes a current Gate bottleneck without creating a second owner, approval system, backend, or ungoverned write path.",
   "automatic_install": false,
@@ -10,7 +10,8 @@
     "official marketplace and public-data documentation",
     "npm and PyPI package metadata",
     "MCP directories and official MCP SDK repositories",
-    "OpenClaw, ClawHub and Hermes skill ecosystems"
+    "OpenClaw, ClawHub and Hermes skill ecosystems",
+    "visual workflow, durable execution, Postgres queue, data pipeline and agent workflow repositories"
   ],
   "hard_constraints": [
     "KJDS remains owner of Evidence, formal facts, Approval, DecisionPacket, ExecutionPermit and Readback",
@@ -27,11 +28,34 @@
       "kind": ["cli", "browser_harness"],
       "repository": "https://github.com/superjack2050/1688-cli",
       "package": "1688-cli@0.1.47",
+      "package_integrity": "sha512-gisdVCgBafV9ueIAXZhA470EAg72capiAOYD2g64vf2hSduPUVwwaJeJaatrlkQCOmc46DVAvdzTg0QHviRQkQ==",
+      "repository_commit": "5f958211c002ba3f210bfd88d9d838080c4593f0",
       "license": "MIT",
       "repository_snapshot": {"stars": 44, "archived": false, "pushed_at": "2026-06-27T15:14:06Z"},
       "use": "Logged-in 1688 offer reads, supplier inquiry readback, server-message-id deduplication and read-only order preparation.",
-      "current_state": "installed_in_gitignored_runtime_and_real_readback_verified",
+      "current_state": "installed_in_gitignored_runtime_out_of_band_manual_send_readback_observed_not_kjds_permit_verified",
       "write_boundary": "No cart, checkout, order, payment or duplicate supplier message without the existing KJDS permit chain.",
+      "requires_review": true
+    },
+    {
+      "id": "opencli_isolated_trial",
+      "kind": ["cli", "browser_harness", "adapter_runtime", "site_memory"],
+      "repository": "https://github.com/jackwener/OpenCLI",
+      "package": "@jackwener/opencli@1.8.6",
+      "package_integrity": "sha512-2+phJOV7JkSeQR4uOnapAkhSwQDjNzHYzlCXZJBYiYi7bUxQz95nGbGuXeTseprZWES0kysVGySH63B1HG51hw==",
+      "extension": {
+        "version": "1.0.22",
+        "release_asset_url": "https://github.com/jackwener/OpenCLI/releases/download/v1.8.6/opencli-extension-v1.0.22.zip",
+        "sha256": "9d2e3d053948beab5d97124aa79b1532d2122e33e461eca56cac113afd33207a",
+        "permissions": ["debugger", "tabs", "cookies", "activeTab", "alarms", "storage", "tabGroups", "downloads"],
+        "host_permissions": ["<all_urls>"]
+      },
+      "license": "Apache-2.0",
+      "use": "Read-only logged-browser extraction, deterministic adapter generation, media download, site memory and task sitemap compounding after a dedicated KJDS browser profile is verified.",
+      "current_state": "installed_in_gitignored_runtime_audit_zero_browser_bridge_missing_exit_69_not_promoted",
+      "actual_test": "opencli 1688 item 38547222320 -f json returned structured BROWSER_CONNECT because the Browser Bridge was not connected; no adapter was patched and no business fact was promoted.",
+      "write_boundary": "Dedicated KJDS profile only; never load into the user's main Edge profile, export cookies, bypass CAPTCHA, resend RFQ, order, procure or pay.",
+      "compounding_assets": ["adapter", "site_memory", "task_sitemap", "raw_and_normalized_fixture", "failure_signature", "replay_test"],
       "requires_review": true
     },
     {
@@ -84,6 +108,55 @@
       "requires_review": true
     }
   ],
+  "browser_harness_candidates_2026_07_22": {
+    "production_owner": "KJDS deterministic browser lane behind the existing Evidence pipeline",
+    "default_order": [
+      "official API or export",
+      "Playwright or verified OpenCLI adapter in a dedicated profile",
+      "one isolated AI browser candidate",
+      "visible human takeover"
+    ],
+    "promotion_criteria": "Per platform 10/10 representative read-only tasks across two restarts, exact account and item readback, zero tab/account leakage, one human_required on login/MFA/CAPTCHA, replayable evidence, rollback and measured total cost.",
+    "candidates": [
+      {
+        "id": "playwright",
+        "repository": "https://github.com/microsoft/playwright",
+        "latest_release": "v1.61.1",
+        "role": "deterministic_base_already_transitive",
+        "decision": "reuse_existing"
+      },
+      {
+        "id": "opencli",
+        "repository": "https://github.com/jackwener/OpenCLI",
+        "latest_release": "v1.8.6",
+        "role": "adapter_and_site_memory_trial",
+        "decision": "installed_isolated_not_promoted"
+      },
+      {
+        "id": "stagehand",
+        "repository": "https://github.com/browserbase/stagehand",
+        "package_release": "3.7.0",
+        "server_release": "v3.7.4",
+        "role": "ai_browser_candidate_with_explicit_domain_policy",
+        "decision": "benchmark_only_after_deterministic_gap"
+      },
+      {
+        "id": "browser_use",
+        "repository": "https://github.com/browser-use/browser-use",
+        "latest_release": "0.13.6",
+        "role": "ai_browser_candidate_with_browser_harness",
+        "decision": "benchmark_only_after_deterministic_gap"
+      },
+      {
+        "id": "skyvern",
+        "repository": "https://github.com/Skyvern-AI/skyvern",
+        "latest_release": "v1.0.47",
+        "role": "heavier_self_healing_browser_candidate",
+        "decision": "isolated_benchmark_only_no_second_platform"
+      }
+    ],
+    "automatic_write_enabled": false
+  },
   "official_api_targets": [
     {
       "id": "alibaba_1688_open_platform",
@@ -196,12 +269,536 @@
       "next_gate": "official/public sources remain insufficient and a paid-source budget is approved"
     }
   ],
+  "frontier_2026_07_22": {
+    "as_of": "2026-07-22T18:50:00+08:00",
+    "method": "Official GitHub repository API for default-branch HEAD and latest release, then official specification and release notes for maturity. Search-index dates are not treated as current state.",
+    "future_drafts_excluded": true,
+    "architecture_read": "UCP and ACP define commerce exchange; AP2 defines delegated-payment mandates; A2A connects independent agents; MCP exposes tools, resources and optional apps; AG-UI/A2UI carry agent-to-user UI; an agent framework or durable runtime implements behavior underneath. These layers are complementary, not interchangeable workflow products.",
+    "protocols": [
+      {
+        "id": "ucp",
+        "repository": "https://github.com/Universal-Commerce-Protocol/ucp",
+        "license": "Apache-2.0",
+        "maturity": "released_open_spec",
+        "latest_release": "v2026-04-08",
+        "released_at": "2026-04-09T01:48:20Z",
+        "head": "239f86087a35",
+        "head_at": "2026-07-21T14:45:42Z",
+        "current_scope": "Capability discovery, checkout, identity linking, order events and payment-token exchange over REST, MCP or A2A.",
+        "kjds_decision": "watch_and_map_only_until_an_owned_store_or_supported_marketplace_channel_exists",
+        "reason": "Its schemas are useful for future neutral commerce adapters, but neither 1688 supplier procurement nor Ozon Seller currently exposes a verified UCP channel."
+      },
+      {
+        "id": "acp",
+        "repository": "https://github.com/agentic-commerce-protocol/agentic-commerce-protocol",
+        "license": "Apache-2.0",
+        "maturity": "beta_spec_with_dated_stable_snapshots",
+        "latest_stable_spec": "2026-04-17",
+        "latest_release": null,
+        "head": "7fdd78df677a",
+        "head_at": "2026-07-18T04:51:51Z",
+        "current_scope": "Agentic checkout, cart, product feed, orders, authentication, MCP and delegated payment for buyer-agent-to-merchant flows.",
+        "kjds_decision": "defer_until_kjds_operates_a_merchant_surface",
+        "reason": "ACP is merchant-facing and still beta; it does not solve the current upstream 1688 RFQ or Ozon research credential gap."
+      },
+      {
+        "id": "ap2",
+        "repository": "https://github.com/google-agentic-commerce/AP2",
+        "license": "Apache-2.0",
+        "maturity": "v0_2_samples_and_sdk_not_general_payment_authority",
+        "latest_release": "v0.2.0",
+        "released_at": "2026-04-28T12:40:54Z",
+        "head": "e1ea56db72a6",
+        "head_at": "2026-04-29T16:51:41Z",
+        "current_scope": "Cryptographically attributable intent and cart mandates plus reference payment-agent scenarios.",
+        "kjds_decision": "reuse_mandate_design_as_a_review_reference_only",
+        "reason": "KJDS ExecutionPermit already binds approved intent to a specific action. No AP2 payment path is enabled, and the repository still instructs installing types from main rather than a published PyPI package."
+      },
+      {
+        "id": "a2a",
+        "repository": "https://github.com/a2aproject/A2A",
+        "license": "Apache-2.0",
+        "maturity": "v1_stable_protocol",
+        "latest_release": "v1.0.1",
+        "released_at": "2026-05-28T11:34:36Z",
+        "head": "cfc9d34bc41e",
+        "head_at": "2026-07-21T16:48:19Z",
+        "current_scope": "Discovery and collaboration between independent opaque agents using JSON-RPC over HTTP, streaming and push notifications.",
+        "kjds_decision": "defer_until_a_real_external_agent_boundary_exists",
+        "reason": "Using A2A inside the modular monolith would manufacture a distributed boundary; it becomes relevant only for independently owned partner agents."
+      },
+      {
+        "id": "mcp_apps",
+        "repository": "https://github.com/modelcontextprotocol/ext-apps",
+        "license": "mixed: Apache-2.0 current packages, MIT legacy contributions, CC-BY-4.0 documentation; verify package path at pin time",
+        "maturity": "stable_extension_spec_with_active_sdk",
+        "stable_spec": "2026-01-26",
+        "latest_release": "v1.7.4",
+        "released_at": "2026-06-05T12:07:32Z",
+        "head": "2ca6a59d2f49",
+        "head_at": "2026-07-17T00:15:10Z",
+        "current_scope": "Sandboxed interactive UI resources attached to MCP tools with explicit capability negotiation and app-only tool visibility.",
+        "kjds_decision": "candidate_for_a_future_nontechnical_readback_or_approval_view_not_for_approval_ownership",
+        "reason": "It can render structured evidence and forms in a host without a second backend, but KJDS must still persist and authorize the decision."
+      },
+      {
+        "id": "ag_ui",
+        "repository": "https://github.com/ag-ui-protocol/ag-ui",
+        "license": "MIT",
+        "maturity": "released_protocol_and_sdk_ecosystem",
+        "latest_release": "release/2026-07-15",
+        "released_at": "2026-07-15T23:26:00Z",
+        "head": "11f03fa65c4f",
+        "head_at": "2026-07-22T07:44:05Z",
+        "current_scope": "Streaming agent state, events and tool activity into frontend applications.",
+        "kjds_decision": "defer_until_the_existing_ui_has_a_measured_agent_streaming_gap",
+        "reason": "Useful UI transport, but adding it now would not unlock Ozon evidence or supplier replies."
+      },
+      {
+        "id": "a2ui",
+        "repository": "https://github.com/a2ui-project/a2ui",
+        "license": "Apache-2.0",
+        "maturity": "active_spec_without_github_release",
+        "latest_release": null,
+        "head": "da4a60c1294d",
+        "head_at": "2026-07-22T02:11:06Z",
+        "current_scope": "Declarative, updateable agent-generated UI with renderers and A2A/AG-UI transports.",
+        "kjds_decision": "research_only",
+        "reason": "Promising for portable generated UI, but absence of a tagged release makes it weaker than MCP Apps for a near-term controlled KJDS surface."
+      }
+    ],
+    "implementations": [
+      {
+        "id": "openai_agents_sdk",
+        "repository": "https://github.com/openai/openai-agents-python",
+        "license": "MIT",
+        "maturity": "released_fast_moving_library",
+        "latest_release": "v0.18.3",
+        "released_at": "2026-07-17T03:39:51Z",
+        "head_at": "2026-07-22T04:02:04Z",
+        "latest_relevant_state": "Sandbox agents, sessions, handoffs, guardrails and tracing are present; v0.18.3 hardens concurrent computer providers, sandbox setup, session retries and trace redaction.",
+        "kjds_decision": "preferred_lightweight_agent_library_if_the_existing_shell_has_a_proven_gap"
+      },
+      {
+        "id": "microsoft_agent_framework",
+        "repository": "https://github.com/microsoft/agent-framework",
+        "license": "MIT",
+        "maturity": "v1_production_framework_with_some_experimental_subsystems",
+        "latest_release": "python-1.12.0",
+        "released_at": "2026-07-21T19:40:32Z",
+        "head_at": "2026-07-22T10:33:01Z",
+        "latest_relevant_state": "Harness agent graduated to stable; app-owned MCP and A2A hosting plus workflow HITL response URLs were added, while some harness persistence behavior remains explicitly experimental.",
+        "kjds_decision": "reference_and_isolated_poc_only_because_it_overlaps_the_current_agent_shell_and_workflow_owner"
+      },
+      {
+        "id": "github_agentic_workflows",
+        "repository": "https://github.com/github/gh-aw",
+        "license": "MIT",
+        "maturity": "technical_preview_cli_and_github_actions_runtime",
+        "latest_release": "v0.82.14",
+        "released_at": "2026-07-20T17:59:08Z",
+        "head_at": "2026-07-22T10:38:17Z",
+        "latest_relevant_state": "Natural-language Markdown compiles to guarded GitHub Actions with read-only defaults, safe outputs, network isolation, pinned dependencies and human approval controls.",
+        "kjds_decision": "candidate_for_repository_maintenance_only_never_for_live_commerce_execution"
+      },
+      {
+        "id": "dbos_python",
+        "repository": "https://github.com/dbos-inc/dbos-transact-py",
+        "license": "MIT",
+        "maturity": "released_library",
+        "latest_release": "2.28.0",
+        "released_at": "2026-07-21T15:20:16Z",
+        "head_at": "2026-07-22T04:04:43Z",
+        "latest_relevant_state": "Postgres-backed durable workflows and queues; 2.28.0 improves async workflow communication, active locks and LISTEN/NOTIFY.",
+        "kjds_decision": "best_current_durable_execution_candidate_after_a_measured_crash_recovery_gap_and_adr"
+      },
+      {
+        "id": "trigger_dev",
+        "repository": "https://github.com/triggerdotdev/trigger.dev",
+        "license": "Apache-2.0",
+        "maturity": "released_platform",
+        "latest_release": "v4.5.6",
+        "released_at": "2026-07-21T11:21:49Z",
+        "head_at": "2026-07-22T10:38:49Z",
+        "latest_relevant_state": "Durable long-running TypeScript tasks, queues, waitpoints, HITL and observability; latest release tightens CLI/MCP login approval and self-hosted credential defaults.",
+        "kjds_decision": "not_adopted_now_due_to_second_platform_and_typescript_control_plane"
+      }
+    ]
+  },
+  "collection_chain": {
+    "production_owner": "KJDS Evidence pipeline and persisted state machine",
+    "implementation_status": "machine_readable_contract_blueprint_not_end_to_end_runtime_implementation",
+    "current_readiness": "contract_complete_runtime_coverage_partial_external_inputs_blocked",
+    "lane_order": [
+      "official API or platform export",
+      "deterministic authenticated browser or CLI adapter",
+      "AI browser fallback for unstable layouts",
+      "visible human takeover for login, MFA, CAPTCHA or ambiguous account scope"
+    ],
+    "global_boundary": "Collectors may create immutable research artifacts only. They cannot create formal facts, approvals, permits, purchases, payments, listings or advertisements.",
+    "stages": [
+      {
+        "id": "source_authority",
+        "purpose": "Verify owner, terms, license, endpoint and permitted use before collection.",
+        "primary": "official platform documentation and owned-account export",
+        "fallback": "reviewed upstream repository and dated terms snapshot",
+        "owner": "KJDS authority registry",
+        "boundary": "Search snippets and reseller claims stay requires_review.",
+        "status": "verified_for_ozon_1688_and_current_tools",
+        "verification": "URL, captured_at, version or commit, license and content hash",
+        "provenance": "authority_sources.json and source artifact"
+      },
+      {
+        "id": "account_session_scope",
+        "purpose": "Bind every authenticated read to the intended legal account, store and region.",
+        "primary": "least-privilege API identity or dedicated KJDS browser profile",
+        "fallback": "visible human-confirmed session with whoami readback",
+        "owner": "KJDS operator boundary",
+        "boundary": "Never export cookies, passwords, MFA secrets or reuse the personal CPA/2FA profile.",
+        "status": "out_of_band_1688_session_observed_not_dedicated_profile_verified_partial_for_ozon",
+        "verification": "account identifier, nick or store, domain, region and session timestamp",
+        "provenance": "private session attestation and hashed readback"
+      },
+      {
+        "id": "official_api_export",
+        "purpose": "Use the most authoritative and stable machine-readable source first.",
+        "primary": "Ozon Seller API or official 28-day export; 1688 Open Platform after approval",
+        "fallback": "authenticated deterministic browser adapter",
+        "owner": "existing KJDS provider boundary",
+        "boundary": "Read-only scope until the existing permit chain authorizes an exact write.",
+        "status": "blocked_ozon_identity_or_export_missing",
+        "verification": "HTTP status, account scope, requested interval, control totals and raw response hash",
+        "provenance": "immutable raw response or original export"
+      },
+      {
+        "id": "deterministic_authenticated_browser",
+        "purpose": "Collect authenticated data when no approved API or export exists.",
+        "primary": "pinned 1688-cli or Playwright adapter using a dedicated KJDS profile",
+        "fallback": "visible manual export or screenshot with account context",
+        "owner": "single KJDS browser operator",
+        "boundary": "Domain allowlist, loopback control, one writer and no checkout, order or payment action.",
+        "status": "out_of_band_1688_readback_observed_not_kjds_permit_chain_ozon_not_connected",
+        "verification": "10 of 10 runs across two restarts, exact account and item, zero cross-account leakage",
+        "provenance": "tool version, commit, run event, server message ID and artifact hash"
+      },
+      {
+        "id": "ai_browser_fallback",
+        "purpose": "Recover from layout drift without replacing deterministic adapters.",
+        "primary": "Stagehand, browser-use or Skyvern isolated trial behind the same browser boundary",
+        "fallback": "visible human takeover",
+        "owner": "KJDS browser operator",
+        "boundary": "No anti-bot bypass; no direct side effect; every proposed action is previewed and read back.",
+        "status": "researched_not_promoted",
+        "verification": "gold-page replay, domain confinement, action diff and failure handoff",
+        "provenance": "prompt, model, tool version, screenshot and DOM snapshot"
+      },
+      {
+        "id": "raw_capture",
+        "purpose": "Preserve the source before parsing or normalization.",
+        "primary": "original API body, export, download, DOM snapshot or server message payload",
+        "fallback": "dated screenshot plus manually exported text",
+        "owner": "KJDS Evidence intake",
+        "boundary": "Raw artifacts are append-only and private when they contain account data.",
+        "status": "partial_ru001_readback_present_ozon_28d_absent",
+        "verification": "source URL, captured_at, account scope, byte length and SHA-256",
+        "provenance": "private runtime artifact manifest"
+      },
+      {
+        "id": "file_safety_privacy",
+        "purpose": "Reject malicious, unsupported or over-scoped files before parsing.",
+        "primary": "type, size, archive, malware and privacy checks",
+        "fallback": "quarantine for manual inspection",
+        "owner": "KJDS Evidence intake",
+        "boundary": "Credentials and unrelated personal data are redacted or rejected, never copied into prompts.",
+        "status": "contract_defined_implementation_pending",
+        "verification": "declared type versus magic bytes, scan result, redaction log and quarantine reason",
+        "provenance": "intake decision record"
+      },
+      {
+        "id": "parse_schema_version",
+        "purpose": "Transform source bytes into versioned structured records without losing source fields.",
+        "primary": "source-specific parser with explicit schema version",
+        "fallback": "OCR or manual structured transcription with independent review",
+        "owner": "existing KJDS adapter layer",
+        "boundary": "Parser output remains research until promotion rules pass.",
+        "status": "partial_for_1688_and_existing_ozon_7d",
+        "verification": "gold fixtures, UNKNOWN handling, control totals and parser-version replay",
+        "provenance": "raw-artifact hash plus parser commit"
+      },
+      {
+        "id": "canonical_identity",
+        "purpose": "Map marketplace IDs, supplier IDs and variants without fuzzy accidental joins.",
+        "primary": "platform item ID, supplier login ID and explicit SKU mapping",
+        "fallback": "reviewed candidate match with confidence and unresolved status",
+        "owner": "KJDS canonical mapping",
+        "boundary": "Names and image similarity cannot silently merge suppliers or SKUs.",
+        "status": "verified_for_ru001_offer_partial_for_candidate_set",
+        "verification": "stable identifiers, normalized variants, collision test and reviewer",
+        "provenance": "mapping record linked to both source artifacts"
+      },
+      {
+        "id": "window_pagination_control_totals",
+        "purpose": "Prove complete time windows and pagination rather than a plausible sample.",
+        "primary": "explicit cursor traversal and platform totals for continuous at least 28 days",
+        "fallback": "daily exports with gap detection and reconciliation",
+        "owner": "KJDS collection job",
+        "boundary": "A seven-day page cannot be extrapolated or labeled as 28-day actual data.",
+        "status": "blocked_for_ozon_28d",
+        "verification": "timezone, start, end, page count, row count, platform total and gap list",
+        "provenance": "collection manifest and raw page hashes"
+      },
+      {
+        "id": "hash_dedupe_history",
+        "purpose": "Make retries safe and preserve changes over time.",
+        "primary": "content hash plus platform-native message, item or report ID",
+        "fallback": "canonical record hash with conservative duplicate review",
+        "owner": "KJDS Evidence store",
+        "boundary": "Deduplication suppresses duplicate writes but never deletes conflicting evidence.",
+        "status": "verified_for_ru001_message_readback_partial_elsewhere",
+        "verification": "idempotency replay, duplicate count and conflict retention",
+        "provenance": "hash ledger and source-native identifiers"
+      },
+      {
+        "id": "field_provenance_confidence",
+        "purpose": "Keep every value tied to its source and uncertainty.",
+        "primary": "field-level source pointer, observed_at, confidence and actual/research/estimate class",
+        "fallback": "UNKNOWN with reason",
+        "owner": "KJDS Evidence model",
+        "boundary": "Missing data is UNKNOWN, never invented or filled by a model guess.",
+        "status": "contract_active_coverage_partial",
+        "verification": "all decision fields have provenance or explicit UNKNOWN",
+        "provenance": "Evidence lineage"
+      },
+      {
+        "id": "independent_review",
+        "purpose": "Separate collector success from factual and business acceptance.",
+        "primary": "independent reviewer checks source, scope, controls and business fitness",
+        "fallback": "human review queue",
+        "owner": "KJDS review role",
+        "boundary": "The collecting agent cannot self-promote its own unverified output.",
+        "status": "active",
+        "verification": "review decision, findings, reviewer identity and timestamp",
+        "provenance": "review record linked to Evidence"
+      },
+      {
+        "id": "evidence_lineage",
+        "purpose": "Create an immutable Evidence object from accepted research artifacts.",
+        "primary": "existing KJDS Evidence and lineage contracts",
+        "fallback": "quarantined research artifact pending adapter support",
+        "owner": "KJDS service",
+        "boundary": "No second evidence store or agent-owned truth database.",
+        "status": "existing_contract_external_coverage_partial",
+        "verification": "schema, hash, source, observed_at, effective_at and parent lineage",
+        "provenance": "KJDS Evidence record"
+      },
+      {
+        "id": "promotion_gate",
+        "purpose": "Control research to formal fact to actual transitions.",
+        "primary": "existing Approval and formal-fact promotion policy",
+        "fallback": "remain research or estimate",
+        "owner": "KJDS service",
+        "boundary": "Only original evidence plus independent review may promote; supplier acknowledgement is not a quote.",
+        "status": "active_formal_fact_promoted_false",
+        "verification": "promotion decision cites exact Evidence IDs and classification",
+        "provenance": "Approval and DecisionPacket"
+      },
+      {
+        "id": "drift_quarantine_replay",
+        "purpose": "Turn breakage into reusable protection for later SKUs.",
+        "primary": "gold fixtures, schema drift checks and quarantined failures",
+        "fallback": "manual adapter repair followed by replay",
+        "owner": "KJDS adapter test suite",
+        "boundary": "Drift fails closed and cannot silently drop or relabel fields.",
+        "status": "partial",
+        "verification": "old and new fixtures replay with explicit diff acceptance",
+        "provenance": "fixture hash, failure signature and regression test"
+      },
+      {
+        "id": "resilience_human_takeover",
+        "purpose": "Handle rate limits, retries, session expiry and challenges predictably.",
+        "primary": "bounded retry, backoff, circuit breaker and resumable cursor",
+        "fallback": "one human_required event with exact continuation point",
+        "owner": "KJDS collection job",
+        "boundary": "No CAPTCHA or MFA bypass and no retry storm or duplicate external action.",
+        "status": "partial",
+        "verification": "fault injection, retry budget, single takeover event and duplicate-action count",
+        "provenance": "run events and incident record"
+      },
+      {
+        "id": "readback_reconciliation",
+        "purpose": "Verify the external system accepted the exact action or returned the expected data.",
+        "primary": "platform-native ID and server-side readback",
+        "fallback": "visible page readback with artifact hash",
+        "owner": "KJDS Readback",
+        "boundary": "A click, local success message or user attestation alone is not completion.",
+        "status": "out_of_band_ru001_manual_send_readback_observed_not_authorize_action_verified_not_for_quote_or_purchase",
+        "verification": "request hash, target, server ID, response, timestamps and reconciliation result",
+        "provenance": "RU-001 private readback has no KJDS ExecutionPermit; future authorized writes must link Readback to ExecutionPermit"
+      },
+      {
+        "id": "retention_revocation",
+        "purpose": "Expire sessions and retain only the evidence needed for audit.",
+        "primary": "account-scoped retention schedule and credential revocation procedure",
+        "fallback": "manual quarantine and access removal",
+        "owner": "KJDS operator boundary",
+        "boundary": "Private profiles and exports stay outside Git; no credential backup in evidence bundles.",
+        "status": "contract_defined_automation_pending",
+        "verification": "retention age, revocation drill and access audit",
+        "provenance": "private access ledger"
+      },
+      {
+        "id": "monitoring_slo_incident",
+        "purpose": "Detect stale, incomplete or unsafe collection before decisions consume it.",
+        "primary": "source freshness, completeness, error budget and provenance monitors",
+        "fallback": "explicit blocked or stale status in the decision packet",
+        "owner": "existing authority radar and KJDS health checks",
+        "boundary": "Source failure is not reported as no change or no data.",
+        "status": "partial",
+        "verification": "scheduled run history, alerts, incident outcome and recovery replay",
+        "provenance": "monitoring event and run manifest"
+      },
+      {
+        "id": "manual_minutes_economics",
+        "purpose": "Measure whether automation reduces total work and errors rather than moving them.",
+        "primary": "per-stage machine time, human minutes, retries and external cost",
+        "fallback": "manual baseline with confidence interval",
+        "owner": "KJDS outcome review",
+        "boundary": "Adopt a tool only on measured value, stability and risk, not installation count.",
+        "status": "baseline_pending_first_complete_sku",
+        "verification": "same-scope before and after comparison including review and recovery time",
+        "provenance": "acceptance report"
+      },
+      {
+        "id": "compound_asset_registry",
+        "purpose": "Make every successful or failed run reduce the cost and risk of the next SKU.",
+        "primary": "versioned adapter, field map, fixture, failure signature, test, evidence template and runbook delta",
+        "fallback": "documented non-reusable reason with an owner",
+        "owner": "KJDS reusable asset registry",
+        "boundary": "Reusable assets cannot weaken approval, permit, provenance or readback controls.",
+        "status": "contract_only_runtime_registry_pending",
+        "verification": "asset IDs referenced by the next SKU and measured reuse ratio",
+        "provenance": "asset manifest linked to originating run"
+      }
+    ],
+    "compounding_contract": {
+      "principle": "Every run must leave reusable assets and a lower-cost, lower-risk path for the next comparable SKU.",
+      "required_assets_per_run": [
+        "source adapter or explicit adapter gap",
+        "field mapping and UNKNOWN rules",
+        "raw and normalized gold fixture",
+        "failure signatures and takeover rule",
+        "regression or replay test",
+        "evidence and readback template",
+        "measured manual minutes and machine cost"
+      ],
+      "targets": {
+        "second_sku_workflow_adapter_reuse_pct_min": 70,
+        "third_sku_workflow_adapter_reuse_pct_min": 85,
+        "third_sku_manual_minutes_vs_first_pct_max": 50,
+        "known_failure_recurrence_pct_max": 5,
+        "duplicate_external_actions_max": 0,
+        "unreviewed_fact_promotions_max": 0,
+        "rollback_success_pct": 100
+      },
+      "promotion_rule": "A new tool or optimization becomes default only after representative outcome tests pass stability, quality, permission, provenance, rollback and total-cost thresholds."
+    }
+  },
+  "workflow_ecosystem": {
+    "decision": "keep_kjds_state_machine_as_business_owner_and_reuse_only_the_existing_n8n_instance_for_timers_and_notifications",
+    "production_workflow_owner": "KJDS service and persisted state machine",
+    "active_or_existing": [
+      {
+        "id": "n8n_internal",
+        "role": "timers_and_notifications_only",
+        "reason": "Already available; adding another visual orchestrator would create a second control plane."
+      },
+      {
+        "id": "kjds_service_state_machine",
+        "role": "evidence_approval_permit_and_readback_owner",
+        "reason": "The business state and authority chain must remain deterministic, testable and local to KJDS."
+      }
+    ],
+    "preferred_if_measured_gap_appears": [
+      {
+        "id": "pgqueuer",
+        "kind": ["postgres_queue", "python_library"],
+        "repository": "https://github.com/janbjorge/pgqueuer",
+        "license": "MIT",
+        "repository_snapshot": {"stars": 1513, "archived": false, "pushed_at": "2026-07-20T21:33:33Z"},
+        "trigger": "Choose only if background-job contention, retries or crash recovery become a measured bottleneck that the current persisted state machine cannot meet.",
+        "boundary": "Queue transport only; it cannot create formal facts, approvals, permits or side effects."
+      },
+      {
+        "id": "procrastinate",
+        "kind": ["postgres_queue", "python_library"],
+        "repository": "https://github.com/procrastinate-org/procrastinate",
+        "license": "MIT",
+        "repository_snapshot": {"stars": 1341, "archived": false, "pushed_at": "2026-07-20T04:02:32Z"},
+        "trigger": "Compare against PgQueuer in one isolated PoC only after the same measured queue gap exists.",
+        "boundary": "At most one Postgres queue library may be adopted; no queue-specific approval path."
+      },
+      {
+        "id": "dbos_python",
+        "kind": ["durable_workflow", "postgres_library"],
+        "repository": "https://github.com/dbos-inc/dbos-transact-py",
+        "license": "MIT",
+        "repository_snapshot": {"stars": 1486, "archived": false, "pushed_at": "2026-07-22T04:04:43Z"},
+        "trigger": "Evaluate after a demonstrated need for crash-resumable multi-step execution that cannot be solved by the existing state machine plus one queue.",
+        "boundary": "Requires an ADR and migration proof because its workflow checkpoints would overlap current persisted workflow ownership."
+      },
+      {
+        "id": "openai_agents_sdk",
+        "kind": ["agent_workflow", "python_library"],
+        "repository": "https://github.com/openai/openai-agents-python",
+        "license": "MIT",
+        "repository_snapshot": {"stars": 28081, "archived": false, "pushed_at": "2026-07-22T04:02:04Z"},
+        "trigger": "Reuse only when the existing Agent shell lacks a proven requirement for handoffs, guardrails, sessions or tracing.",
+        "boundary": "Agent orchestration remains advisory and cannot own deterministic business transitions or authorize_action."
+      },
+      {
+        "id": "dlt",
+        "kind": ["data_pipeline", "python_library"],
+        "repository": "https://github.com/dlt-hub/dlt",
+        "license": "Apache-2.0",
+        "repository_snapshot": {"stars": 5640, "archived": false, "pushed_at": "2026-07-22T08:58:51Z"},
+        "trigger": "Reuse only after multiple source connectors produce a measured schema-evolution or incremental-load burden.",
+        "boundary": "Loaded records remain research evidence until KJDS provenance and promotion rules pass."
+      }
+    ],
+    "deferred_platforms": [
+      {
+        "ids": ["activepieces", "windmill", "node_red", "kestra"],
+        "category": "visual_or_general_workflow",
+        "reason": "They duplicate the existing n8n timer/notification role and add another UI, credential store and execution history."
+      },
+      {
+        "ids": ["temporal", "restate", "hatchet"],
+        "category": "durable_execution_service",
+        "reason": "Mature capabilities, but each adds an independent server or worker control plane before a proven durability bottleneck exists."
+      },
+      {
+        "ids": ["dagster", "prefect", "airflow"],
+        "category": "data_orchestration_platform",
+        "reason": "Optimized for data assets and DAG operations; excessive for the first real SKU evidence pipeline."
+      },
+      {
+        "ids": ["langgraph", "pydantic_ai"],
+        "category": "agent_workflow_framework",
+        "reason": "Good libraries, but the existing Agent shell already covers the current bounded research and operator path; add only against a concrete missing contract."
+      }
+    ],
+    "not_adopted": [
+      {
+        "id": "autogen",
+        "reason": "The official repository says AutoGen is in maintenance mode and directs new users to Microsoft Agent Framework; the current successor snapshot is Python 1.12.0 from 2026-07-21."
+      },
+      {
+        "id": "bullmq",
+        "reason": "It requires Redis, which is prohibited without an accepted infrastructure ADR, while KJDS already uses PostgreSQL."
+      }
+    ]
+  },
   "not_adopted": [
-    {
-      "id": "opencli_1688",
-      "repository": "https://github.com/linxule/opencli",
-      "reason": "Its 1688 surface is limited to search/item/store and duplicates the already verified 1688-cli."
-    },
     {
       "id": "playwright_mcp_or_openchrome",
       "repositories": ["https://github.com/microsoft/playwright-mcp", "https://github.com/shaun0927/openchrome"],

@@ -29,6 +29,7 @@ CATEGORY_LABELS = {
     "cross_border_ecommerce": "跨境电商",
     "china_platforms": "国内平台",
     "agent_infrastructure": "Agent 基础设施",
+    "agentic_commerce": "Agentic Commerce",
 }
 
 
@@ -351,6 +352,78 @@ def github_releases(source: dict[str, Any]) -> list[Event]:
     return results
 
 
+def parse_github_commits(payload: list[dict[str, Any]], source: dict[str, Any]) -> list[Event]:
+    results = []
+    for item in payload:
+        commit = item.get("commit") or {}
+        committer = commit.get("committer") or commit.get("author") or {}
+        published = parse_datetime(committer.get("date"))
+        raw_message = str(commit.get("message") or "")
+        message = normalize_text(raw_message)
+        title = normalize_text(raw_message.splitlines()[0])[:200] if raw_message else "Unnamed commit"
+        sha = item.get("sha") or ""
+        results.append(
+            Event(
+                source_id=source["id"],
+                category=source["category"],
+                title=f"{source['repo']}: {title}",
+                url=item.get("html_url", f"https://github.com/{source['repo']}/commits"),
+                published_at=isoformat(published) if published else None,
+                source_tier=source["source_tier"],
+                confidence=float(source["confidence"]),
+                impact=int(source["impact"]),
+                requires_review=bool(source.get("requires_review", True)),
+                excerpt=message[:800],
+                raw={"sha": sha, "verified": (commit.get("verification") or {}).get("verified")},
+            )
+        )
+    return results
+
+
+def github_commits(source: dict[str, Any], since: datetime) -> list[Event]:
+    repo = source["repo"]
+    query = urllib.parse.urlencode({"per_page": 100, "since": isoformat(since)})
+    endpoint = f"repos/{repo}/commits?{query}"
+    gh = shutil.which("gh")
+    payload: list[dict[str, Any]]
+    if gh:
+        process = subprocess.run(
+            [
+                gh,
+                "api",
+                "--method",
+                "GET",
+                "--paginate",
+                "--slurp",
+                "-H",
+                "Accept: application/vnd.github+json",
+                f"repos/{repo}/commits",
+                "-f",
+                "per_page=100",
+                "-f",
+                f"since={isoformat(since)}",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if process.returncode != 0:
+            raise RuntimeError(f"gh api failed: {normalize_text(process.stderr)[:300]}")
+        payload = [item for page in json.loads(process.stdout) for item in page]
+    else:
+        payload = []
+        url = f"https://api.github.com/{endpoint}"
+        while url:
+            status, body, headers = fetch_url(url)
+            if status != 200:
+                raise RuntimeError(f"GitHub API returned {status}")
+            payload.extend(json.loads(body))
+            match = re.search(r'<([^>]+)>; rel="next"', headers.get("Link", ""))
+            url = match.group(1) if match else ""
+    return parse_github_commits(payload, source)
+
+
 def insert_events(
     connection: sqlite3.Connection,
     events: list[Event],
@@ -455,6 +528,10 @@ def process_source(
         return inserted
     if source_type == "github_releases":
         inserted = insert_events(connection, github_releases(source), cutoff=cutoff)
+        update_state(connection, source["id"], success=True)
+        return inserted
+    if source_type == "github_commits":
+        inserted = insert_events(connection, github_commits(source, cutoff), cutoff=cutoff)
         update_state(connection, source["id"], success=True)
         return inserted
     if source_type == "page_hash":

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from scripts.authority_radar.analyze import validate_analysis
-from scripts.authority_radar.collect import Event, is_due, normalize_url, parse_feed
+from scripts.authority_radar.collect import Event, is_due, normalize_url, parse_feed, parse_github_commits
 from scripts.authority_radar.evaluate import evaluate_quality_gate, score_candidate
 from scripts.authority_radar.report import render_report
 
@@ -51,6 +51,55 @@ def test_event_key_is_stable_across_tracking_parameters() -> None:
     left = Event(url="https://example.com/a?utm_source=x", **base)
     right = Event(url="https://example.com/a", **base)
     assert left.key == right.key
+
+
+def test_parse_github_commits_preserves_head_identity_and_marks_review() -> None:
+    source = {
+        "id": "ucp_head",
+        "repo": "Universal-Commerce-Protocol/ucp",
+        "category": "agentic_commerce",
+        "source_tier": "official_repo",
+        "confidence": 0.95,
+        "impact": 4,
+    }
+    events = parse_github_commits(
+        [
+            {
+                "sha": "a" * 40,
+                "html_url": "https://github.com/Universal-Commerce-Protocol/ucp/commit/" + "a" * 40,
+                "commit": {
+                    "message": "spec: add capability\n\nDetails",
+                    "committer": {"date": "2026-07-22T01:02:03Z"},
+                    "verification": {"verified": True},
+                },
+            }
+        ],
+        source,
+    )
+    assert len(events) == 1
+    assert events[0].title.endswith("spec: add capability")
+    assert events[0].excerpt == "spec: add capability Details"
+    assert len(events[0].title) <= len(source["repo"]) + 202
+    assert events[0].published_at == "2026-07-22T01:02:03+00:00"
+    assert events[0].requires_review is True
+    assert events[0].raw == {"sha": "a" * 40, "verified": True}
+
+
+def test_parse_github_commits_bounds_untrusted_title() -> None:
+    source = {
+        "id": "head",
+        "repo": "owner/repo",
+        "category": "agentic_commerce",
+        "source_tier": "official_repo",
+        "confidence": 0.95,
+        "impact": 4,
+    }
+    event = parse_github_commits(
+        [{"commit": {"message": "x" * 500, "committer": {"date": "2026-07-22T00:00:00Z"}}}],
+        source,
+    )[0]
+    assert event.title == f"{source['repo']}: " + "x" * 200
+    assert len(event.excerpt) == 500
 
 
 def test_report_separates_failures_from_events() -> None:
