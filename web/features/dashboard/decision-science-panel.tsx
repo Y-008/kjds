@@ -7,7 +7,7 @@ import type { DashboardModel } from "./use-dashboard-controller";
 
 export function DecisionSciencePanel({ model }: { model: DashboardModel }) {
   const { analysisHardConstraints, analysisNeedsForecast, analysisOptions, assessCapabilityEconomics, capabilityEconomicAssessments, causalExperimentReviews, causalExperiments, causalKnowledge, causalPolicies, claimIncident, closeIncident, compileDecisionContract, createExecutionPlan, createObservationWindow, decisionAnalyses, decisionBusy, decisionCalibration, decisionContracts, decisionOutcomes, decisionResolutions, decisionReviews, dryRunExecutionPlan, evidenceRecords, executionObservationWindows, experimentEvaluations, experimentResolutions, governedExecutionPlans, interactionProfiles, isBestSolutionAnalysis, lifecycleBusy, limitedExecutionCommands, operationalIncidents, policyActivationHandoffs, policyShadowBatches, proposeCausalPolicy, publishCausalKnowledge, queueLimitedExecution, recordCausalPolicyOutcome, recordDecisionOutcome, recordExecutionObservation, recordExperimentSafety, recordIncidentCheck, registerCausalExperiment, releaseCausalPolicyStage, releaseIncidentFreeze, requestPolicyActivation, resolveDecisionAnalysis, reviewCausalExperiment, reviewCausalPolicy, reviewDecisionAnalysis, reviewIncident, runPolicyShadowBatch, selectedAnalysisContract, selectedAnalysisContractId, selectedAnalysisOptionId, selectedProfile, selectedProfileId, setSelectedAnalysisContractId, setSelectedAnalysisOptionId, setSelectedProfileId, submitDecisionAnalysis, submitIncidentReview, transitionCausalExperiment } = model;
-  return <><section className="decision-workbench">
+  return <><section className="decision-workbench" id="decision-workbench">
           <div className="panel-title">
             <div><p className="eyebrow">DECISION CONTRACT COMPILER</p><h3>把问题变成可审计的决策合同</h3></div>
             <span className="gate ready">只分析，不执行经营动作</span>
@@ -146,7 +146,7 @@ export function DecisionSciencePanel({ model }: { model: DashboardModel }) {
               {decisionCalibration.map((item) => <div className="calibration-card" key={`${item.metric}:${item.unit}`}><strong>{item.metric}</strong><span>平均绝对误差 {item.mean_absolute_error} {item.unit}</span><b>区间命中率 {(Number(item.interval_coverage) * 100).toFixed(0)}%</b></div>)}
             </div>
           </div>
-        </section><section className="causal-experiment-panel">
+        </section><section className="causal-experiment-panel" id="causal-experiments">
           <div className="panel-title">
             <div><p className="eyebrow">CAUSAL EXPERIMENT GATE</p><h3>预注册 → 稳定分流 → SRM 检查 → 独立复核</h3></div>
             <span className="gate ready">实验结果永不自动放量</span>
