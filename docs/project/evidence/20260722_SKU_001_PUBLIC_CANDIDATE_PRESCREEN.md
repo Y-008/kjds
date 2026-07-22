@@ -22,6 +22,7 @@
 - Ozon 公开类目页：[旅行收纳袋套装](https://www.ozon.ru/category/dorozhnye-organayzery-nabor-veshchey/)。公开搜索索引摘要显示约 `323–835 RUB` 的套装和多款千级评价商品，只能说明值得继续核验，不能推出 28 天销量或供需缺口。
 - Alibaba 发现页：[6 件旅行收纳袋](https://www.alibaba.com/showroom/6-piece-packing-cubes-sets-travel.html)。展示页存在约 `$1.49–3.50/套`、MOQ `2–100` 的多种条目；这只是询价线索，不是可入账报价。
 - 精确标题发现页：[双拉链压缩收纳袋聚合页](https://www.alibaba.com/wholesale/double-compression-packing-cubes.html)可关联 Shangrao Xinrui、Jinhua Chicapo 和 Anhui Dicaron 三个独立主体及其 6 件压缩/双拉链条目。该页仍是聚合发现信号，不能证明固定六件 BOM、材料、净重、包装或签约主体；只有取得各自独立商品原件和同一规格书面回函后才计入精确供应商覆盖。
+- 独立主体补证：[Shenzhen Gymtion 六件套商品页](https://gymtion.en.made-in-china.com/product/yaBRnKlJaYVk/China-6-Set-Compression-Packing-Cubes-for-Suitcases-Lightweight-Luggage-Organizers-Travel-Bag.html)可核验制造主体、六件套、Polyester、MOQ、样品和询盘入口，但规格仍为定制占位，未证明双拉链压缩结构、固定 BOM 或整套物流参数，只能作为直接联系线索。[Shanghai Shantou Bao Ma 页面](https://shouma.en.made-in-china.com/product/ITOUDHLCgYkf/China-6-Set-Compression-Packing-Cubes-for-Suitcases-Double-Zipper-Compression-Packing-Cubes-for-Carry-on-Luggage-Organizer-Bags.html)虽以六件压缩袋命名，正文却是 PU leather weekender duffle bag、单件尺寸和手提/斜挎用途，标题与商品数据冲突，已从候选供应商中排除。
 - 值得继续：非电、非液体、易演示、可通过面料、拉链、压缩结构和套装配置形成差异。
 - 主要风险：拉链/缝线失效、尺寸误导、面料气味、颜色偏差、季节性；需实测净重、折叠体积和装箱体积。
 
