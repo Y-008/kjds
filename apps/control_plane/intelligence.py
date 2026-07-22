@@ -676,7 +676,7 @@ class MarketIntelligenceService:
     def _accepted_demand_report(self, evidence_id: str) -> str:
         evidence_id = evidence_id.strip()
         if not evidence_id or self.demand_report_validator is None:
-            raise ValueError("Candidate research requires an accepted SKU-000 demand report")
+            raise ValueError("Candidate research requires accepted SKU-000 research evidence")
         self.demand_report_validator(evidence_id)
         return evidence_id
 

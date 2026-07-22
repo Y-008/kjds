@@ -54,12 +54,15 @@ test("startup path separates research readiness from real execution readiness", 
   assert.match(page, /body\.append\("source_locator", sourceLocator\)/);
   assert.match(page, /name="demand_report_source_system"/);
   assert.match(page, /value="ozon_data"/);
+  assert.match(page, /value="ozon_seller_analytics"/);
+  assert.match(page, /Ozon Seller Analytics（店铺级，仅研究）/);
   assert.match(page, /value="ozon_category_analytics"/);
   assert.match(page, /value="ozon_trends"/);
   assert.match(page, /value="ozon_what_to_sell"/);
   assert.match(page, /value="ozon_competitor_compare"/);
   assert.match(page, /value="fixed_test_data"/);
   assert.match(page, /name="demand_report_window_days"/);
+  assert.match(page, /\.png,.jpg,.jpeg,.webp/);
   assert.match(page, /测试数据最多放行研究闭环/);
   assert.match(page, /真实经营要求 Ozon Data，或至少两个独立 Ozon 官方分析入口/);
   assert.match(page, /研究闭环/);

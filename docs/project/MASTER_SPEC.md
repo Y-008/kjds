@@ -761,7 +761,7 @@ git diff --check
 
 | 阻塞 | 所需输入 | 责任人 | 影响 |
 |---|---|---|---|
-| Ozon 真实需求报告 | 账户主体完成必要条款或订阅支出决定后导出的真实 28 天全市场需求/类目报告，并以不可变 Evidence 链接到 `gate_requirement/SKU-000`；当前 Seller 搜索分析只验证可读，导出触发 Premium/Premium Lite 且跨月 28 天未获接受。官方 `product-queries` API 仅分析我方已有 SKU，不能替代新候选类目需求；公开示例、页面读数和第三方报告不计 | 经营负责人 | G0 |
+| Ozon 真实需求证据 | 研究闭环可使用经独立复核的 28 天 Seller Analytics 店铺级原件、公开市场证据、第三方辅助信号或固定测试数据，但必须保持 `research_signal/estimate`；真实经营要求 Ozon Data 正式报告，或至少两个独立、可复验的 Ozon 官方类目级来源。Seller Analytics 店铺页和 `product-queries` 仅反映我方商品，单独不能放行付款、采购、发布、广告、补货或 actual 晋升 | 经营负责人 | G0 |
 | 三个真实新上新候选 SKU | 基于上述报告和独立来源完成五指标研究，经人工交接形成带事件与 `candidate_basis` 血缘的三个候选；现有目录只作对照 | 经营/商品负责人 | G0/G1 |
 | Ozon 权限与账户 | 已只读确认登录态、有效合同和 Seller API，并正式存证一份 2025-10 计提原件；仍需真实需求/订单/退货/结算等原件、收款路径证据及专用最小权限只读身份 | 经营负责人 | G0/G1/G4 |
 | Ozon API 身份治理 | 盘点现有 7 个宽权限 Key 的调用方；经批准后新建专用只读 Key 并轮换/撤销闲置 Key | 账户/工程负责人 | G0/G1 |
@@ -771,7 +771,7 @@ git diff --check
 
 ### 13.3 当时的执行队列
 
-1. 经营负责人决定 Ozon Data 条款或可导出全市场/类目报告的订阅支出；取得真实 28 天原件并固化为 `SKU-000` Evidence 后，再按启动模板研究 3 个真实 SKU，经过五指标预检和人工报价交接建立候选。`product-queries` 只留作未来现有 Listing 诊断，不进入本 Gate。
+1. 先固化并独立复核现有 28 天研究原件，完成 3 个真实 SKU 的研究、五指标预检和人工报价交接；任何真实付款、采购、发布、广告、补货或 actual 晋升前，再补齐 Ozon Data 正式报告或至少两个独立 Ozon 官方类目级来源。Seller Analytics 与 `product-queries` 只用于店铺和现有 Listing 研究，不能单独解除真实经营 Gate。
 2. 用真实 Ozon 结果验证字段映射、候选声明、独立复核和正式事实转换边界。
 3. 导入第一份真实结算/银行样本，冻结费用字典、FX 和 CM3 口径。
 4. 完成三个 SKU 的 Passport、供应商报价、样品、包装和物流 Episode Package。

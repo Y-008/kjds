@@ -220,6 +220,29 @@ def test_fixed_test_data_unlocks_research_but_not_real_execution():
         service.require_accepted(report.id, scope="real_execution")
 
 
+def test_seller_analytics_unlocks_research_but_not_real_execution():
+    _, service = make_service()
+    report = capture_report(
+        service,
+        source_system="ozon_seller_analytics",
+        content=b"seller analytics 28-day screenshot",
+    )
+    service.review(
+        report_evidence_id=report.id,
+        accepted=True,
+        rationale="已核对 Seller Analytics 店铺级 28 天页面，仅用于研究。",
+        reviewed_by="approver-1",
+    )
+
+    status = service.status()
+    assert status["research_ready"] is True
+    assert status["real_execution_ready"] is False
+    assert report.metadata["eligible_scopes"] == ["research"]
+    service.require_accepted(report.id, scope="research")
+    with pytest.raises(ValueError, match="not eligible for real_execution"):
+        service.require_accepted(report.id, scope="real_execution")
+
+
 def test_two_independent_official_sources_unlock_real_execution_scope():
     _, service = make_service()
     category = capture_report(

@@ -37,6 +37,7 @@ export function ResearchGatePanel({ model }: { model: DashboardModel }) {
             <div><strong>1. 上传需求研究原件</strong><small>上传后只进入待复核。测试数据最多放行研究闭环；真实经营要求 Ozon Data，或至少两个独立 Ozon 官方分析入口。</small></div>
             <select name="demand_report_source_system" aria-label="需求研究来源" defaultValue="ozon_category_analytics" required>
               <option value="ozon_data">Ozon Data 正式报告</option>
+              <option value="ozon_seller_analytics">Ozon Seller Analytics（店铺级，仅研究）</option>
               <option value="ozon_category_analytics">Ozon 类目分析</option>
               <option value="ozon_trends">Ozon 趋势数据</option>
               <option value="ozon_what_to_sell">Ozon 卖什么</option>
@@ -47,7 +48,7 @@ export function ResearchGatePanel({ model }: { model: DashboardModel }) {
             </select>
             <input name="demand_report_source_locator" aria-label="需求研究来源定位" placeholder="原始页面 URL、导出编号或 fixture:// 路径" required />
             <input name="demand_report_window_days" aria-label="需求报告窗口天数" type="number" min="28" max="365" defaultValue="28" required />
-            <input name="demand_report_file" aria-label="需求研究原件文件" type="file" accept=".json,.csv,.xlsx,.xls,.pdf" required />
+            <input name="demand_report_file" aria-label="需求研究原件文件" type="file" accept=".json,.csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp" required />
             <button disabled={gateUploading}>{gateUploading ? "正在固化…" : "固化研究原件"}</button>
           </form>
           <form className="gate-evidence-upload" onSubmit={reviewDemandReport}>
