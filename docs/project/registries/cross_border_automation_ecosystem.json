@@ -1,0 +1,251 @@
+{
+  "registry_id": "KJDS-CROSS-BORDER-OSS-001",
+  "captured_at": "2026-07-22T18:28:00+08:00",
+  "status": "active_research_registry",
+  "selection_rule": "Reuse only a capability that closes a current Gate bottleneck without creating a second owner, approval system, backend, or ungoverned write path.",
+  "automatic_install": false,
+  "automatic_write_enablement": false,
+  "channels_checked": [
+    "GitHub repositories, topics, issues and repository API metadata",
+    "official marketplace and public-data documentation",
+    "npm and PyPI package metadata",
+    "MCP directories and official MCP SDK repositories",
+    "OpenClaw, ClawHub and Hermes skill ecosystems"
+  ],
+  "hard_constraints": [
+    "KJDS remains owner of Evidence, formal facts, Approval, DecisionPacket, ExecutionPermit and Readback",
+    "Every production side effect routes through the single authorize_action boundary",
+    "No CAPTCHA bypass, shared seller password, unrestricted platform token or payment credential in an agent prompt",
+    "Research and estimates never become actual without original evidence and independent review",
+    "No second ERP, commerce backend, workflow engine, approval UI or canonical product database",
+    "Exact package version, repository identity, license and source hash are verified before install",
+    "Marketplace writes, procurement and payment stay disabled until their existing Gate and permit are satisfied"
+  ],
+  "active_now": [
+    {
+      "id": "1688_cli",
+      "kind": ["cli", "browser_harness"],
+      "repository": "https://github.com/superjack2050/1688-cli",
+      "package": "1688-cli@0.1.47",
+      "license": "MIT",
+      "repository_snapshot": {"stars": 44, "archived": false, "pushed_at": "2026-06-27T15:14:06Z"},
+      "use": "Logged-in 1688 offer reads, supplier inquiry readback, server-message-id deduplication and read-only order preparation.",
+      "current_state": "installed_in_gitignored_runtime_and_real_readback_verified",
+      "write_boundary": "No cart, checkout, order, payment or duplicate supplier message without the existing KJDS permit chain.",
+      "requires_review": true
+    },
+    {
+      "id": "playwright_transitive",
+      "kind": ["browser_harness"],
+      "repository": "https://github.com/microsoft/playwright",
+      "license": "Apache-2.0",
+      "use": "Transitive browser runtime already used by 1688-cli and existing controlled browser exploration.",
+      "current_state": "reuse_existing_only",
+      "write_boundary": "Browser state is not authority; CAPTCHA is handed to a visible human session.",
+      "requires_review": false
+    },
+    {
+      "id": "openclaw_hermes",
+      "kind": ["agent", "skill_runtime", "harness"],
+      "repositories": ["https://github.com/openclaw/openclaw", "https://github.com/NousResearch/hermes-agent"],
+      "use": "Existing operator and research scheduling shell with skill security scanning and allowlists.",
+      "current_state": "already_operational_outside_business_truth",
+      "write_boundary": "May call KJDS APIs but never owns facts, approvals or platform credentials.",
+      "requires_review": false
+    },
+    {
+      "id": "n8n_internal",
+      "kind": ["app", "workflow"],
+      "repository": "https://github.com/n8n-io/n8n",
+      "license": "Sustainable Use License; exact distribution boundary requires review",
+      "use": "Existing internal timers and notifications only.",
+      "current_state": "already_available_no_second_instance",
+      "write_boundary": "No business rules, canonical state or direct marketplace payment.",
+      "requires_review": true
+    },
+    {
+      "id": "firecrawl",
+      "kind": ["app", "collector"],
+      "repository": "https://github.com/firecrawl/firecrawl",
+      "license": "AGPL-3.0",
+      "use": "Existing read-only public-web evidence collection behind the KJDS provider boundary.",
+      "current_state": "already_integrated_optional_provider",
+      "write_boundary": "Public evidence collection only; anti-bot failure remains explicit.",
+      "requires_review": true
+    },
+    {
+      "id": "erpnext_dry_run",
+      "kind": ["app", "erp"],
+      "repository": "https://github.com/frappe/erpnext",
+      "license": "GPL-3.0",
+      "use": "Existing isolated, non-submitting projection PoC for deterministic procurement, stock and accounting documents.",
+      "current_state": "contract_only_remote_writes_disabled",
+      "write_boundary": "No production instance until the seven existing reconciliation and ownership gates pass.",
+      "requires_review": true
+    }
+  ],
+  "official_api_targets": [
+    {
+      "id": "alibaba_1688_open_platform",
+      "kind": ["official_api", "procurement"],
+      "url": "https://aop.alibaba.com/",
+      "decision": "preferred_long_term_for_authorized_order_and_payment_operations",
+      "next_gate": "enterprise application approval, least-privilege scopes and sandbox/readback proof",
+      "automatic_write_enabled": false
+    },
+    {
+      "id": "ozon_seller_api",
+      "kind": ["official_api", "marketplace"],
+      "url": "https://docs.ozon.ru/api/seller/",
+      "decision": "keep_current_versioned_direct_http_connector_instead_of_third_party_sdk",
+      "next_gate": "approved read-only identity and continuous 28-day source evidence",
+      "automatic_write_enabled": false
+    },
+    {
+      "id": "bank_of_russia_fx",
+      "kind": ["official_api", "fx"],
+      "url": "https://www.cbr.ru/",
+      "decision": "prefer_direct_official_http_source_over_new_fx_dependency",
+      "next_gate": "bind rate, effective time and original response hash to reconciliation evidence",
+      "automatic_write_enabled": false
+    },
+    {
+      "id": "ecb_data_api",
+      "kind": ["official_api", "fx"],
+      "url": "https://data-api.ecb.europa.eu/",
+      "decision": "secondary_cross_check_only_for_supported_pairs",
+      "next_gate": "do not infer a representative EUR/RUB rate where ECB does not publish one",
+      "automatic_write_enabled": false
+    }
+  ],
+  "deferred_until_channel_exists": [
+    {
+      "id": "amazon_official_sp_api_sdk",
+      "kind": ["sdk", "marketplace"],
+      "repository": "https://github.com/amzn/selling-partner-api-sdk",
+      "license": "Apache-2.0",
+      "reason": "Official and maintained, but Amazon is a frozen second platform before G7.",
+      "next_gate": "approved Amazon professional seller application and funded second-platform ADR"
+    },
+    {
+      "id": "shopify_official_cli",
+      "kind": ["cli", "marketplace"],
+      "repository": "https://github.com/Shopify/cli",
+      "package": "@shopify/cli@4.5.2",
+      "license": "MIT",
+      "reason": "Best Shopify command surface and mutations are disabled by default, but no authorized Shopify store is in scope.",
+      "next_gate": "owned-store channel approval and read-only token"
+    },
+    {
+      "id": "wildberries_generated_sdk",
+      "kind": ["sdk", "marketplace"],
+      "repository": "https://github.com/eslazarev/wildberries-sdk",
+      "license": "MIT",
+      "reason": "Broad Russian marketplace coverage, but Wildberries is not the current platform and the SDK is not official.",
+      "next_gate": "second-Russian-platform decision plus official-schema replay"
+    },
+    {
+      "id": "ozon_daytona_sdk",
+      "kind": ["sdk", "marketplace"],
+      "repository": "https://github.com/salacoste/ozon-daytona-seller-api",
+      "license": "MIT",
+      "reason": "Large claimed surface, but TypeScript SDK would duplicate the existing Python/httpx connector and remains third-party.",
+      "next_gate": "only if direct schema maintenance becomes a measured bottleneck"
+    },
+    {
+      "id": "easypost_python",
+      "kind": ["sdk", "logistics"],
+      "repository": "https://github.com/EasyPost/easypost-python",
+      "package": "easypost@10.7.0",
+      "license": "MIT",
+      "reason": "Maintained carrier aggregator, but no verified China-to-Russia service contract or account is in scope.",
+      "next_gate": "approved carrier account, quoted lane and read-only rate reconciliation"
+    },
+    {
+      "id": "shipengine_python",
+      "kind": ["sdk", "logistics"],
+      "repository": "https://github.com/ShipEngine/shipengine-python",
+      "package": "shipengine@2.1.1",
+      "license": "Apache-2.0",
+      "reason": "Same logistics role as EasyPost; select at most one after a real lane comparison.",
+      "next_gate": "carrier coverage and total-cost comparison against no-integration"
+    },
+    {
+      "id": "un_comtrade_client",
+      "kind": ["sdk", "trade_research"],
+      "repository": "https://github.com/uncomtrade/comtradeapicall",
+      "package": "comtradeapicall@1.3.2",
+      "license": "MIT",
+      "reason": "Useful for macro trade research, never for product HS classification or legal determination.",
+      "next_gate": "a decision question that requires trade-flow evidence"
+    },
+    {
+      "id": "frankfurter",
+      "kind": ["app", "fx"],
+      "repository": "https://github.com/lineofflight/frankfurter",
+      "license": "MIT",
+      "reason": "Mature normalized FX service, but direct CBR/ECB sources are simpler and more authoritative for KJDS.",
+      "next_gate": "multiple official providers create a measured normalization burden"
+    },
+    {
+      "id": "bright_data_ecommerce_skill",
+      "kind": ["skill", "mcp", "collector"],
+      "repository": "https://github.com/brightdata/skills",
+      "license": "MIT skill; paid remote data service terms separate",
+      "reason": "Broad ecommerce collection but introduces a paid data intermediary and provenance/terms review.",
+      "next_gate": "official/public sources remain insufficient and a paid-source budget is approved"
+    }
+  ],
+  "not_adopted": [
+    {
+      "id": "opencli_1688",
+      "repository": "https://github.com/linxule/opencli",
+      "reason": "Its 1688 surface is limited to search/item/store and duplicates the already verified 1688-cli."
+    },
+    {
+      "id": "playwright_mcp_or_openchrome",
+      "repositories": ["https://github.com/microsoft/playwright-mcp", "https://github.com/shaun0927/openchrome"],
+      "reason": "Good harnesses, but installing either now creates a second browser automation surface without closing a current gap."
+    },
+    {
+      "id": "community_shopify_mcp",
+      "repositories": ["https://github.com/callobuzz/cob-shopify-mcp", "https://github.com/benwmerritt/shopify-mcp"],
+      "reason": "No Shopify channel; npm repository metadata for cob-shopify-mcp did not match the reviewed GitHub repository, so supply-chain identity is unresolved."
+    },
+    {
+      "id": "amazon_demo_mcp",
+      "repository": "https://github.com/rigwild/mcp-server-amazon",
+      "reason": "Ordering is explicitly a demonstration/fake path and is not a seller-control integration."
+    },
+    {
+      "id": "amazon_sp_api_dev_mcp_package",
+      "repository": "https://github.com/amzn/selling-partner-api-samples",
+      "reason": "The documented npm package returned 404 during registry verification; use official SDK/samples directly if Amazon enters scope."
+    },
+    {
+      "id": "pricebuddy",
+      "repository": "https://github.com/jez500/pricebuddy",
+      "reason": "Would create a second monitoring UI and scraper runtime; KJDS already has research evidence and scheduling paths."
+    },
+    {
+      "id": "pim_and_commerce_backends",
+      "repositories": [
+        "https://github.com/pimcore/pimcore",
+        "https://github.com/medusajs/medusa",
+        "https://github.com/saleor/saleor",
+        "https://github.com/vendurehq/vendure",
+        "https://github.com/spree/spree"
+      ],
+      "reason": "They are substantial products, not missing connectors, and would create another canonical catalog/commerce backend before an owned-store channel exists."
+    },
+    {
+      "id": "unverified_ozon_github_org",
+      "repository": "https://github.com/Ozon-Seller-API",
+      "reason": "Search-optimized organization with no usable public client repository and no verified relationship to official Ozon documentation."
+    },
+    {
+      "id": "captcha_bypass_tools",
+      "reason": "Conflicts with platform controls and KJDS policy; use persistent profiles plus visible human handoff."
+    }
+  ]
+}
