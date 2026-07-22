@@ -36,6 +36,7 @@
 
 - Ozon 公开类目页：[5 位 6 钩墙架](https://www.ozon.ru/category/nastennyy-organayzer-derzhatel-na-5-shvabr-6-kryuchkov/)。公开搜索索引摘要显示约 `423–927 RUB`，评价样本从 `2` 到 `209` 不等；可能存在较高客单和较浅竞争，但不足以证明供需缺口。
 - Alibaba 发现页：[铝合金 5 位 6 钩墙架](https://www.alibaba.com/product-introduction/Wall-Mounted-Aluminum-Hook-Tool-Organizer_1600821610928.html)。展示价约 `$1.30–3.70/套`、MOQ `1`；页面说明由第三方生成，所有材质、承重和安装声明都必须由供应商原件和样品重验。
+- 可联系主体发现页：[Jiaxing All-Link / Boomjoy](https://all-link.en.made-in-china.com/product/hCOAxwGcMZpF/China-Boomjoy-Broom-Mop-Holder-Tidy-Organizer-Wall-Mounted-Organizer-with-5-Position-6-Hooks-for-Brush-Mop-and-Broom-Tool-Storage.html)、[CLEANIC CLEANING EQUIPMENT LIMITED](https://www.alibaba.com/product-introduction/Heavy-Duty-Aluminium-Screw-on-Adhesive_60495087371.html)和[Fuzhou Eastsound Technology](https://vi.made-in-china.com/co_eastsound/product_Movable-Racks-and-Hooks-Broom-Holder-Wall-Mount-Mop-Hanger-Organizer-Aluminum-Broom-Mop-Storage-Organization_uoenriuieg.html)。只有 Jiaxing All-Link 的公开页明确 5 位 6 钩；后两家只证明主体、铝制墙架商品和联系入口存在，必须按同一冻结规格书面确认 `60 cm / 5 位 / 6 钩 / 机械固定`。
 - 值得继续：比单个粘胶夹客单更高，可通过铝材、机械固定、承重和完整配件做真实差异化。
 - 主要风险：约 50–61 cm 长件带来的体积重、弯折和包装成本；安装孔位、螺丝配件、夹持直径和承重声明不实会造成退货。
 
@@ -57,4 +58,4 @@
 
 若任一候选不能取得 28 天原件、三报价或可接受的样品结果，直接淘汰，不为它增加专用代码或降低 Gate。
 
-截至 `2026-07-22`，RU-HYP-001 与 RU-HYP-002 已各找到 3 条跨 Alibaba、Made-in-China 的公开供应商联系线索；RU-HYP-003 仅确认 1 家主体明确、结构精确且铝材明确的供应商，另有 1 条精确商品页缺真实公司主体、1 家独立公司未确认铝材。它们只写入私密准备包的 `supplier_available` 研究项，公开展示价未进入 `supplier-quotes.csv`，需求、竞争、合规和退货指标仍为空，正式候选与真实询价继续失败关闭。
+截至 `2026-07-22`，三个假设均已有 3 条可联系供应商发现线索。RU-HYP-003 只有 Jiaxing All-Link 的公开页精确匹配 5 位 6 钩；CLEANIC 与 Fuzhou Eastsound 仍待同一冻结规格书面确认。因此这里只证明发现覆盖，不证明三家精确规格供应商，更不等于取得三份报价。所有公开展示价均未进入 `supplier-quotes.csv`；需求、竞争、合规、退货和真实报价仍为空，正式候选与真实询价继续失败关闭。
