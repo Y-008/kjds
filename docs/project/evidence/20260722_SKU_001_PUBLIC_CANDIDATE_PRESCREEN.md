@@ -32,6 +32,7 @@
 - Ozon 评价页：[真空袋评价样本](https://www.ozon.ru/category/vakuumnye-pakety-14760/review/)。公开评价同时出现持续密封的正面反馈，以及薄膜、破损、尺寸搭配和漏气风险。
 - Alibaba 发现页：[手动泵真空袋](https://www.alibaba.com/showroom/vacuum-bag-with-hand-suction-pump.html)。展示页存在多种低 MOQ 条目和约 `$7.50–7.70`、MOQ `20` 的 11 件套；必须向供应商核实实际套装、泵型、厚度和报价。
 - 可联系主体发现页：[Qingdao Tongda 10 件含手泵独立商品页](https://tongdahome.en.made-in-china.com/product/rTHYCpBJTnUu/China-Combo-Pack-Vacuum-Storage-Bags-with-Hand-Pump-10-Pack.html)明确 PA+PE、`70 μm`、手泵和询盘入口；[Alibaba 手泵供应商聚合页](https://www.alibaba.com/vacuum-bag-hand-pump-suppliers.html)可关联 Yiwu City Dazzle 的 `400112` 十件含手泵条目。二者都未证明冻结的五种尺寸各两件 BOM；Tongda 页面也未解释外箱对应套数，Dazzle 独立商品页当前无法稳定复核，因此仍不构成同规格报价。
+- 新增直接主体线索：[Cixi Virtue Co., Ltd. 真空袋商品页](https://www.alibaba.com/product-detail/Welcome-To-Saver-Space-Vacuum-Storage_1600537835000.html)可核验 `19` 年平台年限、PA+PE、五档尺寸、样品入口和公开履约指标；但销售单位仍是单袋，运费待议，未证明手泵逐套附带及冻结的 10/11 件 BOM。该页只能进入询价名单，必须按统一套装规格重新书面报价。
 - 值得继续：客单价和视频演示能力优于简单收纳件；限定手动泵版本，避免第一轮引入电器合规和电池风险。
 - 主要风险：阀门和封边漏气、薄膜厚度虚标、破损、尺寸理解偏差、体积重和高退货；样品需做 72 小时保压、跌落、重复开合和不同尺寸装载测试。
 
@@ -39,6 +40,7 @@
 
 - Ozon 公开类目页：[5 位 6 钩墙架](https://www.ozon.ru/category/nastennyy-organayzer-derzhatel-na-5-shvabr-6-kryuchkov/)。公开搜索索引摘要显示约 `423–927 RUB`，评价样本从 `2` 到 `209` 不等；可能存在较高客单和较浅竞争，但不足以证明供需缺口。
 - Alibaba 发现页：[铝合金 5 位 6 钩墙架](https://www.alibaba.com/product-introduction/Wall-Mounted-Aluminum-Hook-Tool-Organizer_1600821610928.html)。展示价约 `$1.30–3.70/套`、MOQ `1`；页面说明由第三方生成，所有材质、承重和安装声明都必须由供应商原件和样品重验。
+- 错配检查：[Haiyan Jincheng Optoelectronic Technology 商品页](https://www.alibaba.com/product-detail/Cleaning-Supplies-Aluminum-Broom-And-Mop_1600259788506.html)虽为铝制墙架并给出公司主体、包装和样品信息，但公开属性是 `4` 个夹位、`5` 个挂钩、约 `51 cm`，不符合冻结的 `5 位 / 6 钩 / 60 cm`；不得并入同规格三报价，只能作为替代结构另行记录。
 - 可联系主体发现页：[Jiaxing All-Link / Boomjoy](https://all-link.en.made-in-china.com/product/hCOAxwGcMZpF/China-Boomjoy-Broom-Mop-Holder-Tidy-Organizer-Wall-Mounted-Organizer-with-5-Position-6-Hooks-for-Brush-Mop-and-Broom-Tool-Storage.html)、[CLEANIC CLEANING EQUIPMENT LIMITED](https://www.alibaba.com/product-introduction/Heavy-Duty-Aluminium-Screw-on-Adhesive_60495087371.html)和[Fuzhou Eastsound Technology](https://vi.made-in-china.com/co_eastsound/product_Movable-Racks-and-Hooks-Broom-Holder-Wall-Mount-Mop-Hanger-Organizer-Aluminum-Broom-Mop-Storage-Organization_uoenriuieg.html)。只有 Jiaxing All-Link 的公开页明确 5 位 6 钩；后两家只证明主体、铝制墙架商品和联系入口存在，必须按同一冻结规格书面确认 `60 cm / 5 位 / 6 钩 / 机械固定`。
 - 值得继续：比单个粘胶夹客单更高，可通过铝材、机械固定、承重和完整配件做真实差异化。
 - 主要风险：约 50–61 cm 长件带来的体积重、弯折和包装成本；安装孔位、螺丝配件、夹持直径和承重声明不实会造成退货。
