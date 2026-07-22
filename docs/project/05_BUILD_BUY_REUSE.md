@@ -77,3 +77,11 @@
 4. 数据、密钥、许可、上游条款和退出成本是什么？
 5. 最小隔离 PoC 的成功/失败标准是什么？
 6. 如何回滚和完全移除？
+
+## 跨境电商 CLI / App / Agent / Skill / MCP / Harness 雷达
+
+2026-07-22 已按 GitHub 仓库与 Topics、官方平台文档、npm、PyPI、MCP 目录、OpenClaw/ClawHub 和 Hermes Skill 生态做横向检索，并把可复核结果固化到 [`registries/cross_border_automation_ecosystem.json`](registries/cross_border_automation_ecosystem.json)。注册表区分 `active_now`、`official_api_targets`、`deferred_until_channel_exists` 与 `not_adopted`，且固定 `automatic_install=false`、`automatic_write_enablement=false`。
+
+当前唯一新增使用动作不是安装新后台，而是继续使用已在 Git 忽略目录固定版本安装并完成真实回读的 `1688-cli@0.1.47`：持久会话、商品原页、旺旺消息号去重和只读结算预览由它承担；KJDS 继续拥有 Evidence、报价状态、审批、许可和回读。OpenCLI、Playwright MCP、OpenChrome、社区 Shopify MCP、PriceBuddy、PIM 和 Commerce Kernel 均因重复当前能力、第二平台尚未立项、包身份异常或会形成第二 Owner 而不采用。
+
+官方长期路径保持不变：1688 写操作优先等待开放平台企业应用和最小权限授权；Ozon 继续使用版本化的直接 HTTP 合同；FX 优先直接取得央行原始响应。Amazon、Shopify、Wildberries、物流聚合器和 UN Comtrade 只在对应渠道、账户、预算或真实决策问题出现后重新评估，不能因为已有开源包就提前进入生产依赖。
