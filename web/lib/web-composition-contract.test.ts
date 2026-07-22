@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readDashboardSource } from "./dashboard-source.ts";
 import { fetchJson, settleJsonRequests } from "./fetch-json.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -13,6 +14,16 @@ test("page delegates to the dashboard composition root", () => {
   assert.doesNotMatch(page, /\/backend\//);
   assert.match(dashboard, /useDashboardController\(\)/);
   assert.match(dashboard, /<DashboardView model=/);
+});
+
+test("sidebar navigation targets real dashboard sections", () => {
+  const source = readDashboardSource();
+  const shell = read("../features/dashboard/dashboard-shell.tsx");
+  const targets = [...shell.matchAll(/"(#[a-z][a-z0-9-]+)"/g)].map((match) => match[1]);
+
+  assert.equal(targets.length, 9);
+  for (const target of targets) assert.match(source, new RegExp(`id="${target.slice(1)}"`));
+  assert.match(shell, /<a href=\{href\}/);
 });
 
 test("request failures settle without rejecting sibling dashboard loads", async () => {
