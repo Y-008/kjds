@@ -6,7 +6,7 @@ import type { DashboardModel } from "./use-dashboard-controller";
 
 export function FinancePanel({ model }: { model: DashboardModel }) {
   const { actualCostAuthorityItem, actualCostAuthorityStatus, actualCostEvidenceId, actualCostReviewBusy, actualCostType, canReviewFinance, costAuthorityCatalog, loadActualCostAuthorityStatus, reviewActualCostAuthority, reviewableCostEvidence, setActualCostAuthorityStatus, setActualCostEvidenceId, setActualCostType } = model;
-  return <><section className="finance-review-panel" aria-labelledby="actual-cost-review-title">
+  return <><section className="finance-review-panel" id="actual-cost-review" aria-labelledby="actual-cost-review-title">
           <div className="finance-review-head">
             <div><p className="eyebrow">ACTUAL COST PROOF</p><h3 id="actual-cost-review-title">实际成本权威复核</h3></div>
             <span className={`gate ${actualCostAuthorityStatus?.status === "accepted" ? "ready" : actualCostAuthorityStatus?.status === "rejected" ? "blocked" : ""}`}>
