@@ -43,6 +43,8 @@
 
 [Ozon 跨境物流标准条款](https://docs.ozon.ru/legal/en/partners/logistics/contract/)要求在适用时提供符合性证书或声明，并对包装、标签、重量和尺寸设有限制。因此三类假设的 `compliance_redline` 均保持“未知”，不能凭普通家居用品外观写成 `0`。
 
+当前法规适用性、逐候选缺口和 A 级取证路径见[三候选合规预审](20260722_SKU_001_COMPLIANCE_PRESCREEN.md)。该预审不构成具体商品合规结论。
+
 ## 下一步与退出条件
 
 私密 `candidate-research.csv` 可按指标逐项记录已取得的 `research_signal`，但只有下列资料全部齐全并通过服务端预检后，才允许形成正式候选、发起三报价交接或创建 Product：
