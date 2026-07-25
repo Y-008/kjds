@@ -2,6 +2,7 @@
 
 import { Boxes, ShieldCheck } from "lucide-react";
 import { sourcingCostDefinitions, costStateLabels, procurementStatusLabels, procurementEventLabels } from "./dashboard-config";
+import { SupplierQuoteWorkspace } from "./supplier-quote-workspace";
 import type { DashboardModel } from "./use-dashboard-controller";
 
 
@@ -48,7 +49,7 @@ export function SourcingPanel({ model }: { model: DashboardModel }) {
             </form>
           </div>
           {logisticsCalculations.length > 0 && <div className="logistics-result-grid">{logisticsCalculations.slice(0, 6).map((item) => <article className="comparison-card" key={item.id}><strong>预估 {item.total_charge_cny} CNY</strong><small>实重 {item.physical_weight_kg} kg · 体积重 {item.volumetric_weight_kg} kg</small><div className="cm3"><span>最终计费重</span><b>{item.billable_weight_kg} kg</b><small>Evidence …{item.evidence_id.slice(-8)} · actual 需承运商最终账单</small></div></article>)}</div>}
-        </section><section className="sourcing-intake-panel" id="sourcing-intake">
+        </section><SupplierQuoteWorkspace model={model} /><section className="sourcing-intake-panel" id="sourcing-intake" hidden aria-hidden="true">
           <div className="panel-title"><div><p className="eyebrow">THREE-QUOTE GATE</p><h3>三家供应商证据化比价</h3></div><span className="badge">{pendingProcurementApprovals} 项采购待审批</span></div>
           <form className="sourcing-intake" onSubmit={uploadSupplierComparison}>
             <div className="sourcing-common">

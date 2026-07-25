@@ -62,6 +62,7 @@ from .sourcing import SourcingService
 from .sourcing_intake import SupplierComparisonIntakeService
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
+from .supplier_quote_authority import SupplierQuoteAuthorityService
 
 
 @dataclass(slots=True)
@@ -121,6 +122,7 @@ class RuntimeServices:
     sourcing: Any
     sourcing_intake: Any
     sourcing_store: Any
+    supplier_quote_authority: Any
 
 
 def build_repository():
@@ -224,11 +226,13 @@ def build_runtime() -> RuntimeServices:
         fx_evidence_current_validator=evidence.require_current,
     )
     cost_evidence_authority = CostEvidenceAuthorityService(evidence=evidence)
+    supplier_quote_authority = SupplierQuoteAuthorityService(evidence=evidence)
     sourcing = SourcingService(
         sourcing_store,
         repo,
         evidence_validator=evidence.require_valid,
         actual_cost_validator=cost_evidence_authority.require_actual,
+        offer_authority_validator=supplier_quote_authority.require_accepted,
         action_authorization=action_authorization,
         logistics_profit_resolver=logistics.resolve_profit_cost,
     )
@@ -245,6 +249,7 @@ def build_runtime() -> RuntimeServices:
     sourcing_intake = SupplierComparisonIntakeService(
         sourcing=sourcing,
         evidence=evidence,
+        quote_authority=supplier_quote_authority,
         logistics=logistics,
     )
     procurement = ProcurementService(
@@ -422,6 +427,7 @@ def build_runtime() -> RuntimeServices:
         sourcing=sourcing,
         sourcing_intake=sourcing_intake,
         sourcing_store=sourcing_store,
+        supplier_quote_authority=supplier_quote_authority,
     )
 
 

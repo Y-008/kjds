@@ -423,6 +423,7 @@ class SourcingService:
         repository: Repository,
         evidence_validator: Callable[[list[str]], None],
         actual_cost_validator: Callable[[str, str], Any] | None = None,
+        offer_authority_validator: Callable[[str], Any] | None = None,
         action_authorization: ActionAuthorizationService | None = None,
         logistics_profit_resolver: Callable[..., Any] | None = None,
     ) -> None:
@@ -430,6 +431,7 @@ class SourcingService:
         self.repository = repository
         self.evidence_validator = evidence_validator
         self.actual_cost_validator = actual_cost_validator
+        self.offer_authority_validator = offer_authority_validator
         self.action_authorization = action_authorization or ActionAuthorizationService()
         self.logistics_profit_resolver = logistics_profit_resolver
 
@@ -442,6 +444,32 @@ class SourcingService:
         if not offer.evidence_ref:
             raise ValueError("Offer evidence is required")
         self.evidence_validator([offer.evidence_ref])
+        if self.offer_authority_validator is not None:
+            original = self.offer_authority_validator(offer.evidence_ref)
+            frozen_terms = original.metadata.get("offer_data", {})
+            comparable = {
+                "product_id": offer.product_id,
+                "supplier_ref": offer.supplier_ref,
+                "platform": offer.platform.value,
+                "external_id": offer.external_id,
+                "source_url": offer.source_url,
+                "title": offer.title,
+                "currency": offer.currency,
+                "unit_price": str(offer.unit_price),
+                "source_to_cny_rate": str(offer.source_to_cny_rate),
+                "min_order_quantity": offer.min_order_quantity,
+                "weight_kg": str(offer.weight_kg),
+                "length_cm": str(offer.length_cm),
+                "width_cm": str(offer.width_cm),
+                "height_cm": str(offer.height_cm),
+                "domestic_logistics_per_unit": str(
+                    offer.domestic_logistics_per_unit
+                ),
+                "attributes": offer.attributes,
+                "media": offer.media,
+            }
+            if frozen_terms != comparable:
+                raise ValueError("Supplier offer terms differ from the accepted immutable quote")
         return self.store.save_offer(offer)
 
     def calculate_profit(

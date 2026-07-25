@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from dataclasses import asdict
 from decimal import Decimal
 from typing import Annotated
 
@@ -15,6 +16,7 @@ from ..api_contracts import (
     ProfitScenarioInput,
     SampleOrderInput,
     SupplierOfferInput,
+    SupplierQuoteAuthorityReviewInput,
     current_principal,
     ensure_role,
     run,
@@ -24,7 +26,6 @@ from ..logistics import LogisticsRateCard
 from ..runtime import runtime
 from ..security import Principal
 from ..sourcing import ProfitInputs, SupplierOffer, profit_template_contract
-from ..sourcing_intake import OfferEvidencePayload
 
 router = APIRouter()
 
@@ -53,15 +54,131 @@ def list_supplier_offers(limit: int = 100):
     return run(lambda: runtime.sourcing_store.list_offers(min(max(limit, 1), 500)))
 
 
+@router.post("/v1/sourcing/quote-evidence", status_code=201)
+async def capture_supplier_quote_evidence(
+    product_id: Annotated[str, Form()],
+    document_kind: Annotated[str, Form()],
+    effective_at: Annotated[str, Form()],
+    effective_until: Annotated[str, Form()],
+    offer_json: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    try:
+        raw_offer = json.loads(offer_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="offer_json must be valid JSON") from exc
+    if not isinstance(raw_offer, dict):
+        raise HTTPException(status_code=422, detail="offer_json must be an object")
+    validated = SupplierOfferInput(
+        **raw_offer,
+        product_id=product_id,
+        evidence_ref="pending-capture",
+    ).model_dump()
+    validated.pop("evidence_ref")
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    content = await file.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail="Supplier quote evidence exceeds size limit")
+    return run(
+        lambda: runtime.sourcing_intake.capture_quote_source(
+            product_id=product_id,
+            document_kind=document_kind,
+            offer_data=validated,
+            content=content,
+            filename=file.filename or "supplier-quote.bin",
+            content_type=file.content_type or "application/octet-stream",
+            effective_at=effective_at,
+            effective_until=effective_until.strip() or None,
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@router.get("/v1/sourcing/quote-evidence")
+def list_supplier_quote_evidence(
+    principal: Annotated[Principal, Depends(current_principal)],
+    product_id: str | None = None,
+    limit: int = 100,
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+
+    def list_records():
+        return [
+            {**item, "evidence": asdict(item["evidence"])}
+            for item in runtime.supplier_quote_authority.list(
+                product_id=product_id,
+                limit=min(max(limit, 1), 500),
+            )
+        ]
+
+    return run(list_records)
+
+
+@router.get("/v1/sourcing/quote-evidence/{evidence_id}/authority-review")
+def supplier_quote_authority_status(
+    evidence_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+
+    def status():
+        result = runtime.supplier_quote_authority.status(evidence_id)
+        return {**result, "evidence": asdict(result["evidence"])}
+
+    return run(status)
+
+
+@router.post(
+    "/v1/sourcing/quote-evidence/{evidence_id}/authority-review",
+    status_code=201,
+)
+def review_supplier_quote_authority(
+    evidence_id: str,
+    body: SupplierQuoteAuthorityReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+
+    def review():
+        result = runtime.supplier_quote_authority.review(
+            evidence_id=evidence_id,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+        return {
+            "evidence": asdict(result["evidence"]),
+            "review": asdict(result["review"]),
+            "lineage": (
+                asdict(result["lineage"]) if result.get("lineage") else None
+            ),
+            "idempotent": result["idempotent"],
+        }
+
+    return run(review)
+
+
 @router.post("/v1/sourcing/comparison-intake", status_code=201)
 async def capture_supplier_comparison(
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            "Direct comparison intake is retired. Capture three quote evidence "
+            "records, obtain independent reviews, then call comparison-finalize."
+        ),
+    )
+
+
+@router.post("/v1/sourcing/comparison-finalize", status_code=201)
+async def finalize_supplier_comparison(
     product_id: Annotated[str, Form()],
     effective_at: Annotated[str, Form()],
-    offers_json: Annotated[str, Form()],
+    quote_evidence_ids_json: Annotated[str, Form()],
     profit_inputs_json: Annotated[str, Form()],
-    offer_evidence_1: Annotated[UploadFile, File()],
-    offer_evidence_2: Annotated[UploadFile, File()],
-    offer_evidence_3: Annotated[UploadFile, File()],
     assumption_evidence: Annotated[UploadFile, File()],
     principal: Annotated[Principal, Depends(current_principal)],
     logistics_rate_card_id: Annotated[str, Form()] = "",
@@ -70,22 +187,27 @@ async def capture_supplier_comparison(
 ):
     ensure_role(principal, "operator", "reviewer", "admin")
     try:
-        raw_offers = json.loads(offers_json)
+        quote_evidence_ids = json.loads(quote_evidence_ids_json)
         raw_inputs = json.loads(profit_inputs_json)
     except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail="Offer and profit input payloads must be valid JSON") from exc
-    if not isinstance(raw_offers, list) or len(raw_offers) != 3 or (not isinstance(raw_inputs, dict)):
-        raise HTTPException(status_code=422, detail="Exactly three offers and one profit input object are required")
-    offer_values = []
-    for raw_offer in raw_offers:
-        if not isinstance(raw_offer, dict):
-            raise HTTPException(status_code=422, detail="Every supplier offer must be an object")
-        validated = SupplierOfferInput(**raw_offer, product_id=product_id, evidence_ref="pending-capture").model_dump()
-        validated.pop("product_id")
-        validated.pop("evidence_ref")
-        offer_values.append(validated)
+        raise HTTPException(
+            status_code=422,
+            detail="Quote evidence and profit input payloads must be valid JSON",
+        ) from exc
+    if (
+        not isinstance(quote_evidence_ids, list)
+        or len(quote_evidence_ids) != 3
+        or not all(isinstance(item, str) for item in quote_evidence_ids)
+        or not isinstance(raw_inputs, dict)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Exactly three quote evidence IDs and one profit input object are required",
+        )
     validated_inputs = ProfitScenarioInput(
-        **raw_inputs, offer_id="pending-capture", evidence=["pending-capture"]
+        **raw_inputs,
+        offer_id="pending-capture",
+        evidence=["pending-capture"],
     ).model_dump()
     validated_inputs.pop("offer_id")
     validated_inputs.pop("evidence")
@@ -93,39 +215,29 @@ async def capture_supplier_comparison(
     template_id = validated_inputs.pop("template_id")
     cost_states = validated_inputs.pop("cost_states")
     validated_inputs.pop("logistics_calculation_id")
-    uploads = [offer_evidence_1, offer_evidence_2, offer_evidence_3]
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
-    payloads = []
-    for values, upload in zip(offer_values, uploads, strict=True):
-        content = await upload.read(max_bytes + 1)
-        if len(content) > max_bytes:
-            raise HTTPException(status_code=413, detail="Supplier offer evidence exceeds size limit")
-        payloads.append(
-            OfferEvidencePayload(
-                offer_data=values,
-                content=content,
-                filename=upload.filename or "supplier-offer.bin",
-                content_type=upload.content_type or "application/octet-stream",
-            )
-        )
     assumption_content = await assumption_evidence.read(max_bytes + 1)
     if len(assumption_content) > max_bytes:
         raise HTTPException(status_code=413, detail="Profit assumption evidence exceeds size limit")
     return run(
-        lambda: runtime.sourcing_intake.ingest(
+        lambda: runtime.sourcing_intake.finalize(
             product_id=product_id,
+            quote_evidence_ids=quote_evidence_ids,
             effective_at=effective_at,
-            offers=payloads,
             profit_inputs=ProfitInputs(**validated_inputs),
             cost_states=cost_states,
             template_id=template_id,
             assumption_content=assumption_content,
-            assumption_filename=assumption_evidence.filename or "profit-assumptions.bin",
-            assumption_content_type=assumption_evidence.content_type or "application/octet-stream",
+            assumption_filename=assumption_evidence.filename
+            or "profit-assumptions.bin",
+            assumption_content_type=assumption_evidence.content_type
+            or "application/octet-stream",
             created_by=principal.actor_id,
             logistics_rate_card_id=logistics_rate_card_id.strip() or None,
             logistics_currency_to_cny_rate=(
-                logistics_currency_to_cny_rate if logistics_rate_card_id.strip() else None
+                logistics_currency_to_cny_rate
+                if logistics_rate_card_id.strip()
+                else None
             ),
             logistics_fx_evidence_id=logistics_fx_evidence_id.strip() or None,
         )

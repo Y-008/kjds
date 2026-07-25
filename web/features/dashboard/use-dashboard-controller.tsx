@@ -26,6 +26,7 @@ import type {
   MarketplaceGrowthPlan,
   PassportReview,
   ProductIdentity,
+  SupplierQuoteEvidence,
   SourcingComparison,
   ApprovalRecord,
   SampleEvent,
@@ -88,6 +89,7 @@ export function useDashboardController() {
   const [logisticsCalculations, setLogisticsCalculations] = useState<LogisticsCalculation[]>([]);
   const [logisticsBusy, setLogisticsBusy] = useState(false);
   const [offers, setOffers] = useState<unknown[]>([]);
+  const [supplierQuoteEvidence, setSupplierQuoteEvidence] = useState<SupplierQuoteEvidence[]>([]);
   const [products, setProducts] = useState<ProductIdentity[]>([]);
   const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
   const [marketplaceCatalogItems, setMarketplaceCatalogItems] = useState<MarketplaceCatalogItem[]>([]);
@@ -178,12 +180,13 @@ export function useDashboardController() {
     setDomainStates({ core: "loading", product: "loading", finance: "loading", science: "loading", execution: "loading" });
     const request = (input: RequestInfo | URL, init: RequestInit = {}) =>
       fetchJson(input, { ...init, signal: signal ?? init.signal });
-    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse, logisticsRateCardsResponse, logisticsCalculationsResponse] = await settleJsonRequests([
+    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, quoteEvidenceResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse, logisticsRateCardsResponse, logisticsCalculationsResponse] = await settleJsonRequests([
       request("/backend/v1/integrations/health", { cache: "no-store" }),
       request("/backend/v1/operating-workbench/briefing", { cache: "no-store" }),
       request("/backend/v1/recommendations", { cache: "no-store" }),
       request("/backend/v1/sourcing/connectors", { cache: "no-store" }),
       request("/backend/v1/sourcing/offers", { cache: "no-store" }),
+      request("/backend/v1/sourcing/quote-evidence", { cache: "no-store" }),
       request("/backend/v1/products", { cache: "no-store" }),
       request("/backend/v1/operations/readiness", { cache: "no-store" }),
       request("/backend/v1/passport-reviews", { cache: "no-store" }),
@@ -215,7 +218,7 @@ export function useDashboardController() {
     ]);
     setDomainStates({
       core: [healthResponse, operatingWorkbenchResponse].every((response) => response.ok) ? "ready" : "error",
-      product: [connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, logisticsRateCardsResponse, logisticsCalculationsResponse].every((response) => response.ok) ? "ready" : "error",
+      product: [connectorResponse, offersResponse, quoteEvidenceResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, logisticsRateCardsResponse, logisticsCalculationsResponse].every((response) => response.ok) ? "ready" : "error",
       finance: costAuthorityResponse.ok ? "ready" : "error",
       science: [profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse].every((response) => response.ok) ? "ready" : "error",
       execution: [policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse].every((response) => response.ok) ? "ready" : "error",
@@ -225,6 +228,7 @@ export function useDashboardController() {
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
     if (connectorResponse.ok) setSourceConnectors(await connectorResponse.json());
     if (offersResponse.ok) setOffers(await offersResponse.json());
+    if (quoteEvidenceResponse.ok) setSupplierQuoteEvidence(await quoteEvidenceResponse.json());
     const gateData: GateReadiness | null = gateResponse.ok ? await gateResponse.json() : null;
     if (gateData) setGateReadiness(gateData);
     if (reviewResponse.ok) setPassportReviews(await reviewResponse.json());
@@ -1226,22 +1230,79 @@ export function useDashboardController() {
     }
   }
 
+  async function captureSupplierQuote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
+    const sourceFile = (form.elements.namedItem("quote_evidence_file") as HTMLInputElement).files?.[0];
+    if (!sourceFile) return;
+    const offer = {
+      supplier_ref: value("quote_supplier_ref"), platform: value("quote_platform"), external_id: value("quote_external_id"),
+      source_url: value("quote_source_url"), title: value("quote_title"), currency: value("quote_currency"),
+      unit_price: value("quote_unit_price"), source_to_cny_rate: value("quote_source_to_cny_rate"),
+      min_order_quantity: Number(value("quote_moq")), weight_kg: value("quote_weight"),
+      length_cm: value("quote_length"), width_cm: value("quote_width"), height_cm: value("quote_height"),
+      domestic_logistics_per_unit: value("quote_domestic_logistics"), attributes: {}, media: [],
+    };
+    const body = new FormData();
+    body.append("product_id", value("quote_product_id"));
+    body.append("document_kind", value("quote_document_kind"));
+    body.append("effective_at", new Date(value("quote_effective_at")).toISOString());
+    body.append("effective_until", value("quote_effective_until") ? new Date(value("quote_effective_until")).toISOString() : "");
+    body.append("offer_json", JSON.stringify(offer));
+    body.append("file", sourceFile);
+    setSourcingUploading(true);
+    setNotice("正在把供应商资料固化为 B 级线索，不会创建正式报价…");
+    try {
+      const response = await fetchJson("/backend/v1/sourcing/quote-evidence", { method: "POST", body });
+      const result = await response.json();
+      setNotice(response.ok ? `报价原件 …${result.id.slice(-8)} 已进入独立复核队列` : result.detail ?? "报价原件录入失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch {
+      setNotice("无法录入供应商报价原件，请检查服务状态");
+    } finally {
+      setSourcingUploading(false);
+    }
+  }
+
+  async function reviewSupplierQuote(event: FormEvent<HTMLFormElement>, evidenceId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const checked = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).checked;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
+    setReviewingKey(`supplier-quote:${evidenceId}`);
+    setNotice("正在固化独立报价复核凭证…");
+    try {
+      const response = await fetchJson(`/backend/v1/sourcing/quote-evidence/${evidenceId}/authority-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accepted: value("quote_review_decision") === "accepted",
+          authentic_original: checked("quote_authentic_original"),
+          supplier_identity_matches: checked("quote_supplier_identity_matches"),
+          product_spec_matches: checked("quote_product_spec_matches"),
+          amount_currency_moq_matches: checked("quote_amount_currency_moq_matches"),
+          validity_and_delivery_terms_present: checked("quote_validity_and_delivery_terms_present"),
+          rationale: value("quote_review_rationale"),
+        }),
+      });
+      const result = await response.json();
+      setNotice(response.ok ? `报价 …${evidenceId.slice(-8)} 已完成独立复核` : result.detail ?? "报价复核失败");
+      if (response.ok) await load();
+    } catch {
+      setNotice("无法完成供应商报价复核");
+    } finally {
+      setReviewingKey(null);
+    }
+  }
+
   async function uploadSupplierComparison(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
-    const file = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).files?.[0];
-    const evidenceFiles = [1, 2, 3].map((index) => file(`supplier_evidence_${index}`));
-    const assumptions = file("assumption_evidence");
-    if (evidenceFiles.some((item) => !item) || !assumptions) return;
-    const offerRows = [1, 2, 3].map((index) => ({
-      supplier_ref: value(`supplier_ref_${index}`), platform: value(`platform_${index}`), external_id: value(`external_id_${index}`),
-      source_url: value(`source_url_${index}`), title: value(`offer_title_${index}`), currency: value(`currency_${index}`),
-      unit_price: value(`unit_price_${index}`), source_to_cny_rate: value(`source_to_cny_rate_${index}`),
-      min_order_quantity: Number(value(`moq_${index}`)), weight_kg: value(`supplier_weight_${index}`),
-      length_cm: value(`supplier_length_${index}`), width_cm: value(`supplier_width_${index}`), height_cm: value(`supplier_height_${index}`),
-      domestic_logistics_per_unit: value(`domestic_logistics_${index}`), attributes: {}, media: [],
-    }));
+    const assumptions = (form.elements.namedItem("assumption_evidence") as HTMLInputElement).files?.[0];
+    const quoteEvidenceIds = [1, 2, 3].map((index) => value(`quote_evidence_id_${index}`));
+    if (!assumptions || quoteEvidenceIds.some((item) => !item)) return;
     const profitInputs = {
       sale_price_rub: value("sale_price_rub"), rub_per_cny: value("rub_per_cny"),
       international_freight_cny_per_kg: value("international_freight"), packaging_cny: value("packaging_cny"),
@@ -1254,15 +1315,14 @@ export function useDashboardController() {
     };
     const body = new FormData();
     body.append("product_id", value("sourcing_product_id")); body.append("effective_at", new Date().toISOString());
-    body.append("offers_json", JSON.stringify(offerRows)); body.append("profit_inputs_json", JSON.stringify(profitInputs));
+    body.append("quote_evidence_ids_json", JSON.stringify(quoteEvidenceIds)); body.append("profit_inputs_json", JSON.stringify(profitInputs));
     body.append("logistics_rate_card_id", value("logistics_rate_card_id"));
     body.append("logistics_currency_to_cny_rate", value("comparison_logistics_currency_to_cny_rate"));
     body.append("logistics_fx_evidence_id", value("comparison_logistics_fx_evidence_id"));
-    evidenceFiles.forEach((item, index) => body.append(`offer_evidence_${index + 1}`, item as File));
     body.append("assumption_evidence", assumptions);
-    setSourcingUploading(true); setNotice("正在固化三家报价并计算可比 CM3…");
+    setSourcingUploading(true); setNotice("正在复验三份独立接受的报价并计算可比 CM3…");
     try {
-      const response = await fetchJson("/backend/v1/sourcing/comparison-intake", { method: "POST", body });
+      const response = await fetchJson("/backend/v1/sourcing/comparison-finalize", { method: "POST", body });
       const result = await response.json();
       setNotice(response.ok ? `${result.comparison.product.sku} 已完成三家证据化报价比较` : result.detail ?? "报价比较录入失败");
       if (response.ok) { form.reset(); await load(); }
@@ -2269,6 +2329,7 @@ export function useDashboardController() {
   ];
   const nextStartupStep = startupSteps.find((item) => !requirement(item.id)?.ready);
   const canReviewFinance = webSession?.roles.some((role) => ["reviewer", "compliance", "admin"].includes(role)) ?? false;
+  const canReviewSupplierQuotes = canReviewFinance;
   const canReviewExecutionAuthority = canReviewFinance;
   const actualCostAuthorityItem = costAuthorityCatalog?.items.find((item) => item.cost_type === actualCostType);
   const reviewableCostEvidence = evidenceRecords.filter((item) => item.source !== "cost_actual_authority_review");
@@ -2293,6 +2354,8 @@ export function useDashboardController() {
     setLogisticsBusy,
     offers,
     setOffers,
+    supplierQuoteEvidence,
+    setSupplierQuoteEvidence,
     products,
     setProducts,
     comparisons,
@@ -2487,6 +2550,8 @@ export function useDashboardController() {
     captureLogisticsRateCard,
     calculateLogisticsCost,
     uploadSupplierComparison,
+    captureSupplierQuote,
+    reviewSupplierQuote,
     importMarketplaceCatalog,
     loadMarketplaceCatalog,
     planMarketplaceGrowth,
@@ -2557,6 +2622,7 @@ export function useDashboardController() {
     startupSteps,
     nextStartupStep,
     canReviewFinance,
+    canReviewSupplierQuotes,
     canReviewExecutionAuthority,
     actualCostAuthorityItem,
     reviewableCostEvidence,

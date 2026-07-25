@@ -5,7 +5,13 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from .evidence import EvidenceGrade
-from .sourcing import PROFIT_TEMPLATE_ID, REQUIRED_COST_EVIDENCE_KEYS, ProfitInputs, SupplierOffer
+from .sourcing import (
+    PROFIT_TEMPLATE_ID,
+    REQUIRED_COST_EVIDENCE_KEYS,
+    ProfitInputs,
+    SourcePlatform,
+    SupplierOffer,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,10 +23,39 @@ class OfferEvidencePayload:
 
 
 class SupplierComparisonIntakeService:
-    def __init__(self, *, sourcing, evidence, logistics=None) -> None:
+    def __init__(self, *, sourcing, evidence, quote_authority, logistics=None) -> None:
         self.sourcing = sourcing
         self.evidence = evidence
+        self.quote_authority = quote_authority
         self.logistics = logistics
+
+    def capture_quote_source(
+        self,
+        *,
+        product_id: str,
+        document_kind: str,
+        offer_data: dict,
+        content: bytes,
+        filename: str,
+        content_type: str,
+        effective_at: str,
+        effective_until: str | None,
+        created_by: str,
+    ):
+        self._require_candidate_handoff(product_id)
+        values = dict(offer_data)
+        values["product_id"] = product_id
+        return self.quote_authority.capture(
+            product_id=product_id,
+            document_kind=document_kind,
+            offer_data=values,
+            content=content,
+            filename=filename,
+            content_type=content_type,
+            effective_at=effective_at,
+            effective_until=effective_until,
+            created_by=created_by,
+        )
 
     def ingest(
         self,
@@ -39,53 +74,102 @@ class SupplierComparisonIntakeService:
         logistics_currency_to_cny_rate: Decimal | None = None,
         logistics_fx_evidence_id: str | None = None,
     ) -> dict:
+        raise ValueError(
+            "Direct comparison intake is retired; capture and independently review "
+            "three supplier quote sources before finalization"
+        )
+
+    def finalize(
+        self,
+        *,
+        product_id: str,
+        quote_evidence_ids: list[str],
+        effective_at: str,
+        profit_inputs: ProfitInputs,
+        assumption_content: bytes,
+        assumption_filename: str,
+        assumption_content_type: str,
+        created_by: str,
+        cost_states: dict[str, str] | None = None,
+        template_id: str = PROFIT_TEMPLATE_ID,
+        logistics_rate_card_id: str | None = None,
+        logistics_currency_to_cny_rate: Decimal | None = None,
+        logistics_fx_evidence_id: str | None = None,
+    ) -> dict:
         self._require_candidate_handoff(product_id)
-        if len(offers) != 3:
-            raise ValueError("Supplier comparison intake requires exactly three offers")
+        normalized_quote_ids = [item.strip() for item in quote_evidence_ids if item.strip()]
+        if len(normalized_quote_ids) != 3 or len(set(normalized_quote_ids)) != 3:
+            raise ValueError("Supplier comparison requires exactly three distinct quote evidence records")
         if logistics_fx_evidence_id and not logistics_rate_card_id:
             raise ValueError("FX evidence requires a selected logistics rate card")
-        supplier_refs = {str(item.offer_data.get("supplier_ref", "")).strip() for item in offers}
-        if "" in supplier_refs or len(supplier_refs) != 3:
-            raise ValueError("Supplier comparison requires three distinct supplier references")
         if not assumption_content:
             raise ValueError("Profit assumptions evidence cannot be empty")
+        normalized_states = cost_states or {
+            key: "estimate" for key in REQUIRED_COST_EVIDENCE_KEYS
+        }
+        if normalized_states.get("product_cost", "estimate") != "estimate":
+            raise ValueError("Confirmed supplier quotes are estimates until invoice payment authority")
+        if normalized_states.get("domestic_logistics", "estimate") != "estimate":
+            raise ValueError("Quoted domestic logistics remains estimate until a final carrier bill")
+
+        source_records = [
+            self.quote_authority.require_accepted(evidence_id)
+            for evidence_id in normalized_quote_ids
+        ]
+        if any(record.metadata["product_id"] != product_id for record in source_records):
+            raise ValueError("All supplier quotes must belong to the selected candidate product")
+        supplier_refs = {
+            str(record.metadata.get("supplier_ref", "")).strip()
+            for record in source_records
+        }
+        if "" in supplier_refs or len(supplier_refs) != 3:
+            raise ValueError("Supplier comparison requires three distinct supplier references")
 
         assumption_digest = hashlib.sha256(assumption_content).hexdigest()
+        quote_set_digest = hashlib.sha256(
+            "|".join(sorted(normalized_quote_ids)).encode()
+        ).hexdigest()
         assumption = self.evidence.capture(
             content=assumption_content,
             filename=assumption_filename,
             content_type=assumption_content_type,
-            source="supplier_comparison_intake",
-            source_ref=f"supplier-comparison://{product_id}/assumptions/sha256/{assumption_digest}",
-            grade=EvidenceGrade.A,
+            source="supplier_comparison_assumptions",
+            source_ref=(
+                f"supplier-comparison://{product_id}/{quote_set_digest}"
+                f"/assumptions/sha256/{assumption_digest}"
+            ),
+            grade=EvidenceGrade.B,
             effective_at=effective_at,
             effective_until=None,
             created_by=created_by,
-            metadata={"product_id": product_id, "evidence_role": "profit_assumptions"},
+            metadata={
+                "product_id": product_id,
+                "evidence_role": "profit_assumptions",
+                "quote_evidence_ids": sorted(normalized_quote_ids),
+                "fact_status": "estimate",
+            },
         )
 
         captured_offers = []
         scenarios = []
-        evidence_records = [assumption]
-        for payload in offers:
-            if not payload.content:
-                raise ValueError("Supplier offer evidence cannot be empty")
-            digest = hashlib.sha256(payload.content).hexdigest()
-            external_id = str(payload.offer_data["external_id"])
-            record = self.evidence.capture(
-                content=payload.content,
-                filename=payload.filename,
-                content_type=payload.content_type,
-                source="supplier_comparison_intake",
-                source_ref=f"supplier-comparison://{product_id}/{external_id}/sha256/{digest}",
-                grade=EvidenceGrade.A,
-                effective_at=effective_at,
-                effective_until=None,
-                created_by=created_by,
-                metadata={"product_id": product_id, "supplier_ref": payload.offer_data["supplier_ref"]},
-            )
+        for record in source_records:
+            raw = self.quote_authority.offer_data(record)
+            raw.pop("product_id", None)
+            raw.pop("evidence_ref", None)
+            raw["platform"] = SourcePlatform(raw["platform"])
+            for key in (
+                "unit_price",
+                "source_to_cny_rate",
+                "weight_kg",
+                "length_cm",
+                "width_cm",
+                "height_cm",
+                "domestic_logistics_per_unit",
+            ):
+                raw[key] = Decimal(str(raw[key]))
+            raw["min_order_quantity"] = int(raw["min_order_quantity"])
             offer = self.sourcing.capture_offer(
-                SupplierOffer(product_id=product_id, evidence_ref=record.id, **payload.offer_data)
+                SupplierOffer(product_id=product_id, evidence_ref=record.id, **raw)
             )
             self.evidence.link(
                 evidence_id=record.id,
@@ -94,9 +178,6 @@ class SupplierComparisonIntakeService:
                 relationship="source_for",
                 created_by=created_by,
             )
-            normalized_states = cost_states or {
-                key: "estimate" for key in REQUIRED_COST_EVIDENCE_KEYS
-            }
             assumption_cost_evidence = {
                 key: assumption.id
                 for key in REQUIRED_COST_EVIDENCE_KEYS
@@ -156,12 +237,18 @@ class SupplierComparisonIntakeService:
                 )
             captured_offers.append(offer)
             scenarios.append(scenario)
-            evidence_records.append(record)
         return {
             "offers": captured_offers,
             "scenarios": scenarios,
-            "evidence": evidence_records,
+            "evidence": [assumption, *source_records],
             "comparison": self.sourcing.compare_product_offers(product_id),
+            "authority": {
+                "quote_evidence_ids": normalized_quote_ids,
+                "all_independently_accepted": True,
+                "product_cost_state": "estimate",
+                "automatic_procurement": False,
+                "automatic_listing": False,
+            },
         }
 
     def _require_candidate_handoff(self, product_id: str) -> None:

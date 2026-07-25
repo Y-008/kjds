@@ -13,9 +13,16 @@ from apps.control_plane.logistics import (
 )
 from apps.control_plane.repository import InMemoryRepository
 from apps.control_plane.services import CommerceService
-from apps.control_plane.sourcing import REQUIRED_COST_EVIDENCE_KEYS, ProfitInputs, SourcePlatform, SourcingService
+from apps.control_plane.sourcing import (
+    REQUIRED_COST_EVIDENCE_KEYS,
+    ProfitInputs,
+    SourcePlatform,
+    SourcingService,
+    SupplierOffer,
+)
 from apps.control_plane.sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeService
 from apps.control_plane.sql_repository import Base
+from apps.control_plane.supplier_quote_authority import SupplierQuoteAuthorityService
 
 
 class MemorySourcingStore:
@@ -82,8 +89,18 @@ def make_intake():
         created_by="operator-1",
     )
     store = MemorySourcingStore()
-    sourcing = SourcingService(store, repository, evidence_validator=evidence.require_valid)
-    return product, store, SupplierComparisonIntakeService(sourcing=sourcing, evidence=evidence)
+    authority = SupplierQuoteAuthorityService(evidence=evidence)
+    sourcing = SourcingService(
+        store,
+        repository,
+        evidence_validator=evidence.require_valid,
+        offer_authority_validator=authority.require_accepted,
+    )
+    return product, store, SupplierComparisonIntakeService(
+        sourcing=sourcing,
+        evidence=evidence,
+        quote_authority=authority,
+    )
 
 
 def profit_inputs():
@@ -131,20 +148,126 @@ def offers():
     return result
 
 
+def accepted_quote_ids(product, intake, payloads=None):
+    quote_ids = []
+    for payload in payloads or offers():
+        record = intake.capture_quote_source(
+            product_id=product.id,
+            document_kind="supplier_confirmed_quote",
+            offer_data=payload.offer_data,
+            content=payload.content,
+            filename=payload.filename,
+            content_type=payload.content_type,
+            effective_at="2026-07-16T00:00:00+08:00",
+            effective_until="2027-07-16T00:00:00+08:00",
+            created_by="operator-1",
+        )
+        intake.quote_authority.review(
+            evidence_id=record.id,
+            accepted=True,
+            authentic_original=True,
+            supplier_identity_matches=True,
+            product_spec_matches=True,
+            amount_currency_moq_matches=True,
+            validity_and_delivery_terms_present=True,
+            rationale="Verified against the immutable supplier quotation.",
+            reviewed_by="reviewer-1",
+        )
+        quote_ids.append(record.id)
+    return quote_ids
+
+
+def test_public_display_price_is_research_only_and_cannot_be_accepted():
+    product, store, intake = make_intake()
+    payload = offers()[0]
+    record = intake.capture_quote_source(
+        product_id=product.id,
+        document_kind="public_display_price",
+        offer_data=payload.offer_data,
+        content=b"1688 public product card display price",
+        filename="1688-public-card.txt",
+        content_type="text/plain",
+        effective_at="2026-07-16T00:00:00+08:00",
+        effective_until=None,
+        created_by="operator-1",
+    )
+
+    assert record.grade == EvidenceGrade.B
+    assert intake.quote_authority.status(record.id)["status"] == "research_only"
+    with pytest.raises(ValueError, match="Public display prices"):
+        intake.quote_authority.review(
+            evidence_id=record.id,
+            accepted=True,
+            authentic_original=True,
+            supplier_identity_matches=True,
+            product_spec_matches=True,
+            amount_currency_moq_matches=True,
+            validity_and_delivery_terms_present=True,
+            rationale="This must remain a research signal.",
+            reviewed_by="reviewer-1",
+        )
+    assert store.offers == {}
+
+
+def test_supplier_quote_requires_independent_reviewer():
+    product, _, intake = make_intake()
+    payload = offers()[0]
+    record = intake.capture_quote_source(
+        product_id=product.id,
+        document_kind="supplier_confirmed_quote",
+        offer_data=payload.offer_data,
+        content=payload.content,
+        filename=payload.filename,
+        content_type=payload.content_type,
+        effective_at="2026-07-16T00:00:00+08:00",
+        effective_until="2027-07-16T00:00:00+08:00",
+        created_by="operator-1",
+    )
+    with pytest.raises(ValueError, match="cannot review their own"):
+        intake.quote_authority.review(
+            evidence_id=record.id,
+            accepted=True,
+            authentic_original=True,
+            supplier_identity_matches=True,
+            product_spec_matches=True,
+            amount_currency_moq_matches=True,
+            validity_and_delivery_terms_present=True,
+            rationale="Self-review is forbidden.",
+            reviewed_by="operator-1",
+        )
+
+
+def test_accepted_quote_terms_cannot_be_changed_when_creating_formal_offer():
+    product, store, intake = make_intake()
+    quote_id = accepted_quote_ids(product, intake, offers()[:1])[0]
+    changed = dict(offers()[0].offer_data)
+    changed["unit_price"] = Decimal("34.99")
+
+    with pytest.raises(ValueError, match="differ from the accepted immutable quote"):
+        intake.sourcing.capture_offer(
+            SupplierOffer(
+                product_id=product.id,
+                evidence_ref=quote_id,
+                **changed,
+            )
+        )
+    assert store.offers == {}
+
+
 def test_three_supplier_comparison_is_evidence_backed_and_idempotent():
     product, store, intake = make_intake()
     values = dict(
         product_id=product.id,
         effective_at="2026-07-16T00:00:00+08:00",
-        offers=offers(),
+        quote_evidence_ids=accepted_quote_ids(product, intake),
         profit_inputs=profit_inputs(),
         assumption_content=b"approved logistics and fee assumptions",
         assumption_filename="assumptions.txt",
         assumption_content_type="text/plain",
         created_by="operator-1",
     )
-    first = intake.ingest(**values)
-    second = intake.ingest(**values)
+    first = intake.finalize(**values)
+    second = intake.finalize(**values)
 
     assert len(store.offers) == 3
     assert len(store.scenarios) == 3
@@ -212,10 +335,10 @@ def test_three_supplier_comparison_uses_one_versioned_logistics_tier_per_offer()
         international_freight_cny_per_kg=Decimal("0"),
     )
 
-    result = intake.ingest(
+    result = intake.finalize(
         product_id=product.id,
         effective_at="2026-07-16T00:00:00+08:00",
-        offers=offers(),
+        quote_evidence_ids=accepted_quote_ids(product, intake),
         profit_inputs=inputs,
         assumption_content=b"approved non-logistics fee assumptions",
         assumption_filename="assumptions.txt",
@@ -242,11 +365,12 @@ def test_supplier_comparison_rejects_duplicate_supplier_identity():
     product, _, intake = make_intake()
     payloads = offers()
     payloads[1].offer_data["supplier_ref"] = payloads[0].offer_data["supplier_ref"]
+    quote_ids = accepted_quote_ids(product, intake, payloads)
     with pytest.raises(ValueError, match="distinct supplier"):
-        intake.ingest(
+        intake.finalize(
             product_id=product.id,
             effective_at="2026-07-16T00:00:00+08:00",
-            offers=payloads,
+            quote_evidence_ids=quote_ids,
             profit_inputs=profit_inputs(),
             assumption_content=b"assumptions",
             assumption_filename="assumptions.txt",
@@ -260,14 +384,16 @@ def test_supplier_comparison_rejects_product_without_candidate_handoff_before_ca
     intake.sourcing.repository.events.clear()
 
     with pytest.raises(ValueError, match="candidate sourcing handoff"):
-        intake.ingest(
+        payload = offers()[0]
+        intake.capture_quote_source(
             product_id=product.id,
+            document_kind="supplier_confirmed_quote",
             effective_at="2026-07-16T00:00:00+08:00",
-            offers=offers(),
-            profit_inputs=profit_inputs(),
-            assumption_content=b"assumptions",
-            assumption_filename="assumptions.txt",
-            assumption_content_type="text/plain",
+            effective_until="2027-07-16T00:00:00+08:00",
+            offer_data=payload.offer_data,
+            content=payload.content,
+            filename=payload.filename,
+            content_type=payload.content_type,
             created_by="operator-1",
         )
 
@@ -302,10 +428,10 @@ def test_supplier_comparison_preserves_unknown_cost_state_and_blocks_procurement
     product, _, intake = make_intake()
     states = {key: "estimate" for key in REQUIRED_COST_EVIDENCE_KEYS}
     states["tax"] = "unknown"
-    result = intake.ingest(
+    result = intake.finalize(
         product_id=product.id,
         effective_at="2026-07-16T00:00:00+08:00",
-        offers=offers(),
+        quote_evidence_ids=accepted_quote_ids(product, intake),
         profit_inputs=profit_inputs(),
         cost_states=states,
         assumption_content=b"approved assumptions except unknown tax",

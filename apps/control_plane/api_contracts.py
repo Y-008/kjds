@@ -194,6 +194,17 @@ class CandidateEvidenceAuthorityReviewInput(BaseModel):
     rationale: str = Field(min_length=1, max_length=2000)
 
 
+class SupplierQuoteAuthorityReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    accepted: bool
+    authentic_original: bool
+    supplier_identity_matches: bool
+    product_spec_matches: bool
+    amount_currency_moq_matches: bool
+    validity_and_delivery_terms_present: bool
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
 class ListingRussianNativeReviewInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     accepted: bool
