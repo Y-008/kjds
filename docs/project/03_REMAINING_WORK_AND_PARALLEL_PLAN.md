@@ -6,12 +6,12 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 8.6 |
+| version | 8.7 |
 | last_reviewed | 2026-07-25 |
 | next_review | 2026-07-27 |
 | gate | G-1–G1 |
 
-任务工作簿中 108 项任务、58 项 P0 继续作为候选库存；当前执行 P0 收敛为下表。没有进入本表的任务不得占用当前开发窗口。
+任务工作簿中 109 项任务、58 项 P0 继续作为候选库存；当前执行 P0 收敛为下表。没有进入本表的任务不得占用当前开发窗口。
 
 ## 当前 P0
 
@@ -98,6 +98,7 @@
 | BAS-087 | G-1 | G1 Harness 收敛 | 工程负责人 | 已冻结场景与覆盖映射；PowerShell 只保留基础设施生命周期、迁移、恢复、Worker、跨进程最小烟测与清理；领域场景由分组 Pytest 合同覆盖；[工程证据](evidence/20260721_BAS_087_G1_HARNESS_CONVERGENCE.md) | BAS-086 | DONE_ENGINEERING |
 | BAS-088 | G0–G4 | 唯一经营工作台 Agent 简报 | 工程+经营 | 单一只读快照聚合 Gate 阻断、运行异常、已有建议与候选组合；动态展示责任 Agent 和当前焦点；Gate 阻断不伪造 SLA；固定禁止自动执行、平台写入和第三方事实晋升；第三方未授权代码不进入仓库；[工程证据](evidence/20260725_BAS_088_UNIFIED_OPERATING_WORKBENCH_AGENT_BRIEFING.md) | BR-065、BAS-065、BAS-086 | DONE_ENGINEERING |
 | BAS-089 | G2–G6 | 批准 Listing 到 Ozon 受控执行闭环 | 工程+商品+控制面 | 批准草稿作为不可变执行来源；服务端派生 item/目标/回滚；俄语母语与执行身份独立复核；12 项 source-aware readiness；独立 Execution Approval、一次写入许可、写前/写后证据、状态轮询、回读、补偿与不确定结果事故闭环；Web 只提供复核和最小计划交接，不提供快捷发布；真实账户和运行开关保持阻塞；[工程证据](evidence/20260725_BAS_089_APPROVED_LISTING_CONTROLLED_EXECUTION.md) | BAS-078、BAS-080、BAS-082、OZN-003 | DONE_ENGINEERING |
+| BAS-090 | G0–G5 | 现有 Ozon SKU 组合增长规划 | 工程+商品+财务+投放 | 单一深模块从版本化全成本场景和不超过 7 天的有证据 Seller/同行快照，计算价格四分位、目标 CM3 底价、最大 ACOS/CPC、内容七角色、合规/库存/评价/转化门禁和 SKU 优先级；1688 展示价不得冒充实际落地成本；输出只作建议，不自动改价、上架或投广告；[工程证据](evidence/20260725_BAS_090_EXISTING_SKU_GROWTH_PLANNER.md) | BAS-063、BAS-076、BAS-089 | DONE_ENGINEERING |
 | BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |
 | BAS-004 | G-1 | 环境状态自动生成 | 工程负责人 | 不再依赖过时静态 PASS 文档 | BAS-003 | DONE |
 | SEC-001 | G-1 | API 身份认证 | 工程负责人 | `KJDS_API_KEY` 或正式身份层生效；未授权为 401/403 | BAS-003 | DONE |

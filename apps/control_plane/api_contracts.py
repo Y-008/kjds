@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.48.0"
+APP_VERSION = "0.49.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -96,6 +96,32 @@ class ObservationInput(BaseModel):
     source_ref: str
     confidence: Decimal
     dimensions: dict[str, str] = Field(default_factory=dict)
+
+
+class MarketplaceSkuGrowthObservationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scenario_id: str = Field(min_length=1, max_length=120)
+    marketplace_sku: str = Field(min_length=1, max_length=120)
+    category: str = Field(min_length=1, max_length=300)
+    competitor_prices_rub: list[Decimal] = Field(min_length=3, max_length=50)
+    stock: int = Field(ge=0)
+    review_count: int = Field(ge=0)
+    orders_14d: int = Field(ge=0)
+    rating: Decimal = Field(ge=0, le=5)
+    content_score: Decimal = Field(ge=0, le=100)
+    conversion_rate: Decimal | None = Field(default=None, ge=0, le=1)
+    compliance_risk: Literal["low", "medium", "high"] = "low"
+    observed_at: str
+    evidence_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class MarketplacePortfolioGrowthPlanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    observations: list[MarketplaceSkuGrowthObservationInput] = Field(
+        min_length=1, max_length=100
+    )
+    target_cm3_rate: Decimal = Field(gt=0, lt=Decimal("0.5"))
+    as_of: str | None = None
 
 
 class OpportunityInput(BaseModel):

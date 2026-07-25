@@ -17,6 +17,7 @@ from ..api_contracts import (
     ChargeInput,
     ContentBriefInput,
     CostEvidenceAuthorityReviewInput,
+    MarketplacePortfolioGrowthPlanInput,
     ObservationInput,
     OpportunityInput,
     OrderInput,
@@ -394,6 +395,24 @@ def handoff_candidate_to_sourcing(
         return result
 
     return run(handoff)
+
+
+@router.post("/v1/marketplace-growth/portfolio-plan")
+def plan_marketplace_portfolio_growth(
+    body: MarketplacePortfolioGrowthPlanInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: runtime.marketplace_growth.plan_portfolio(
+            observations=[
+                observation.model_dump() for observation in body.observations
+            ],
+            target_cm3_rate=body.target_cm3_rate,
+            created_by=principal.actor_id,
+            as_of=body.as_of,
+        )
+    )
 
 
 @router.post("/v1/content/assets", status_code=201)
