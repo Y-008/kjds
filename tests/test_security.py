@@ -2,6 +2,7 @@ import inspect
 import json
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
@@ -208,6 +209,82 @@ def test_evidence_integrity_scan_remains_available_as_a_safety_control():
     source = inspect.getsource(route.endpoint)
     assert "current_principal" in source
     assert "ensure_role" in source
+
+
+def test_limited_execution_safety_bookkeeping_remains_available_after_containment():
+    from apps.control_plane.api import is_write_safety_control_path, registered_routes
+
+    allowed = {
+        "/v1/limited-execution-commands/{command_id}/response-checkpoint",
+        "/v1/limited-execution-commands/{command_id}/receipt",
+    }
+    blocked = {
+        "/v1/governed-execution-plans/{plan_id}/commands",
+        "/v1/limited-execution-commands/{command_id}/claim",
+        "/v1/limited-execution-commands/{command_id}/write-attempt",
+    }
+    routes = {
+        route.path: route.endpoint
+        for route in registered_routes()
+        if hasattr(route, "endpoint") and "POST" in getattr(route, "methods", set())
+    }
+    for path in allowed:
+        assert is_write_safety_control_path(path) is True
+        source = inspect.getsource(routes[path])
+        assert "current_principal" in source
+        assert "ensure_role(principal, \"executor\", \"admin\")" in source
+    for path in blocked:
+        assert is_write_safety_control_path(path) is False
+
+
+def test_kill_switch_middleware_blocks_execution_but_not_safety_bookkeeping(monkeypatch):
+    from apps.control_plane.api import app
+    from apps.control_plane.runtime import runtime
+    from apps.control_plane.security import Principal
+
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: Principal("ozon-worker", frozenset({"executor"})),
+    )
+    monkeypatch.setattr(
+        runtime.kill_switch,
+        "ensure_writes_allowed",
+        lambda: (_ for _ in ()).throw(WritesDisabled("contained")),
+    )
+    client = TestClient(app)
+
+    blocked = client.post(
+        "/v1/limited-execution-commands/lxc-1/write-attempt",
+        headers={"X-KJDS-API-Key": "executor-key"},
+    )
+    assert blocked.status_code == 423
+
+    checkpoint = client.post(
+        "/v1/limited-execution-commands/lxc-1/response-checkpoint",
+        headers={"X-KJDS-API-Key": "executor-key"},
+        data={
+            "artifact_kind": "before_read",
+            "response_sha256": "a" * 64,
+        },
+        files={"file": ("before.json", b"{}", "application/json")},
+    )
+    assert checkpoint.status_code != 423
+
+    receipt = client.post(
+        "/v1/limited-execution-commands/lxc-1/receipt",
+        headers={"X-KJDS-API-Key": "executor-key"},
+        json={
+            "outcome": "uncertain",
+            "remote_operation_id": None,
+            "resulting_state_hash": None,
+            "mutation_applied": False,
+            "error_code": "REMOTE_WRITE_UNCERTAIN",
+            "error_detail": "requires reconciliation",
+            "evidence_ids": ["evd-1"],
+        },
+    )
+    assert receipt.status_code != 423
 
 
 def test_correlation_ids_are_bounded_and_reused_when_safe():

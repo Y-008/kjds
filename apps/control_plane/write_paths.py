@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -114,8 +116,26 @@ class WritePathRegistry:
 
 def validate_repository_write_paths(root: Path) -> None:
     """Fail CI when execution adapters or outbound HTTP escape the registry."""
-    registry = WritePathRegistry()
+    registry = WritePathRegistry(
+        root / "docs" / "project" / "registries" / "write_path_registry.json"
+    )
     snapshot = registry.snapshot()
+    declared_requests: dict[str, str] = {}
+    for path in snapshot["actions"]:
+        for entry in path["request_entries"]:
+            owner = declared_requests.get(entry)
+            if owner is not None:
+                raise WritePathRegistryError(
+                    f"Request entry is assigned to multiple actions: {entry} ({owner}, {path['action_id']})"
+                )
+            declared_requests[entry] = path["action_id"]
+    actual_requests = _repository_request_entries(root)
+    stale_requests = sorted(set(declared_requests) - actual_requests)
+    if stale_requests:
+        raise WritePathRegistryError(
+            f"Request entry drifted from FastAPI routers: {stale_requests}"
+        )
+
     adapters = _literal_assignment(
         root / "apps" / "control_plane" / "execution_plans.py",
         "ADAPTERS",
@@ -132,6 +152,30 @@ def validate_repository_write_paths(root: Path) -> None:
                     f"Live adapter bypasses the lease-worker boundary: {adapter_id}"
                 )
 
+    for path in snapshot["actions"]:
+        if path["availability"] != "enabled":
+            continue
+        _resolve_dotted_entry(root, path["service_entry"], role="service")
+        delivery = path["delivery"]
+        if delivery["kind"] == "none":
+            continue
+        delivery_node = _resolve_dotted_entry(root, delivery["entry"], role="delivery")
+        _validate_external_endpoint_ownership(root, path)
+        if delivery["kind"] != "lease_worker":
+            continue
+        worker_values = _class_literal_assignments(delivery_node)
+        action_id = path["action_id"]
+        if worker_values.get("ACTION_ID") != action_id:
+            raise WritePathRegistryError(
+                f"Worker action drifted: {delivery['entry']} must declare ACTION_ID={action_id}"
+            )
+        adapter_id = worker_values.get("ADAPTER_ID")
+        adapter = adapters.get(str(adapter_id))
+        if adapter is None or adapter.get("action_id") != action_id:
+            raise WritePathRegistryError(
+                f"Worker adapter drifted: {delivery['entry']} ADAPTER_ID={adapter_id}"
+            )
+
     allowed_http = set(snapshot["outbound_http_modules"])
     actual_http: set[str] = set()
     for source in (root / "apps" / "control_plane").rglob("*.py"):
@@ -145,7 +189,7 @@ def validate_repository_write_paths(root: Path) -> None:
             f"undeclared={sorted(actual_http - allowed_http)}, stale={sorted(allowed_http - actual_http)}"
         )
 
-    python_sources = list((root / "apps").rglob("*.py"))
+    python_sources = [root / module for module in actual_http]
     for boundary in snapshot["exclusive_external_literals"]:
         literal = boundary["literal"]
         allowed = set(boundary["allowed_modules"])
@@ -158,6 +202,125 @@ def validate_repository_write_paths(root: Path) -> None:
             raise WritePathRegistryError(
                 f"External call boundary drifted for {literal}; matches={sorted(matches)}"
             )
+
+
+def _repository_request_entries(root: Path) -> set[str]:
+    entries: set[str] = set()
+    for source in (root / "apps" / "control_plane" / "routers").glob("*.py"):
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                if (
+                    not isinstance(decorator, ast.Call)
+                    or not isinstance(decorator.func, ast.Attribute)
+                    or not isinstance(decorator.func.value, ast.Name)
+                    or decorator.func.value.id != "router"
+                    or decorator.func.attr not in {"post", "put", "patch", "delete"}
+                    or not decorator.args
+                    or not isinstance(decorator.args[0], ast.Constant)
+                    or not isinstance(decorator.args[0].value, str)
+                ):
+                    continue
+                entries.add(f"{decorator.func.attr.upper()} {decorator.args[0].value}")
+    return entries
+
+
+def _resolve_dotted_entry(root: Path, entry: str, *, role: str) -> ast.AST:
+    if not isinstance(entry, str) or not entry.startswith("apps."):
+        raise WritePathRegistryError(f"Invalid {role} dotted entry: {entry}")
+    parts = entry.split(".")
+    for module_end in range(len(parts) - 1, 0, -1):
+        source = root.joinpath(*parts[:module_end]).with_suffix(".py")
+        if not source.is_file():
+            continue
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        node: ast.AST = tree
+        for name in parts[module_end:]:
+            body = getattr(node, "body", [])
+            match = next(
+                (
+                    item
+                    for item in body
+                    if isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                    and item.name == name
+                ),
+                None,
+            )
+            if match is None:
+                raise WritePathRegistryError(
+                    f"Unable to resolve {role} dotted entry: {entry}"
+                )
+            node = match
+        return node
+    raise WritePathRegistryError(f"Unable to resolve {role} module: {entry}")
+
+
+def _class_literal_assignments(node: ast.AST) -> dict[str, Any]:
+    if not isinstance(node, ast.ClassDef):
+        raise WritePathRegistryError("Lease-worker delivery entry must resolve to a class")
+    values: dict[str, Any] = {}
+    for item in node.body:
+        if not isinstance(item, ast.Assign):
+            continue
+        for target in item.targets:
+            if isinstance(target, ast.Name):
+                with contextlib.suppress(ValueError, TypeError):
+                    values[target.id] = ast.literal_eval(item.value)
+    return values
+
+
+def _validate_external_endpoint_ownership(root: Path, path: dict[str, Any]) -> None:
+    source = root.joinpath(*path["delivery"]["entry"].split(".")[:-1]).with_suffix(".py")
+    source_tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    literals = {
+        template
+        for node in ast.walk(source_tree)
+        if (template := _endpoint_template(node)) is not None
+    }
+    for call in path["external_calls"]:
+        match = re.fullmatch(
+            r"(?:GET|POST|PUT|PATCH|DELETE)\s+\S+\s+(/\S+?)(?:\s+\[(?:before-read|write|import-status|after-read|fallback)\])?",
+            call,
+        )
+        if match is None:
+            raise WritePathRegistryError(
+                f"External call declaration is not an owned endpoint: {path['action_id']}:{call}"
+            )
+        endpoint = match.group(1)
+        if endpoint not in literals:
+            raise WritePathRegistryError(
+                f"External endpoint drifted: {path['action_id']}:{endpoint} is not owned by "
+                f"{path['delivery']['entry']}"
+            )
+
+
+def _endpoint_template(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value if node.value.startswith("/") else None
+    if not isinstance(node, ast.JoinedStr):
+        return None
+    parts: list[str] = []
+    for value in node.values:
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            parts.append(value.value)
+        elif isinstance(value, ast.FormattedValue):
+            if isinstance(value.value, ast.Name):
+                name = value.value.id
+            elif (
+                isinstance(value.value, ast.Call)
+                and isinstance(value.value.func, ast.Attribute)
+                and isinstance(value.value.func.value, ast.Name)
+            ):
+                name = value.value.func.value.id
+            else:
+                return None
+            parts.append(f"{{{name}}}")
+        else:
+            return None
+    template = "".join(parts)
+    return template if template.startswith("/") else None
 
 
 def _literal_assignment(path: Path, name: str) -> dict[str, Any]:

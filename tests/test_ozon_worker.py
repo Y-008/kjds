@@ -1,20 +1,26 @@
 import base64
 import json
+import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 import pytest
 
+from apps.control_plane import ozon_worker
 from apps.control_plane.ozon_read_worker import (
     ControlPlanePilotReaderClient,
     OzonFinanceReadOnlyWorker,
     OzonReadOnlyWorker,
 )
 from apps.control_plane.ozon_worker import (
+    ControlPlaneExecutorClient,
+    ExecutionCheckpointError,
     OzonApiError,
     OzonCredentials,
     OzonExecutionWorker,
     OzonSellerClient,
+    offline_execution_preflight,
 )
 
 
@@ -23,11 +29,12 @@ class FakeControlPlane:
         self.commands = commands
         self.claims = []
         self.receipts = []
+        self.checkpoints = []
         self.trace_ids = []
 
-    def list_commands(self, *, trace_id):
+    def get_command(self, command_id, *, trace_id):
         self.trace_ids.append(trace_id)
-        return self.commands
+        return next(item for item in self.commands if item["id"] == command_id)
 
     def claim(self, command_id, state_hash, *, trace_id):
         self.trace_ids.append(trace_id)
@@ -35,10 +42,58 @@ class FakeControlPlane:
         original = next(item for item in self.commands if item["id"] == command_id)
         return {**original, "status": "claimed"}
 
+    def begin_write_attempt(self, command_id, *, trace_id):
+        self.trace_ids.append(trace_id)
+        original = next(item for item in self.commands if item["id"] == command_id)
+        return {
+            **original,
+            "status": "write_started",
+            "write_attempt_consumed": True,
+        }
+
+    def checkpoint_response(
+        self,
+        command_id,
+        *,
+        artifact_kind,
+        content,
+        sequence_number,
+        trace_id,
+    ):
+        self.trace_ids.append(trace_id)
+        evidence_id = f"evd-{artifact_kind}-{sequence_number if sequence_number is not None else 'single'}"
+        self.checkpoints.append(
+            {
+                "command_id": command_id,
+                "artifact_kind": artifact_kind,
+                "content": content,
+                "sequence_number": sequence_number,
+                "evidence_id": evidence_id,
+            }
+        )
+        return {
+            "evidence_id": evidence_id,
+            "artifact_kind": artifact_kind,
+            "sequence_number": sequence_number,
+            "immutable": True,
+        }
+
     def receipt(self, command_id, body, *, trace_id):
         self.trace_ids.append(trace_id)
         self.receipts.append((command_id, body))
         return {"command_id": command_id, "trace_id": trace_id, **body}
+
+
+def execution_environment():
+    return {
+        "KJDS_EXECUTOR_API_KEY": "executor-private-key",
+        "KJDS_OZON_EXECUTION_IDENTITY_REF": "ozon-worker-private-id",
+        "OZON_CLIENT_ID": "write-client-private-id",
+        "OZON_API_KEY": "write-api-private-key",
+        "OZON_API_URL": "https://api-seller.ozon.ru",
+        "OZON_PRODUCT_ATTRIBUTES_PATH": "/v4/product/info/attributes",
+        "KJDS_CONTROL_PLANE_URL": "http://127.0.0.1:8000",
+    }
 
 
 def command():
@@ -87,6 +142,112 @@ def command():
     return value
 
 
+def test_execution_preflight_is_offline_hashed_and_single_command():
+    environment = execution_environment()
+    report = offline_execution_preflight(
+        command_id="command-private-id",
+        offer_id="offer-private-id",
+        evidence_ids=["evidence-private-id"],
+        environment=environment,
+    )
+
+    assert report["status"] == "ready_for_explicit_execution"
+    assert report["network_calls_performed"] is False
+    assert report["target_count"] == 1
+    assert report["evidence_count"] == 1
+    assert report["credential_values_distinct"] is True
+    serialized = json.dumps(report)
+    for private_value in (
+        "command-private-id",
+        "offer-private-id",
+        "evidence-private-id",
+        *environment.values(),
+    ):
+        assert private_value not in serialized
+
+
+@pytest.mark.parametrize("mode_args", [[], ["--preflight", "--execute"]])
+def test_execution_cli_requires_exactly_one_mode_before_clients(monkeypatch, mode_args):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ozon_worker",
+            *mode_args,
+            "--command-id",
+            "lxc-1",
+            "--offer-id",
+            "offer-1",
+            "--evidence-id",
+            "evd-1",
+        ],
+    )
+    monkeypatch.setattr(
+        ozon_worker.httpx,
+        "Client",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("execution intent must fail before client construction")
+        ),
+    )
+    with pytest.raises(SystemExit) as caught:
+        ozon_worker.main()
+    assert caught.value.code == 2
+
+
+def test_execution_preflight_cli_returns_before_http_clients(monkeypatch, capsys):
+    for name, value in execution_environment().items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ozon_worker",
+            "--preflight",
+            "--command-id",
+            "command-private-id",
+            "--offer-id",
+            "offer-private-id",
+            "--evidence-id",
+            "evidence-private-id",
+        ],
+    )
+    monkeypatch.setattr(
+        ozon_worker.httpx,
+        "Client",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("offline preflight must not construct an HTTP client")
+        ),
+    )
+
+    ozon_worker.main()
+
+    output = capsys.readouterr().out
+    assert json.loads(output)["network_calls_performed"] is False
+    assert "private" not in output
+
+
+def test_execution_worker_compose_and_script_require_explicit_one_shot_intent():
+    compose = Path("compose.yaml").read_text(encoding="utf-8")
+    worker = compose.split("  ozon-worker:", maxsplit=1)[1].split(
+        "  ozon-read-worker:", maxsplit=1
+    )[0]
+    script = Path("scripts/run-ozon-worker.ps1").read_text(encoding="utf-8")
+
+    assert "      - --execute" in worker
+    assert "      - --command-id" in worker
+    assert "      - --offer-id" in worker
+    assert "KJDS_EXECUTION_EVIDENCE_IDS" in worker
+    assert "KJDS_EXECUTION_EVIDENCE_ID:-" not in worker
+    assert "KJDS_EXECUTION_EVIDENCE_ID =" not in script
+    assert "OZON_WRITE_CLIENT_ID" in worker
+    assert "OZON_WRITE_API_KEY" in worker
+    assert "OZON_CLIENT_ID:-" not in worker
+    assert "OZON_API_KEY:-" not in worker
+    assert "[switch]$Execute" in script
+    assert "--rm --no-deps ozon-worker" in script
+    assert script.index("--preflight") < script.index("if (-not $Execute)")
+
+
 def test_ozon_worker_isolates_credentials_reads_state_and_confirms_async_import():
     calls = []
     state_version = {"value": 1}
@@ -98,7 +259,8 @@ def test_ozon_worker_isolates_credentials_reads_state_and_confirms_async_import(
         if request.url.path == "/v3/product/info/list":
             return httpx.Response(200, json={"items": [{"offer_id": "offer-1", "version": state_version["value"]}]})
         if request.url.path == "/v4/product/info/attributes":
-            return httpx.Response(200, json={"result": [{"offer_id": "offer-1", "name": "Name"}]})
+            name = "Name" if state_version["value"] == 1 else "Updated name"
+            return httpx.Response(200, json={"result": [{"offer_id": "offer-1", "name": name}]})
         if request.url.path == "/v3/product/import":
             state_version["value"] = 2
             return httpx.Response(200, json={"result": {"task_id": 42}})
@@ -115,7 +277,11 @@ def test_ozon_worker_isolates_credentials_reads_state_and_confirms_async_import(
     control = FakeControlPlane([command()])
     worker = OzonExecutionWorker(control_plane=control, ozon=ozon)
     try:
-        receipt = worker.run_once(evidence_ids=["evd-1"])
+        receipt = worker.run_once(
+            command_id="lxc-1",
+            offer_id="offer-1",
+            evidence_ids=["evd-1"],
+        )
     finally:
         ozon.close()
 
@@ -125,6 +291,20 @@ def test_ozon_worker_isolates_credentials_reads_state_and_confirms_async_import(
     assert control.claims[0][0] == "lxc-1"
     assert control.claims[0][1] != receipt["resulting_state_hash"]
     assert [path for path, _, _ in calls].count("/v3/product/import") == 1
+    assert [item["artifact_kind"] for item in control.checkpoints] == [
+        "before_read",
+        "product_import_response",
+        "import_status_response",
+        "after_read",
+    ]
+    assert control.checkpoints[2]["sequence_number"] == 0
+    assert control.receipts[0][1]["evidence_ids"] == [
+        "evd-1",
+        "evd-before_read-single",
+        "evd-product_import_response-single",
+        "evd-import_status_response-0",
+        "evd-after_read-single",
+    ]
     assert len(set(control.trace_ids)) == 1
 
 
@@ -174,6 +354,247 @@ def test_ozon_write_transport_failure_is_never_blindly_retried():
     assert calls["writes"] == 1
 
 
+class FailingImportCheckpointControlPlane(FakeControlPlane):
+    def checkpoint_response(self, command_id, **values):
+        if values["artifact_kind"] == "product_import_response":
+            raise ExecutionCheckpointError("durable checkpoint unavailable")
+        return super().checkpoint_response(command_id, **values)
+
+
+class ScriptedExecutionOzon:
+    def __init__(self, *, import_result=None, import_error=None, status_result=None, status_error=None, after=None):
+        self.import_result = import_result or {
+            "task_id": "42",
+            "response_evidence_bytes": b"import-response",
+        }
+        self.import_error = import_error
+        self.status_result = status_result or {
+            "status": "succeeded",
+            "response_evidence_bytes": [b"status-response"],
+        }
+        self.status_error = status_error
+        self.after = after
+        self.offer_reads = 0
+        self.import_calls = 0
+
+    def offer_state(self, offer_id):
+        self.offer_reads += 1
+        if self.offer_reads == 1:
+            state = {
+                "contract_version": "ozon-product-read-v1",
+                "offer_id": offer_id,
+                "info": {"items": [{"offer_id": offer_id, "version": 1}]},
+                "attributes": {"result": [{"offer_id": offer_id, "name": "Name"}]},
+            }
+            return {
+                "state": state,
+                "state_hash": OzonSellerClient.state_hash(state),
+                "response_evidence_bytes": b"before-response",
+            }
+        if isinstance(self.after, Exception):
+            raise self.after
+        state = self.after or {
+            "contract_version": "ozon-product-read-v1",
+            "offer_id": offer_id,
+            "info": {"items": [{"offer_id": offer_id, "version": 2}]},
+            "attributes": {"result": [{"offer_id": offer_id, "name": "Updated name"}]},
+        }
+        return {
+            "state": state,
+            "state_hash": OzonSellerClient.state_hash(state),
+            "response_evidence_bytes": b"after-response",
+        }
+
+    def import_product(self, _item):
+        self.import_calls += 1
+        if self.import_error is not None:
+            raise self.import_error
+        return self.import_result
+
+    def wait_for_import(self, task_id, *, on_response=None):
+        assert task_id == "42"
+        captures = self.status_result.get("response_evidence_bytes", [])
+        for index, content in enumerate(captures):
+            if on_response is not None:
+                on_response(content, index)
+        if self.status_error is not None:
+            if self.status_error.response_evidence_bytes is not None and on_response is not None:
+                on_response(self.status_error.response_evidence_bytes, len(captures))
+            raise self.status_error
+        return {
+            key: value
+            for key, value in self.status_result.items()
+            if key != "response_evidence_bytes"
+        }
+
+
+def test_worker_records_uncertainty_when_import_response_checkpoint_fails():
+    calls = {"writes": 0}
+    state_version = {"value": 1}
+
+    def handler(request: httpx.Request):
+        if request.url.path == "/v3/product/info/list":
+            return httpx.Response(
+                200,
+                json={"items": [{"offer_id": "offer-1", "version": state_version["value"]}]},
+            )
+        if request.url.path == "/v4/product/info/attributes":
+            return httpx.Response(
+                200,
+                json={"result": [{"offer_id": "offer-1", "name": "Name"}]},
+            )
+        if request.url.path == "/v3/product/import":
+            calls["writes"] += 1
+            state_version["value"] = 2
+            return httpx.Response(200, json={"result": {"task_id": 42}})
+        raise AssertionError(f"Unexpected path after lost import checkpoint: {request.url.path}")
+
+    ozon = OzonSellerClient(
+        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(handler),
+    )
+    control = FailingImportCheckpointControlPlane([command()])
+    try:
+        receipt = OzonExecutionWorker(control_plane=control, ozon=ozon).run_once(
+            command_id="lxc-1",
+            offer_id="offer-1",
+            evidence_ids=["evd-1"],
+        )
+    finally:
+        ozon.close()
+
+    assert calls["writes"] == 1
+    assert receipt["outcome"] == "uncertain"
+    assert receipt["remote_operation_id"] == "42"
+    assert receipt["error_code"] == "CONTROL_PLANE_CHECKPOINT_FAILED"
+    assert receipt["evidence_ids"] == ["evd-1", "evd-before_read-single"]
+
+
+def test_worker_write_transport_ambiguity_records_uncertain_without_replay():
+    ozon = ScriptedExecutionOzon(
+        import_error=OzonApiError(
+            "Ozon write outcome is uncertain after transport failure",
+            code="OZON_WRITE_UNCERTAIN",
+            retryable=False,
+        )
+    )
+    control = FakeControlPlane([command()])
+
+    receipt = OzonExecutionWorker(control_plane=control, ozon=ozon).run_once(
+        command_id="lxc-1",
+        offer_id="offer-1",
+        evidence_ids=["evd-1"],
+    )
+
+    assert ozon.import_calls == 1
+    assert receipt["outcome"] == "uncertain"
+    assert receipt["remote_operation_id"] is None
+    assert receipt["error_code"] == "OZON_WRITE_UNCERTAIN"
+    assert [item["artifact_kind"] for item in control.checkpoints] == ["before_read"]
+
+
+def test_worker_preserves_known_task_and_terminal_status_evidence_after_poll_failure():
+    ozon = ScriptedExecutionOzon(
+        status_result={
+            "status": "uncertain",
+            "response_evidence_bytes": [b"prior-status-response"],
+        },
+        status_error=OzonApiError(
+            "Ozon status read failed",
+            code="OZON_HTTP_503",
+            status_code=503,
+            retryable=True,
+            response_evidence_bytes=b"terminal-status-response",
+        )
+    )
+    control = FakeControlPlane([command()])
+
+    receipt = OzonExecutionWorker(control_plane=control, ozon=ozon).run_once(
+        command_id="lxc-1",
+        offer_id="offer-1",
+        evidence_ids=["evd-1"],
+    )
+
+    assert ozon.import_calls == 1
+    assert receipt["outcome"] == "uncertain"
+    assert receipt["remote_operation_id"] == "42"
+    assert receipt["error_code"] == "OZON_HTTP_503"
+    assert [item["artifact_kind"] for item in control.checkpoints] == [
+        "before_read",
+        "product_import_response",
+        "import_status_response",
+        "import_status_response",
+    ]
+    assert [item["sequence_number"] for item in control.checkpoints[-2:]] == [0, 1]
+
+
+def test_worker_poll_timeout_is_uncertain_and_never_reads_after_state():
+    ozon = ScriptedExecutionOzon(
+        status_result={
+            "status": "uncertain",
+            "response_evidence_bytes": [b"pending-status-response"],
+        }
+    )
+    control = FakeControlPlane([command()])
+
+    receipt = OzonExecutionWorker(control_plane=control, ozon=ozon).run_once(
+        command_id="lxc-1",
+        offer_id="offer-1",
+        evidence_ids=["evd-1"],
+    )
+
+    assert ozon.import_calls == 1
+    assert ozon.offer_reads == 1
+    assert receipt["outcome"] == "uncertain"
+    assert receipt["remote_operation_id"] == "42"
+    assert receipt["error_code"] == "OZON_IMPORT_NOT_CONFIRMED"
+
+
+def test_worker_after_read_failure_cannot_report_success():
+    ozon = ScriptedExecutionOzon(
+        after=OzonApiError(
+            "Ozon after-state read failed",
+            code="OZON_READ_TRANSPORT",
+            retryable=True,
+        )
+    )
+    control = FakeControlPlane([command()])
+
+    receipt = OzonExecutionWorker(control_plane=control, ozon=ozon).run_once(
+        command_id="lxc-1",
+        offer_id="offer-1",
+        evidence_ids=["evd-1"],
+    )
+
+    assert ozon.import_calls == 1
+    assert receipt["outcome"] == "uncertain"
+    assert receipt["error_code"] == "OZON_AFTER_READ_UNCERTAIN"
+    assert "evd-after_read-single" not in receipt["evidence_ids"]
+
+
+def test_worker_readback_divergence_is_uncertain_with_after_evidence():
+    divergent_state = {
+        "contract_version": "ozon-product-read-v1",
+        "offer_id": "offer-1",
+        "info": {"items": [{"offer_id": "offer-1", "version": 2}]},
+        "attributes": {"result": [{"offer_id": "offer-1", "name": "Unexpected name"}]},
+    }
+    ozon = ScriptedExecutionOzon(after=divergent_state)
+    control = FakeControlPlane([command()])
+
+    receipt = OzonExecutionWorker(control_plane=control, ozon=ozon).run_once(
+        command_id="lxc-1",
+        offer_id="offer-1",
+        evidence_ids=["evd-1"],
+    )
+
+    assert ozon.import_calls == 1
+    assert receipt["outcome"] == "uncertain"
+    assert receipt["mutation_applied"] is True
+    assert receipt["error_code"] == "OZON_READBACK_DIVERGENT"
+    assert receipt["evidence_ids"][-1] == "evd-after_read-single"
+
+
 def test_ozon_read_retries_rate_limit_without_leaking_response_body(monkeypatch):
     calls = {"count": 0}
     monkeypatch.setattr("apps.control_plane.ozon_worker.time.sleep", lambda _: None)
@@ -192,7 +613,7 @@ def test_ozon_read_retries_rate_limit_without_leaking_response_body(monkeypatch)
         result = client.import_status("42")
     finally:
         client.close()
-    assert result == {"result": {"items": []}}
+    assert result["response"] == {"result": {"items": []}}
     assert calls["count"] == 2
 
 
@@ -747,6 +1168,119 @@ def test_control_plane_checkpoint_and_finalize_retry_5xx_without_platform_replay
     assert calls == {"checkpoint": 3, "finalize": 3}
 
 
+def test_execution_checkpoint_retries_idempotent_control_plane_failures():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request):
+        calls["count"] += 1
+        if calls["count"] < 3:
+            return httpx.Response(503, json={"detail": "temporary"})
+        return httpx.Response(
+            201,
+            json={
+                "evidence_id": "evd-checkpoint",
+                "artifact_kind": "before_read",
+                "immutable": True,
+            },
+        )
+
+    client = ControlPlaneExecutorClient(
+        base_url="http://control-plane.test",
+        api_key="executor-key",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = client.checkpoint_response(
+            "lxc-1",
+            artifact_kind="before_read",
+            content=b'{"responses":[]}',
+            sequence_number=None,
+            trace_id="trace-execution",
+        )
+    finally:
+        client.close()
+    assert result["evidence_id"] == "evd-checkpoint"
+    assert calls["count"] == 3
+
+
+@pytest.mark.parametrize("operation", ["checkpoint", "receipt"])
+def test_execution_bookkeeping_exhausts_bounded_retries(operation):
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request):
+        calls["count"] += 1
+        return httpx.Response(503, json={"detail": "temporary"})
+
+    client = ControlPlaneExecutorClient(
+        base_url="http://control-plane.test",
+        api_key="executor-key",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        if operation == "checkpoint":
+            with pytest.raises(ExecutionCheckpointError, match="durably checkpoint"):
+                client.checkpoint_response(
+                    "lxc-1",
+                    artifact_kind="product_import_response",
+                    content=b'{"responses":[]}',
+                    sequence_number=None,
+                    trace_id="trace-execution",
+                )
+        else:
+            with pytest.raises(RuntimeError, match="execution receipt returned HTTP 503"):
+                client.receipt(
+                    "lxc-1",
+                    {
+                        "outcome": "uncertain",
+                        "remote_operation_id": "42",
+                        "resulting_state_hash": None,
+                        "mutation_applied": False,
+                        "error_code": "CHECKPOINT_FAILED",
+                        "error_detail": "reconciliation required",
+                        "evidence_ids": ["evd-before"],
+                    },
+                    trace_id="trace-execution",
+                )
+    finally:
+        client.close()
+    assert calls["count"] == 3
+
+
+def test_execution_receipt_retries_with_one_stable_request_id():
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request.headers["X-Request-ID"])
+        if len(calls) < 3:
+            return httpx.Response(503, json={"detail": "temporary"})
+        return httpx.Response(201, json={"id": "lxr-1", "outcome": "uncertain"})
+
+    client = ControlPlaneExecutorClient(
+        base_url="http://control-plane.test",
+        api_key="executor-key",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = client.receipt(
+            "lxc-1",
+            {
+                "outcome": "uncertain",
+                "remote_operation_id": "42",
+                "resulting_state_hash": None,
+                "mutation_applied": False,
+                "error_code": "CHECKPOINT_FAILED",
+                "error_detail": "reconciliation required",
+                "evidence_ids": ["evd-before"],
+            },
+            trace_id="trace-execution",
+        )
+    finally:
+        client.close()
+    assert result["id"] == "lxr-1"
+    assert len(calls) == 3
+    assert len(set(calls)) == 1
+
+
 def test_ozon_schema_drift_fails_closed_without_leaking_response_body():
     def handler(request: httpx.Request):
         return httpx.Response(200, json={"unexpected": [{"secret": "upstream-private"}]})
@@ -795,7 +1329,7 @@ def test_ozon_circuit_opens_after_bounded_5xx_failures_and_recovers(monkeypatch)
         assert opened.value.code == "OZON_CIRCUIT_OPEN"
         assert calls["count"] == 6
         now["value"] = 11
-        assert client.import_status("42") == {"result": {"items": []}}
+        assert client.import_status("42")["response"] == {"result": {"items": []}}
         assert client.circuit_status()["state"] == "closed"
     finally:
         client.close()

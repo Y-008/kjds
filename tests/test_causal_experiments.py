@@ -1138,7 +1138,7 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
         policies=policies,
         evidence=evidence,
         commerce=commerce,
-        readiness_provider=lambda _action, _target: {
+        readiness_provider=lambda _context: {
             "demand.real_execution": {
                 "ready": True,
                 "evidence_ids": [readiness_source.id],
@@ -1238,7 +1238,7 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     command = executor.queue(plan["id"], queued_by="execution-operator")
     assert command["status"] == "queued"
     assert command["action_id"] == "listing_publish"
-    assert command["action_policy_version"] == "2026-07-21.2"
+    assert command["action_policy_version"] == "2026-07-24.1"
     assert command["decision_hash"] == ready_plan["decision_packet"]["decision_hash"]
     assert command["risk_limits"] == {
         "max_daily_runs": "5",
@@ -1308,6 +1308,17 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
         worker_id="ozon-worker",
     )
     assert claimed["status"] == "claimed"
+    write_started = executor.begin_write_attempt(
+        command["id"],
+        worker_id="ozon-worker",
+    )
+    assert write_started["status"] == "write_started"
+    assert write_started["write_attempt_consumed"] is True
+    with pytest.raises(ValueError, match="not available"):
+        executor.begin_write_attempt(
+            command["id"],
+            worker_id="ozon-worker",
+        )
     resulting_hash = "b" * 64
     receipt = executor.record_receipt(
         command["id"],
@@ -1381,6 +1392,10 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     executor.claim(
         rollback["id"],
         current_state_hash=resulting_hash,
+        worker_id="ozon-worker",
+    )
+    executor.begin_write_attempt(
+        rollback["id"],
         worker_id="ozon-worker",
     )
     rollback_receipt = executor.record_receipt(
@@ -1475,6 +1490,10 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     executor.claim(
         failed_command["id"],
         current_state_hash=state_hash,
+        worker_id="ozon-worker",
+    )
+    executor.begin_write_attempt(
+        failed_command["id"],
         worker_id="ozon-worker",
     )
     partial_hash = "c" * 64

@@ -2,11 +2,21 @@
 
 import { CheckCircle2, Image as ImageIcon, ShieldCheck } from "lucide-react";
 import { passportLabels, productMediaRoleLabels, imageQaDefinitions } from "./dashboard-config";
+import { selectListingExecutionPresentations } from "./listing-execution-presentation";
 import type { DashboardModel } from "./use-dashboard-controller";
 
 
 export function ProductContentPanel({ model }: { model: DashboardModel }) {
-  const { comparisons, contentAssets, createImageBrief, createListingDraft, health, imageBriefBusy, imageExecutionBusy, imageQaBusy, listingDraftBusy, passportReviews, pendingListingApprovals, productMediaReadiness, productMediaUploading, products, reviewImageAsset, reviewNotes, reviewPassport, reviewingKey, runImageGeneration, setReviewNotes, skuUploading, uploadProductMedia, uploadSkuEpisode } = model;
+  const { approvals, approvedListingApprovals, canReviewExecutionAuthority, comparisons, contentAssets, createImageBrief, createListingDraft, evidenceRecords, health, imageBriefBusy, imageExecutionBusy, imageQaBusy, lifecycleBusy, limitedExecutionCommands, listingDraftBusy, listingExecutionPlans, operationalIncidents, passportReviews, pendingListingApprovals, prepareListingExecutionPlan, productMediaReadiness, productMediaUploading, products, reviewImageAsset, reviewListingRussianNative, reviewNotes, reviewOzonExecutionIdentity, reviewPassport, reviewingKey, runImageGeneration, setReviewNotes, skuUploading, uploadProductMedia, uploadSkuEpisode } = model;
+  const executionIdentityEvidence = evidenceRecords.filter((item) => item.source === "ozon_execution_identity_inventory" && item.grade === "A");
+  const listingExecutionPresentations = selectListingExecutionPresentations({
+    listingApprovals: approvedListingApprovals,
+    approvals,
+    plans: listingExecutionPlans,
+    commands: limitedExecutionCommands,
+    incidents: operationalIncidents,
+    evidenceRecords,
+  });
   return <><section className="sku-intake-panel" id="sku-intake">
           <div className="panel-title"><div><p className="eyebrow">SKU EPISODE INTAKE</p><h3>候选 SKU 一站式录入</h3></div><span className="badge">草稿 · 需人工审核</span></div>
           <form className="sku-intake" onSubmit={uploadSkuEpisode}>
@@ -139,6 +149,27 @@ export function ProductContentPanel({ model }: { model: DashboardModel }) {
             <div><p className="eyebrow">IMMUTABLE LISTING REVIEW</p><h3>Ozon Listing 发布审批快照</h3></div>
             <span className={pendingListingApprovals.length ? "badge" : "gate ready"}>{pendingListingApprovals.length ? `${pendingListingApprovals.length} 项待独立审批` : "队列已清空"}</span>
           </div>
+          {canReviewExecutionAuthority && <details className="listing-snapshot-details">
+            <summary>复核专用 Ozon 执行身份</summary>
+            {executionIdentityEvidence.length ? <form className="listing-handoff-form" onSubmit={reviewOzonExecutionIdentity}>
+              <div>
+                <label>身份盘点 Evidence<select name="execution_identity_evidence" defaultValue="" required><option value="">选择 OZN-001 原件</option>{executionIdentityEvidence.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename} · {item.sha256.slice(0, 12)}…</option>)}</select></label>
+                <label>脱敏身份引用<input name="execution_identity_ref" placeholder="例如 ozon-listing-worker" maxLength={120} required /></label>
+                <label>结论<select name="execution_identity_decision" defaultValue="accepted"><option value="accepted">接受</option><option value="rejected">拒绝</option></select></label>
+              </div>
+              <div className="review-actions">
+                <label><input name="inventory_complete" type="checkbox" />盘点完整</label>
+                <label><input name="credential_material_absent" type="checkbox" />不含凭证材料</label>
+                <label><input name="owner_verified" type="checkbox" />Owner 已核验</label>
+                <label><input name="caller_system_verified" type="checkbox" />调用系统已核验</label>
+                <label><input name="scope_minimized" type="checkbox" />权限已最小化</label>
+                <label><input name="dedicated_executor" type="checkbox" />身份专用于执行器</label>
+              </div>
+              <label>复核依据<textarea name="execution_identity_rationale" maxLength={2000} required /></label>
+              <p>只登记脱敏身份引用和独立结论，不读取或保存 API Key；接受也不会开启运行开关。</p>
+              <button disabled={lifecycleBusy?.startsWith("ozon-execution-identity:")}>{lifecycleBusy?.startsWith("ozon-execution-identity:") ? "正在固化…" : "固化身份复核"}</button>
+            </form> : <p>尚无来源为 <code>ozon_execution_identity_inventory</code> 的 OZN-001 Grade A 原件；请先通过 Evidence 入口固化脱敏盘点。</p>}
+          </details>}
           {pendingListingApprovals.length ? <div className="review-grid">{pendingListingApprovals.map((approval) => {
             const payload = approval.payload;
             const product = products.find((item) => item.id === String(payload.product_id ?? ""));
@@ -165,6 +196,49 @@ export function ProductContentPanel({ model }: { model: DashboardModel }) {
               <div className="content-next-step"><ShieldCheck size={14} />平台未写入；必须由不同身份核对完整摘要后审批</div>
             </article>;
           })}</div> : <div className="empty"><CheckCircle2 size={25} /><strong>没有待审批 Listing</strong><p>批准图片建立草稿后，会在这里显示完整快照、CM3 和内容血缘。</p></div>}
+          {approvedListingApprovals.length > 0 && <div className="review-grid">{approvedListingApprovals.map((listingApproval) => {
+            const presentation = listingExecutionPresentations.get(listingApproval.id)!;
+            const { draftId, plan, executionApproval, lifecycle, rollbackLifecycle, incident, blockers, evidenceReferences } = presentation;
+            return <article className="review-card listing-approval-card" key={`execution:${listingApproval.id}`}>
+              <div className="review-head"><div><strong>{String(listingApproval.payload.title ?? draftId)}</strong><small>准备执行计划 · 尚未发布</small></div><span>{lifecycle}</span></div>
+              <div className="fact-list">
+                <div><span>Listing Approval</span><b>{listingApproval.id} · {listingApproval.status}</b></div>
+                <div><span>Execution Approval</span><b>{plan ? `${plan.approval_id} · ${executionApproval?.status ?? plan.approval_status}` : "尚未申请"}</b></div>
+                <div><span>后端放行状态</span><b>{blockers.length ? blockers.join("、") : plan ? "无后端阻断" : "等待服务端预检"}</b></div>
+                <div><span>执行生命周期</span><b>{lifecycle}</b></div>
+                {rollbackLifecycle && <div><span>补偿生命周期</span><b>{rollbackLifecycle}</b></div>}
+                {incident && <div><span>事故关联</span><b>{incident.id} · {incident.status}</b></div>}
+              </div>
+              {evidenceReferences.length ? <div className="review-evidence"><ShieldCheck size={14} /><span>脱敏证据引用</span><b>{evidenceReferences.map((item) => `${item.id} · ${item.sha256}`).join("；")}</b></div> : null}
+              {canReviewExecutionAuthority && <details className="listing-snapshot-details">
+                <summary>执行前俄语母语复核</summary>
+                <form className="listing-handoff-form" onSubmit={(event) => reviewListingRussianNative(event, listingApproval)}>
+                  <div>
+                    <label>结论<select name="russian_review_decision" defaultValue="accepted"><option value="accepted">接受</option><option value="rejected">拒绝</option></select></label>
+                    <label><input name="native_russian_verified" type="checkbox" />母语表达已核验</label>
+                    <label><input name="listing_snapshot_reviewed" type="checkbox" />当前快照已完整核对</label>
+                    <label><input name="terminology_accepted" type="checkbox" />术语可接受</label>
+                    <label><input name="claims_grounded" type="checkbox" />宣称有证据</label>
+                    <label><input name="ozon_policy_checked" type="checkbox" />Ozon 规则已核对</label>
+                  </div>
+                  <label>复核依据<textarea name="russian_review_rationale" maxLength={2000} required /></label>
+                  <p>复核绑定当前 Listing 摘要；内容一旦变化必须重新复核。接受结论不会直接发布。</p>
+                  <button disabled={lifecycleBusy === `listing-russian-review:${draftId}`}>{lifecycleBusy === `listing-russian-review:${draftId}` ? "正在固化…" : "固化俄语复核"}</button>
+                </form>
+              </details>}
+              {!plan && <form className="listing-handoff-form" onSubmit={(event) => prepareListingExecutionPlan(event, listingApproval)}>
+                <div>
+                  <label>前置快照 SHA-256<input name="execution_state_hash" minLength={64} maxLength={64} required /></label>
+                  <label>前置状态证据<select name="execution_evidence" defaultValue="" required><option value="">选择证据</option>{evidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.grade} · {item.filename}</option>)}</select></label>
+                  <label>本次预期损失<input name="execution_expected_loss" type="number" min="0" step="0.01" required /></label>
+                  <label>最大预期损失<input name="execution_max_expected_loss" type="number" min="0" step="0.01" required /></label>
+                  <label>风险币种<input name="execution_risk_currency" defaultValue="CNY" minLength={3} maxLength={3} required /></label>
+                </div>
+                <p>服务端负责目标、适配器、Ozon item、readiness 与风险放行规则；网页只提交幂等键、前置证据/哈希和有界风险。</p>
+                <button disabled={lifecycleBusy === `listing-execution-plan:${draftId}`}>{lifecycleBusy === `listing-execution-plan:${draftId}` ? "正在准备…" : "准备执行计划"}</button>
+              </form>}
+            </article>;
+          })}</div>}
         </section><section className="passport-review-panel" id="passport-review">
           <div className="panel-title">
             <div><p className="eyebrow">HUMAN REVIEW</p><h3>Passport 人工审核</h3></div>

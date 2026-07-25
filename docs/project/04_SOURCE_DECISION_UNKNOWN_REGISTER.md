@@ -62,6 +62,7 @@
 | DEC-024 | 所有重大方案采用“硬约束优先，再比较长期风险调整价值”的最佳方案合同 | 单一总分会掩盖合规、安全、事实真源和不可逆风险；“最新/功能最多/最复杂/代码最少”都不是经营目标。现有 Decision Contract 已能承载证据、方案、风险和独立复核，增加一个版本化 profile 即可，不新建第二决策引擎。当前复核结论：Ozon 财务采用官方原件 + KJDS 独立复核与分类；第三方工具继续 C/D 级交叉检查并先手工导出；当前架构继续 PostgreSQL + 既有服务，不引入新的调度/消息/向量基础设施 | 真实吞吐、SLO、错误率、总成本、权威来源能力或风险边界变化，导致任一现有选择不再满足硬约束或长期风险调整价值领先时 | Accepted |
 | DEC-025 | ERPNext 是标准 ERP 交易内核的首选隔离 PoC，当前不进入生产 | ERPNext 公开覆盖采购、库存、供应商、销售、会计和多币种，并提供 REST/Webhook；相比全部自研可显著减少通用正确性工作。它仍缺已核验的 Ozon 适配、中俄会计本地化和与 KJDS 的单 Owner/对账证明，因此只能在真实 Ozon 竖切后用脱敏样本隔离验证。Medusa/Saleor/Vendure偏自有商城，Odoo/Dolibarr当前没有更低的总体适配成本证据 | ERPNext 任一硬约束失败；或真实独立站、多渠道、会计本地化及运维数据证明其他候选长期风险调整价值更高 | Conditional |
 | DEC-026 | `SKU-000` 默认通过 Ozon Data 原件解除，不为 Premium 或 `product-queries` 预先扩权 | Ozon Data 是当前已核验的类目/全市场需求入口，但需账户主体作法律决定；Seller 销售漏斗和 `product-queries` 围绕我方店铺/已有 SKU，不能证明新候选需求。先取得不少于 28 天原件比新增 Worker、订阅或宽权限 Key 更直接、风险更低 | Ozon Data 实际进入后不提供可下载的类目/全市场 28 天原件，或 Ozon 发布可验证的等强官方 API/报告 | Accepted |
+| DEC-027 | `OzonExecutionWorker` 作为受控平台发布工程能力登记，不等于运行可用 | 仓库已有 Worker，可执行发布前读、商品导入、状态查询和发布后回读；但运行受 Gate/Kill Switch/一次性许可约束且默认关闭，当前只完成 mock/工程合同验收，未接入普通 `ListingDraft` 或真实账户验收。注册表 `availability=enabled` 只表达工程能力存在 | 普通 ListingDraft 到命令链完成显式接线，专用最小权限写身份和真实账户验收均通过，且经营负责人批准运行开关 | Accepted |
 
 ## 高优先未知项
 

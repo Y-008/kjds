@@ -23,6 +23,7 @@ from apps.control_plane.api import (
 from apps.control_plane.domain import ChargeType
 from apps.control_plane.finance import FeeSignRule
 from apps.control_plane.imports import ImportPreview
+from apps.control_plane.routers.evidence_governance import capture_evidence
 from apps.control_plane.security import Principal
 
 
@@ -53,6 +54,141 @@ def test_error_contract_keeps_legacy_detail_and_adds_stable_metadata() -> None:
 def test_openapi_v1_snapshot_matches_runtime_contract() -> None:
     snapshot_path = Path(__file__).resolve().parents[1] / "docs" / "project" / "contracts" / "openapi-v1.json"
     assert json.loads(snapshot_path.read_text(encoding="utf-8")) == app.openapi()
+
+
+def test_generic_evidence_upload_rejects_reserved_execution_source() -> None:
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            capture_evidence(
+                file=UploadFile(file=io.BytesIO(b"untrusted"), filename="artifact.json"),
+                source="ozon-isolated-execution-worker",
+                source_ref="lxc-1/before-read",
+                grade=api_module.EvidenceGrade.A,
+                effective_at="2026-07-24T00:00:00Z",
+                principal=Principal("operator-1", frozenset({"operator"})),
+            )
+        )
+    assert error.value.status_code == 422
+    assert "dedicated workflow" in str(error.value.detail)
+
+
+def test_openapi_declares_api_key_security_for_protected_operations() -> None:
+    schema = app.openapi()
+    assert schema["components"]["securitySchemes"]["KjdsApiKey"] == {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-KJDS-API-Key",
+    }
+    assert schema["paths"]["/v1/products"]["get"]["security"] == [
+        {"KjdsApiKey": []}
+    ]
+
+
+def test_execution_checkpoint_contract_is_closed_and_protected() -> None:
+    operation = app.openapi()["paths"][
+        "/v1/limited-execution-commands/{command_id}/response-checkpoint"
+    ]["post"]
+    assert operation["security"] == [{"KjdsApiKey": []}]
+    request_body = operation["requestBody"]["content"]["multipart/form-data"]["schema"]
+    assert "$ref" in request_body
+    schema_name = request_body["$ref"].rsplit("/", 1)[-1]
+    schema = app.openapi()["components"]["schemas"][schema_name]
+    assert set(schema["required"]) == {"artifact_kind", "response_sha256", "file"}
+    assert set(schema["properties"]) == {
+        "artifact_kind",
+        "response_sha256",
+        "file",
+        "sequence_number",
+    }
+
+
+def test_approved_listing_execution_plan_contract_is_narrow_and_uses_principal(monkeypatch) -> None:
+    captured: dict = {}
+
+    def create(draft_id: str, **values):
+        captured.update({"draft_id": draft_id, **values})
+        return {"id": "gxp-1", "approval_id": "apr-execution-1"}
+
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "execution_plans",
+        SimpleNamespace(create_from_approved_listing=create),
+    )
+    body = api_module.ApprovedListingExecutionPlanInput(
+        idempotency_key="listing-plan-1",
+        precondition_state_hash="a" * 64,
+        evidence_ids=["evd-claim-1"],
+        risk_limits={
+            "max_quantity": "1",
+            "max_daily_runs": "1",
+            "max_expected_loss": "500",
+        },
+        risk_values={"quantity": "1", "expected_loss": "100"},
+        risk_currency="CNY",
+    )
+
+    result = api_module.prepare_ozon_listing_execution_plan(
+        "draft-1",
+        body,
+        Principal("operator-1", frozenset({"operator"})),
+    )
+
+    assert result == {"id": "gxp-1", "approval_id": "apr-execution-1"}
+    assert captured == {
+        "draft_id": "draft-1",
+        **body.model_dump(),
+        "created_by": "operator-1",
+    }
+    request_schema = app.openapi()["components"]["schemas"][
+        "ApprovedListingExecutionPlanInput"
+    ]
+    assert request_schema["additionalProperties"] is False
+    assert set(request_schema["properties"]) == {
+        "idempotency_key",
+        "precondition_state_hash",
+        "evidence_ids",
+        "risk_limits",
+        "risk_values",
+        "risk_currency",
+    }
+    assert app.openapi()["paths"][
+        "/v1/listings/ozon/drafts/{draft_id}/execution-plan"
+    ]["post"]["security"] == [{"KjdsApiKey": []}]
+
+
+def test_listing_execution_authority_contracts_are_strict_and_protected() -> None:
+    schema = app.openapi()
+    listing_schema = schema["components"]["schemas"]["ListingRussianNativeReviewInput"]
+    identity_schema = schema["components"]["schemas"][
+        "OzonExecutionIdentityAuthorityReviewInput"
+    ]
+    assert listing_schema["additionalProperties"] is False
+    assert identity_schema["additionalProperties"] is False
+    assert set(listing_schema["required"]) == {
+        "accepted",
+        "native_russian_verified",
+        "listing_snapshot_reviewed",
+        "terminology_accepted",
+        "claims_grounded",
+        "ozon_policy_checked",
+        "rationale",
+    }
+    assert set(identity_schema["required"]) == {
+        "identity_ref",
+        "accepted",
+        "inventory_complete",
+        "credential_material_absent",
+        "owner_verified",
+        "caller_system_verified",
+        "scope_minimized",
+        "dedicated_executor",
+        "rationale",
+    }
+    for path in (
+        "/v1/listings/ozon/drafts/{draft_id}/russian-native-review",
+        "/v1/operations/ozon/execution-identities/{evidence_id}/authority-review",
+    ):
+        assert schema["paths"][path]["post"]["security"] == [{"KjdsApiKey": []}]
 
 
 def test_openapi_exposes_control_only_accrual_classification_contract() -> None:

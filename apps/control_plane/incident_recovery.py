@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
@@ -133,27 +134,51 @@ class IncidentRecoveryService:
                     actor_id=opened_by,
                 )
         now = datetime.now(UTC)
-        with Session(self.engine) as session, session.begin():
-            row = OperationalIncidentRow(
-                id=new_id("inc"),
-                idempotency_key=idempotency_key,
-                mode=mode,
-                severity=severity,
-                trigger_type=trigger_type,
-                source_type=source_type,
-                source_id=source_id,
-                summary=summary,
-                impact_json=impact,
-                status="contained" if mode == "live" and self.kill_switch.current().engaged else "open",
-                owner_id=None,
-                review_status=None,
-                opened_by=opened_by,
-                created_at=now,
-                updated_at=now,
+        try:
+            with Session(self.engine) as session, session.begin():
+                row = OperationalIncidentRow(
+                    id=new_id("inc"),
+                    idempotency_key=idempotency_key,
+                    mode=mode,
+                    severity=severity,
+                    trigger_type=trigger_type,
+                    source_type=source_type,
+                    source_id=source_id,
+                    summary=summary,
+                    impact_json=impact,
+                    status="contained" if mode == "live" and self.kill_switch.current().engaged else "open",
+                    owner_id=None,
+                    review_status=None,
+                    opened_by=opened_by,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+                session.flush()
+                incident_id = row.id
+        except IntegrityError:
+            with Session(self.engine) as session:
+                winner = session.scalar(
+                    select(OperationalIncidentRow).where(
+                        OperationalIncidentRow.idempotency_key == idempotency_key
+                    )
+                )
+            if winner is None:
+                raise
+            winner_payload = self._opening_payload(
+                winner.mode,
+                winner.severity,
+                winner.trigger_type,
+                winner.source_type,
+                winner.source_id,
+                winner.summary,
+                winner.impact_json,
+                evidence_ids,
+                winner.opened_by,
             )
-            session.add(row)
-            session.flush()
-            incident_id = row.id
+            if winner_payload != requested:
+                raise ValueError("Incident idempotency key already has different content") from None
+            return self.get(winner.id)
         self._append_event(
             incident_id,
             "opened",

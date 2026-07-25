@@ -8,12 +8,16 @@ from apps.control_plane.api import (
     CandidateEvidenceAuthorityReviewInput,
     DemandReportReviewInput,
     LineageLinkInput,
+    ListingRussianNativeReviewInput,
+    OzonExecutionIdentityAuthorityReviewInput,
     OzonFinanceReportReviewInput,
     capture_evidence,
     link_evidence,
     review_candidate_evidence_authority,
     review_demand_report,
     review_finance_report,
+    review_ozon_execution_identity,
+    review_ozon_listing_russian_native,
 )
 from apps.control_plane.evidence import EvidenceGrade
 from apps.control_plane.security import Principal
@@ -25,7 +29,13 @@ def operator():
 
 @pytest.mark.parametrize(
     "source",
-    ["candidate_evidence_authority_review", "gate_requirement_review", "ozon_finance_report_review"],
+    [
+        "candidate_evidence_authority_review",
+        "gate_requirement_review",
+        "listing_russian_native_review",
+        "ozon_execution_identity_authority_review",
+        "ozon_finance_report_review",
+    ],
 )
 def test_generic_capture_cannot_forge_reserved_review_source(source):
     with pytest.raises(HTTPException) as exc:
@@ -98,6 +108,31 @@ def test_generic_lineage_cannot_forge_gate_or_review_relationships():
         )
     assert authority_exc.value.status_code == 422
 
+    for target_type, target_id, relationship in (
+        ("listing_draft", "lst_forged", "listing_russian_native_review"),
+        (
+            "evidence",
+            "evd_identity_inventory",
+            "ozon_execution_identity_authority_review",
+        ),
+        (
+            "ozon_execution_identity",
+            "ozon-worker",
+            "ozon_execution_identity_authority_review",
+        ),
+    ):
+        with pytest.raises(HTTPException) as execution_authority_exc:
+            link_evidence(
+                "evd_forged",
+                LineageLinkInput(
+                    target_type=target_type,
+                    target_id=target_id,
+                    relationship=relationship,
+                ),
+                operator(),
+            )
+        assert execution_authority_exc.value.status_code == 422
+
     with pytest.raises(HTTPException) as research_exc:
         link_evidence(
             "evd_forged",
@@ -122,6 +157,42 @@ def test_operator_cannot_use_demand_report_review_endpoint():
             operator(),
         )
     assert exc.value.status_code == 403
+
+
+def test_operator_cannot_use_listing_execution_authority_endpoints():
+    with pytest.raises(HTTPException) as listing_exc:
+        review_ozon_listing_russian_native(
+            "lst-forged",
+            ListingRussianNativeReviewInput(
+                accepted=True,
+                native_russian_verified=True,
+                listing_snapshot_reviewed=True,
+                terminology_accepted=True,
+                claims_grounded=True,
+                ozon_policy_checked=True,
+                rationale="forged acceptance",
+            ),
+            operator(),
+        )
+    assert listing_exc.value.status_code == 403
+
+    with pytest.raises(HTTPException) as identity_exc:
+        review_ozon_execution_identity(
+            "evd-forged",
+            OzonExecutionIdentityAuthorityReviewInput(
+                identity_ref="ozon-worker",
+                accepted=True,
+                inventory_complete=True,
+                credential_material_absent=True,
+                owner_verified=True,
+                caller_system_verified=True,
+                scope_minimized=True,
+                dedicated_executor=True,
+                rationale="forged acceptance",
+            ),
+            operator(),
+        )
+    assert identity_exc.value.status_code == 403
 
 
 def test_operator_cannot_use_finance_report_review_endpoint():

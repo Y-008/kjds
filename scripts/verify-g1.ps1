@@ -126,6 +126,161 @@ function Stop-SmokeProcesses {
     }
 }
 
+function Invoke-CleanupStep {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][scriptblock]$Action
+    )
+
+    try {
+        & $Action | Out-Null
+    } catch {
+        return "Cleanup step '${Name}' failed: $($_.Exception.Message)"
+    }
+}
+
+function Remove-OwnedPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$RuntimeRoot,
+        [switch]$Recurse,
+        [int]$Attempts = 8
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    try {
+        $resolvedRuntime = [IO.Path]::GetFullPath($RuntimeRoot).TrimEnd("\", "/") + [IO.Path]::DirectorySeparatorChar
+        $resolvedPath = [IO.Path]::GetFullPath($Path)
+        if (-not $resolvedPath.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
+            return "Refused to remove path outside runtime directory: $resolvedPath"
+        }
+    } catch {
+        return "Unable to validate disposable path ${Path}: $($_.Exception.Message)"
+    }
+
+    if ($Recurse) {
+        try {
+            Get-ChildItem `
+                -LiteralPath $resolvedPath `
+                -Recurse `
+                -Force `
+                -File | Where-Object {
+                    $_.IsReadOnly
+                } | ForEach-Object {
+                    $_.IsReadOnly = $false
+                }
+        } catch {
+            return "Unable to clear read-only files under ${resolvedPath}: $($_.Exception.Message)"
+        }
+    }
+
+    $lastError = $null
+    for ($attempt = 1; $attempt -le $Attempts -and (Test-Path -LiteralPath $Path); $attempt++) {
+        try {
+            if (Test-Path -LiteralPath $Path -PathType Container) {
+                [IO.Directory]::Delete($resolvedPath, $Recurse.IsPresent)
+            } else {
+                [IO.File]::Delete($resolvedPath)
+            }
+        } catch {
+            $lastError = $_.Exception.Message
+            if ($attempt -lt $Attempts) { Start-Sleep -Milliseconds 250 }
+        }
+    }
+    if (Test-Path -LiteralPath $Path) {
+        return "Cleanup failed for ${resolvedPath} after $Attempts attempts: $lastError"
+    }
+}
+
+function Write-G1Report {
+    param(
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    try {
+        $reportJson = $Result | ConvertTo-Json -Depth 5
+    } catch {
+        $Result.status = "FAIL"
+        $Result.report_error =
+            "Unable to serialize complete G-1 report: $($_.Exception.Message)"
+        $reportJson = [ordered]@{
+            gate = "G-1"
+            status = "FAIL"
+            started_at = $Result.started_at
+            finished_at = (Get-Date).ToUniversalTime().ToString("o")
+            git_commit = $Result.git_commit
+            error = $Result.report_error
+            verification_error = $Result.error
+            cleanup_processes = [bool]$Result.cleanup_processes
+            cleanup_database = [bool]$Result.cleanup_database
+            cleanup_files = [bool]$Result.cleanup_files
+        } | ConvertTo-Json -Depth 3
+    }
+
+    $reportTemporaryPath = "$Path.tmp-$([guid]::NewGuid().ToString('N'))"
+    try {
+        $reportJson | Set-Content `
+            -LiteralPath $reportTemporaryPath `
+            -Encoding UTF8 `
+            -NoNewline
+        Move-Item `
+            -LiteralPath $reportTemporaryPath `
+            -Destination $Path `
+            -Force
+    } catch {
+        Remove-Item `
+            -LiteralPath $reportTemporaryPath `
+            -Force `
+            -ErrorAction SilentlyContinue
+        $Result.status = "FAIL"
+        $Result.report_error =
+            "Unable to write G-1 report: $($_.Exception.Message)"
+        $reportJson = [ordered]@{
+            gate = "G-1"
+            status = "FAIL"
+            git_commit = $Result.git_commit
+            error = $Result.report_error
+        } | ConvertTo-Json -Depth 2
+    }
+    [Console]::Out.WriteLine($reportJson)
+    return $null -eq $Result.report_error
+}
+
+function Complete-G1Verification {
+    param(
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)][object[]]$CleanupSteps,
+        [Parameter(Mandatory = $true)][string]$ReportPath
+    )
+
+    foreach ($step in $CleanupSteps) {
+        $Result.cleanup_file_errors += @(
+            Invoke-CleanupStep -Name $step.Name -Action $step.Action
+        )
+    }
+
+    if (
+        $Result.cleanup_file_errors.Count -gt 0 -or
+        -not (
+            $Result.cleanup_processes -and
+            $Result.cleanup_database -and
+            $Result.cleanup_files
+        )
+    ) {
+        $Result.status = "FAIL"
+        $Result.cleanup_error =
+            "Disposable verification resources were not fully removed"
+    }
+
+    $Result.finished_at = (Get-Date).ToUniversalTime().ToString("o")
+    $reportWritten = Write-G1Report -Result $Result -Path $ReportPath
+    return [ordered]@{
+        failed = $Result.status -ne "PASS" -or -not $reportWritten
+        report_written = [bool]$reportWritten
+    }
+}
+
 $startedAt = (Get-Date).ToUniversalTime()
 $result = [ordered]@{
     gate = "G-1"
@@ -175,7 +330,10 @@ $result = [ordered]@{
     cleanup_processes = $false
     cleanup_database = $false
     cleanup_files = $false
+    cleanup_error = $null
     cleanup_file_errors = @()
+    error = $null
+    report_error = $null
     report = (Join-Path $Runtime "G1_VERIFICATION.json")
 }
 
@@ -624,74 +782,177 @@ try {
     $result.error = $_.Exception.Message
     throw
 } finally {
-    if ($WebContainer) {
-        docker rm --force $WebContainer 2>$null | Out-Null
-    }
-    Stop-OwnedProcess $WebProcess
-    Stop-OwnedProcess $ApiProcess
-    Stop-OwnedListener $WebProcess $WebPort
-    Stop-OwnedListener $ApiProcess $ApiPort
-    Stop-SmokeProcesses
-    $remainingListeners = Get-NetTCPConnection -LocalPort $ApiPort, $WebPort -State Listen -ErrorAction SilentlyContinue
-    $result.cleanup_processes = $null -eq $remainingListeners
-    if ($PostgresContainer) {
-        docker exec $PostgresContainer dropdb --if-exists --force -U hermes $DatabaseName 2>$null | Out-Null
-        docker exec $PostgresContainer dropdb --if-exists --force -U hermes $RestoreDatabaseName 2>$null | Out-Null
-        $remainingDatabase = docker exec $PostgresContainer psql -U hermes -d postgres -Atc "SELECT datname FROM pg_database WHERE datname IN ('$DatabaseName','$RestoreDatabaseName');" 2>$null
-        $result.cleanup_database = $LASTEXITCODE -eq 0 -and -not $remainingDatabase
-    } elseif ($UseExistingPostgres) {
-        try {
-            & $Python "scripts/manage_g1_database.py" "drop" | Out-Null
-            $result.cleanup_database = $LASTEXITCODE -eq 0
-        } catch {
-            $result.cleanup_database = $false
-        }
-    }
-    if (Test-Path $WebSmoke) {
-        $resolvedRuntime = [IO.Path]::GetFullPath($Runtime).TrimEnd("\") + "\"
-        $resolvedSmoke = [IO.Path]::GetFullPath($WebSmoke)
-        if ($resolvedSmoke.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
-            $nodeModulesJunction = Join-Path $WebSmoke "node_modules"
-            if (Test-Path $nodeModulesJunction) {
-                [IO.Directory]::Delete($nodeModulesJunction, $false)
+    $nodeModulesJunction = Join-Path $WebSmoke "node_modules"
+    $cleanupSteps = @(
+        @{
+            Name = "web container removal"
+            Action = {
+                if ($WebContainer) {
+                    Invoke-External -Command docker -Arguments @(
+                        "rm", "--force", $WebContainer
+                    ) | Out-Null
+                }
             }
-            if (Test-Path $WebSmoke) {
-                for ($attempt = 1; $attempt -le 16 -and (Test-Path $WebSmoke); $attempt++) {
-                    try {
-                        [IO.Directory]::Delete($resolvedSmoke, $true)
-                    } catch {
-                        $result.cleanup_file_errors += $_.Exception.Message
-                        Start-Sleep -Milliseconds 500
+        },
+        @{
+            Name = "web container verification"
+            Action = {
+                if ($WebContainer) {
+                    $remainingWebContainer = docker ps -a `
+                        --filter "name=^/$WebContainer$" -q 2>$null
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "docker ps failed with exit code $LASTEXITCODE"
+                    }
+                    if ($remainingWebContainer) {
+                        throw "Web container remains after cleanup"
                     }
                 }
             }
+        },
+        @{
+            Name = "web process"
+            Action = { Stop-OwnedProcess $WebProcess }
+        },
+        @{
+            Name = "API process"
+            Action = { Stop-OwnedProcess $ApiProcess }
+        },
+        @{
+            Name = "web listener"
+            Action = { Stop-OwnedListener $WebProcess $WebPort }
+        },
+        @{
+            Name = "API listener"
+            Action = { Stop-OwnedListener $ApiProcess $ApiPort }
+        },
+        @{
+            Name = "smoke processes"
+            Action = { Stop-SmokeProcesses }
+        },
+        @{
+            Name = "process verification"
+            Action = {
+                $remainingListeners = Get-NetTCPConnection `
+                    -LocalPort $ApiPort, $WebPort `
+                    -State Listen `
+                    -ErrorAction SilentlyContinue
+                $result.cleanup_processes = $null -eq $remainingListeners
+                if (-not $result.cleanup_processes) {
+                    throw "Ports $ApiPort or $WebPort still have listeners"
+                }
+            }
+        },
+        @{
+            Name = "primary database"
+            Action = {
+                if ($PostgresContainer) {
+                    Invoke-External -Command docker -Arguments @(
+                        "exec", $PostgresContainer, "dropdb", "--if-exists",
+                        "--force", "-U", "hermes", $DatabaseName
+                    ) | Out-Null
+                } elseif ($UseExistingPostgres) {
+                    Invoke-External -Command $Python -Arguments @(
+                        "scripts/manage_g1_database.py", "drop"
+                    ) | Out-Null
+                }
+            }
+        },
+        @{
+            Name = "restore database"
+            Action = {
+                if ($PostgresContainer) {
+                    Invoke-External -Command docker -Arguments @(
+                        "exec", $PostgresContainer, "dropdb", "--if-exists",
+                        "--force", "-U", "hermes", $RestoreDatabaseName
+                    ) | Out-Null
+                }
+            }
+        },
+        @{
+            Name = "database verification"
+            Action = {
+                if ($PostgresContainer) {
+                    $remainingDatabase = docker exec $PostgresContainer `
+                        psql -U hermes -d postgres -Atc `
+                        "SELECT datname FROM pg_database WHERE datname IN ('$DatabaseName','$RestoreDatabaseName');" `
+                        2>$null
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Database cleanup verification failed with exit code $LASTEXITCODE"
+                    }
+                    $result.cleanup_database = -not $remainingDatabase
+                } else {
+                    $result.cleanup_database = $true
+                }
+                if (-not $result.cleanup_database) {
+                    throw "Disposable databases remain after cleanup"
+                }
+            }
+        },
+        @{
+            Name = "web node_modules junction"
+            Action = {
+                $errorMessage = Remove-OwnedPath `
+                    -Path $nodeModulesJunction `
+                    -RuntimeRoot $Runtime
+                if ($errorMessage) { throw $errorMessage }
+            }
+        },
+        @{
+            Name = "web smoke directory"
+            Action = {
+                $errorMessage = Remove-OwnedPath `
+                    -Path $WebSmoke `
+                    -RuntimeRoot $Runtime `
+                    -Recurse
+                if ($errorMessage) { throw $errorMessage }
+            }
+        },
+        @{
+            Name = "pytest temporary directory"
+            Action = {
+                $errorMessage = Remove-OwnedPath `
+                    -Path $PytestTemp `
+                    -RuntimeRoot $Runtime `
+                    -Recurse
+                if ($errorMessage) { throw $errorMessage }
+            }
+        },
+        @{
+            Name = "backup smoke directory"
+            Action = {
+                $errorMessage = Remove-OwnedPath `
+                    -Path $BackupSmokeDirectory `
+                    -RuntimeRoot $Runtime `
+                    -Recurse
+                if ($errorMessage) { throw $errorMessage }
+            }
+        },
+        @{
+            Name = "Evidence smoke file"
+            Action = {
+                $errorMessage = Remove-OwnedPath `
+                    -Path $EvidenceSmokeFile `
+                    -RuntimeRoot $Runtime
+                if ($errorMessage) { throw $errorMessage }
+            }
+        },
+        @{
+            Name = "file cleanup verification"
+            Action = {
+                $result.cleanup_files =
+                    -not (Test-Path -LiteralPath $WebSmoke) -and
+                    -not (Test-Path -LiteralPath $PytestTemp) -and
+                    -not (Test-Path -LiteralPath $BackupSmokeDirectory) -and
+                    -not (Test-Path -LiteralPath $EvidenceSmokeFile)
+                if (-not $result.cleanup_files) {
+                    throw "Disposable files remain after cleanup"
+                }
+            }
         }
-    }
-    if (Test-Path $PytestTemp) {
-        $resolvedRuntime = [IO.Path]::GetFullPath($Runtime).TrimEnd("\") + "\"
-        $resolvedPytestTemp = [IO.Path]::GetFullPath($PytestTemp)
-        if ($resolvedPytestTemp.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
-            [IO.Directory]::Delete($resolvedPytestTemp, $true)
-        }
-    }
-    if (Test-Path $BackupSmokeDirectory) {
-        $resolvedRuntime = [IO.Path]::GetFullPath($Runtime).TrimEnd("\") + "\"
-        $resolvedBackup = [IO.Path]::GetFullPath($BackupSmokeDirectory)
-        if ($resolvedBackup.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
-            [IO.Directory]::Delete($resolvedBackup, $true)
-        }
-    }
-    Remove-Item -LiteralPath $EvidenceSmokeFile -Force -ErrorAction SilentlyContinue
-    $result.cleanup_files =
-        -not (Test-Path $WebSmoke) -and
-        -not (Test-Path $PytestTemp) -and
-        -not (Test-Path $BackupSmokeDirectory) -and
-        -not (Test-Path $EvidenceSmokeFile)
-    if ($result.status -eq "PASS" -and -not ($result.cleanup_processes -and $result.cleanup_database -and $result.cleanup_files)) {
-        $result.status = "FAIL"
-        $result.cleanup_error = "Disposable verification resources were not fully removed"
-    }
-    $result.finished_at = (Get-Date).ToUniversalTime().ToString("o")
-    $result | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 (Join-Path $Runtime "G1_VERIFICATION.json")
-    Write-Output ($result | ConvertTo-Json -Depth 5)
+    )
+    $completion = Complete-G1Verification `
+        -Result $result `
+        -CleanupSteps $cleanupSteps `
+        -ReportPath (Join-Path $Runtime "G1_VERIFICATION.json")
+    if ($completion.failed) { exit 1 }
 }

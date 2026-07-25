@@ -9,6 +9,7 @@ from apps.control_plane.action_policies import (
     ActionPolicyError,
     ActionPolicyRegistry,
 )
+from apps.control_plane.readiness import LISTING_EXECUTION_READINESS_KEYS
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "docs" / "project" / "registries" / "action_policy_registry.json"
@@ -130,6 +131,7 @@ def test_authorize_action_is_the_single_phase_aware_policy_decision():
         "values": {"quantity": "1", "expected_loss": "300"},
         "currency": "CNY",
         "readiness": {"demand.real_execution": True},
+        "source_kind": "causal_policy_handoff",
     }
 
     request = service.authorize_action(phase="request", **context)
@@ -213,11 +215,12 @@ def test_real_execution_fails_closed_when_required_readiness_is_missing():
         },
         values={"quantity": "1", "expected_loss": "300"},
         currency="CNY",
+        source_kind="approved_listing_draft",
     )
 
     assert decision["allowed"] is False
     assert decision["blocking_reasons"] == [
-        "READINESS_REQUIRED:demand.real_execution"
+        f"READINESS_REQUIRED:{key}" for key in LISTING_EXECUTION_READINESS_KEYS
     ]
 
 

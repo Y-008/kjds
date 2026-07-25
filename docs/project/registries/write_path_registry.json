@@ -89,15 +89,29 @@
       "risk_tier": "L3",
       "availability": "enabled",
       "request_entries": [
+        "POST /v1/listings/ozon/drafts/{draft_id}/execution-plan",
         "POST /v1/causal-policy-activation-handoffs/{handoff_id}/execution-plans",
+        "POST /v1/governed-execution-plans/{plan_id}/dry-run",
         "POST /v1/governed-execution-plans/{plan_id}/commands",
         "POST /v1/limited-execution-commands/{command_id}/claim",
-        "POST /v1/limited-execution-commands/{command_id}/receipt"
+        "POST /v1/limited-execution-commands/{command_id}/write-attempt",
+        "POST /v1/limited-execution-commands/{command_id}/response-checkpoint",
+        "POST /v1/limited-execution-commands/{command_id}/receipt",
+        "POST /v1/limited-execution-commands/{command_id}/rollback"
       ],
       "service_entry": "apps.control_plane.limited_executor.LimitedExecutorService",
       "formal_fact_writes": ["governed_execution_plans", "governed_execution_dry_runs", "approvals", "limited_execution_commands", "limited_execution_receipts", "evidence_records"],
-      "delivery": {"kind": "lease_worker", "entry": "apps.control_plane.ozon_worker.OzonWorker"},
-      "external_calls": ["POST Ozon /v3/product/import", "POST Ozon /v1/product/import/info", "POST Ozon /v3/product/info/list"],
+      "delivery": {"kind": "lease_worker", "entry": "apps.control_plane.ozon_worker.OzonExecutionWorker"},
+      "external_calls": [
+        "POST Ozon /v3/product/info/list [before-read]",
+        "POST Ozon /v4/product/info/attributes [before-read]",
+        "POST Ozon /v3/products/info/attributes [fallback]",
+        "POST Ozon /v3/product/import [write]",
+        "POST Ozon /v1/product/import/info [import-status]",
+        "POST Ozon /v3/product/info/list [after-read]",
+        "POST Ozon /v4/product/info/attributes [after-read]",
+        "POST Ozon /v3/products/info/attributes [fallback]"
+      ],
       "request_revalidation": true,
       "execution_revalidation": true,
       "single_use_permit": true,

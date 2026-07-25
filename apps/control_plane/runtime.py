@@ -19,6 +19,7 @@ from .decision_lifecycle import DecisionLifecycleService
 from .demand_report_gate import DemandReportGateService
 from .evidence import EvidenceService
 from .evidence_integrity import EvidenceIntegrityMonitorService
+from .execution_authority import ListingExecutionAuthorityService
 from .execution_plans import ExecutionPlanService
 from .facts import FactPromotionService
 from .finance import FinanceService
@@ -44,7 +45,7 @@ from .post_execution import PostExecutionService
 from .procurement import ProcurementService
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
 from .read_only_claims import ReadOnlyClaimService
-from .readiness import GateReadinessService
+from .readiness import ExecutionReadinessService, GateReadinessService
 from .repository import InMemoryRepository
 from .research_inbox import ResearchInboxService
 from .security import ApiKeyAuthenticator, KillSwitchService
@@ -75,6 +76,7 @@ class RuntimeServices:
     engine: Any
     evidence: Any
     evidence_integrity: Any
+    listing_execution_authority: Any
     execution_plans: Any
     facts: Any
     finance: Any
@@ -152,25 +154,6 @@ def build_runtime() -> RuntimeServices:
         commerce=commerce,
     )
 
-    def execution_readiness_context(_action: str, _target: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        demand = demand_reports.status()["readiness"]["real_execution"]
-        return {
-            "demand.real_execution": {
-                "ready": demand["ready"],
-                "evidence_ids": demand["evidence_ids"],
-                "blocking_reasons": demand["blocking_reasons"],
-            }
-        }
-
-    execution_plans = ExecutionPlanService(
-        engine=engine,
-        policy_shadow=policy_shadow,
-        policies=causal_policies,
-        evidence=evidence,
-        commerce=commerce,
-        action_authorization=action_authorization,
-        readiness_provider=execution_readiness_context,
-    )
     intake = SkuEpisodeIntakeService(commerce=commerce, evidence=evidence)
     product_media = ProductMediaEvidenceService(commerce=commerce, evidence=evidence)
     candidate_evidence_authority = CandidateEvidenceAuthorityService(
@@ -237,6 +220,33 @@ def build_runtime() -> RuntimeServices:
     )
     governance = GovernanceService(engine=engine, evidence=evidence)
     read_only_claims = ReadOnlyClaimService(engine=engine, evidence=evidence)
+    kill_switch = KillSwitchService(engine)
+    listing_execution_authority = ListingExecutionAuthorityService(
+        evidence=evidence,
+        sourcing=sourcing,
+    )
+    execution_readiness = ExecutionReadinessService(
+        commerce=commerce,
+        sourcing=sourcing,
+        evidence=evidence,
+        demand_reports=demand_reports,
+        kill_switch=kill_switch,
+        listing_execution_authority=listing_execution_authority,
+        execution_identity_ref=os.getenv("KJDS_OZON_EXECUTION_IDENTITY_REF", "").strip()
+        or None,
+    )
+
+    execution_plans = ExecutionPlanService(
+        engine=engine,
+        policy_shadow=policy_shadow,
+        policies=causal_policies,
+        evidence=evidence,
+        commerce=commerce,
+        action_authorization=action_authorization,
+        readiness_provider=execution_readiness.snapshot,
+        sourcing=sourcing,
+        repository=repo,
+    )
     readiness = GateReadinessService(
         commerce=commerce,
         sourcing_store=sourcing_store,
@@ -248,7 +258,6 @@ def build_runtime() -> RuntimeServices:
         scenario_release_validator=sourcing.require_release_ready,
     )
     authenticator = ApiKeyAuthenticator.from_environment()
-    kill_switch = KillSwitchService(engine)
     limited_executor = LimitedExecutorService(
         engine=engine,
         execution_plans=execution_plans,
@@ -330,6 +339,7 @@ def build_runtime() -> RuntimeServices:
         engine=engine,
         evidence=evidence,
         evidence_integrity=evidence_integrity,
+        listing_execution_authority=listing_execution_authority,
         execution_plans=execution_plans,
         facts=facts,
         finance=finance,

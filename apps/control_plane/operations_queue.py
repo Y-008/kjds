@@ -60,10 +60,16 @@ class OperationsQueueService:
                 )
             )
         for command in self.limited_executor.list():
-            if command["status"] not in {"queued", "claimed", "uncertain", "precondition_failed"}:
+            if command["status"] not in {
+                "queued",
+                "claimed",
+                "write_started",
+                "uncertain",
+                "precondition_failed",
+            }:
                 continue
             created = self._datetime(command["created_at"])
-            if command["status"] == "claimed" and command["lease_expires_at"]:
+            if command["status"] in {"claimed", "write_started"} and command["lease_expires_at"]:
                 due_at = self._datetime(command["lease_expires_at"])
                 sla = max(1, int((due_at - created).total_seconds() / 60))
             else:
@@ -76,7 +82,11 @@ class OperationsQueueService:
                     item_id=command["id"],
                     title=f"{command['command_kind']} · {command['operation']}",
                     status=command["status"],
-                    priority="critical" if command["status"] == "uncertain" else "high",
+                    priority=(
+                        "critical"
+                        if command["status"] in {"write_started", "uncertain"}
+                        else "high"
+                    ),
                     owner_id=command["claimed_by"],
                     created_at=created,
                     due_at=due_at,

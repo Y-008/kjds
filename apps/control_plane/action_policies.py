@@ -123,6 +123,26 @@ class ActionPolicyRegistry:
                     raise ActionPolicyError(
                         f"High-risk action requires explicit readiness keys: {action_id}"
                     )
+                source_readiness = action.get("required_readiness_keys_by_source", {})
+                if not isinstance(source_readiness, dict):
+                    raise ActionPolicyError(
+                        f"Action source readiness must be a mapping: {action_id}"
+                    )
+                for source_kind, source_keys in source_readiness.items():
+                    if (
+                        not isinstance(source_kind, str)
+                        or not source_kind.strip()
+                        or not isinstance(source_keys, list)
+                        or len(set(source_keys)) != len(source_keys)
+                        or any(
+                            not isinstance(key, str) or not key.strip()
+                            for key in source_keys
+                        )
+                        or set(readiness_keys).intersection(source_keys)
+                    ):
+                        raise ActionPolicyError(
+                            f"Action source readiness is invalid: {action_id}"
+                        )
                 if tier == "L4" and tier_controls[tier].get("mfa_required") is not True:
                     raise ActionPolicyError("L4 actions require MFA")
             actions[action_id] = action
@@ -264,6 +284,7 @@ class ActionAuthorizationService:
         currency: str | None = None,
         policy_version: str | None = None,
         readiness: dict[str, bool] | None = None,
+        source_kind: str | None = None,
         approval_actor_ids: list[str] | None = None,
         executor_id: str | None = None,
         mfa_verified: bool = False,
@@ -297,8 +318,16 @@ class ActionAuthorizationService:
         normalized_readiness = {
             str(key).strip(): value is True for key, value in (readiness or {}).items()
         }
+        normalized_source_kind = source_kind.strip() if source_kind else None
         if policy:
-            for key in policy.get("required_readiness_keys", []):
+            required_readiness = list(policy.get("required_readiness_keys", []))
+            source_readiness = policy.get("required_readiness_keys_by_source", {})
+            if source_readiness:
+                if not normalized_source_kind or normalized_source_kind not in source_readiness:
+                    blockers.append("ACTION_SOURCE_POLICY_INVALID")
+                else:
+                    required_readiness.extend(source_readiness[normalized_source_kind])
+            for key in required_readiness:
                 if normalized_readiness.get(key) is not True:
                     blockers.append(f"READINESS_REQUIRED:{key}")
 
@@ -340,6 +369,7 @@ class ActionAuthorizationService:
             "action_policy": policy,
             "risk": risk,
             "readiness": normalized_readiness,
+            "source_kind": normalized_source_kind,
             "approval_actor_ids": approvals,
             "mfa_verified": bool(mfa_verified),
             "blocking_reasons": blockers,

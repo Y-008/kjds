@@ -33,6 +33,7 @@ services:
       FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-}
       FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
       KJDS_LIMITED_EXECUTION_ENABLED: ${KJDS_LIMITED_EXECUTION_ENABLED:-false}
+      KJDS_OZON_EXECUTION_IDENTITY_REF: ${KJDS_OZON_EXECUTION_IDENTITY_REF:-ozon-worker}
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,13 +82,18 @@ services:
       - python
       - -m
       - apps.control_plane.ozon_worker
-      - --evidence-id
-      - ${KJDS_EXECUTION_EVIDENCE_ID:-missing}
+      - --execute
+      - --command-id
+      - ${KJDS_EXECUTION_COMMAND_ID:-missing}
+      - --offer-id
+      - ${KJDS_EXECUTION_OFFER_ID:-missing}
     environment:
+      KJDS_EXECUTION_EVIDENCE_IDS: ${KJDS_EXECUTION_EVIDENCE_IDS:-}
       KJDS_CONTROL_PLANE_URL: http://api:8000
       KJDS_EXECUTOR_API_KEY: ${KJDS_EXECUTOR_API_KEY:-}
-      OZON_CLIENT_ID: ${OZON_CLIENT_ID:-}
-      OZON_API_KEY: ${OZON_API_KEY:-}
+      KJDS_OZON_EXECUTION_IDENTITY_REF: ${KJDS_OZON_EXECUTION_IDENTITY_REF:-ozon-worker}
+      OZON_CLIENT_ID: ${OZON_WRITE_CLIENT_ID:-}
+      OZON_API_KEY: ${OZON_WRITE_API_KEY:-}
       OZON_API_URL: https://api-seller.ozon.ru
     depends_on:
       api:

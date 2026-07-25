@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.47.0"
+APP_VERSION = "0.48.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -143,6 +143,30 @@ class CandidateEvidenceAuthorityReviewInput(BaseModel):
     authentic_original: bool
     source_scope_matches: bool
     authority_basis_verified: bool
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
+class ListingRussianNativeReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    accepted: bool
+    native_russian_verified: bool
+    listing_snapshot_reviewed: bool
+    terminology_accepted: bool
+    claims_grounded: bool
+    ozon_policy_checked: bool
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
+class OzonExecutionIdentityAuthorityReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identity_ref: str = Field(min_length=1, max_length=120)
+    accepted: bool
+    inventory_complete: bool
+    credential_material_absent: bool
+    owner_verified: bool
+    caller_system_verified: bool
+    scope_minimized: bool
+    dedicated_executor: bool
     rationale: str = Field(min_length=1, max_length=2000)
 
 
@@ -662,6 +686,16 @@ class GovernedExecutionPlanInput(BaseModel):
     risk_limits: dict[str, Any] | None = None
     risk_values: dict[str, Any] | None = None
     risk_currency: str | None = Field(default=None, min_length=3, max_length=3)
+
+
+class ApprovedListingExecutionPlanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    precondition_state_hash: str = Field(pattern="^[0-9a-fA-F]{64}$")
+    evidence_ids: list[str] = Field(min_length=1, max_length=100)
+    risk_limits: dict[str, Any]
+    risk_values: dict[str, Any]
+    risk_currency: str = Field(min_length=3, max_length=3)
 
 
 class GovernedExecutionDryRunInput(BaseModel):
