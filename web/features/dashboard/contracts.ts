@@ -132,6 +132,45 @@ export type SourceConnector = {
   status: string;
   notes: string;
 };
+export type LogisticsRateCard = {
+  id: string;
+  provider: string;
+  route_code: string;
+  service_name: string;
+  origin_country: string;
+  destination_country: string;
+  marketplace: string;
+  currency: string;
+  declared_value_currency: string;
+  price_per_kg: string;
+  base_charge_per_parcel: string;
+  minimum_charge_per_parcel: string;
+  volumetric_divisor_cm3_per_kg: string;
+  weight_increment_kg: string;
+  min_weight_kg: string;
+  max_weight_kg: string;
+  min_declared_value: string;
+  effective_at: string;
+  effective_until: string | null;
+  evidence_id: string;
+  rule_version: string;
+};
+export type LogisticsCalculation = {
+  id: string;
+  rate_card_id: string;
+  physical_weight_kg: string;
+  volumetric_weight_kg: string;
+  chargeable_weight_kg: string;
+  billable_weight_kg: string;
+  unit_charge_currency: string;
+  total_charge_currency: string;
+  total_charge_cny: string;
+  currency_to_cny_rate: string;
+  evidence_id: string;
+  fx_evidence_id: string | null;
+  state: "estimate";
+  calculated_at: string;
+};
 export type PassportReadiness = {
   kind: "product" | "compliance" | "quality";
   status: "missing" | "draft" | "awaiting_approval" | "approved" | "blocked";

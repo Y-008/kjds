@@ -923,6 +923,8 @@ KJDS 的成功不是拥有最多 Agent，而是在真实跨境经营中，用可
 
 `BR-069/BAS-093` 增加 `MarketplaceCatalogWorkspace` 深模块。其接口只接受经 `PilotRunService` 完整复验的原始 Evidence、店铺范围和幂等键；模块内部完成固定合同解码、双响应哈希验证、目标绑定、字段规范化、媒体权属标记、快照哈希、PostgreSQL 持久化和 Evidence 血缘。第一条生产链只覆盖已有 Ozon Seller 只读证据，不虚构 1688 或竞品 API 连接。采购报价继续由 `SourcingService` 管理，竞品/行业动态继续进入 Research Signal Inbox，物流报价后续以版本化线路适配器接入既有 15 项全成本模板；三者不得复制 Product、Evidence、利润或审批事实源。
 
+`BR-069/BAS-094` 落实版本化物流线路适配器。`LogisticsQuoteWorkspace` 把承运商、路由、服务、计价/申报币种、有效期、每 kg/每票/最低收费、体积重除数、计重进位及重量/尺寸/货值边界固化为 Evidence-backed 档位；每次输入生成不可变、幂等的 Decimal 计算快照。三家供应商比价可用每家实测重量与尺寸产生单件国际物流估算，并通过同一个 `SourcingService` 进入既有 15 项成本和 CM3，不复制利润公式。报价和 AI 建议永远是 `estimate/recommendation_only`；只有经 BR-057 独立权威复核的承运商最终账单可成为 `actual`。
+
 ### 17.2 P1：G2/G4/G5 前补齐
 
 | 能力 | 设计方向 | 触发条件 |

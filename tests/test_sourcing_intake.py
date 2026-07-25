@@ -1,3 +1,4 @@
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -5,6 +6,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
 from apps.control_plane.evidence import EvidenceGrade, EvidenceService
+from apps.control_plane.logistics import (
+    InMemoryLogisticsStore,
+    LogisticsQuoteWorkspace,
+    LogisticsRateCard,
+)
 from apps.control_plane.repository import InMemoryRepository
 from apps.control_plane.services import CommerceService
 from apps.control_plane.sourcing import REQUIRED_COST_EVIDENCE_KEYS, ProfitInputs, SourcePlatform, SourcingService
@@ -146,6 +152,90 @@ def test_three_supplier_comparison_is_evidence_backed_and_idempotent():
     assert first["comparison"]["supplier_count"] == 3
     assert first["comparison"]["ready_for_procurement_review"] is True
     assert first["comparison"]["rows"][0]["scenario"].cm3_cny > first["comparison"]["rows"][-1]["scenario"].cm3_cny
+
+
+def test_three_supplier_comparison_uses_one_versioned_logistics_tier_per_offer():
+    product, store, intake = make_intake()
+    rate_evidence = intake.evidence.capture(
+        content=b"carrier rate card",
+        filename="carrier-rate.txt",
+        content_type="text/plain",
+        source="carrier_rate_card",
+        source_ref="carrier://route-1/2026-07",
+        grade=EvidenceGrade.B,
+        effective_at="2026-07-15T00:00:00+08:00",
+        effective_until=None,
+        created_by="operator-1",
+    )
+    logistics_store = InMemoryLogisticsStore()
+    logistics = LogisticsQuoteWorkspace(
+        logistics_store,
+        evidence_validator=intake.evidence.require_valid,
+        evidence_resolver=intake.evidence.get,
+        fx_evidence_current_validator=intake.evidence.require_current,
+    )
+    card = logistics.capture_rate_card(
+        LogisticsRateCard(
+            provider="Carrier A",
+            route_code="OZON-RFBS-ALL",
+            service_name="Ozon rFBS",
+            origin_country="CN",
+            destination_country="RU",
+            marketplace="OZON",
+            currency="CNY",
+            declared_value_currency="RUB",
+            price_per_kg=Decimal("20"),
+            base_charge_per_parcel=Decimal("5"),
+            minimum_charge_per_parcel=Decimal("0"),
+            volumetric_divisor_cm3_per_kg=Decimal("0"),
+            weight_increment_kg=Decimal("0.001"),
+            min_weight_kg=Decimal("0.001"),
+            max_weight_kg=Decimal("30"),
+            max_length_cm=Decimal("150"),
+            max_width_cm=Decimal("80"),
+            max_height_cm=Decimal("80"),
+            max_dimensions_sum_cm=Decimal("310"),
+            min_declared_value=Decimal("0"),
+            max_declared_value=Decimal("5000"),
+            effective_at="2026-07-15T00:00:00+08:00",
+            effective_until=None,
+            evidence_id=rate_evidence.id,
+            captured_by="operator-1",
+            source_sheet="rates",
+            source_range="A1:H2",
+        )
+    )
+    intake.logistics = logistics
+    intake.sourcing.logistics_profit_resolver = logistics.resolve_profit_cost
+    inputs = replace(
+        profit_inputs(),
+        international_freight_cny_per_kg=Decimal("0"),
+    )
+
+    result = intake.ingest(
+        product_id=product.id,
+        effective_at="2026-07-16T00:00:00+08:00",
+        offers=offers(),
+        profit_inputs=inputs,
+        assumption_content=b"approved non-logistics fee assumptions",
+        assumption_filename="assumptions.txt",
+        assumption_content_type="text/plain",
+        created_by="operator-1",
+        logistics_rate_card_id=card.id,
+        logistics_currency_to_cny_rate=Decimal("1"),
+    )
+
+    assert len(logistics_store.calculations) == 3
+    assert len(store.scenarios) == 3
+    assert all(item.logistics_calculation_id for item in result["scenarios"])
+    assert all(
+        item.international_logistics_cny == Decimal("15.00")
+        for item in result["scenarios"]
+    )
+    assert all(
+        item.cost_evidence["international_logistics"] == rate_evidence.id
+        for item in result["scenarios"]
+    )
 
 
 def test_supplier_comparison_rejects_duplicate_supplier_identity():

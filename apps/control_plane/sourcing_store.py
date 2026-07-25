@@ -169,14 +169,15 @@ class SqlSourcingStore:
                     fx_cost_cny_decimal, capital_cost_cny_decimal, aftersales_cny_decimal,
                     loss_reserve_cny_decimal,
                     total_cost_cny_decimal, cm3_cny_decimal, cm3_rate_decimal,
-                    break_even_price_rub_decimal, evidence_json, cost_evidence_json, created_at
+                    break_even_price_rub_decimal, evidence_json, cost_evidence_json,
+                    logistics_calculation_id, created_at
                 ) VALUES (
                     :id, :offer_id, :target, CAST(:inputs AS jsonb), :revenue, :purchase,
                     :domestic, :international, :packaging, :warehousing, :customs, :tax,
                     :last_mile, :platform_fee, :advertising, :returns, :other, :fx_cost,
                     :capital_cost, :aftersales, :loss_reserve, :total, :cm3,
                     :cm3_rate, :break_even, CAST(:evidence AS jsonb),
-                    CAST(:cost_evidence AS jsonb), :created_at
+                    CAST(:cost_evidence AS jsonb), :logistics_calculation_id, :created_at
                 )
             """),
                 {
@@ -207,6 +208,7 @@ class SqlSourcingStore:
                     "break_even": scenario.break_even_price_rub,
                     "evidence": json.dumps(scenario.evidence),
                     "cost_evidence": json.dumps(scenario.cost_evidence),
+                    "logistics_calculation_id": scenario.logistics_calculation_id,
                     "created_at": datetime.fromisoformat(scenario.created_at),
                 },
             )
@@ -231,6 +233,9 @@ class SqlSourcingStore:
             raw_values = stored_inputs["values"]
             template_id = stored_inputs.get("template_id", "ozon-ru-full-cost-v1")
             cost_states = stored_inputs.get("cost_states", {})
+            logistics_calculation_id = row.get(
+                "logistics_calculation_id"
+            ) or stored_inputs.get("logistics_calculation_id")
         else:
             raw_values = stored_inputs
             template_id = "ozon-ru-full-cost-v1"
@@ -238,6 +243,7 @@ class SqlSourcingStore:
                 key: "estimate"
                 for key in (row["cost_evidence_json"] or {})
             }
+            logistics_calculation_id = row.get("logistics_calculation_id")
         inputs = {key: Decimal(value) for key, value in raw_values.items()}
         return ProfitScenario(
             offer_id=row["offer_id"],
@@ -268,6 +274,7 @@ class SqlSourcingStore:
             cost_evidence=row["cost_evidence_json"] or {},
             template_id=template_id,
             cost_states=cost_states,
+            logistics_calculation_id=logistics_calculation_id,
             id=row["id"],
             created_at=_iso(row["created_at"]),
         )

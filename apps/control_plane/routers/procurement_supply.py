@@ -3,11 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from ..api_contracts import (
+    LogisticsCalculationInput,
+    LogisticsRateCardInput,
     ProcurementCandidateInput,
     ProfitScenarioInput,
     SampleOrderInput,
@@ -17,6 +20,7 @@ from ..api_contracts import (
     run,
 )
 from ..evidence import EvidenceGrade
+from ..logistics import LogisticsRateCard
 from ..runtime import runtime
 from ..security import Principal
 from ..sourcing import ProfitInputs, SupplierOffer, profit_template_contract
@@ -60,6 +64,9 @@ async def capture_supplier_comparison(
     offer_evidence_3: Annotated[UploadFile, File()],
     assumption_evidence: Annotated[UploadFile, File()],
     principal: Annotated[Principal, Depends(current_principal)],
+    logistics_rate_card_id: Annotated[str, Form()] = "",
+    logistics_currency_to_cny_rate: Annotated[Decimal, Form()] = Decimal("1"),
+    logistics_fx_evidence_id: Annotated[str, Form()] = "",
 ):
     ensure_role(principal, "operator", "reviewer", "admin")
     try:
@@ -85,6 +92,7 @@ async def capture_supplier_comparison(
     validated_inputs.pop("cost_evidence")
     template_id = validated_inputs.pop("template_id")
     cost_states = validated_inputs.pop("cost_states")
+    validated_inputs.pop("logistics_calculation_id")
     uploads = [offer_evidence_1, offer_evidence_2, offer_evidence_3]
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
     payloads = []
@@ -115,6 +123,11 @@ async def capture_supplier_comparison(
             assumption_filename=assumption_evidence.filename or "profit-assumptions.bin",
             assumption_content_type=assumption_evidence.content_type or "application/octet-stream",
             created_by=principal.actor_id,
+            logistics_rate_card_id=logistics_rate_card_id.strip() or None,
+            logistics_currency_to_cny_rate=(
+                logistics_currency_to_cny_rate if logistics_rate_card_id.strip() else None
+            ),
+            logistics_fx_evidence_id=logistics_fx_evidence_id.strip() or None,
         )
     )
 
@@ -260,10 +273,17 @@ def calculate_sourcing_profit(body: ProfitScenarioInput, principal: Annotated[Pr
     cost_evidence = values.pop("cost_evidence")
     template_id = values.pop("template_id")
     cost_states = values.pop("cost_states")
+    logistics_calculation_id = values.pop("logistics_calculation_id")
 
     def calculate():
         result = runtime.sourcing.calculate_profit(
-            offer_id, ProfitInputs(**values), assumption_evidence, cost_evidence, cost_states, template_id
+            offer_id,
+            ProfitInputs(**values),
+            assumption_evidence,
+            cost_evidence,
+            cost_states,
+            template_id,
+            logistics_calculation_id,
         )
         for evidence_id in result.evidence:
             runtime.evidence.link(
@@ -286,3 +306,48 @@ def get_sourcing_profit_template():
 @router.get("/v1/sourcing/profit-scenarios/{scenario_id}/explain")
 def explain_sourcing_profit_scenario(scenario_id: str):
     return run(lambda: runtime.sourcing_store.get_scenario(scenario_id).explain())
+
+
+@router.post("/v1/logistics/rate-cards", status_code=201)
+def capture_logistics_rate_card(
+    body: LogisticsRateCardInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    values = body.model_dump()
+    return run(
+        lambda: runtime.logistics.capture_rate_card(
+            LogisticsRateCard(**values, captured_by=principal.actor_id)
+        )
+    )
+
+
+@router.get("/v1/logistics/rate-cards")
+def list_logistics_rate_cards(limit: int = 100):
+    return run(lambda: runtime.logistics_store.list_rate_cards(min(max(limit, 1), 500)))
+
+
+@router.post("/v1/logistics/calculations", status_code=201)
+def calculate_logistics_cost(
+    body: LogisticsCalculationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: runtime.logistics.calculate(
+            **body.model_dump(),
+            calculated_by=principal.actor_id,
+        )
+    )
+
+
+@router.get("/v1/logistics/calculations")
+def list_logistics_calculations(limit: int = 100):
+    return run(
+        lambda: runtime.logistics_store.list_calculations(min(max(limit, 1), 500))
+    )
+
+
+@router.get("/v1/logistics/calculations/{calculation_id}/decision-support")
+def logistics_decision_support(calculation_id: str):
+    return run(lambda: runtime.logistics.decision_support(calculation_id))
