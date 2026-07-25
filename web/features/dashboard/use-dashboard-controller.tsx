@@ -19,6 +19,7 @@ import type {
   ProductReadiness,
   ProductMediaReadiness,
   ContentAssetView,
+  MarketplaceGrowthPlan,
   PassportReview,
   ProductIdentity,
   SourcingComparison,
@@ -82,6 +83,8 @@ export function useDashboardController() {
   const [offers, setOffers] = useState<unknown[]>([]);
   const [products, setProducts] = useState<ProductIdentity[]>([]);
   const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
+  const [marketplaceGrowthPlan, setMarketplaceGrowthPlan] = useState<MarketplaceGrowthPlan | null>(null);
+  const [marketplaceGrowthBusy, setMarketplaceGrowthBusy] = useState(false);
   const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
   const [sampleOrders, setSampleOrders] = useState<SampleOrder[]>([]);
   const [supplierPerformance, setSupplierPerformance] = useState<SupplierPerformance[]>([]);
@@ -1140,6 +1143,72 @@ export function useDashboardController() {
     finally { setSourcingUploading(false); }
   }
 
+  async function planMarketplaceGrowth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) =>
+      (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value.trim();
+    const competitorPrices = value("growth_competitor_prices")
+      .split(/[\s,，]+/)
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item) && item > 0)
+      .map(String);
+    const evidenceIds = value("growth_evidence_ids").split(/[\s,，]+/).filter(Boolean);
+    if (competitorPrices.length < 3) {
+      setNotice("增长诊断至少需要 3 个有效的同款同行价格");
+      return;
+    }
+    if (!evidenceIds.length) {
+      setNotice("增长诊断必须引用店铺或同行 Evidence");
+      return;
+    }
+    const observedAt = new Date(value("growth_observed_at"));
+    if (Number.isNaN(observedAt.getTime())) {
+      setNotice("请选择有效的市场观察时间");
+      return;
+    }
+    const conversionRate = value("growth_conversion_rate");
+    const payload = {
+      observations: [{
+        scenario_id: value("growth_scenario_id"),
+        marketplace_sku: value("growth_marketplace_sku"),
+        category: value("growth_category"),
+        competitor_prices_rub: competitorPrices,
+        stock: Number(value("growth_stock")),
+        review_count: Number(value("growth_review_count")),
+        orders_14d: Number(value("growth_orders_14d")),
+        rating: value("growth_rating"),
+        content_score: value("growth_content_score"),
+        conversion_rate: conversionRate ? conversionRate : null,
+        compliance_risk: value("growth_compliance_risk"),
+        observed_at: observedAt.toISOString(),
+        evidence_ids: evidenceIds,
+      }],
+      target_cm3_rate: value("growth_target_cm3_rate"),
+      as_of: new Date().toISOString(),
+    };
+    setMarketplaceGrowthBusy(true);
+    setNotice("正在复验全成本、同行价格和广告门禁…");
+    try {
+      const response = await fetchJson("/backend/v1/marketplace-growth/portfolio-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "无法生成 Ozon 增长方案");
+        return;
+      }
+      setMarketplaceGrowthPlan(result as MarketplaceGrowthPlan);
+      setNotice("增长方案已生成：只提供建议，不会自动改价或投放广告");
+    } catch {
+      setNotice("无法连接增长规划服务，请稍后重试");
+    } finally {
+      setMarketplaceGrowthBusy(false);
+    }
+  }
+
   async function requestProcurement(comparison: SourcingComparison, row: SourcingComparison["rows"][number]) {
     if (!row.scenario) return;
     const draft = procurementDrafts[row.offer.id] ?? { quantity: String(row.offer.min_order_quantity), rationale: "" };
@@ -1968,6 +2037,10 @@ export function useDashboardController() {
     setProducts,
     comparisons,
     setComparisons,
+    marketplaceGrowthPlan,
+    setMarketplaceGrowthPlan,
+    marketplaceGrowthBusy,
+    setMarketplaceGrowthBusy,
     approvals,
     setApprovals,
     sampleOrders,
@@ -2140,6 +2213,7 @@ export function useDashboardController() {
     createListingDraft,
     reviewPassport,
     uploadSupplierComparison,
+    planMarketplaceGrowth,
     requestProcurement,
     createSampleOrder,
     recordSampleEvent,

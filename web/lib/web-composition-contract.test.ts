@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { readDashboardSource } from "./dashboard-source.ts";
 import { fetchJson, settleJsonRequests } from "./fetch-json.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -16,14 +15,48 @@ test("page delegates to the dashboard composition root", () => {
   assert.match(dashboard, /<DashboardView model=/);
 });
 
-test("sidebar navigation targets real dashboard sections", () => {
-  const source = readDashboardSource();
+test("task navigation exposes every unified operating workspace", () => {
+  const workspaces = read("../features/dashboard/dashboard-workspaces.ts");
   const shell = read("../features/dashboard/dashboard-shell.tsx");
-  const targets = [...shell.matchAll(/"(#[a-z][a-z0-9-]+)"/g)].map((match) => match[1]);
+  const view = read("../features/dashboard/dashboard-view.tsx");
+  const targets = [...workspaces.matchAll(/\bid: "([a-z][a-z0-9-]+)"/g)].map((match) => match[1]);
 
-  assert.equal(targets.length, 9);
-  for (const target of targets) assert.match(source, new RegExp(`id="${target.slice(1)}"`));
-  assert.match(shell, /<a href=\{href\}/);
+  assert.deepEqual(targets, [
+    "overview",
+    "growth",
+    "finance",
+    "data",
+    "research",
+    "products",
+    "sourcing",
+    "science",
+    "governance",
+    "system",
+  ]);
+  assert.match(shell, /workspaceDefinitions\.filter/);
+  assert.match(shell, /onNavigate\(item\.id\)/);
+  assert.match(shell, /const selected = activeWorkspace === item\.id/);
+  assert.match(shell, /aria-current=\{selected \? "page" : undefined\}/);
+  for (const target of targets.filter((target) => target !== "overview")) {
+    assert.match(view, new RegExp(`case "${target}"`));
+  }
+  assert.match(view, /window\.location\.hash/);
+});
+
+test("marketplace growth stays recommendation-only while using governed evidence", () => {
+  const controller = read("../features/dashboard/use-dashboard-controller.tsx");
+  const panel = read("../features/dashboard/marketplace-growth-panel.tsx");
+
+  assert.match(controller, /\/backend\/v1\/marketplace-growth\/portfolio-plan/);
+  assert.match(controller, /competitor_prices_rub/);
+  assert.match(controller, /Number\.isFinite\(item\) && item > 0/);
+  assert.match(controller, /scenario_id/);
+  assert.match(controller, /evidence_ids/);
+  assert.match(panel, /自动改价：关闭/);
+  assert.match(panel, /自动投广告：关闭/);
+  assert.match(panel, /自动发布：关闭/);
+  assert.match(panel, /至少 3 个，用逗号或换行分隔/);
+  assert.doesNotMatch(panel, /\/commands|\/write-attempt|\/receipt/);
 });
 
 test("approved listings expose only the minimal execution-plan handoff", () => {
