@@ -10633,6 +10633,48 @@
         "summary": "Discover Models"
       }
     },
+    "/v1/operating-workbench/briefing": {
+      "get": {
+        "operationId": "operating_workbench_briefing_v1_operating_workbench_briefing_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Operating Workbench Briefing V1 Operating Workbench Briefing Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Operating Workbench Briefing"
+      }
+    },
     "/v1/operational-incidents": {
       "get": {
         "operationId": "list_operational_incidents_v1_operational_incidents_get",

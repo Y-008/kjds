@@ -415,6 +415,35 @@ export type OperationsQueueItem = {
   priority: string; owner_id: string | null; due_at: string; overdue: boolean;
   overdue_minutes: number; escalation_level: number; next_action: string;
 };
+export type OperatingWorkbenchBriefing = {
+  contract_id: "kjds-operating-workbench-briefing-v1";
+  mode: "shadow_advisory";
+  status: "ready_for_review" | "needs_input";
+  snapshot_sha256: string;
+  summary: {
+    gate_blockers: number; runtime_items: number; recommendations: number; visible_items: number;
+    candidate_count: number; selection_ready_count: number;
+  };
+  agents: Array<{
+    agent_id: string; name: string; status: "needs_attention" | "waiting_for_upstream";
+    work_item_count: number; current_focus: string; automatic_execution: false;
+  }>;
+  work_items: Array<{
+    id: string; item_type: "gate_blocker" | "runtime_operation" | "recommendation";
+    source_type: string; source_id: string; agent_id: string; agent_name: string;
+    title: string; status: string; priority: string; risk: string; next_action: string;
+    human_required: true; evidence_ids: string[]; gate: string | null;
+    progress: { current: number; target: number } | null; due_at: string | null;
+    overdue: boolean | null; escalation_level: number | null;
+    expected_cm3_delta?: string | null; automatic_execution: false; platform_write_allowed: false;
+  }>;
+  candidate_portfolio: GateReadiness["candidate_portfolio"];
+  guardrails: {
+    advisory_only: true; automatic_execution: false; automatic_product_selection: false;
+    automatic_procurement: false; automatic_pricing: false; automatic_listing: false;
+    platform_write_allowed: false; third_party_fact_promotion_allowed: false;
+  };
+};
 export type ReadOnlyPilot = {
   id: string; platform: string; account_alias: string; allowed_operations: string[];
   max_daily_requests: number; max_targets: number; starts_at: string; ends_at: string;

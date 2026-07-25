@@ -41,3 +41,13 @@ test("request failures settle without rejecting sibling dashboard loads", async 
     globalThis.fetch = originalFetch;
   }
 });
+
+test("Agent status comes from the governed operating-workbench briefing", () => {
+  const controller = read("../features/dashboard/use-dashboard-controller.tsx");
+  const summary = read("../features/dashboard/operations-summary-panel.tsx");
+
+  assert.match(controller, /\/backend\/v1\/operating-workbench\/briefing/);
+  assert.match(summary, /operatingWorkbench\?\.agents\.map/);
+  assert.doesNotMatch(summary, /\["市场分析", "商品策略"/);
+  assert.match(summary, /页面不会自行猜测 Agent 状态/);
+});
