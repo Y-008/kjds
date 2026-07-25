@@ -17,6 +17,8 @@ from ..api_contracts import (
     ChargeInput,
     ContentBriefInput,
     CostEvidenceAuthorityReviewInput,
+    MarketplaceGrowthSnapshotInput,
+    MarketplaceLatestGrowthPlanInput,
     MarketplacePortfolioGrowthPlanInput,
     ObservationInput,
     OpportunityInput,
@@ -153,7 +155,7 @@ def product_media_readiness(product_id: str):
 
 @router.get("/v1/passport-reviews")
 def passport_review_queue(principal: Annotated[Principal, Depends(current_principal)]):
-    ensure_role(principal, "reviewer", "compliance", "admin")
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
     return run(runtime.commerce.passport_review_queue)
 
 
@@ -408,6 +410,48 @@ def plan_marketplace_portfolio_growth(
             observations=[
                 observation.model_dump() for observation in body.observations
             ],
+            target_cm3_rate=body.target_cm3_rate,
+            created_by=principal.actor_id,
+            as_of=body.as_of,
+        )
+    )
+
+
+@router.post("/v1/marketplace-growth/snapshots", status_code=201)
+def capture_marketplace_growth_snapshot(
+    body: MarketplaceGrowthSnapshotInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: runtime.marketplace_growth.capture_snapshot(
+            source=body.source,
+            idempotency_key=body.idempotency_key,
+            observations=[
+                observation.model_dump() for observation in body.observations
+            ],
+            captured_by=principal.actor_id,
+        )
+    )
+
+
+@router.get("/v1/marketplace-growth/observations/latest")
+def list_latest_marketplace_growth_observations(
+    principal: Annotated[Principal, Depends(current_principal)],
+    limit: int = 100,
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(lambda: runtime.marketplace_growth.latest_observations(limit=limit))
+
+
+@router.post("/v1/marketplace-growth/portfolio-plan/latest")
+def plan_latest_marketplace_portfolio_growth(
+    body: MarketplaceLatestGrowthPlanInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: runtime.marketplace_growth.plan_latest(
             target_cm3_rate=body.target_cm3_rate,
             created_by=principal.actor_id,
             as_of=body.as_of,

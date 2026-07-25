@@ -4,6 +4,7 @@ import {
   approverMfaRequired,
   credentialsByActor,
   parseWebActorBindings,
+  resolveLegacyApiCredential,
   validateWebApprovalTopology,
   webAuthMode,
 } from "./identity-config";
@@ -23,15 +24,14 @@ export async function resolveWebIdentity(
 ): Promise<ResolvedWebIdentity> {
   const mode = webAuthMode();
   if (mode === "legacy") {
-    const apiKey = process.env.KJDS_API_KEY?.trim();
-    if (!apiKey) throw new Error("KJDS server identity is not configured");
+    const credential = resolveLegacyApiCredential();
     return {
-      apiKey,
+      apiKey: credential.apiKey,
       authMode: "legacy",
       userId: null,
       email: null,
-      actorId: process.env.KJDS_API_ACTOR?.trim() || "local-operator",
-      roles: (process.env.KJDS_API_ROLES ?? "operator").split(",").map((role) => role.trim()).filter(Boolean),
+      actorId: credential.actorId,
+      roles: credential.roles,
     };
   }
 

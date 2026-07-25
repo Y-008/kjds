@@ -6,6 +6,10 @@ from types import SimpleNamespace
 import pytest
 
 from apps.control_plane.marketplace_growth import MarketplaceGrowthPlanner
+from apps.control_plane.marketplace_growth_workspace import (
+    InMemoryMarketplaceGrowthStore,
+    MarketplaceGrowthWorkspace,
+)
 
 
 class FakeStore:
@@ -345,4 +349,89 @@ def test_market_snapshots_require_three_prices_and_unique_skus() -> None:
             target_cm3_rate=Decimal("0.15"),
             created_by="operator-1",
             as_of="2026-07-25T12:00:00+00:00",
+        )
+
+
+def test_workspace_persists_idempotent_facts_and_plans_latest_portfolio() -> None:
+    live = scenario(
+        scenario_id="scn_workspace",
+        price_rub="1800",
+        fixed_costs_cny="60",
+        release_ready=True,
+    )
+    service, _ = planner(live)
+    workspace = MarketplaceGrowthWorkspace(
+        planner=service,
+        store=InMemoryMarketplaceGrowthStore(),
+    )
+    facts = observation(
+        "scn_workspace",
+        "OZN-WORKSPACE",
+        prices=["1600", "1750", "1850", "2000"],
+        reviews=20,
+        orders=5,
+        content_score="100",
+        conversion_rate="0.03",
+    )
+
+    first = workspace.capture_snapshot(
+        source="operator_verified",
+        idempotency_key="workspace-import-1",
+        observations=[facts],
+        captured_by="operator-1",
+    )
+    replay = workspace.capture_snapshot(
+        source="operator_verified",
+        idempotency_key="workspace-import-1",
+        observations=[facts],
+        captured_by="operator-1",
+    )
+
+    assert replay["id"] == first["id"]
+    assert replay["snapshot_hash"] == first["snapshot_hash"]
+    latest = workspace.latest_observations()
+    assert latest[0]["marketplace_sku"] == "OZN-WORKSPACE"
+    assert latest[0]["snapshot_id"] == first["id"]
+
+    plan = workspace.plan_latest(
+        target_cm3_rate=Decimal("0.15"),
+        created_by="operator-1",
+        as_of="2026-07-25T12:00:00+00:00",
+    )
+    assert plan["summary"]["sku_count"] == 1
+    assert plan["portfolio"][0]["commercial_status"] == "ad_test_eligible"
+    assert plan["automatic_marketplace_write"] is False
+
+
+def test_workspace_rejects_changed_payload_under_same_idempotency_key() -> None:
+    live = scenario(
+        scenario_id="scn_conflict",
+        price_rub="1800",
+        fixed_costs_cny="60",
+        release_ready=True,
+    )
+    service, _ = planner(live)
+    workspace = MarketplaceGrowthWorkspace(
+        planner=service,
+        store=InMemoryMarketplaceGrowthStore(),
+    )
+    facts = observation(
+        "scn_conflict",
+        "OZN-CONFLICT",
+        prices=["1600", "1750", "1850"],
+    )
+    workspace.capture_snapshot(
+        source="ozon_export",
+        idempotency_key="export-1",
+        observations=[facts],
+        captured_by="operator-1",
+    )
+
+    changed = {**facts, "stock": 99}
+    with pytest.raises(ValueError, match="idempotency conflict"):
+        workspace.capture_snapshot(
+            source="ozon_export",
+            idempotency_key="export-1",
+            observations=[changed],
+            captured_by="operator-1",
         )

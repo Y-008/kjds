@@ -32,6 +32,10 @@ from .intelligence import MarketIntelligenceService
 from .limited_executor import LimitedExecutorService
 from .loop_engineering import LoopEngineeringService
 from .marketplace_growth import MarketplaceGrowthPlanner
+from .marketplace_growth_workspace import (
+    MarketplaceGrowthWorkspace,
+    SqlMarketplaceGrowthStore,
+)
 from .operating_workbench import OperatingWorkbenchService
 from .operations_queue import OperationsQueueService
 from .outbox import OutboxService
@@ -214,11 +218,15 @@ def build_runtime() -> RuntimeServices:
         actual_cost_validator=cost_evidence_authority.require_actual,
         action_authorization=action_authorization,
     )
-    marketplace_growth = MarketplaceGrowthPlanner(
+    marketplace_growth_planner = MarketplaceGrowthPlanner(
         sourcing_store=sourcing_store,
         sourcing=sourcing,
         repository=repo,
         evidence=evidence,
+    )
+    marketplace_growth = MarketplaceGrowthWorkspace(
+        planner=marketplace_growth_planner,
+        store=SqlMarketplaceGrowthStore(engine),
     )
     sourcing_intake = SupplierComparisonIntakeService(sourcing=sourcing, evidence=evidence)
     procurement = ProcurementService(

@@ -212,6 +212,33 @@ def test_openapi_exposes_read_only_operating_workbench_briefing() -> None:
     assert set(schema["paths"]["/v1/operating-workbench/briefing"]) == {"get"}
 
 
+def test_openapi_exposes_persisted_marketplace_growth_fact_loop() -> None:
+    schema = app.openapi()
+
+    assert set(schema["paths"]["/v1/marketplace-growth/snapshots"]) == {"post"}
+    assert set(
+        schema["paths"]["/v1/marketplace-growth/observations/latest"]
+    ) == {"get"}
+    assert set(
+        schema["paths"]["/v1/marketplace-growth/portfolio-plan/latest"]
+    ) == {"post"}
+    snapshot_input = schema["components"]["schemas"][
+        "MarketplaceGrowthSnapshotInput"
+    ]
+    assert snapshot_input["additionalProperties"] is False
+    assert set(snapshot_input["required"]) == {
+        "source",
+        "idempotency_key",
+        "observations",
+    }
+    for path, method in (
+        ("/v1/marketplace-growth/snapshots", "post"),
+        ("/v1/marketplace-growth/observations/latest", "get"),
+        ("/v1/marketplace-growth/portfolio-plan/latest", "post"),
+    ):
+        assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
+
+
 def test_cost_authority_catalog_is_read_only_and_complete() -> None:
     result = cost_authority_catalog(Principal("operator-1", frozenset({"operator"})))
 

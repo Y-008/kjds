@@ -45,7 +45,7 @@ export function parseWebActorBindings(raw: string | undefined): Map<string, WebA
 }
 
 export function credentialsByActor(raw: string | undefined): Map<string, ApiCredential> {
-  if (!raw?.trim()) throw new Error("KJDS_API_KEYS_JSON is required for Supabase Web authentication");
+  if (!raw?.trim()) throw new Error("KJDS_API_KEYS_JSON is required for Web server identity resolution");
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -70,6 +70,40 @@ export function credentialsByActor(raw: string | undefined): Map<string, ApiCred
     credentials.set(actorId, { actorId, roles: roles.map((role) => (role as string).trim()), apiKey });
   }
   return credentials;
+}
+
+export function resolveLegacyApiCredential(
+  environment: NodeJS.ProcessEnv = process.env,
+): ApiCredential {
+  const configuredActorId = environment.KJDS_API_ACTOR?.trim();
+  const directApiKey = environment.KJDS_API_KEY?.trim();
+  if (directApiKey) {
+    return {
+      actorId: configuredActorId || "local-operator",
+      apiKey: directApiKey,
+      roles: (environment.KJDS_API_ROLES ?? "operator")
+        .split(",")
+        .map((role) => role.trim())
+        .filter(Boolean),
+    };
+  }
+  const credentials = credentialsByActor(environment.KJDS_API_KEYS_JSON);
+  if (configuredActorId) {
+    const credential = credentials.get(configuredActorId);
+    if (!credential) {
+      throw new Error(`KJDS server identity actor ${configuredActorId} has no API credential`);
+    }
+    return credential;
+  }
+  const operatorCredentials = [...credentials.values()].filter((credential) =>
+    credential.roles.includes("operator"),
+  );
+  if (operatorCredentials.length !== 1) {
+    throw new Error(
+      "Legacy Web requires KJDS_API_ACTOR when the credential map does not contain exactly one operator",
+    );
+  }
+  return operatorCredentials[0];
 }
 
 export function validateWebApprovalTopology(

@@ -41,13 +41,18 @@ test("task navigation exposes every unified operating workspace", () => {
     assert.match(view, new RegExp(`case "${target}"`));
   }
   assert.match(view, /window\.location\.hash/);
+  assert.match(view, /history\.pushState/);
+  assert.match(view, /addEventListener\("popstate"/);
+  assert.doesNotMatch(view, /history\.replaceState/);
 });
 
 test("marketplace growth stays recommendation-only while using governed evidence", () => {
   const controller = read("../features/dashboard/use-dashboard-controller.tsx");
   const panel = read("../features/dashboard/marketplace-growth-panel.tsx");
 
-  assert.match(controller, /\/backend\/v1\/marketplace-growth\/portfolio-plan/);
+  assert.match(controller, /\/backend\/v1\/marketplace-growth\/snapshots/);
+  assert.match(controller, /\/backend\/v1\/marketplace-growth\/portfolio-plan\/latest/);
+  assert.match(controller, /\/backend\/v1\/marketplace-growth\/observations\/latest/);
   assert.match(controller, /competitor_prices_rub/);
   assert.match(controller, /Number\.isFinite\(item\) && item > 0/);
   assert.match(controller, /scenario_id/);
@@ -56,6 +61,7 @@ test("marketplace growth stays recommendation-only while using governed evidence
   assert.match(panel, /自动投广告：关闭/);
   assert.match(panel, /自动发布：关闭/);
   assert.match(panel, /至少 3 个，用逗号或换行分隔/);
+  assert.match(panel, /保存事实并生成全店方案/);
   assert.doesNotMatch(panel, /\/commands|\/write-attempt|\/receipt/);
 });
 

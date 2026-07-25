@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.49.0"
+APP_VERSION = "0.50.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -120,6 +120,21 @@ class MarketplacePortfolioGrowthPlanInput(BaseModel):
     observations: list[MarketplaceSkuGrowthObservationInput] = Field(
         min_length=1, max_length=100
     )
+    target_cm3_rate: Decimal = Field(gt=0, lt=Decimal("0.5"))
+    as_of: str | None = None
+
+
+class MarketplaceGrowthSnapshotInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: Literal["ozon_seller_api", "ozon_export", "operator_verified"]
+    idempotency_key: str = Field(min_length=1, max_length=160)
+    observations: list[MarketplaceSkuGrowthObservationInput] = Field(
+        min_length=1, max_length=1000
+    )
+
+
+class MarketplaceLatestGrowthPlanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     target_cm3_rate: Decimal = Field(gt=0, lt=Decimal("0.5"))
     as_of: str | None = None
 
