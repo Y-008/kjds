@@ -823,6 +823,17 @@ body {
   font-weight: 850;
 }
 .growth-fact-hub .section-heading > button:disabled { opacity: .45; cursor: not-allowed; }
+.catalog-hub { border-color: #dce4ff; background: linear-gradient(180deg, #fff 0%, #fbfcff 100%); }
+.catalog-import-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 9px; align-items: end; margin-bottom: 13px; padding: 12px; border: 1px solid #e5e9f6; border-radius: 11px; background: #f7f9ff; }
+.catalog-import-form label { min-width: 0; display: grid; gap: 5px; color: #606b7d; font-size: 9px; font-weight: 750; }
+.catalog-import-form label.wide { grid-column: 1 / 3; }
+.catalog-import-form input,
+.catalog-import-form select { width: 100%; min-width: 0; min-height: 36px; padding: 8px 10px; border: 1px solid #dfe4ec; border-radius: 9px; background: #fff; color: #303a4d; font-size: 9px; }
+.catalog-import-form select[multiple] { min-height: 62px; }
+.catalog-import-form small { color: #929bad; font-size: 8px; font-weight: 500; line-height: 1.4; }
+.catalog-import-form > button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 13px; border: 0; border-radius: 9px; background: #273763; color: #fff; font-size: 9px; font-weight: 850; }
+.catalog-import-form > button:disabled { opacity: .45; cursor: not-allowed; }
+.catalog-item-list article { background: #fff; }
 .growth-fact-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .growth-fact-list article { min-width: 0; padding: 11px; border: 1px solid #e5e8ef; border-radius: 10px; background: #fafbfc; }
 .growth-fact-list article > div:first-child { display: grid; gap: 2px; }
@@ -1086,6 +1097,8 @@ body {
   .growth-price-grid { grid-template-columns: 1fr 1fr; }
   .growth-method { grid-template-columns: 1fr 1fr; }
   .growth-fact-list { grid-template-columns: 1fr; }
+  .catalog-import-form { grid-template-columns: 1fr 1fr; }
+  .catalog-import-form > button { grid-column: 1 / -1; }
   .growth-fields { grid-template-columns: 1fr 1fr; }
   .growth-analysis-grid,
   .governance-grid { grid-template-columns: 1fr; }
@@ -1111,6 +1124,9 @@ body {
   .growth-fields,
   .growth-price-grid,
   .content-plan > div { grid-template-columns: 1fr; }
+  .catalog-import-form { grid-template-columns: 1fr; }
+  .catalog-import-form label.wide,
+  .catalog-import-form > button { grid-column: auto; }
   .growth-fields label.wide { grid-column: auto; }
   .governance-chain { grid-template-columns: 1fr 1fr; }
   .growth-submit { align-items: stretch; flex-direction: column; }

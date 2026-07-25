@@ -19,6 +19,7 @@ import type {
   ProductReadiness,
   ProductMediaReadiness,
   ContentAssetView,
+  MarketplaceCatalogItem,
   MarketplaceGrowthObservation,
   MarketplaceGrowthPlan,
   PassportReview,
@@ -84,6 +85,10 @@ export function useDashboardController() {
   const [offers, setOffers] = useState<unknown[]>([]);
   const [products, setProducts] = useState<ProductIdentity[]>([]);
   const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
+  const [marketplaceCatalogItems, setMarketplaceCatalogItems] = useState<MarketplaceCatalogItem[]>([]);
+  const [marketplaceCatalogLoaded, setMarketplaceCatalogLoaded] = useState(false);
+  const [marketplaceCatalogBusy, setMarketplaceCatalogBusy] = useState(false);
+  const [marketplaceCatalogStoreRef, setMarketplaceCatalogStoreRef] = useState("ozon-primary");
   const [marketplaceGrowthPlan, setMarketplaceGrowthPlan] = useState<MarketplaceGrowthPlan | null>(null);
   const [marketplaceGrowthObservations, setMarketplaceGrowthObservations] = useState<MarketplaceGrowthObservation[]>([]);
   const [marketplaceGrowthFactsLoaded, setMarketplaceGrowthFactsLoaded] = useState(false);
@@ -159,7 +164,7 @@ export function useDashboardController() {
   const [sourcingUploading, setSourcingUploading] = useState(false);
   const [procurementDrafts, setProcurementDrafts] = useState<Record<string, { quantity: string; rationale: string }>>({});
   const [procurementBusy, setProcurementBusy] = useState<string | null>(null);
-  const [notice, setNotice] = useState("等待第一份 Ozon 数据");
+  const [notice, setNotice] = useState("正在加载经营事实与 Evidence");
   const [domainStates, setDomainStates] = useState<Record<string, DomainState>>({
     core: "loading", product: "loading", finance: "loading", science: "loading", execution: "loading",
   });
@@ -1146,6 +1151,73 @@ export function useDashboardController() {
     finally { setSourcingUploading(false); }
   }
 
+  const loadMarketplaceCatalog = useCallback(async (storeRef?: string) => {
+    const scope = (storeRef ?? marketplaceCatalogStoreRef).trim();
+    if (!scope) return;
+    setMarketplaceCatalogBusy(true);
+    try {
+      const response = await fetchJson(
+        `/backend/v1/marketplace-catalog/items/latest?store_ref=${encodeURIComponent(scope)}&limit=100`,
+        { cache: "no-store" },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        setMarketplaceCatalogItems([]);
+        setNotice(result.detail ?? "无法读取 Ozon 商品目录");
+        return;
+      }
+      setMarketplaceCatalogStoreRef(scope);
+      const items = result as MarketplaceCatalogItem[];
+      setMarketplaceCatalogItems(items);
+      if (items.length) {
+        setNotice(`已加载 ${items.length} 个真实 Ozon 目录条目；媒体仍是未核权外部引用`);
+      }
+    } catch {
+      setMarketplaceCatalogItems([]);
+      setNotice("无法连接商品目录服务，请稍后重试");
+    } finally {
+      setMarketplaceCatalogLoaded(true);
+      setMarketplaceCatalogBusy(false);
+    }
+  }, [marketplaceCatalogStoreRef]);
+
+  async function importMarketplaceCatalog(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const storeRef = (form.elements.namedItem("catalog_store_ref") as HTMLInputElement).value.trim();
+    const idempotencyKey = (form.elements.namedItem("catalog_idempotency_key") as HTMLInputElement).value.trim();
+    const evidenceSelect = form.elements.namedItem("catalog_evidence_ids") as HTMLSelectElement;
+    const evidenceIds = Array.from(evidenceSelect.selectedOptions).map((option) => option.value);
+    if (!evidenceIds.length) {
+      setNotice("请选择至少一份已验证的 Ozon 原始响应 Evidence");
+      return;
+    }
+    setMarketplaceCatalogBusy(true);
+    try {
+      const response = await fetchJson("/backend/v1/marketplace-catalog/ozon/import-evidence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          evidence_ids: evidenceIds,
+          store_ref: storeRef,
+          idempotency_key: idempotencyKey,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "Ozon 商品目录同步失败");
+        return;
+      }
+      setMarketplaceCatalogStoreRef(storeRef);
+      await loadMarketplaceCatalog(storeRef);
+      setNotice(`已从 ${result.item_count} 份真实 Seller 响应生成不可变目录快照；未自动建商品、改价、上架或复制媒体`);
+    } catch {
+      setNotice("无法连接商品目录服务，请稍后重试");
+    } finally {
+      setMarketplaceCatalogBusy(false);
+    }
+  }
+
   async function planMarketplaceGrowth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -2100,6 +2172,14 @@ export function useDashboardController() {
     setProducts,
     comparisons,
     setComparisons,
+    marketplaceCatalogItems,
+    setMarketplaceCatalogItems,
+    marketplaceCatalogLoaded,
+    setMarketplaceCatalogLoaded,
+    marketplaceCatalogBusy,
+    setMarketplaceCatalogBusy,
+    marketplaceCatalogStoreRef,
+    setMarketplaceCatalogStoreRef,
     marketplaceGrowthPlan,
     setMarketplaceGrowthPlan,
     marketplaceGrowthObservations,
@@ -2280,6 +2360,8 @@ export function useDashboardController() {
     createListingDraft,
     reviewPassport,
     uploadSupplierComparison,
+    importMarketplaceCatalog,
+    loadMarketplaceCatalog,
     planMarketplaceGrowth,
     loadMarketplaceGrowthFacts,
     planLatestMarketplaceGrowth,

@@ -10,7 +10,8 @@ const forwardedResponseHeaders = ["content-type", "content-disposition"];
 
 async function forward(request: Request, context: RouteContext): Promise<Response> {
   const apiBase = process.env.KJDS_API_URL ?? "http://127.0.0.1:8000";
-  if (!mutationOriginIsAllowed(request)) {
+  const csrfMarkerAccepted = request.headers.get("x-kjds-csrf") === "same-origin-fetch";
+  if (!csrfMarkerAccepted && !mutationOriginIsAllowed(request)) {
     return Response.json({ detail: "Cross-site or originless mutations are not allowed" }, { status: 403 });
   }
 

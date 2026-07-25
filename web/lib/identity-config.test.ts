@@ -141,7 +141,7 @@ test("only approvers require an AAL2 session", () => {
   assert.equal(approverMfaRequired(["approver"], "aal2"), false);
 });
 
-test("mutations require an exact same-origin Origin header", () => {
+test("mutations require exact Origin or browser-controlled same-origin metadata", () => {
   assert.equal(mutationOriginIsAllowed(new Request("https://kjds.example/backend/v1/health")), true);
   assert.equal(
     mutationOriginIsAllowed(
@@ -154,6 +154,48 @@ test("mutations require an exact same-origin Origin header", () => {
   );
   assert.equal(
     mutationOriginIsAllowed(new Request("https://kjds.example/backend/v1/approvals/a/decision", { method: "POST" })),
+    false,
+  );
+  assert.equal(
+    mutationOriginIsAllowed(
+      new Request("https://kjds.example/backend/v1/approvals/a/decision", {
+        method: "POST",
+        headers: { "x-kjds-csrf": "same-origin-fetch" },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    mutationOriginIsAllowed(
+      new Request("https://kjds.example/backend/v1/approvals/a/decision", {
+        method: "POST",
+        headers: {
+          referer: "https://kjds.example/growth",
+          "sec-fetch-site": "same-origin",
+        },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    mutationOriginIsAllowed(
+      new Request("https://kjds.example/backend/v1/approvals/a/decision", {
+        method: "POST",
+        headers: { referer: "https://kjds.example/growth" },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    mutationOriginIsAllowed(
+      new Request("https://kjds.example/backend/v1/approvals/a/decision", {
+        method: "POST",
+        headers: {
+          referer: "https://attacker.example/",
+          "sec-fetch-site": "cross-site",
+        },
+      }),
+    ),
     false,
   );
   assert.equal(
