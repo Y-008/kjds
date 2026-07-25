@@ -356,6 +356,7 @@ def build_runtime() -> RuntimeServices:
         verified_bundle_loader=pilot_runs.verified_product_response_bundle,
         store=SqlMarketplaceCatalogStore(engine),
         evidence=evidence,
+        repository=repo,
     )
     providers = {"comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189"))}
     if url := os.getenv("KJDS_OLLAMA_URL", "").strip():

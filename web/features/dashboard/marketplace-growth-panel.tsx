@@ -8,6 +8,7 @@ import {
   Database,
   Image as ImageIcon,
   Layers3,
+  Link2,
   Megaphone,
   PackageSearch,
   ShieldAlert,
@@ -76,6 +77,9 @@ const roleLabels: Record<string, string> = {
 
 export function MarketplaceGrowthPanel({ model }: { model: DashboardModel }) {
   const [localNow, setLocalNow] = useState("");
+  const canBindExistingListing = model.webSession?.roles.some(
+    (role) => role === "operator" || role === "admin",
+  ) ?? false;
   const scenarioOptions = model.comparisons.flatMap((comparison) =>
     comparison.rows.flatMap((row) =>
       row.scenario ? [{
@@ -166,6 +170,27 @@ export function MarketplaceGrowthPanel({ model }: { model: DashboardModel }) {
                 <small>
                   媒体：未核权外部引用 · 观察于 {new Date(item.observed_at).toLocaleString("zh-CN")} · Evidence {item.source_evidence_id}
                 </small>
+                {item.canonical_product_id ? (
+                  <div className="catalog-binding-state">
+                    <CheckCircle2 size={14} />
+                    已建立标准商品档案 · {item.canonical_product_id}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="catalog-binding-action"
+                    disabled={!canBindExistingListing || model.marketplaceCatalogBusy}
+                    onClick={() => void model.bindExistingMarketplaceListing(item)}
+                  >
+                    <Link2 size={14} />
+                    建立已有 Listing 运营档案
+                  </button>
+                )}
+                {!item.canonical_product_id && (
+                  <small>
+                    仅建立店内现有商品身份和报价/利润工作台；不计入新选品，不改价、不发布、不采购、不投广告。
+                  </small>
+                )}
               </article>
             ))}
           </div>

@@ -239,7 +239,7 @@ def test_openapi_exposes_persisted_marketplace_growth_fact_loop() -> None:
         assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
 
 
-def test_openapi_exposes_verified_marketplace_catalog_import() -> None:
+def test_openapi_exposes_verified_marketplace_catalog_and_existing_binding() -> None:
     schema = app.openapi()
 
     assert set(
@@ -248,6 +248,9 @@ def test_openapi_exposes_verified_marketplace_catalog_import() -> None:
     assert set(
         schema["paths"]["/v1/marketplace-catalog/items/latest"]
     ) == {"get"}
+    assert set(
+        schema["paths"]["/v1/marketplace-catalog/items/bind-existing"]
+    ) == {"post"}
     request_schema = schema["components"]["schemas"][
         "OzonCatalogEvidenceImportInput"
     ]
@@ -257,9 +260,21 @@ def test_openapi_exposes_verified_marketplace_catalog_import() -> None:
         "store_ref",
         "idempotency_key",
     }
+    binding_schema = schema["components"]["schemas"][
+        "ExistingOzonListingBindingInput"
+    ]
+    assert binding_schema["additionalProperties"] is False
+    assert set(binding_schema["required"]) == {
+        "store_ref",
+        "offer_id",
+        "expected_item_hash",
+        "confirmed",
+    }
+    assert binding_schema["properties"]["confirmed"]["const"] is True
     for path, method in (
         ("/v1/marketplace-catalog/ozon/import-evidence", "post"),
         ("/v1/marketplace-catalog/items/latest", "get"),
+        ("/v1/marketplace-catalog/items/bind-existing", "post"),
     ):
         assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
 

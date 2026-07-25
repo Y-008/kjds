@@ -42,7 +42,7 @@ class SupplierComparisonIntakeService:
         effective_until: str | None,
         created_by: str,
     ):
-        self._require_candidate_handoff(product_id)
+        self._require_sourcing_handoff(product_id)
         values = dict(offer_data)
         values["product_id"] = product_id
         return self.quote_authority.capture(
@@ -96,7 +96,7 @@ class SupplierComparisonIntakeService:
         logistics_currency_to_cny_rate: Decimal | None = None,
         logistics_fx_evidence_id: str | None = None,
     ) -> dict:
-        self._require_candidate_handoff(product_id)
+        self._require_sourcing_handoff(product_id)
         normalized_quote_ids = [item.strip() for item in quote_evidence_ids if item.strip()]
         if len(normalized_quote_ids) != 3 or len(set(normalized_quote_ids)) != 3:
             raise ValueError("Supplier comparison requires exactly three distinct quote evidence records")
@@ -251,21 +251,38 @@ class SupplierComparisonIntakeService:
             },
         }
 
-    def _require_candidate_handoff(self, product_id: str) -> None:
+    def _require_sourcing_handoff(self, product_id: str) -> None:
         repository = self.sourcing.repository
         repository.get_product(product_id)
-        handoff_recorded = any(
-            event["type"] == "product.candidate_sourcing_workspace_created"
-            and event["aggregate_id"] == product_id
-            for event in repository.events_after(0)
+        events = repository.events_after(0)
+        allowed_handoffs = (
+            (
+                "product.candidate_sourcing_workspace_created",
+                "candidate_basis",
+            ),
+            (
+                "product.existing_listing_growth_workspace_created",
+                "existing_listing_basis",
+            ),
         )
-        if not handoff_recorded:
-            raise ValueError("Supplier comparison requires the candidate sourcing handoff")
-        evidence_ids = self.evidence.target_evidence_ids(
-            target_type="product",
-            target_id=product_id,
-            relationship="candidate_basis",
+        for event_type, relationship in allowed_handoffs:
+            if not any(
+                event["type"] == event_type
+                and event["aggregate_id"] == product_id
+                for event in events
+            ):
+                continue
+            evidence_ids = self.evidence.target_evidence_ids(
+                target_type="product",
+                target_id=product_id,
+                relationship=relationship,
+            )
+            if not evidence_ids:
+                raise ValueError(
+                    "Supplier comparison requires sourcing handoff basis evidence"
+                )
+            self.evidence.require_valid(evidence_ids)
+            return
+        raise ValueError(
+            "Supplier comparison requires a candidate or existing-listing sourcing handoff"
         )
-        if not evidence_ids:
-            raise ValueError("Supplier comparison requires candidate basis evidence")
-        self.evidence.require_valid(evidence_ids)

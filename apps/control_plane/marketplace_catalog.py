@@ -9,8 +9,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
-from .domain import new_id
+from .domain import Product, ProductStatus, new_id
 
 OZON_PRODUCT_BUNDLE_SCHEMA = "ozon-response-bundle-v2"
 OZON_PRODUCT_CONTRACT_VERSION = "ozon-product-read-v1"
@@ -283,6 +284,7 @@ class InMemoryMarketplaceCatalogStore:
 
     def __init__(self) -> None:
         self.snapshots: dict[tuple[str, str], dict[str, Any]] = {}
+        self.bindings: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     def save_snapshot(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         key = (snapshot["store_ref"], snapshot["idempotency_key"])
@@ -315,11 +317,69 @@ class InMemoryMarketplaceCatalogStore:
         latest: dict[str, dict[str, Any]] = {}
         for item in candidates:
             latest.setdefault(item["offer_id"], item)
+        projected = []
+        for item in latest.values():
+            binding = self.bindings.get(("ozon", store_ref, item["offer_id"]))
+            projected.append(
+                {
+                    **item,
+                    "canonical_product_id": (
+                        binding["product_id"]
+                        if binding is not None
+                        else item["canonical_product_id"]
+                    ),
+                }
+            )
         return sorted(
-            latest.values(),
+            projected,
             key=lambda item: (item["observed_at"], item["offer_id"]),
             reverse=True,
         )[:limit]
+
+    def get_binding(
+        self, *, marketplace: str, store_ref: str, offer_id: str
+    ) -> dict[str, Any] | None:
+        binding = self.bindings.get((marketplace, store_ref, offer_id))
+        return deepcopy(binding) if binding is not None else None
+
+    def save_binding(self, binding: dict[str, Any]) -> dict[str, Any]:
+        key = (
+            binding["marketplace"],
+            binding["store_ref"],
+            binding["offer_id"],
+        )
+        existing = self.bindings.get(key)
+        if existing is not None:
+            self._require_same_binding(existing, binding)
+            return deepcopy(existing)
+        product_owner = next(
+            (
+                item
+                for item in self.bindings.values()
+                if item["product_id"] == binding["product_id"]
+            ),
+            None,
+        )
+        if product_owner is not None:
+            raise ValueError("Canonical product already belongs to another marketplace listing")
+        self.bindings[key] = deepcopy(binding)
+        return deepcopy(binding)
+
+    @staticmethod
+    def _require_same_binding(
+        existing: dict[str, Any], proposed: dict[str, Any]
+    ) -> None:
+        # The identity is immutable, while the original Evidence/hash remain frozen on
+        # the stored binding. A later catalog snapshot may legitimately carry fresher
+        # provenance for the same listing and must not rewrite the original basis.
+        immutable_fields = {
+            "marketplace",
+            "store_ref",
+            "offer_id",
+            "product_id",
+        }
+        if any(existing.get(key) != proposed.get(key) for key in immutable_fields):
+            raise ValueError("Marketplace listing is already bound to different immutable terms")
 
 
 class SqlMarketplaceCatalogStore:
@@ -452,6 +512,7 @@ class SqlMarketplaceCatalogStore:
                         SELECT *
                         FROM (
                             SELECT item.*,
+                                   binding.product_id AS bound_product_id,
                                    row_number() OVER (
                                        PARTITION BY item.offer_id
                                        ORDER BY item.observed_at DESC,
@@ -461,6 +522,10 @@ class SqlMarketplaceCatalogStore:
                             FROM marketplace_catalog_items AS item
                             JOIN marketplace_catalog_snapshots AS snapshot
                               ON snapshot.id = item.snapshot_id
+                            LEFT JOIN marketplace_product_bindings AS binding
+                              ON binding.marketplace = snapshot.marketplace
+                             AND binding.store_ref = snapshot.store_ref
+                             AND binding.offer_id = item.offer_id
                             WHERE snapshot.store_ref = :store_ref
                         ) AS ranked
                         WHERE latest_rank = 1
@@ -474,6 +539,97 @@ class SqlMarketplaceCatalogStore:
                 .all()
             )
         return [self._item(row) for row in rows]
+
+    def get_binding(
+        self, *, marketplace: str, store_ref: str, offer_id: str
+    ) -> dict[str, Any] | None:
+        with self.engine.connect() as connection:
+            row = (
+                connection.execute(
+                    text(
+                        """
+                        SELECT *
+                        FROM marketplace_product_bindings
+                        WHERE marketplace = :marketplace
+                          AND store_ref = :store_ref
+                          AND offer_id = :offer_id
+                        """
+                    ),
+                    {
+                        "marketplace": marketplace,
+                        "store_ref": store_ref,
+                        "offer_id": offer_id,
+                    },
+                )
+                .mappings()
+                .first()
+            )
+        return self._binding(row) if row is not None else None
+
+    def save_binding(self, binding: dict[str, Any]) -> dict[str, Any]:
+        try:
+            with self.engine.begin() as connection:
+                inserted = connection.execute(
+                    text(
+                        """
+                        INSERT INTO marketplace_product_bindings (
+                            marketplace, store_ref, offer_id, marketplace_sku,
+                            product_id, source_evidence_id, item_hash, bound_by, bound_at
+                        ) VALUES (
+                            :marketplace, :store_ref, :offer_id, :marketplace_sku,
+                            :product_id, :source_evidence_id, :item_hash, :bound_by, :bound_at
+                        )
+                        ON CONFLICT (marketplace, store_ref, offer_id) DO NOTHING
+                        RETURNING marketplace
+                        """
+                    ),
+                    binding,
+                ).scalar_one_or_none()
+                if inserted is not None:
+                    return dict(binding)
+                row = (
+                    connection.execute(
+                        text(
+                            """
+                            SELECT *
+                            FROM marketplace_product_bindings
+                            WHERE marketplace = :marketplace
+                              AND store_ref = :store_ref
+                              AND offer_id = :offer_id
+                            """
+                        ),
+                        binding,
+                    )
+                    .mappings()
+                    .one()
+                )
+                existing = self._binding(row)
+                InMemoryMarketplaceCatalogStore._require_same_binding(
+                    existing, binding
+                )
+                return existing
+        except IntegrityError as exc:
+            raise ValueError(
+                "Canonical product already belongs to another marketplace listing"
+            ) from exc
+
+    @staticmethod
+    def _binding(row) -> dict[str, Any]:
+        return {
+            "marketplace": row["marketplace"],
+            "store_ref": row["store_ref"],
+            "offer_id": row["offer_id"],
+            "marketplace_sku": row["marketplace_sku"],
+            "product_id": row["product_id"],
+            "source_evidence_id": row["source_evidence_id"],
+            "item_hash": row["item_hash"],
+            "bound_by": row["bound_by"],
+            "bound_at": (
+                row["bound_at"].isoformat()
+                if hasattr(row["bound_at"], "isoformat")
+                else str(row["bound_at"])
+            ),
+        }
 
     def _snapshot(self, connection, snapshot_id: str) -> dict[str, Any]:
         snapshot = (
@@ -536,7 +692,9 @@ class SqlMarketplaceCatalogStore:
             "source_evidence_id": row["source_evidence_id"],
             "observed_at": row["observed_at"].isoformat(),
             "item_hash": row["item_hash"],
-            "canonical_product_id": row["canonical_product_id"],
+            "canonical_product_id": (
+                row.get("bound_product_id") or row["canonical_product_id"]
+            ),
             "snapshot_id": row["snapshot_id"],
         }
 
@@ -550,10 +708,12 @@ class MarketplaceCatalogWorkspace:
         verified_bundle_loader: Callable[[str], tuple[bytes, Any]],
         store,
         evidence,
+        repository,
     ) -> None:
         self.verified_bundle_loader = verified_bundle_loader
         self.store = store
         self.evidence = evidence
+        self.repository = repository
 
     def import_ozon_evidence(
         self,
@@ -643,3 +803,199 @@ class MarketplaceCatalogWorkspace:
         if limit < 1 or limit > 1000:
             raise ValueError("Marketplace catalog item limit must be 1 to 1000")
         return self.store.latest_items(store_ref=store_scope, limit=limit)
+
+    def bind_existing_listing(
+        self,
+        *,
+        store_ref: str,
+        offer_id: str,
+        expected_item_hash: str,
+        confirmed: bool,
+        bound_by: str,
+    ) -> dict[str, Any]:
+        if not confirmed:
+            raise ValueError("Existing listing binding requires explicit human confirmation")
+        store_scope = _required_text(store_ref, "store_ref", max_length=160)
+        external_offer_id = _required_text(
+            offer_id, "offer_id", max_length=160
+        )
+        actor = _required_text(bound_by, "bound_by", max_length=160)
+        expected_hash = _required_text(
+            expected_item_hash, "expected_item_hash", max_length=64
+        )
+        if len(expected_hash) != 64 or any(
+            character not in "0123456789abcdef" for character in expected_hash
+        ):
+            raise ValueError("Expected catalog item hash must be lowercase SHA-256")
+
+        item = next(
+            (
+                candidate
+                for candidate in self.store.latest_items(
+                    store_ref=store_scope,
+                    limit=1000,
+                )
+                if candidate["offer_id"] == external_offer_id
+            ),
+            None,
+        )
+        if item is None:
+            raise KeyError("Unknown current marketplace catalog item")
+        if item["item_hash"] != expected_hash:
+            raise ValueError("Catalog item changed; refresh before binding")
+        self.evidence.require_current([item["source_evidence_id"]])
+
+        identity = json.dumps(
+            {
+                "marketplace": "ozon",
+                "store_ref": store_scope,
+                "offer_id": external_offer_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        product_id = f"prd_{hashlib.sha256(identity).hexdigest()[:32]}"
+        canonical_sku = f"ozon:{store_scope}:{external_offer_id}"
+        binding = {
+            "marketplace": "ozon",
+            "store_ref": store_scope,
+            "offer_id": external_offer_id,
+            "marketplace_sku": item["marketplace_sku"],
+            "product_id": product_id,
+            "source_evidence_id": item["source_evidence_id"],
+            "item_hash": item["item_hash"],
+            "bound_by": actor,
+            "bound_at": datetime.now(UTC).isoformat(),
+        }
+
+        existing_binding = self.store.get_binding(
+            marketplace="ozon",
+            store_ref=store_scope,
+            offer_id=external_offer_id,
+        )
+        if (
+            existing_binding is not None
+            and existing_binding["product_id"] != product_id
+        ):
+            raise ValueError(
+                "Marketplace listing is already bound to a different canonical product"
+            )
+        products = self.repository.list_products()
+        product_by_id = next(
+            (product for product in products if product.id == product_id),
+            None,
+        )
+        product_by_sku = next(
+            (
+                product
+                for product in products
+                if product.sku == canonical_sku
+            ),
+            None,
+        )
+        if (
+            product_by_id is not None
+            and product_by_id.sku != canonical_sku
+        ) or (
+            product_by_sku is not None
+            and product_by_sku.id != product_id
+        ):
+            raise ValueError(
+                "Marketplace offer ID already belongs to a different canonical product"
+            )
+        existing_product = product_by_id or product_by_sku
+        if existing_product is not None and (
+            existing_product.market != "RU"
+            or existing_product.channel != "OZON"
+        ):
+            raise ValueError(
+                "Marketplace offer ID already belongs to a different canonical product"
+            )
+
+        created = False
+        product = existing_product
+        if product is None:
+            product = Product(
+                id=product_id,
+                sku=canonical_sku,
+                name=item["name"],
+                market="RU",
+                channel="OZON",
+                status=ProductStatus.PAUSED,
+            )
+            try:
+                with self.repository.transaction():
+                    self.repository.add_product(product)
+                    self.repository.append_event(
+                        "product.created",
+                        product.id,
+                        {
+                            "sku": product.sku,
+                            "origin": "existing_ozon_listing",
+                        },
+                        actor_id=actor,
+                        source_evidence_id=item["source_evidence_id"],
+                    )
+                created = True
+            except ValueError:
+                product = next(
+                    (
+                        candidate
+                        for candidate in self.repository.list_products()
+                        if candidate.sku == canonical_sku
+                    ),
+                    None,
+                )
+                if product is None or product.id != product_id:
+                    raise
+
+        saved_binding = (
+            existing_binding
+            if existing_binding is not None
+            else self.store.save_binding(binding)
+        )
+        InMemoryMarketplaceCatalogStore._require_same_binding(
+            saved_binding, binding
+        )
+        if product.status != ProductStatus.ACTIVE:
+            product.status = ProductStatus.ACTIVE
+            self.repository.save_product(product)
+        handoff_recorded = any(
+            event["type"]
+            == "product.existing_listing_growth_workspace_created"
+            and event["aggregate_id"] == product.id
+            for event in self.repository.events_after(0)
+        )
+        if not handoff_recorded:
+            self.repository.append_event(
+                "product.existing_listing_growth_workspace_created",
+                product.id,
+                {
+                    "marketplace": "ozon",
+                    "store_ref": store_scope,
+                    "offer_id": external_offer_id,
+                    "marketplace_sku": item["marketplace_sku"],
+                    "item_hash": item["item_hash"],
+                    "bound_by": actor,
+                },
+                actor_id=actor,
+                source_evidence_id=item["source_evidence_id"],
+            )
+        self.evidence.link(
+            evidence_id=item["source_evidence_id"],
+            target_type="product",
+            target_id=product.id,
+            relationship="existing_listing_basis",
+            created_by=actor,
+        )
+        return {
+            "product": product,
+            "binding": saved_binding,
+            "created": created,
+            "next_gate": "supplier_quote_authority",
+            "counts_as_new_candidate": False,
+            "media_rights_status": item["media_rights_status"],
+            "automatic_procurement": False,
+            "automatic_listing": False,
+            "automatic_marketplace_write": False,
+        }

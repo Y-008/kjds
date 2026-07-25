@@ -146,6 +146,14 @@ class OzonCatalogEvidenceImportInput(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=160)
 
 
+class ExistingOzonListingBindingInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(min_length=1, max_length=160)
+    offer_id: str = Field(min_length=1, max_length=160)
+    expected_item_hash: str = Field(pattern="^[0-9a-f]{64}$")
+    confirmed: Literal[True]
+
+
 class OpportunityInput(BaseModel):
     market: str
     category: str

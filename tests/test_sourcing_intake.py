@@ -383,7 +383,7 @@ def test_supplier_comparison_rejects_product_without_candidate_handoff_before_ca
     product, store, intake = make_intake()
     intake.sourcing.repository.events.clear()
 
-    with pytest.raises(ValueError, match="candidate sourcing handoff"):
+    with pytest.raises(ValueError, match="candidate or existing-listing"):
         payload = offers()[0]
         intake.capture_quote_source(
             product_id=product.id,
@@ -399,6 +399,46 @@ def test_supplier_comparison_rejects_product_without_candidate_handoff_before_ca
 
     assert store.offers == {}
     assert len(intake.evidence.list()) == 1
+
+
+def test_existing_listing_handoff_can_enter_governed_supplier_quote_intake():
+    product, store, intake = make_intake()
+    basis_id = intake.evidence.target_evidence_ids(
+        target_type="product",
+        target_id=product.id,
+        relationship="candidate_basis",
+    )[0]
+    intake.sourcing.repository.events.clear()
+    intake.sourcing.repository.append_event(
+        "product.existing_listing_growth_workspace_created",
+        product.id,
+        {"offer_id": product.sku, "store_ref": "store-main"},
+        actor_id="operator-1",
+        source_evidence_id=basis_id,
+    )
+    intake.evidence.link(
+        evidence_id=basis_id,
+        target_type="product",
+        target_id=product.id,
+        relationship="existing_listing_basis",
+        created_by="operator-1",
+    )
+    payload = offers()[0]
+
+    record = intake.capture_quote_source(
+        product_id=product.id,
+        document_kind="supplier_confirmed_quote",
+        offer_data=payload.offer_data,
+        content=payload.content,
+        filename=payload.filename,
+        content_type=payload.content_type,
+        effective_at="2026-07-16T00:00:00+08:00",
+        effective_until="2027-07-16T00:00:00+08:00",
+        created_by="operator-1",
+    )
+
+    assert record.metadata["product_id"] == product.id
+    assert store.offers == {}
 
 
 def test_identical_procurement_approval_request_is_idempotent():
