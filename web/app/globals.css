@@ -838,6 +838,12 @@ body {
 .catalog-import-form > button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 13px; border: 0; border-radius: 9px; background: #273763; color: #fff; font-size: 9px; font-weight: 850; }
 .catalog-import-form > button:disabled { opacity: .45; cursor: not-allowed; }
 .catalog-item-list article { background: #fff; }
+.catalog-binding-action,
+.catalog-binding-state { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border-radius: 9px; font-size: 9px; font-weight: 850; }
+.catalog-binding-action { border: 1px solid #cfd8ef; background: #f4f7ff; color: #273763; cursor: pointer; }
+.catalog-binding-action:hover:not(:disabled) { border-color: #8ea2d5; background: #eaf0ff; }
+.catalog-binding-action:disabled { opacity: .45; cursor: not-allowed; }
+.catalog-binding-state { align-self: flex-start; border: 1px solid #c8e5d4; background: #effaf4; color: #28724c; }
 .growth-fact-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .growth-fact-list article { min-width: 0; padding: 11px; border: 1px solid #e5e8ef; border-radius: 10px; background: #fafbfc; }
 .growth-fact-list article > div:first-child { display: grid; gap: 2px; }

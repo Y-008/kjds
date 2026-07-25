@@ -17,6 +17,7 @@ from ..api_contracts import (
     ChargeInput,
     ContentBriefInput,
     CostEvidenceAuthorityReviewInput,
+    ExistingOzonListingBindingInput,
     MarketplaceGrowthSnapshotInput,
     MarketplaceLatestGrowthPlanInput,
     MarketplacePortfolioGrowthPlanInput,
@@ -443,6 +444,20 @@ def list_latest_marketplace_catalog_items(
         lambda: runtime.marketplace_catalog.latest_items(
             store_ref=store_ref,
             limit=limit,
+        )
+    )
+
+
+@router.post("/v1/marketplace-catalog/items/bind-existing", status_code=201)
+def bind_existing_marketplace_listing(
+    body: ExistingOzonListingBindingInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: runtime.marketplace_catalog.bind_existing_listing(
+            **body.model_dump(),
+            bound_by=principal.actor_id,
         )
     )
 

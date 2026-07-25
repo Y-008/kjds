@@ -2931,6 +2931,41 @@
         "title": "ExecutionObservationWindowInput",
         "type": "object"
       },
+      "ExistingOzonListingBindingInput": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "expected_item_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Item Hash",
+            "type": "string"
+          },
+          "offer_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Offer Id",
+            "type": "string"
+          },
+          "store_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "store_ref",
+          "offer_id",
+          "expected_item_hash",
+          "confirmed"
+        ],
+        "title": "ExistingOzonListingBindingInput",
+        "type": "object"
+      },
       "ExperimentAssignmentInput": {
         "additionalProperties": false,
         "properties": {
@@ -12630,6 +12665,47 @@
           }
         ],
         "summary": "Capture Research Signal"
+      }
+    },
+    "/v1/marketplace-catalog/items/bind-existing": {
+      "post": {
+        "operationId": "bind_existing_marketplace_listing_v1_marketplace_catalog_items_bind_existing_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExistingOzonListingBindingInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Bind Existing Marketplace Listing"
       }
     },
     "/v1/marketplace-catalog/items/latest": {

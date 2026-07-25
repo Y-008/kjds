@@ -1397,6 +1397,42 @@ export function useDashboardController() {
     }
   }
 
+  async function bindExistingMarketplaceListing(item: MarketplaceCatalogItem) {
+    const storeRef = marketplaceCatalogStoreRef.trim();
+    if (!storeRef || item.canonical_product_id) return;
+    setMarketplaceCatalogBusy(true);
+    setNotice(`正在为 Ozon Offer ${item.offer_id} 建立已有 Listing 运营档案…`);
+    try {
+      const response = await fetchJson(
+        "/backend/v1/marketplace-catalog/items/bind-existing",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            store_ref: storeRef,
+            offer_id: item.offer_id,
+            expected_item_hash: item.item_hash,
+            confirmed: true,
+          }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "已有 Listing 运营档案建立失败");
+        return;
+      }
+      await load();
+      await loadMarketplaceCatalog(storeRef);
+      setNotice(
+        `${item.offer_id} 已绑定标准商品 ${result.product.id}；不计入新选品，未执行 Ozon 写入、采购、发布或广告`,
+      );
+    } catch {
+      setNotice("无法连接已有 Listing 绑定服务，请稍后重试");
+    } finally {
+      setMarketplaceCatalogBusy(false);
+    }
+  }
+
   async function planMarketplaceGrowth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -2553,6 +2589,7 @@ export function useDashboardController() {
     captureSupplierQuote,
     reviewSupplierQuote,
     importMarketplaceCatalog,
+    bindExistingMarketplaceListing,
     loadMarketplaceCatalog,
     planMarketplaceGrowth,
     loadMarketplaceGrowthFacts,

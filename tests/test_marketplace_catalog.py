@@ -11,6 +11,7 @@ from apps.control_plane.marketplace_catalog import (
     MarketplaceCatalogWorkspace,
     parse_ozon_product_bundle,
 )
+from apps.control_plane.repository import InMemoryRepository
 
 
 def response(path, body):
@@ -90,9 +91,13 @@ def product_bundle(*, offer_id="offer-1", price="1299.00", present=7):
 class EvidenceSpy:
     def __init__(self):
         self.links = []
+        self.current_checks = []
 
     def link(self, **kwargs):
         self.links.append(kwargs)
+
+    def require_current(self, evidence_ids):
+        self.current_checks.append(list(evidence_ids))
 
 
 def workspace(*, bundles):
@@ -109,6 +114,7 @@ def workspace(*, bundles):
             verified_bundle_loader=lambda evidence_id: records[evidence_id],
             store=InMemoryMarketplaceCatalogStore(),
             evidence=evidence,
+            repository=InMemoryRepository(),
         ),
         evidence,
     )
@@ -189,6 +195,200 @@ def test_catalog_workspace_rejects_idempotency_conflict():
             idempotency_key="same-key",
             imported_by="operator-1",
         )
+
+
+def test_existing_listing_binding_creates_active_product_without_candidate_promotion():
+    catalog, evidence = workspace(
+        bundles={"evd-1": product_bundle(offer_id="seller-offer-1")}
+    )
+    catalog.import_ozon_evidence(
+        evidence_ids=["evd-1"],
+        store_ref="store-main",
+        idempotency_key="catalog-existing-1",
+        imported_by="operator-1",
+    )
+    item = catalog.latest_items(store_ref="store-main")[0]
+
+    first = catalog.bind_existing_listing(
+        store_ref="store-main",
+        offer_id="seller-offer-1",
+        expected_item_hash=item["item_hash"],
+        confirmed=True,
+        bound_by="operator-1",
+    )
+    replay = catalog.bind_existing_listing(
+        store_ref="store-main",
+        offer_id="seller-offer-1",
+        expected_item_hash=item["item_hash"],
+        confirmed=True,
+        bound_by="operator-1",
+    )
+
+    assert first["product"].status.value == "active"
+    assert first["product"].sku == "ozon:store-main:seller-offer-1"
+    assert replay["product"].id == first["product"].id
+    assert replay["created"] is False
+    assert first["counts_as_new_candidate"] is False
+    assert first["automatic_marketplace_write"] is False
+    assert evidence.current_checks == [["evd-1"], ["evd-1"]]
+    assert catalog.latest_items(store_ref="store-main")[0][
+        "canonical_product_id"
+    ] == first["product"].id
+    events = catalog.repository.events_after(0)
+    assert sum(
+        event["type"]
+        == "product.existing_listing_growth_workspace_created"
+        for event in events
+    ) == 1
+    assert not any(
+        event["type"] == "product.candidate_sourcing_workspace_created"
+        for event in events
+    )
+    assert any(
+        link["relationship"] == "existing_listing_basis"
+        for link in evidence.links
+    )
+
+
+def test_existing_listing_binding_fails_closed_on_stale_catalog_hash():
+    catalog, _ = workspace(
+        bundles={"evd-1": product_bundle(offer_id="seller-offer-1")}
+    )
+    catalog.import_ozon_evidence(
+        evidence_ids=["evd-1"],
+        store_ref="store-main",
+        idempotency_key="catalog-existing-1",
+        imported_by="operator-1",
+    )
+
+    with pytest.raises(ValueError, match="changed"):
+        catalog.bind_existing_listing(
+            store_ref="store-main",
+            offer_id="seller-offer-1",
+            expected_item_hash="0" * 64,
+            confirmed=True,
+            bound_by="operator-1",
+        )
+    assert catalog.repository.list_products() == []
+
+
+def test_existing_listing_binding_failure_leaves_product_paused_without_handoff():
+    catalog, _ = workspace(
+        bundles={"evd-1": product_bundle(offer_id="seller-offer-1")}
+    )
+    catalog.import_ozon_evidence(
+        evidence_ids=["evd-1"],
+        store_ref="store-main",
+        idempotency_key="catalog-existing-1",
+        imported_by="operator-1",
+    )
+    item = catalog.latest_items(store_ref="store-main")[0]
+
+    def fail_binding(_binding):
+        raise ValueError("simulated binding failure")
+
+    catalog.store.save_binding = fail_binding
+    with pytest.raises(ValueError, match="simulated binding failure"):
+        catalog.bind_existing_listing(
+            store_ref="store-main",
+            offer_id="seller-offer-1",
+            expected_item_hash=item["item_hash"],
+            confirmed=True,
+            bound_by="operator-1",
+        )
+
+    product = catalog.repository.list_products()[0]
+    assert product.status.value == "paused"
+    assert not any(
+        event["type"]
+        == "product.existing_listing_growth_workspace_created"
+        for event in catalog.repository.events_after(0)
+    )
+
+
+def test_existing_listing_binding_replay_keeps_original_basis_after_catalog_refresh():
+    catalog, evidence = workspace(
+        bundles={
+            "evd-1": product_bundle(
+                offer_id="seller-offer-1",
+                price="1299.00",
+            ),
+            "evd-2": product_bundle(
+                offer_id="seller-offer-1",
+                price="1199.00",
+            ),
+        }
+    )
+    catalog.import_ozon_evidence(
+        evidence_ids=["evd-1"],
+        store_ref="store-main",
+        idempotency_key="catalog-existing-1",
+        imported_by="operator-1",
+    )
+    original = catalog.latest_items(store_ref="store-main")[0]
+    first = catalog.bind_existing_listing(
+        store_ref="store-main",
+        offer_id="seller-offer-1",
+        expected_item_hash=original["item_hash"],
+        confirmed=True,
+        bound_by="operator-1",
+    )
+    catalog.import_ozon_evidence(
+        evidence_ids=["evd-2"],
+        store_ref="store-main",
+        idempotency_key="catalog-existing-2",
+        imported_by="operator-1",
+    )
+    current = catalog.latest_items(store_ref="store-main")[0]
+
+    replay = catalog.bind_existing_listing(
+        store_ref="store-main",
+        offer_id="seller-offer-1",
+        expected_item_hash=current["item_hash"],
+        confirmed=True,
+        bound_by="operator-2",
+    )
+
+    assert current["item_hash"] != original["item_hash"]
+    assert replay["product"].id == first["product"].id
+    assert replay["created"] is False
+    assert replay["binding"]["source_evidence_id"] == "evd-1"
+    assert replay["binding"]["item_hash"] == original["item_hash"]
+    assert evidence.current_checks[-1] == ["evd-2"]
+    assert sum(
+        event["type"]
+        == "product.existing_listing_growth_workspace_created"
+        for event in catalog.repository.events_after(0)
+    ) == 1
+
+
+def test_existing_listing_binding_scopes_same_offer_id_across_store_group():
+    catalog, _ = workspace(
+        bundles={"evd-1": product_bundle(offer_id="shared-offer")}
+    )
+    products = []
+    for store_ref in ("store-alpha", "store-beta"):
+        catalog.import_ozon_evidence(
+            evidence_ids=["evd-1"],
+            store_ref=store_ref,
+            idempotency_key=f"catalog-{store_ref}",
+            imported_by="operator-1",
+        )
+        item = catalog.latest_items(store_ref=store_ref)[0]
+        result = catalog.bind_existing_listing(
+            store_ref=store_ref,
+            offer_id="shared-offer",
+            expected_item_hash=item["item_hash"],
+            confirmed=True,
+            bound_by="operator-1",
+        )
+        products.append(result["product"])
+
+    assert {product.sku for product in products} == {
+        "ozon:store-alpha:shared-offer",
+        "ozon:store-beta:shared-offer",
+    }
+    assert len({product.id for product in products}) == 2
 
 
 @pytest.mark.parametrize("mutation", ["body_hash", "target_mismatch", "duplicate_path"])
