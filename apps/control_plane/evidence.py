@@ -324,6 +324,23 @@ class EvidenceService:
             ).all()
             return [self._record(row, byte_size) for row, byte_size in rows]
 
+    def list_by_source(self, source: str, limit: int = 100) -> list[EvidenceRecord]:
+        source = source.strip()
+        if not source:
+            raise ValueError("Evidence source is required")
+        with Session(self.engine) as session:
+            rows = session.execute(
+                select(EvidenceRecordRow, EvidenceBlobRow.byte_size)
+                .join(
+                    EvidenceBlobRow,
+                    EvidenceBlobRow.sha256 == EvidenceRecordRow.blob_sha256,
+                )
+                .where(EvidenceRecordRow.source == source)
+                .order_by(EvidenceRecordRow.recorded_at.desc(), EvidenceRecordRow.id)
+                .limit(min(max(limit, 1), 2000))
+            ).all()
+            return [self._record(row, byte_size) for row, byte_size in rows]
+
     def find_by_source_ref(self, *, source: str, source_ref: str) -> EvidenceRecord | None:
         source = source.strip()
         source_ref = source_ref.strip()

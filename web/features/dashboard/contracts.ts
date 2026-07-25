@@ -229,6 +229,40 @@ export type PassportReview = {
   };
 };
 export type ProductIdentity = { id: string; sku: string; name: string };
+export type SupplierQuoteEvidence = {
+  evidence: EvidenceSummary & {
+    effective_until: string | null;
+    metadata: {
+      product_id: string;
+      supplier_ref: string;
+      document_kind: "public_display_price" | "supplier_confirmed_quote" | "proforma_invoice";
+      offer_data: {
+        product_id: string;
+        supplier_ref: string;
+        platform: string;
+        external_id: string;
+        source_url: string;
+        title: string;
+        currency: string;
+        unit_price: string;
+        source_to_cny_rate: string;
+        min_order_quantity: number;
+        weight_kg: string;
+        length_cm: string;
+        width_cm: string;
+        height_cm: string;
+        domestic_logistics_per_unit: string;
+      };
+    };
+  };
+  status: "pending" | "accepted" | "rejected" | "research_only";
+  review_ids: string[];
+  review_count: number;
+  formal_offer_eligible: boolean;
+  automatic_supplier_contact: false;
+  automatic_procurement: false;
+  automatic_listing: false;
+};
 export type SourcingComparison = {
   product: ProductIdentity;
   supplier_count: number;

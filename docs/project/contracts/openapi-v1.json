@@ -637,79 +637,43 @@
         "title": "Body_capture_research_signal_v1_market_research_signals_post",
         "type": "object"
       },
-      "Body_capture_supplier_comparison_v1_sourcing_comparison_intake_post": {
+      "Body_capture_supplier_quote_evidence_v1_sourcing_quote_evidence_post": {
         "properties": {
-          "assumption_evidence": {
-            "contentMediaType": "application/octet-stream",
-            "title": "Assumption Evidence",
+          "document_kind": {
+            "title": "Document Kind",
             "type": "string"
           },
           "effective_at": {
             "title": "Effective At",
             "type": "string"
           },
-          "logistics_currency_to_cny_rate": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-                "type": "string"
-              }
-            ],
-            "default": "1",
-            "title": "Logistics Currency To Cny Rate"
-          },
-          "logistics_fx_evidence_id": {
-            "default": "",
-            "title": "Logistics Fx Evidence Id",
+          "effective_until": {
+            "title": "Effective Until",
             "type": "string"
           },
-          "logistics_rate_card_id": {
-            "default": "",
-            "title": "Logistics Rate Card Id",
-            "type": "string"
-          },
-          "offer_evidence_1": {
+          "file": {
             "contentMediaType": "application/octet-stream",
-            "title": "Offer Evidence 1",
+            "title": "File",
             "type": "string"
           },
-          "offer_evidence_2": {
-            "contentMediaType": "application/octet-stream",
-            "title": "Offer Evidence 2",
-            "type": "string"
-          },
-          "offer_evidence_3": {
-            "contentMediaType": "application/octet-stream",
-            "title": "Offer Evidence 3",
-            "type": "string"
-          },
-          "offers_json": {
-            "title": "Offers Json",
+          "offer_json": {
+            "title": "Offer Json",
             "type": "string"
           },
           "product_id": {
             "title": "Product Id",
             "type": "string"
-          },
-          "profit_inputs_json": {
-            "title": "Profit Inputs Json",
-            "type": "string"
           }
         },
         "required": [
           "product_id",
+          "document_kind",
           "effective_at",
-          "offers_json",
-          "profit_inputs_json",
-          "offer_evidence_1",
-          "offer_evidence_2",
-          "offer_evidence_3",
-          "assumption_evidence"
+          "effective_until",
+          "offer_json",
+          "file"
         ],
-        "title": "Body_capture_supplier_comparison_v1_sourcing_comparison_intake_post",
+        "title": "Body_capture_supplier_quote_evidence_v1_sourcing_quote_evidence_post",
         "type": "object"
       },
       "Body_checkpoint_limited_execution_response_v1_limited_execution_commands__command_id__response_checkpoint_post": {
@@ -789,6 +753,63 @@
           "file"
         ],
         "title": "Body_checkpoint_read_only_pilot_response_v1_read_only_pilot_runs__run_id__response_checkpoint_post",
+        "type": "object"
+      },
+      "Body_finalize_supplier_comparison_v1_sourcing_comparison_finalize_post": {
+        "properties": {
+          "assumption_evidence": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Assumption Evidence",
+            "type": "string"
+          },
+          "effective_at": {
+            "title": "Effective At",
+            "type": "string"
+          },
+          "logistics_currency_to_cny_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "1",
+            "title": "Logistics Currency To Cny Rate"
+          },
+          "logistics_fx_evidence_id": {
+            "default": "",
+            "title": "Logistics Fx Evidence Id",
+            "type": "string"
+          },
+          "logistics_rate_card_id": {
+            "default": "",
+            "title": "Logistics Rate Card Id",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "profit_inputs_json": {
+            "title": "Profit Inputs Json",
+            "type": "string"
+          },
+          "quote_evidence_ids_json": {
+            "title": "Quote Evidence Ids Json",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "effective_at",
+          "quote_evidence_ids_json",
+          "profit_inputs_json",
+          "assumption_evidence"
+        ],
+        "title": "Body_finalize_supplier_comparison_v1_sourcing_comparison_finalize_post",
         "type": "object"
       },
       "Body_import_ozon_v1_imports_ozon_post": {
@@ -6519,6 +6540,52 @@
           "evidence_ref"
         ],
         "title": "SupplierOfferInput",
+        "type": "object"
+      },
+      "SupplierQuoteAuthorityReviewInput": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "amount_currency_moq_matches": {
+            "title": "Amount Currency Moq Matches",
+            "type": "boolean"
+          },
+          "authentic_original": {
+            "title": "Authentic Original",
+            "type": "boolean"
+          },
+          "product_spec_matches": {
+            "title": "Product Spec Matches",
+            "type": "boolean"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "supplier_identity_matches": {
+            "title": "Supplier Identity Matches",
+            "type": "boolean"
+          },
+          "validity_and_delivery_terms_present": {
+            "title": "Validity And Delivery Terms Present",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted",
+          "authentic_original",
+          "supplier_identity_matches",
+          "product_spec_matches",
+          "amount_currency_moq_matches",
+          "validity_and_delivery_terms_present",
+          "rationale"
+        ],
+        "title": "SupplierQuoteAuthorityReviewInput",
         "type": "object"
       },
       "ValidationError": {
@@ -15408,14 +15475,14 @@
         "summary": "Create Recommendation"
       }
     },
-    "/v1/sourcing/comparison-intake": {
+    "/v1/sourcing/comparison-finalize": {
       "post": {
-        "operationId": "capture_supplier_comparison_v1_sourcing_comparison_intake_post",
+        "operationId": "finalize_supplier_comparison_v1_sourcing_comparison_finalize_post",
         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_capture_supplier_comparison_v1_sourcing_comparison_intake_post"
+                "$ref": "#/components/schemas/Body_finalize_supplier_comparison_v1_sourcing_comparison_finalize_post"
               }
             }
           },
@@ -15439,6 +15506,27 @@
               }
             },
             "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Finalize Supplier Comparison"
+      }
+    },
+    "/v1/sourcing/comparison-intake": {
+      "post": {
+        "operationId": "capture_supplier_comparison_v1_sourcing_comparison_intake_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
           }
         },
         "security": [
@@ -15737,6 +15825,196 @@
           }
         ],
         "summary": "Get Sourcing Profit Template"
+      }
+    },
+    "/v1/sourcing/quote-evidence": {
+      "get": {
+        "operationId": "list_supplier_quote_evidence_v1_sourcing_quote_evidence_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "product_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "List Supplier Quote Evidence"
+      },
+      "post": {
+        "operationId": "capture_supplier_quote_evidence_v1_sourcing_quote_evidence_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_capture_supplier_quote_evidence_v1_sourcing_quote_evidence_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Capture Supplier Quote Evidence"
+      }
+    },
+    "/v1/sourcing/quote-evidence/{evidence_id}/authority-review": {
+      "get": {
+        "operationId": "supplier_quote_authority_status_v1_sourcing_quote_evidence__evidence_id__authority_review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Supplier Quote Authority Status"
+      },
+      "post": {
+        "operationId": "review_supplier_quote_authority_v1_sourcing_quote_evidence__evidence_id__authority_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierQuoteAuthorityReviewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Review Supplier Quote Authority"
       }
     },
     "/v1/system/kill-switch": {

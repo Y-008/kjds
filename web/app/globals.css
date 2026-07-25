@@ -1052,11 +1052,38 @@ body {
 .login-security-note strong { color: #566175; }
 .login-footer { margin: 17px 0 0; color: #a2a9b6; font-size: 8px; letter-spacing: .08em; }
 
+.quote-authority-workspace { display: grid; gap: 18px; }
+.quote-stage-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr); gap: 16px; align-items: start; }
+.quote-source-form,
+.quote-review-queue,
+.quote-finalize-form { border: 1px solid #e3e7ef; border-radius: 14px; background: #fff; padding: 17px; }
+.quote-source-form .comparison-title strong,
+.quote-review-queue .comparison-title strong,
+.quote-finalize-form .comparison-title strong { display: inline-flex; align-items: center; gap: 7px; }
+.field-help { margin: 2px 0 12px; color: #7d8799; font-size: 9px; line-height: 1.55; }
+.quote-review-queue { display: grid; gap: 10px; max-height: 900px; overflow: auto; }
+.quote-review-card { display: grid; gap: 12px; padding: 13px; border: 1px solid #e4e8ef; border-radius: 11px; background: #fbfcfe; }
+.quote-review-card.accepted { border-color: #bfe5d6; background: #f4fbf8; }
+.quote-review-card.rejected { border-color: #efd4cf; background: #fff8f7; }
+.quote-review-card > div { display: grid; gap: 5px; }
+.quote-review-card strong { font-size: 11px; }
+.quote-review-card small,
+.quote-review-card code { color: #788397; font-size: 8px; overflow-wrap: anywhere; }
+.quote-review-card form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 11px; border-top: 1px solid #e6e9ef; }
+.quote-review-card form label { display: flex; align-items: center; gap: 6px; color: #5f6b7e; font-size: 8px; }
+.quote-review-card form input[type="checkbox"] { width: 14px; height: 14px; }
+.quote-review-card form select,
+.quote-review-card form textarea,
+.quote-review-card form button { grid-column: 1 / -1; }
+.quote-review-card form textarea { min-height: 68px; }
+.quote-finalize-form { display: grid; gap: 14px; }
+
 @media (max-width: 1180px) {
   .shell { grid-template-columns: 224px minmax(0, 1fr); }
   .sidebar { padding-inline: 12px; }
   .workspace { padding-inline: 25px; }
   .overview-kpis { grid-template-columns: 1fr 1fr; }
+  .quote-stage-grid { grid-template-columns: 1fr; }
   .capability-grid { grid-template-columns: repeat(2, 1fr); }
   .overview-grid,
   .growth-layout { grid-template-columns: 1fr; }
@@ -1139,4 +1166,5 @@ body {
   .login-story h1 { font-size: 31px; }
   .login-story-copy > p { font-size: 11px; }
   .login-card { padding: 25px 20px; }
+  .quote-review-card form { grid-template-columns: 1fr; }
 }
