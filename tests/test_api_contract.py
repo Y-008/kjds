@@ -70,6 +70,12 @@ def test_openapi_exposes_control_only_accrual_classification_contract() -> None:
     }
 
 
+def test_openapi_exposes_read_only_operating_workbench_briefing() -> None:
+    schema = app.openapi()
+
+    assert set(schema["paths"]["/v1/operating-workbench/briefing"]) == {"get"}
+
+
 def test_cost_authority_catalog_is_read_only_and_complete() -> None:
     result = cost_authority_catalog(Principal("operator-1", frozenset({"operator"})))
 

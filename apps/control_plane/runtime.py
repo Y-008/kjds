@@ -30,6 +30,7 @@ from .intake import ProductMediaEvidenceService, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .limited_executor import LimitedExecutorService
 from .loop_engineering import LoopEngineeringService
+from .operating_workbench import OperatingWorkbenchService
 from .operations_queue import OperationsQueueService
 from .outbox import OutboxService
 from .ozon_finance_review import (
@@ -88,6 +89,7 @@ class RuntimeServices:
     limited_executor: Any
     loop_engineering: Any
     market: Any
+    operating_workbench: Any
     operations_queue: Any
     outbox: Any
     ozon_accrual_classifications: Any
@@ -285,6 +287,11 @@ def build_runtime() -> RuntimeServices:
         limited_executor=limited_executor,
         post_execution=post_execution,
     )
+    operating_workbench = OperatingWorkbenchService(
+        readiness=readiness,
+        operations_queue=operations_queue,
+        automation=automation,
+    )
     pilot_readiness = PilotReadinessService(
         engine=engine,
         evidence=evidence,
@@ -343,6 +350,7 @@ def build_runtime() -> RuntimeServices:
         limited_executor=limited_executor,
         loop_engineering=loop_engineering,
         market=market,
+        operating_workbench=operating_workbench,
         operations_queue=operations_queue,
         outbox=outbox,
         ozon_accrual_classifications=ozon_accrual_classifications,

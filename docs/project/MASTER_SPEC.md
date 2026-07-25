@@ -4,8 +4,8 @@
 |---|---|
 | doc_id | KJDS-MASTER-SPEC-001 |
 | status | Active |
-| version | 7.7 |
-| last_reviewed | 2026-07-21 |
+| version | 7.8 |
+| last_reviewed | 2026-07-25 |
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | source_of_truth | 本文件定义需求、产品、架构、数据和验收边界；运行事实以代码、迁移、测试和证据账为准 |
@@ -158,6 +158,7 @@ KJDS 是“确定性经营内核 + 证据优先数据层 + 受控 Agent 外层�
 | BR-062 | 组合风险、事实成熟度与抗失控顺序 | 经营事实区分 `forecast`（预测）、`commitment`（已承诺未结算）和 `actual`（权威原件已发生），但第一阶段复用既有场景、现金计划、采购/广告承诺和财务事实，不建立通用新账。L3/L4 放行最终必须同时满足单动作限制与 SKU、类目、店铺、法人、币种及 13 周最低现金的组合风险预算；在真实先锋 SKU 形成承诺和到账样本前，只实现保守硬上限与 Base/Downside/Severe 影子场景，不建设 ML 数字孪生或资本优化器。灰度、分层 Kill Switch、失效、异常预算、灾备和退出条件复用现有 Policy Shadow、Security、Incident、Evidence 与恢复链扩展，不建设第二套控制面。 | P0 |
 | BR-063 | 外部合同回放与漂移门 | Ozon、ComfyUI 和财务文件适配必须以版本化、脱敏、无凭证的固定样本在 CI 中回放；每个样本声明外部系统、合同版本、预期结果和 SHA-256，样本缺失、哈希变化或预期行为漂移均失败。第一阶段只复用现有客户端、导入器、MockTransport 和测试运行器，不建设生产回放服务或通用录制框架。回放至少覆盖成功响应、结构漂移和失败关闭；限流、超时、写入结果不确定、幂等重放与回读不一致继续由现有专项测试验证，获得真实脱敏响应后再替换对应合成样本。生产流量、密钥、个人信息和原始商户数据禁止写入仓库。 | P0 |
 | BR-064 | Champion/Challenger 影子对照账 | 既有 Policy Shadow 的每个可用于阶段结果或激活的 Evaluation 必须冻结一个由不同身份产生的 `champion` 或 `human` 基线结果、其 Evidence、基线/挑战者摘要哈希、精确差异路径和是否完全一致；基线与业务上下文使用相同的敏感字段、大小和不可变幂等限制。零暴露批次可以先采集无基线评估用于诊断，但缺少完整独立对照的批次不得记录可晋升阶段结果，也不得申请有限激活；激活时必须重新验证全部 Evaluation Evidence。第一阶段把对照投影保存在现有 Evaluation `result_json`，不新增表、服务、依赖或第二套 Shadow；真实增量价值、人工成本和利润仍由 Observation Window 与 Capability Economics 在有限执行后记录，影子一致率不得冒充经营收益。 | P0 |
+| BR-065 | 唯一经营工作台与 Agent 只读简报 | KJDS 必须把既有 Gate readiness、候选组合、运行异常队列和已存证建议通过单一版本化只读接口投影为经营简报；页面不得自行重算 Gate、优先级或 Agent 责任。每项简报必须保留来源类型/ID、下一动作、责任 Agent、风险和人工要求；Gate 阻断不得伪造截止时间或 SLA，运行异常继续保留原 SLA。Agent 只允许解释、排序和提出下一步，固定 `automatic_execution=false`、`platform_write_allowed=false`，不得直接写 Repository、创建 Product/采购/Listing、调用外部平台或把第三方工具信号晋升为正式事实。荔枝、毛子 ERP 等第三方产品只作为功能模式与 C/D 级辅助信号参考；无兼容许可证的二进制、扩展或压缩源码不得复制进仓库。 | P0 |
 
 ### 2.2 功能需求
 

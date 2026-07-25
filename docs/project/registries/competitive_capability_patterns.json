@@ -1,6 +1,6 @@
 {
-  "registry_version": "1.5",
-  "last_reviewed": "2026-07-20",
+  "registry_version": "1.6",
+  "last_reviewed": "2026-07-25",
   "principle": "Borrow product workflow patterns, never third-party truth claims or unapproved write authority.",
   "shared_contracts": [
     {
@@ -20,6 +20,12 @@
       "status": "implemented",
       "borrowed_from": ["menglar_ozon_tools", "selling51_erp"],
       "boundary": "every cost field exposes estimate, actual, or unknown plus its KJDS Evidence reference; third-party calculator values remain cross-checks and unknown financial codes remain blocked"
+    },
+    {
+      "id": "unified_operating_workbench_agent_briefing_v1",
+      "status": "implemented",
+      "borrowed_from": ["seerfar", "miaoshou_erp", "selling51_erp", "maozierp", "lizhi_ozon_assistant"],
+      "boundary": "one KJDS read-only projection of Gate blockers, runtime operations, recommendations, candidate portfolio, and responsible Agents; no invented SLA, automatic execution, platform write, or third-party fact promotion"
     }
   ],
   "providers": [
@@ -69,6 +75,56 @@
       "requires_review": true,
       "implemented_contract": "evidence_backed_operations_exception_workspace_v1",
       "next_contract": "controlled_batch_diff_workspace_after_real_usage_bottleneck"
+    },
+    {
+      "id": "maozierp",
+      "url": "https://www.maozierp.com/",
+      "observed_capabilities": ["sales_and_revenue_trends", "product_and_category_research", "1688_capture", "ai_listing_draft", "price_inventory_order_sync"],
+      "patterns_to_borrow": ["provider_neutral_research_inbox", "source_listing_snapshot", "listing_draft_diff", "sync_exception_queue"],
+      "do_not_copy": ["unsigned_desktop_binary", "all_url_browser_injection", "session_cookie_reuse", "csp_removal", "unapproved_platform_write"],
+      "evidence_tier": "C",
+      "integration_status": "public_workflow_reference_and_local_static_observation_only",
+      "requires_review": true,
+      "implemented_contract": "manual_export_research_signal_inbox_v1",
+      "next_contract": "controlled_listing_diff_workspace_after_real_usage_bottleneck"
+    },
+    {
+      "id": "lizhi_ozon_assistant",
+      "url": "https://www.lzozon.com/",
+      "observed_capabilities": ["multi_source_import", "dashboard_and_monitoring", "ai_assisted_analysis", "export", "browser_capture", "candidate_filtering"],
+      "patterns_to_borrow": ["provider_neutral_import", "source_snapshot", "evidence_backed_dashboard", "exportable_decision_packet"],
+      "do_not_copy": ["unsigned_desktop_binary", "plaintext_local_api_key", "all_url_browser_injection", "unreviewed_cloud_sync", "unlicensed_third_party_extension"],
+      "evidence_tier": "C",
+      "integration_status": "public_workflow_reference_and_local_static_observation_only_yduanerp_relationship_unverified",
+      "requires_review": true,
+      "implemented_contract": "unified_operating_workbench_agent_briefing_v1",
+      "next_contract": "provider_neutral_import_adapter_after_license_and_data_contract_review"
+    }
+  ],
+  "unverified_candidates": [
+    {
+      "id": "ozon_bigsell",
+      "submitted_url": "https://www.ozonbigsell.com/login?redirect=%2FozonFixPrice%2FozonFixPrice",
+      "verification_status": "login_only_public_capability_contract_not_found",
+      "evidence_tier": "D",
+      "admission": "defer",
+      "reason": "Do not infer a pricing or platform-write contract from a redirect path."
+    },
+    {
+      "id": "xiongmao_xcw",
+      "submitted_url": "https://www.xiongmaoxcw.cn/",
+      "verification_status": "public_page_unavailable_and_official_capability_contract_not_found",
+      "evidence_tier": "D",
+      "admission": "defer",
+      "reason": "No authenticated access, data export, extension, or platform permission is authorized."
+    },
+    {
+      "id": "yduanerp_client",
+      "submitted_url": "https://yduanerp.com/client/home",
+      "verification_status": "relationship_to_lizhi_ozon_assistant_unverified",
+      "evidence_tier": "D",
+      "admission": "defer",
+      "reason": "Keep the portal separate until ownership, terms, data contract, and revocation are verified."
     }
   ]
 }

@@ -9,19 +9,20 @@ import {
   TriangleAlert,
   Waypoints,
 } from "lucide-react";
-import type { Health, ProductReadiness, Recommendation, SourceConnector } from "./contracts";
+import type { Health, OperatingWorkbenchBriefing, ProductReadiness, Recommendation, SourceConnector } from "./contracts";
 
 const passportLabels = { product: "商品资料", compliance: "俄罗斯合规", quality: "样品质量" } as const;
 
 type Props = {
   health: Record<string, Health>;
+  operatingWorkbench: OperatingWorkbenchBriefing | null;
   recommendations: Recommendation[];
   sourceConnectors: SourceConnector[];
   offersCount: number;
   skuReadiness: ProductReadiness[];
 };
 
-export function OperationsSummaryPanel({ health, recommendations, sourceConnectors, offersCount, skuReadiness }: Props) {
+export function OperationsSummaryPanel({ health, operatingWorkbench, recommendations, sourceConnectors, offersCount, skuReadiness }: Props) {
   const readySkuCount = skuReadiness.filter((item) => item.ready_for_validation).length;
   const configuredTools = Object.entries(health);
   const onlineTools = configuredTools.filter(([, item]) => item.status === "ok").length;
@@ -38,9 +39,9 @@ export function OperationsSummaryPanel({ health, recommendations, sourceConnecto
       <article className="panel agents">
         <div className="panel-title"><div><p className="eyebrow">AI SQUAD</p><h3>Agent 团队</h3></div><span className="badge">影子模式</span></div>
         <div className="agent-list">
-          {["市场分析", "商品策略", "俄语 Listing", "内容生产", "运营建议", "利润审计", "质量检查"].map((name, index) => (
-            <div className="agent" key={name}><span>{index + 1}</span><div><strong>{name}</strong><small>{index < 2 ? "等待数据" : "等待上游任务"}</small></div><Clock3 size={16} /></div>
-          ))}
+          {operatingWorkbench?.agents.map((agent, index) => (
+            <div className="agent" key={agent.agent_id}><span>{index + 1}</span><div><strong>{agent.name}</strong><small>{agent.work_item_count ? `${agent.work_item_count} 项 · ${agent.current_focus}` : agent.current_focus}</small></div><Clock3 size={16} /></div>
+          )) ?? <div className="empty"><TriangleAlert size={25} /><strong>Agent 简报暂不可用</strong><p>页面不会自行猜测 Agent 状态；请检查控制平面只读简报接口。</p></div>}
         </div>
       </article>
 

@@ -89,6 +89,15 @@ def validate_loop_engineering(
     )
 
 
+@router.get("/v1/operating-workbench/briefing")
+def operating_workbench_briefing(
+    principal: Annotated[Principal, Depends(current_principal)],
+    limit: int = 20,
+) -> dict:
+    ensure_role(principal, "operator", "reviewer", "compliance", "approver", "risk", "monitor", "admin")
+    return run(lambda: runtime.operating_workbench.snapshot(limit=limit))
+
+
 @router.get("/v1/system/kill-switch")
 def kill_switch_state():
     return asdict(runtime.kill_switch.current())
