@@ -327,7 +327,7 @@ def test_opencli_health_timeout_requires_browser_bridge_handoff():
 
     assert health["status"] == "human_action_required"
     assert health["browser_bridge_connected"] is False
-    assert health["error_code"] == "BROWSER_BRIDGE_UNRESPONSIVE"
+    assert health["error_code"] == "OPENCLI_BRIDGE_UNRESPONSIVE"
     assert health["human_action_required"] is True
 
 

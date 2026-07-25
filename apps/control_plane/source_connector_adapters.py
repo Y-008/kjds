@@ -98,7 +98,7 @@ class NodeJsonCommandRunner:
                 self._safe_error_message(code),
                 human_action_required=code
                 in {
-                    "BROWSER_BRIDGE_DISCONNECTED",
+                    "CONNECTOR_BROWSER_BRIDGE_DISCONNECTED",
                     "CAPTCHA_REQUIRED",
                     "NOT_LOGGED_IN",
                     "ACCOUNT_AMBIGUOUS",
@@ -113,7 +113,7 @@ class NodeJsonCommandRunner:
                 self._safe_error_message(code),
                 human_action_required=code
                 in {
-                    "BROWSER_BRIDGE_DISCONNECTED",
+                    "CONNECTOR_BROWSER_BRIDGE_DISCONNECTED",
                     "CAPTCHA_REQUIRED",
                     "NOT_LOGGED_IN",
                     "ACCOUNT_AMBIGUOUS",
@@ -152,7 +152,7 @@ class NodeJsonCommandRunner:
             raw_code = raw_code or str(envelope.get("code", ""))
         combined = f"{raw_code} {stderr}".upper()
         if "BROWSER_CONNECT" in combined or "BRIDGE" in combined:
-            return "BROWSER_BRIDGE_DISCONNECTED"
+            return "CONNECTOR_BROWSER_BRIDGE_DISCONNECTED"
         if "CAPTCHA" in combined or "SLIDER" in combined or "VERIFY" in combined:
             return "CAPTCHA_REQUIRED"
         if "NOT_LOGGED_IN" in combined or "LOGIN_REQUIRED" in combined:
@@ -166,7 +166,7 @@ class NodeJsonCommandRunner:
     @staticmethod
     def _safe_error_message(code: str) -> str:
         return {
-            "BROWSER_BRIDGE_DISCONNECTED": "Browser Bridge is disconnected",
+            "CONNECTOR_BROWSER_BRIDGE_DISCONNECTED": "Connector-specific browser bridge is disconnected",
             "CAPTCHA_REQUIRED": "Human CAPTCHA or slider action is required",
             "NOT_LOGGED_IN": "Dedicated 1688 profile is not logged in",
             "ACCOUNT_AMBIGUOUS": "The target account or conversation is ambiguous",
@@ -331,18 +331,20 @@ class _Base1688Connector:
             )
         except ConnectorAdapterError as exc:
             code = (
-                "BROWSER_BRIDGE_UNRESPONSIVE"
+                "OPENCLI_BRIDGE_UNRESPONSIVE"
                 if name == OpenCli1688Connector.name and exc.code == "CONNECTOR_TIMEOUT"
                 else exc.code
             )
-            human_action_required = exc.human_action_required or code == "BROWSER_BRIDGE_UNRESPONSIVE"
+            human_action_required = exc.human_action_required or code == "OPENCLI_BRIDGE_UNRESPONSIVE"
             self.last_error_code = code
             return self._health_view(
                 name=name,
                 capabilities=capabilities,
                 status="human_action_required" if human_action_required else "degraded",
                 installed=True,
-                bridge=False if code in {"BROWSER_BRIDGE_DISCONNECTED", "BROWSER_BRIDGE_UNRESPONSIVE"} else None,
+                bridge=False
+                if code in {"CONNECTOR_BROWSER_BRIDGE_DISCONNECTED", "OPENCLI_BRIDGE_UNRESPONSIVE"}
+                else None,
                 logged_in=False if code == "NOT_LOGGED_IN" else None,
                 error_code=code,
                 human_action_required=human_action_required,

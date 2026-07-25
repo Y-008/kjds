@@ -45,7 +45,11 @@ GET /v1/sourcing/connectors
 - `schema_version`：KJDS 适配合同版本。
 - `error_code` 与 `human_action_required`：稳定停机原因和是否需要人工接管。
 
-`NOT_LOGGED_IN`、`CAPTCHA_REQUIRED`、`BROWSER_BRIDGE_DISCONNECTED`、`BROWSER_BRIDGE_UNRESPONSIVE` 或账户歧义出现时，任务立即停止。人工处理完成后重新运行健康检查；不要循环挑战、绕过验证或从其他 Profile 复制会话文件。
+`NOT_LOGGED_IN`、`CAPTCHA_REQUIRED`、`CONNECTOR_BROWSER_BRIDGE_DISCONNECTED`、`OPENCLI_BRIDGE_UNRESPONSIVE` 或账户歧义出现时，任务立即停止。人工处理完成后重新运行健康检查；不要循环挑战、绕过验证或从其他 Profile 复制会话文件。
+
+这里的 Bridge 状态仅表示对应采集连接器自己的桥接探测结果。`OPENCLI_BRIDGE_UNRESPONSIVE`
+不代表 ChatGPT Chrome Browser Bridge 未安装或未连接；Chrome Bridge 必须通过实际标签页发现与
+只读页面读取单独验证。
 
 2026-07-25 的本机只读实测结果为：OpenCLI 工具已安装但 Browser Bridge 无响应；1688 CLI
 Catalog 与 Message Adapter 已安装但现有 Profile 未登录。三项并行健康探测 5.02 秒返回。

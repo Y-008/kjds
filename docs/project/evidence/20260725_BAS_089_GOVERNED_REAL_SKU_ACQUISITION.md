@@ -4,7 +4,8 @@
 
 KJDS 已复用现有 `CommerceConnector.pull(cursor)`、`healthcheck()`、Research Inbox 和 Ozon
 官方只读链路，新增 1688 CLI/OpenCLI 受控采集适配层与只读 SKU 聚合工作台。工程能力已完成；
-真实业务 M0 尚未启动，因为 Browser Bridge 未连接、1688 专用会话未登录且活动目标列表为空。
+真实业务 M0 的页面核验已启动。ChatGPT Chrome Browser Bridge 可读取已登录的 1688 页面；
+OpenCLI 自有桥接探测与 1688 CLI 专用 Profile 仍未就绪，活动目标列表仍为空。
 
 本交付没有安装新插件，也没有发送询价、修改购物车、创建订单、支付、刊登或把第三方采集结果
 自动晋升为正式商品事实。
@@ -38,12 +39,13 @@ KJDS 已复用现有 `CommerceConnector.pull(cursor)`、`healthcheck()`、Resear
 
 | 连接器 | 工具 | 状态 | 错误码 | 活动目标 |
 |---|---|---|---|---:|
-| `opencli-1688` | 已安装 | 需要人工接管 | `BROWSER_BRIDGE_UNRESPONSIVE` | 0 |
+| `opencli-1688` | 已安装 | 需要人工接管 | `OPENCLI_BRIDGE_UNRESPONSIVE` | 0 |
 | `1688-cli-catalog` | 已安装 | 需要人工接管 | `NOT_LOGGED_IN` | 0 |
 | `1688-cli-messages` | 已安装 | 需要人工接管 | `NOT_LOGGED_IN` | 0 |
 
-三项并行探测合计 5.02 秒，在 Web 15 秒读取预算内返回。当前真实采集量为 0、书面报价为 0、
-订单为 0；系统没有用样例或推测值冒充真实业务数据。
+三项并行探测合计 5.02 秒，在 Web 15 秒读取预算内返回。这里的 OpenCLI Bridge 状态不代表
+ChatGPT Chrome Browser Bridge 状态；后者已通过现有 1688 标签页发现和只读 DOM 读取验证。
+书面报价和订单仍为 0；系统没有用样例或推测值冒充真实报价或订单。
 
 ## Verification
 
