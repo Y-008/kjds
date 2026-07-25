@@ -57,7 +57,7 @@ services:
       KJDS_API_URL: http://api:8000
       KJDS_API_KEY: ${KJDS_API_KEY:-}
       KJDS_API_KEYS_JSON: ${KJDS_API_KEYS_JSON:-}
-      KJDS_API_ACTOR: ${KJDS_API_ACTOR:-container-operator}
+      KJDS_API_ACTOR: ${KJDS_API_ACTOR:-}
       KJDS_API_ROLES: ${KJDS_API_ROLES:-operator}
       KJDS_WEB_USER_ACTORS_JSON: ${KJDS_WEB_USER_ACTORS_JSON:-}
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
@@ -70,7 +70,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        - "fetch('http://127.0.0.1:3000/auth/session').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
       interval: 3s
       timeout: 3s
       retries: 20

@@ -45,16 +45,26 @@ export function DashboardView({ model }: { model: DashboardModel }) {
   useEffect(() => {
     const syncFromHash = () => {
       const requested = window.location.hash.replace(/^#/, "");
-      if (isWorkspaceId(requested)) setActiveWorkspace(requested);
+      setActiveWorkspace(isWorkspaceId(requested) ? requested : "overview");
     };
     syncFromHash();
     window.addEventListener("hashchange", syncFromHash);
-    return () => window.removeEventListener("hashchange", syncFromHash);
+    window.addEventListener("popstate", syncFromHash);
+    return () => {
+      window.removeEventListener("hashchange", syncFromHash);
+      window.removeEventListener("popstate", syncFromHash);
+    };
   }, []);
+
+  useEffect(() => {
+    if (activeWorkspace === "growth" && !model.marketplaceGrowthFactsLoaded) {
+      void model.loadMarketplaceGrowthFacts();
+    }
+  }, [activeWorkspace, model.loadMarketplaceGrowthFacts, model.marketplaceGrowthFactsLoaded]);
 
   const navigate = (workspace: WorkspaceId) => {
     setActiveWorkspace(workspace);
-    window.history.replaceState(null, "", `#${workspace}`);
+    window.history.pushState(null, "", `#${workspace}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 

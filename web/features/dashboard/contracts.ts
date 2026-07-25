@@ -268,6 +268,26 @@ export type MarketplaceGrowthPlan = {
     actions: Array<{ type: string; reason: string }>;
   }>;
 };
+export type MarketplaceGrowthObservation = {
+  scenario_id: string;
+  marketplace_sku: string;
+  category: string;
+  competitor_prices_rub: string[];
+  stock: number;
+  review_count: number;
+  orders_14d: number;
+  rating: string;
+  content_score: string;
+  conversion_rate: string | null;
+  compliance_risk: "low" | "medium" | "high";
+  observed_at: string;
+  evidence_ids: string[];
+  observation_hash: string;
+  snapshot_id: string;
+  snapshot_source: "ozon_seller_api" | "ozon_export" | "operator_verified";
+  captured_by: string;
+  captured_at: string;
+};
 export type ApprovalRecord = { id: string; action: string; resource_id: string; status: string; requested_by: string; payload: Record<string, unknown> };
 export type ListingDraft = {
   id: string; product_id: string; offer_id: string; scenario_id: string; target_platform: string;

@@ -6,6 +6,7 @@ import {
   credentialsByActor,
   mutationOriginIsAllowed,
   parseWebActorBindings,
+  resolveLegacyApiCredential,
   validateWebApprovalTopology,
   webAuthMode,
 } from "./identity-config.ts";
@@ -50,6 +51,53 @@ test("actor lookup reuses the control-plane credential map and rejects ambiguous
         }),
       ),
     /more than one API credential/,
+  );
+});
+
+test("legacy Web can resolve its server identity from the shared credential map", () => {
+  const fromMap = resolveLegacyApiCredential({
+    KJDS_API_ACTOR: "container-operator",
+    KJDS_API_KEYS_JSON: JSON.stringify({
+      "container-key": { actor: "container-operator", roles: ["operator", "reviewer"] },
+    }),
+  });
+  assert.equal(fromMap.apiKey, "container-key");
+  assert.deepEqual(fromMap.roles, ["operator", "reviewer"]);
+
+  const uniqueOperator = resolveLegacyApiCredential({
+    KJDS_API_KEYS_JSON: JSON.stringify({
+      "operator-key": { actor: "operator-actor", roles: ["operator"] },
+      "approver-key": { actor: "approver-actor", roles: ["approver"] },
+    }),
+  });
+  assert.equal(uniqueOperator.actorId, "operator-actor");
+
+  const direct = resolveLegacyApiCredential({
+    KJDS_API_ACTOR: "local-operator",
+    KJDS_API_KEY: "direct-key",
+    KJDS_API_ROLES: "operator,admin",
+  });
+  assert.equal(direct.apiKey, "direct-key");
+  assert.deepEqual(direct.roles, ["operator", "admin"]);
+  assert.throws(
+    () =>
+      resolveLegacyApiCredential({
+        KJDS_API_ACTOR: "missing-actor",
+        KJDS_API_KEYS_JSON: JSON.stringify({
+          "another-key": { actor: "another-actor", roles: ["operator"] },
+        }),
+      }),
+    /has no API credential/,
+  );
+  assert.throws(
+    () =>
+      resolveLegacyApiCredential({
+        KJDS_API_KEYS_JSON: JSON.stringify({
+          "first-key": { actor: "first-operator", roles: ["operator"] },
+          "second-key": { actor: "second-operator", roles: ["operator"] },
+        }),
+      }),
+    /requires KJDS_API_ACTOR/,
   );
 });
 

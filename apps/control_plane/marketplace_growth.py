@@ -24,6 +24,78 @@ class MarketplaceGrowthPlanner:
         self.repository = repository
         self.evidence = evidence
 
+    def normalize_observation(
+        self,
+        observation: dict[str, Any],
+        *,
+        evaluated_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Validate and canonicalize one marketplace observation for durable storage."""
+        scenario_id = self._text(observation.get("scenario_id"), "scenario_id")
+        marketplace_sku = self._text(
+            observation.get("marketplace_sku"), "marketplace_sku"
+        )
+        category = self._text(observation.get("category"), "category").lower()
+        observed_at = self._datetime(observation.get("observed_at"), "observed_at")
+        evaluation_time = self._datetime(
+            evaluated_at or datetime.now(UTC).isoformat(), "evaluated_at"
+        )
+        if observed_at > evaluation_time:
+            raise ValueError(f"Marketplace observation for {marketplace_sku} is in the future")
+
+        evidence_ids = self._evidence_ids(observation.get("evidence_ids"))
+        self.evidence.require_valid(evidence_ids)
+        scenario = self.sourcing_store.get_scenario(scenario_id)
+        if scenario.target_platform != "OZON":
+            raise ValueError("Marketplace growth planner only supports Ozon scenarios")
+        offer = self.sourcing_store.get_offer(scenario.offer_id)
+        self.repository.get_product(offer.product_id)
+
+        competitor_prices = self._positive_decimals(
+            observation.get("competitor_prices_rub"),
+            "competitor_prices_rub",
+            minimum=MIN_COMPETITOR_COUNT,
+        )
+        stock = self._integer(observation.get("stock"), "stock", minimum=0)
+        reviews = self._integer(observation.get("review_count"), "review_count", minimum=0)
+        orders_14d = self._integer(
+            observation.get("orders_14d"), "orders_14d", minimum=0
+        )
+        rating = self._decimal(observation.get("rating"), "rating")
+        if rating < 0 or rating > 5:
+            raise ValueError("rating must be between 0 and 5")
+        content_score = self._decimal(
+            observation.get("content_score"), "content_score"
+        )
+        if content_score < 0 or content_score > 100:
+            raise ValueError("content_score must be between 0 and 100")
+        conversion_rate = self._optional_rate(
+            observation.get("conversion_rate"), "conversion_rate"
+        )
+        compliance_risk = self._text(
+            observation.get("compliance_risk", "low"), "compliance_risk"
+        ).lower()
+        if compliance_risk not in {"low", "medium", "high"}:
+            raise ValueError("compliance_risk must be low, medium, or high")
+
+        return {
+            "scenario_id": scenario_id,
+            "marketplace_sku": marketplace_sku,
+            "category": category,
+            "competitor_prices_rub": [str(item) for item in competitor_prices],
+            "stock": stock,
+            "review_count": reviews,
+            "orders_14d": orders_14d,
+            "rating": str(rating),
+            "content_score": str(content_score),
+            "conversion_rate": (
+                str(conversion_rate) if conversion_rate is not None else None
+            ),
+            "compliance_risk": compliance_risk,
+            "observed_at": observed_at.isoformat(),
+            "evidence_ids": evidence_ids,
+        }
+
     def plan_portfolio(
         self,
         *,
@@ -106,52 +178,40 @@ class MarketplaceGrowthPlanner:
         target_cm3_rate: Decimal,
         evaluated_at: datetime,
     ) -> dict[str, Any]:
-        scenario_id = self._text(observation.get("scenario_id"), "scenario_id")
-        marketplace_sku = self._text(
-            observation.get("marketplace_sku"), "marketplace_sku"
+        normalized = self.normalize_observation(
+            observation, evaluated_at=evaluated_at.isoformat()
         )
-        category = self._text(observation.get("category"), "category").lower()
-        observed_at = self._datetime(observation.get("observed_at"), "observed_at")
-        if observed_at > evaluated_at:
-            raise ValueError(f"Marketplace observation for {marketplace_sku} is in the future")
+        scenario_id = normalized["scenario_id"]
+        marketplace_sku = normalized["marketplace_sku"]
+        category = normalized["category"]
+        observed_at = self._datetime(normalized["observed_at"], "observed_at")
         observation_age = evaluated_at - observed_at
         snapshot_fresh = observation_age <= MAX_OBSERVATION_AGE
 
-        evidence_ids = self._evidence_ids(observation.get("evidence_ids"))
-        self.evidence.require_valid(evidence_ids)
+        evidence_ids = normalized["evidence_ids"]
         scenario = self.sourcing_store.get_scenario(scenario_id)
-        if scenario.target_platform != "OZON":
-            raise ValueError("Marketplace growth planner only supports Ozon scenarios")
         offer = self.sourcing_store.get_offer(scenario.offer_id)
         product = self.repository.get_product(offer.product_id)
         cost_release_ready = self.sourcing.release_ready(scenario)
 
         competitor_prices = self._positive_decimals(
-            observation.get("competitor_prices_rub"),
+            normalized["competitor_prices_rub"],
             "competitor_prices_rub",
             minimum=MIN_COMPETITOR_COUNT,
         )
-        stock = self._integer(observation.get("stock"), "stock", minimum=0)
-        reviews = self._integer(observation.get("review_count"), "review_count", minimum=0)
+        stock = self._integer(normalized["stock"], "stock", minimum=0)
+        reviews = self._integer(normalized["review_count"], "review_count", minimum=0)
         orders_14d = self._integer(
-            observation.get("orders_14d"), "orders_14d", minimum=0
+            normalized["orders_14d"], "orders_14d", minimum=0
         )
-        rating = self._decimal(observation.get("rating"), "rating")
-        if rating < 0 or rating > 5:
-            raise ValueError("rating must be between 0 and 5")
+        rating = self._decimal(normalized["rating"], "rating")
         content_score = self._decimal(
-            observation.get("content_score"), "content_score"
+            normalized["content_score"], "content_score"
         )
-        if content_score < 0 or content_score > 100:
-            raise ValueError("content_score must be between 0 and 100")
         conversion_rate = self._optional_rate(
-            observation.get("conversion_rate"), "conversion_rate"
+            normalized["conversion_rate"], "conversion_rate"
         )
-        compliance_risk = self._text(
-            observation.get("compliance_risk", "low"), "compliance_risk"
-        ).lower()
-        if compliance_risk not in {"low", "medium", "high"}:
-            raise ValueError("compliance_risk must be low, medium, or high")
+        compliance_risk = normalized["compliance_risk"]
 
         market_p25 = self._percentile(competitor_prices, Decimal("0.25"))
         market_median = self._percentile(competitor_prices, Decimal("0.50"))

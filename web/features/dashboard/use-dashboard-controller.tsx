@@ -19,6 +19,7 @@ import type {
   ProductReadiness,
   ProductMediaReadiness,
   ContentAssetView,
+  MarketplaceGrowthObservation,
   MarketplaceGrowthPlan,
   PassportReview,
   ProductIdentity,
@@ -84,6 +85,8 @@ export function useDashboardController() {
   const [products, setProducts] = useState<ProductIdentity[]>([]);
   const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
   const [marketplaceGrowthPlan, setMarketplaceGrowthPlan] = useState<MarketplaceGrowthPlan | null>(null);
+  const [marketplaceGrowthObservations, setMarketplaceGrowthObservations] = useState<MarketplaceGrowthObservation[]>([]);
+  const [marketplaceGrowthFactsLoaded, setMarketplaceGrowthFactsLoaded] = useState(false);
   const [marketplaceGrowthBusy, setMarketplaceGrowthBusy] = useState(false);
   const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
   const [sampleOrders, setSampleOrders] = useState<SampleOrder[]>([]);
@@ -1168,8 +1171,7 @@ export function useDashboardController() {
       return;
     }
     const conversionRate = value("growth_conversion_rate");
-    const payload = {
-      observations: [{
+    const observation = {
         scenario_id: value("growth_scenario_id"),
         marketplace_sku: value("growth_marketplace_sku"),
         category: value("growth_category"),
@@ -1183,25 +1185,86 @@ export function useDashboardController() {
         compliance_risk: value("growth_compliance_risk"),
         observed_at: observedAt.toISOString(),
         evidence_ids: evidenceIds,
-      }],
-      target_cm3_rate: value("growth_target_cm3_rate"),
-      as_of: new Date().toISOString(),
     };
     setMarketplaceGrowthBusy(true);
-    setNotice("正在复验全成本、同行价格和广告门禁…");
+    setNotice("正在保存不可变店铺事实，并复验全店成本、价格和广告门禁…");
     try {
-      const response = await fetchJson("/backend/v1/marketplace-growth/portfolio-plan", {
+      const snapshotResponse = await fetchJson("/backend/v1/marketplace-growth/snapshots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          source: "operator_verified",
+          idempotency_key: `web-${crypto.randomUUID()}`,
+          observations: [observation],
+        }),
       });
-      const result = await response.json();
-      if (!response.ok) {
-        setNotice(result.detail ?? "无法生成 Ozon 增长方案");
+      const snapshot = await snapshotResponse.json();
+      if (!snapshotResponse.ok) {
+        setNotice(snapshot.detail ?? "无法保存 Ozon 店铺事实");
+        return;
+      }
+      const planResponse = await fetchJson("/backend/v1/marketplace-growth/portfolio-plan/latest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_cm3_rate: value("growth_target_cm3_rate"),
+          as_of: new Date().toISOString(),
+        }),
+      });
+      const result = await planResponse.json();
+      if (!planResponse.ok) {
+        setNotice(result.detail ?? `事实快照 ${snapshot.id} 已保存，但全店方案生成失败`);
+        await loadMarketplaceGrowthFacts();
         return;
       }
       setMarketplaceGrowthPlan(result as MarketplaceGrowthPlan);
-      setNotice("增长方案已生成：只提供建议，不会自动改价或投放广告");
+      await loadMarketplaceGrowthFacts();
+      setNotice(`事实快照 ${snapshot.id} 已保存；全店增长方案只提供建议，不会自动改价或投放广告`);
+    } catch {
+      setNotice("无法连接增长规划服务，请稍后重试");
+    } finally {
+      setMarketplaceGrowthBusy(false);
+    }
+  }
+
+  const loadMarketplaceGrowthFacts = useCallback(async () => {
+    try {
+      const response = await fetchJson("/backend/v1/marketplace-growth/observations/latest?limit=100", {
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setMarketplaceGrowthFactsLoaded(true);
+        setNotice(result.detail ?? "无法读取最新店铺事实");
+        return;
+      }
+      setMarketplaceGrowthObservations(result as MarketplaceGrowthObservation[]);
+      setMarketplaceGrowthFactsLoaded(true);
+    } catch {
+      setMarketplaceGrowthFactsLoaded(true);
+      setNotice("无法读取最新店铺事实，请检查服务状态");
+    }
+  }, []);
+
+  async function planLatestMarketplaceGrowth() {
+    setMarketplaceGrowthBusy(true);
+    setNotice("正在使用每个 SKU 的最新事实生成全店组合方案…");
+    try {
+      const response = await fetchJson("/backend/v1/marketplace-growth/portfolio-plan/latest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_cm3_rate: "0.15",
+          as_of: new Date().toISOString(),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "无法生成最新全店增长方案");
+        return;
+      }
+      setMarketplaceGrowthPlan(result as MarketplaceGrowthPlan);
+      setNotice("全店组合方案已更新：仍为建议模式，平台写入保持关闭");
     } catch {
       setNotice("无法连接增长规划服务，请稍后重试");
     } finally {
@@ -2039,6 +2102,10 @@ export function useDashboardController() {
     setComparisons,
     marketplaceGrowthPlan,
     setMarketplaceGrowthPlan,
+    marketplaceGrowthObservations,
+    setMarketplaceGrowthObservations,
+    marketplaceGrowthFactsLoaded,
+    setMarketplaceGrowthFactsLoaded,
     marketplaceGrowthBusy,
     setMarketplaceGrowthBusy,
     approvals,
@@ -2214,6 +2281,8 @@ export function useDashboardController() {
     reviewPassport,
     uploadSupplierComparison,
     planMarketplaceGrowth,
+    loadMarketplaceGrowthFacts,
+    planLatestMarketplaceGrowth,
     requestProcurement,
     createSampleOrder,
     recordSampleEvent,

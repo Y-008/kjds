@@ -6,7 +6,9 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Image as ImageIcon,
+  Layers3,
   Megaphone,
+  PackageSearch,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
@@ -34,7 +36,7 @@ const actionLabels: Record<string, string> = {
   replenishment_review: "评估补货后再恢复流量",
   refresh_market_snapshot: "刷新同款同行价格证据",
   verify_actual_landed_cost: "复核十五项实际落地成本",
-  change_supplier_or_bundle: "更换供应商或重新定义商品组合",
+  replace_supplier_or_bundle: "更换供应商或重新定义商品组合",
   run_price_reset_experiment: "建立有止损线的价格实验",
   complete_content_roles: "补齐七类商品内容",
   build_verified_review_depth: "积累可验证的真实评价",
@@ -102,11 +104,56 @@ export function MarketplaceGrowthPanel({ model }: { model: DashboardModel }) {
         </div>
       </section>
 
+      <section className="growth-fact-hub">
+        <div className="section-heading">
+          <div>
+            <span>STORE FACT PORTFOLIO</span>
+            <h3>最新店铺事实与全店方案</h3>
+            <p>每个 SKU 只采用最新观测；历史版本、采集身份和 Evidence 保持可追溯。</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void model.planLatestMarketplaceGrowth()}
+            disabled={!model.marketplaceGrowthObservations.length || model.marketplaceGrowthBusy}
+          >
+            <Layers3 size={14} />
+            {model.marketplaceGrowthBusy ? "正在计算…" : "生成全店方案"}
+          </button>
+        </div>
+        {!model.marketplaceGrowthFactsLoaded ? (
+          <div className="growth-facts-empty">正在读取最新店铺事实…</div>
+        ) : model.marketplaceGrowthObservations.length ? (
+          <div className="growth-fact-list">
+            {model.marketplaceGrowthObservations.map((item) => (
+              <article key={item.marketplace_sku}>
+                <div>
+                  <strong>{item.marketplace_sku}</strong>
+                  <span>{item.category} · {item.snapshot_source}</span>
+                </div>
+                <dl>
+                  <div><dt>库存</dt><dd>{item.stock}</dd></div>
+                  <div><dt>14 天订单</dt><dd>{item.orders_14d}</dd></div>
+                  <div><dt>评价</dt><dd>{item.review_count}</dd></div>
+                  <div><dt>内容分</dt><dd>{item.content_score}</dd></div>
+                </dl>
+                <small>观察于 {new Date(item.observed_at).toLocaleString("zh-CN")} · 快照 {item.snapshot_id}</small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="growth-facts-empty">
+            <PackageSearch size={25} />
+            <strong>还没有已确认的店铺事实</strong>
+            <p>在下方录入一个真实 SKU；保存后即可逐步形成全店、铺货或精细化运营组合。</p>
+          </div>
+        )}
+      </section>
+
       <section className="growth-layout">
         <form className="growth-form" onSubmit={model.planMarketplaceGrowth}>
           <div className="section-heading">
             <div><span>SKU DIAGNOSIS</span><h3>生成现有商品增长方案</h3></div>
-            <span className="status-pill">1 个 SKU / 次</span>
+            <span className="status-pill">保存 1 个 SKU · 规划全店</span>
           </div>
 
           {scenarioOptions.length ? (
@@ -154,7 +201,7 @@ export function MarketplaceGrowthPanel({ model }: { model: DashboardModel }) {
           <div className="growth-submit">
             <div><ShieldAlert size={16} /><span>建议生成后仍不会触发 Ozon 写入或广告花费。</span></div>
             <button type="submit" disabled={!scenarioOptions.length || model.marketplaceGrowthBusy}>
-              {model.marketplaceGrowthBusy ? "正在复验全部门禁…" : "生成增长方案"}
+              {model.marketplaceGrowthBusy ? "正在保存并复验…" : "保存事实并生成全店方案"}
             </button>
           </div>
         </form>

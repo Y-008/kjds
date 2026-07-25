@@ -4061,6 +4061,77 @@
         "title": "LoopValidationInput",
         "type": "object"
       },
+      "MarketplaceGrowthSnapshotInput": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceSkuGrowthObservationInput"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Observations",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "ozon_seller_api",
+              "ozon_export",
+              "operator_verified"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "idempotency_key",
+          "observations"
+        ],
+        "title": "MarketplaceGrowthSnapshotInput",
+        "type": "object"
+      },
+      "MarketplaceLatestGrowthPlanInput": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "target_cm3_rate": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 0.5,
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Target Cm3 Rate"
+          }
+        },
+        "required": [
+          "target_cm3_rate"
+        ],
+        "title": "MarketplaceLatestGrowthPlanInput",
+        "type": "object"
+      },
       "MarketplacePortfolioGrowthPlanInput": {
         "additionalProperties": false,
         "properties": {
@@ -6036,7 +6107,7 @@
   },
   "info": {
     "title": "KJDS Control Plane",
-    "version": "0.49.0"
+    "version": "0.50.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11823,6 +11894,49 @@
         "summary": "Capture Research Signal"
       }
     },
+    "/v1/marketplace-growth/observations/latest": {
+      "get": {
+        "operationId": "list_latest_marketplace_growth_observations_v1_marketplace_growth_observations_latest_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "List Latest Marketplace Growth Observations"
+      }
+    },
     "/v1/marketplace-growth/portfolio-plan": {
       "post": {
         "operationId": "plan_marketplace_portfolio_growth_v1_marketplace_growth_portfolio_plan_post",
@@ -11862,6 +11976,88 @@
           }
         ],
         "summary": "Plan Marketplace Portfolio Growth"
+      }
+    },
+    "/v1/marketplace-growth/portfolio-plan/latest": {
+      "post": {
+        "operationId": "plan_latest_marketplace_portfolio_growth_v1_marketplace_growth_portfolio_plan_latest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceLatestGrowthPlanInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Plan Latest Marketplace Portfolio Growth"
+      }
+    },
+    "/v1/marketplace-growth/snapshots": {
+      "post": {
+        "operationId": "capture_marketplace_growth_snapshot_v1_marketplace_growth_snapshots_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceGrowthSnapshotInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Capture Marketplace Growth Snapshot"
       }
     },
     "/v1/models": {

@@ -801,6 +801,40 @@ body {
 .growth-boundary svg { grid-row: span 2; color: #75dcba; }
 .growth-boundary strong { font-size: 11px; }
 .growth-boundary p { grid-column: 1 / -1; margin: 8px 0 0; padding-top: 9px; border-top: 1px solid rgba(255, 255, 255, .09); color: #a7b3c8; font-size: 9px; line-height: 1.75; }
+.growth-fact-hub {
+  margin-bottom: 14px;
+  padding: 19px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 9px 27px rgba(28, 38, 58, .035);
+}
+.growth-fact-hub .section-heading > button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  background: #536dfe;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 850;
+}
+.growth-fact-hub .section-heading > button:disabled { opacity: .45; cursor: not-allowed; }
+.growth-fact-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.growth-fact-list article { min-width: 0; padding: 11px; border: 1px solid #e5e8ef; border-radius: 10px; background: #fafbfc; }
+.growth-fact-list article > div:first-child { display: grid; gap: 2px; }
+.growth-fact-list strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; }
+.growth-fact-list span, .growth-fact-list small { overflow: hidden; color: #8b94a4; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.growth-fact-list dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 9px 0; }
+.growth-fact-list dl div { display: grid; gap: 2px; padding: 6px; border-radius: 7px; background: #f0f2f7; }
+.growth-fact-list dt { color: #929baa; font-size: 7px; }
+.growth-fact-list dd { margin: 0; color: #4e5e78; font-size: 9px; font-weight: 850; }
+.growth-facts-empty { min-height: 74px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #98a1b0; font-size: 9px; text-align: center; }
+.growth-facts-empty strong { color: #5b6678; font-size: 10px; }
+.growth-facts-empty p { margin: 0; color: #8b94a4; font-size: 8px; }
 .growth-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(240px, .55fr); gap: 14px; align-items: start; }
 .growth-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
 .growth-fields label { min-width: 0; display: grid; gap: 5px; color: #606b7d; font-size: 9px; font-weight: 750; }
@@ -1012,6 +1046,7 @@ body {
   .overview-grid,
   .growth-layout { grid-template-columns: 1fr; }
   .growth-method { grid-template-columns: repeat(3, 1fr); }
+  .growth-fact-list { grid-template-columns: 1fr 1fr; }
   .growth-method .section-heading { grid-column: 1 / -1; }
   .governance-hero { grid-template-columns: 1fr; }
   .login-story { padding-inline: 44px; }
@@ -1050,6 +1085,7 @@ body {
   .capability-grid,
   .growth-price-grid { grid-template-columns: 1fr 1fr; }
   .growth-method { grid-template-columns: 1fr 1fr; }
+  .growth-fact-list { grid-template-columns: 1fr; }
   .growth-fields { grid-template-columns: 1fr 1fr; }
   .growth-analysis-grid,
   .governance-grid { grid-template-columns: 1fr; }
