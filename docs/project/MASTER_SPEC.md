@@ -4,7 +4,7 @@
 |---|---|
 | doc_id | KJDS-MASTER-SPEC-001 |
 | status | Active |
-| version | 7.8 |
+| version | 7.9 |
 | last_reviewed | 2026-07-25 |
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
@@ -159,6 +159,7 @@ KJDS 是“确定性经营内核 + 证据优先数据层 + 受控 Agent 外层�
 | BR-063 | 外部合同回放与漂移门 | Ozon、ComfyUI 和财务文件适配必须以版本化、脱敏、无凭证的固定样本在 CI 中回放；每个样本声明外部系统、合同版本、预期结果和 SHA-256，样本缺失、哈希变化或预期行为漂移均失败。第一阶段只复用现有客户端、导入器、MockTransport 和测试运行器，不建设生产回放服务或通用录制框架。回放至少覆盖成功响应、结构漂移和失败关闭；限流、超时、写入结果不确定、幂等重放与回读不一致继续由现有专项测试验证，获得真实脱敏响应后再替换对应合成样本。生产流量、密钥、个人信息和原始商户数据禁止写入仓库。 | P0 |
 | BR-064 | Champion/Challenger 影子对照账 | 既有 Policy Shadow 的每个可用于阶段结果或激活的 Evaluation 必须冻结一个由不同身份产生的 `champion` 或 `human` 基线结果、其 Evidence、基线/挑战者摘要哈希、精确差异路径和是否完全一致；基线与业务上下文使用相同的敏感字段、大小和不可变幂等限制。零暴露批次可以先采集无基线评估用于诊断，但缺少完整独立对照的批次不得记录可晋升阶段结果，也不得申请有限激活；激活时必须重新验证全部 Evaluation Evidence。第一阶段把对照投影保存在现有 Evaluation `result_json`，不新增表、服务、依赖或第二套 Shadow；真实增量价值、人工成本和利润仍由 Observation Window 与 Capability Economics 在有限执行后记录，影子一致率不得冒充经营收益。 | P0 |
 | BR-065 | 唯一经营工作台与 Agent 只读简报 | KJDS 必须把既有 Gate readiness、候选组合、运行异常队列和已存证建议通过单一版本化只读接口投影为经营简报；页面不得自行重算 Gate、优先级或 Agent 责任。每项简报必须保留来源类型/ID、下一动作、责任 Agent、风险和人工要求；Gate 阻断不得伪造截止时间或 SLA，运行异常继续保留原 SLA。Agent 只允许解释、排序和提出下一步，固定 `automatic_execution=false`、`platform_write_allowed=false`，不得直接写 Repository、创建 Product/采购/Listing、调用外部平台或把第三方工具信号晋升为正式事实。荔枝、毛子 ERP 等第三方产品只作为功能模式与 C/D 级辅助信号参考；无兼容许可证的二进制、扩展或压缩源码不得复制进仓库。 | P0 |
+| BR-066 | 现有 Ozon SKU 组合增长规划 | 现有商品增长必须通过一个服务端深模块，把版本化全成本场景与不超过七天的店铺/同行 Evidence 快照计算为价格四分位、目标 CM3 底价、最大 ACOS/CPC、内容七角色、合规/库存/评价/转化门禁和组合优先级。1688 展示价不得冒充实际落地成本；同行少于三条、成本未通过独立权威复核、无真实转化率或任一安全门失败时不得解锁广告。输出只作可解释建议，禁止自动改价、上架、采购或花费广告预算；真实动作继续使用既有 Approval、一次性许可、回读、止损和补偿合同。 | P0 |
 
 ### 2.2 功能需求
 
@@ -908,6 +909,12 @@ KJDS 的成功不是拥有最多 Agent，而是在真实跨境经营中，用可
 备份与恢复的历史 G-1 演练使用 `pg_dump` 自定义格式、SHA-256 清单、隔离目标恢复，并校验当时的 Alembic head `20260720_0038` 与关键表计数；该结果只证明对应版本。当前 head 必须由实时 G-1 重新确认。见 `docs/adr/ADR-0005-postgres-backup-recovery.md`、`docs/project/07_BACKUP_RECOVERY_RUNBOOK.md` 与 `docs/project/evidence/2026-07-18-postgres-restore-drill.md`。自动计划、异地加密副本、保留周期和托管环境正式 RPO/RTO 仍未完成，因此本项尚不能作为生产灾备承诺。
 
 证据保留已增加机器可执行的分类与复审评估，未知分类被拒绝、未分类进入 `classification_required`、legal hold 阻止归档，且所有证据一律 `automatic_delete_allowed=false`；见 `docs/adr/ADR-0006-evidence-retention.md` 与 `tests/test_evidence.py`。当前天数是内部复审最短间隔，不是法定期限；真实财务/客户数据进入前仍须由合规负责人冻结正式保留矩阵。
+
+### 17.1.1 现有 Ozon SKU 增长规划
+
+`BR-066/BAS-090` 把现有商品的增长诊断收敛到 `MarketplaceGrowthPlanner` 一个深模块。调用方只提交版本化全成本场景和有 Evidence 的店铺/同行快照；模块内部统一完成 RUB/CNY 语义、同行价格四分位、目标 CM3 价格底线、最大 ACOS、基于真实转化率的最大 CPC、内容七角色、合规/库存/评价/转化门禁和组合优先级。市场快照超过七天、同行样本少于三条、实际成本未通过独立权威复核、无库存、高合规风险或无真实转化率时均失败关闭相应增长动作。
+
+输出固定为 `recommendation_only`，`automatic_marketplace_write=false`、`automatic_ad_spend=false`。1688 展示价只可作为供应商发现或估算证据，不能冒充采购、境内物流、国际物流、包装、税费、尾程、退货和售后均已实际确认的落地成本；广告只有在价格进入市场带、内容分不低于 90、评分不低于 4.5、至少 5 条真实评价、存在真实转化率且目标 ACOS 为正时才可进入有预算上限的因果实验。真实改价、内容发布和广告创建继续走既有审批、一次性许可、回读和止损合同。
 
 ### 17.2 P1：G2/G4/G5 前补齐
 

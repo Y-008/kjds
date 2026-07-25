@@ -31,6 +31,7 @@ from .intake import ProductMediaEvidenceService, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .limited_executor import LimitedExecutorService
 from .loop_engineering import LoopEngineeringService
+from .marketplace_growth import MarketplaceGrowthPlanner
 from .operating_workbench import OperatingWorkbenchService
 from .operations_queue import OperationsQueueService
 from .outbox import OutboxService
@@ -91,6 +92,7 @@ class RuntimeServices:
     limited_executor: Any
     loop_engineering: Any
     market: Any
+    marketplace_growth: Any
     operating_workbench: Any
     operations_queue: Any
     outbox: Any
@@ -211,6 +213,12 @@ def build_runtime() -> RuntimeServices:
         evidence_validator=evidence.require_valid,
         actual_cost_validator=cost_evidence_authority.require_actual,
         action_authorization=action_authorization,
+    )
+    marketplace_growth = MarketplaceGrowthPlanner(
+        sourcing_store=sourcing_store,
+        sourcing=sourcing,
+        repository=repo,
+        evidence=evidence,
     )
     sourcing_intake = SupplierComparisonIntakeService(sourcing=sourcing, evidence=evidence)
     procurement = ProcurementService(
@@ -360,6 +368,7 @@ def build_runtime() -> RuntimeServices:
         limited_executor=limited_executor,
         loop_engineering=loop_engineering,
         market=market,
+        marketplace_growth=marketplace_growth,
         operating_workbench=operating_workbench,
         operations_queue=operations_queue,
         outbox=outbox,
