@@ -89,7 +89,7 @@ export function SkuWorkbenchPanel() {
         <article><span>正式报价</span><strong>{snapshot.formal_offers.length} / 3</strong></article>
         <article><span>完整成本场景</span><strong>{completeScenarios}</strong></article>
         <article><span>审批快照</span><strong>{snapshot.approvals.length}</strong></article>
-        <article><span>样品单</span><strong>{snapshot.sample_orders.length}</strong></article>
+        <article><span>销售单履约</span><strong>{snapshot.sales_fulfillment_plans.length}</strong></article>
       </div>
       <div className="sku-workbench-readiness">
         <div><strong>当前未知项</strong>{snapshot.unknowns.length ? <ul>{snapshot.unknowns.map((item) => <li key={item}>{unknownLabels[item] ?? item}</li>)}</ul> : <p>关键字段已齐备，仍需按审批门逐项复核。</p>}</div>

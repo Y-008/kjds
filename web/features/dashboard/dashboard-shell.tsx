@@ -1,5 +1,6 @@
 import {
   Boxes,
+  ChartNoAxesCombined,
   BrainCircuit,
   CircleDollarSign,
   FileUp,
@@ -8,6 +9,7 @@ import {
   LayoutDashboard,
   RefreshCw,
   ShieldCheck,
+  Truck,
   Waypoints,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -15,6 +17,7 @@ import type { IdentityStatus, WebSession } from "./contracts";
 
 const nav = [
   [LayoutDashboard, "经营总览", "#dashboard-top"],
+  [ChartNoAxesCombined, "市场情报", "#capability-map"],
   [FileUp, "数据中心", "#ozon-import"],
   [Waypoints, "全球货源", "#sourcing-intake"],
   [Boxes, "商品中心", "#sku-intake"],
@@ -23,6 +26,7 @@ const nav = [
   [FlaskConical, "增长实验", "#causal-experiments"],
   [CircleDollarSign, "利润中心", "#actual-cost-review"],
   [ShieldCheck, "审批中心", "#listing-approval"],
+  [Truck, "订单履约", "#sales-fulfillment"],
 ] as const;
 
 type Props = {

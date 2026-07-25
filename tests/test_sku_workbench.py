@@ -85,6 +85,7 @@ def test_sku_workbench_keeps_unverified_listing_as_research_and_unknowns():
     assert result["contract_id"] == "kjds-sku-workbench-v1"
     assert result["product"] is None
     assert len(result["research"]["source_listings"]) == 1
+    assert result["sales_fulfillment_plans"] == []
     assert result["research"]["source_listings"][0]["decision_use"].startswith("auxiliary_only")
     assert result["formal_offers"] == []
     assert {

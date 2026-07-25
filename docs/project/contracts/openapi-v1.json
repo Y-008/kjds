@@ -5408,6 +5408,174 @@
         "title": "ReconciliationInput",
         "type": "object"
       },
+      "SalesFulfillmentEventInput": {
+        "additionalProperties": false,
+        "properties": {
+          "effective_at": {
+            "title": "Effective At",
+            "type": "string"
+          },
+          "event_type": {
+            "enum": [
+              "supplier_order_confirmed",
+              "domestic_shipped",
+              "warehouse_received",
+              "packed_for_export",
+              "international_handover",
+              "cancelled"
+            ],
+            "title": "Event Type",
+            "type": "string"
+          },
+          "evidence_id": {
+            "minLength": 1,
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "facts": {
+            "additionalProperties": true,
+            "title": "Facts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "event_type",
+          "effective_at",
+          "evidence_id",
+          "facts"
+        ],
+        "title": "SalesFulfillmentEventInput",
+        "type": "object"
+      },
+      "SalesFulfillmentPlanInput": {
+        "additionalProperties": false,
+        "properties": {
+          "sales_order_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Sales Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sales_order_id"
+        ],
+        "title": "SalesFulfillmentPlanInput",
+        "type": "object"
+      },
+      "SalesFulfillmentProcurementApprovalInput": {
+        "additionalProperties": false,
+        "properties": {
+          "offer_id": {
+            "minLength": 1,
+            "title": "Offer Id",
+            "type": "string"
+          },
+          "quantity": {
+            "minimum": 1.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "scenario_id": {
+            "minLength": 1,
+            "title": "Scenario Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "offer_id",
+          "scenario_id",
+          "quantity"
+        ],
+        "title": "SalesFulfillmentProcurementApprovalInput",
+        "type": "object"
+      },
+      "SalesFulfillmentRouteInput": {
+        "additionalProperties": false,
+        "properties": {
+          "address_valid_at": {
+            "title": "Address Valid At",
+            "type": "string"
+          },
+          "aggregator": {
+            "const": "kuajing84",
+            "default": "kuajing84",
+            "title": "Aggregator",
+            "type": "string"
+          },
+          "carrier_code": {
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Carrier Code",
+            "type": "string"
+          },
+          "delivery_method_status": {
+            "enum": [
+              "active",
+              "legacy_only"
+            ],
+            "title": "Delivery Method Status",
+            "type": "string"
+          },
+          "effective_at": {
+            "title": "Effective At",
+            "type": "string"
+          },
+          "evidence_id": {
+            "minLength": 1,
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "legacy_connection": {
+            "default": false,
+            "title": "Legacy Connection",
+            "type": "boolean"
+          },
+          "service_code": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Service Code",
+            "type": "string"
+          },
+          "warehouse_address": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Warehouse Address",
+            "type": "string"
+          },
+          "warehouse_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Warehouse Id",
+            "type": "string"
+          },
+          "warehouse_name": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Warehouse Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effective_at",
+          "evidence_id",
+          "carrier_code",
+          "service_code",
+          "warehouse_id",
+          "warehouse_name",
+          "warehouse_address",
+          "address_valid_at",
+          "delivery_method_status"
+        ],
+        "title": "SalesFulfillmentRouteInput",
+        "type": "object"
+      },
       "SampleOrderInput": {
         "additionalProperties": false,
         "properties": {
@@ -5680,7 +5848,7 @@
   },
   "info": {
     "title": "KJDS Control Plane",
-    "version": "0.47.0"
+    "version": "0.48.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -9077,6 +9245,257 @@
           }
         },
         "summary": "List Unknown Fees"
+      }
+    },
+    "/v1/fulfillment/plans": {
+      "get": {
+        "operationId": "list_sales_fulfillment_plans_v1_fulfillment_plans_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sales Fulfillment Plans"
+      },
+      "post": {
+        "description": "Create an address-free sourcing plan only after a marketplace order exists.",
+        "operationId": "create_sales_fulfillment_plan_v1_fulfillment_plans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesFulfillmentPlanInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Sales Fulfillment Plan"
+      }
+    },
+    "/v1/fulfillment/plans/{plan_id}": {
+      "get": {
+        "operationId": "get_sales_fulfillment_plan_v1_fulfillment_plans__plan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Sales Fulfillment Plan"
+      }
+    },
+    "/v1/fulfillment/plans/{plan_id}/events": {
+      "post": {
+        "operationId": "record_sales_fulfillment_event_v1_fulfillment_plans__plan_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesFulfillmentEventInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Sales Fulfillment Event"
+      }
+    },
+    "/v1/fulfillment/plans/{plan_id}/procurement-approval-request": {
+      "post": {
+        "operationId": "request_sales_fulfillment_procurement_approval_v1_fulfillment_plans__plan_id__procurement_approval_request_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesFulfillmentProcurementApprovalInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request Sales Fulfillment Procurement Approval"
+      }
+    },
+    "/v1/fulfillment/plans/{plan_id}/route-selection": {
+      "post": {
+        "operationId": "select_sales_fulfillment_route_v1_fulfillment_plans__plan_id__route_selection_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalesFulfillmentRouteInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Select Sales Fulfillment Route"
       }
     },
     "/v1/governance/gate-reviews": {

@@ -48,6 +48,7 @@ from .read_only_claims import ReadOnlyClaimService
 from .readiness import GateReadinessService
 from .repository import InMemoryRepository
 from .research_inbox import ResearchInboxService
+from .sales_fulfillment import SalesFulfillmentService
 from .security import ApiKeyAuthenticator, KillSwitchService
 from .services import CommerceService
 from .source_acquisition import SkuWorkbenchService, SourceAcquisitionService
@@ -107,6 +108,7 @@ class RuntimeServices:
     readiness: Any
     repo: Any
     research_inbox: Any
+    sales_fulfillment: Any
     sourcing: Any
     source_acquisition: Any
     source_connectors: Any
@@ -249,6 +251,14 @@ def build_runtime() -> RuntimeServices:
         sourcing=sourcing,
         evidence=evidence,
     )
+    sales_fulfillment = SalesFulfillmentService(
+        engine=engine,
+        repository=repo,
+        sourcing_store=sourcing_store,
+        sourcing=sourcing,
+        evidence=evidence,
+        commerce=commerce,
+    )
     governance = GovernanceService(engine=engine, evidence=evidence)
     read_only_claims = ReadOnlyClaimService(engine=engine, evidence=evidence)
     readiness = GateReadinessService(
@@ -267,6 +277,7 @@ def build_runtime() -> RuntimeServices:
         readiness=readiness,
         sourcing_store=sourcing_store,
         procurement=procurement,
+        sales_fulfillment=sales_fulfillment,
     )
     authenticator = ApiKeyAuthenticator.from_environment()
     kill_switch = KillSwitchService(engine)
@@ -385,6 +396,7 @@ def build_runtime() -> RuntimeServices:
         readiness=readiness,
         repo=repo,
         research_inbox=research_inbox,
+        sales_fulfillment=sales_fulfillment,
         source_acquisition=source_acquisition,
         source_connectors=source_connectors,
         sourcing=sourcing,

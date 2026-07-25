@@ -176,6 +176,7 @@ export type SkuWorkbenchSnapshot = {
   profit_scenarios: Array<{ cost_complete: boolean; cm3_cny: string; cm3_rate: string }>;
   approvals: unknown[];
   sample_orders: unknown[];
+  sales_fulfillment_plans: SalesFulfillmentPlan[];
   listing_drafts: unknown[];
   unknowns: string[];
   guardrails: {
@@ -187,6 +188,52 @@ export type SkuWorkbenchSnapshot = {
     automatic_listing: false;
     platform_write_allowed: false;
   };
+};
+export type SalesFulfillmentPlan = {
+  id: string;
+  sales_order_id: string;
+  external_sales_order_id: string;
+  product_id: string;
+  quantity: number;
+  status:
+    | "awaiting_route"
+    | "route_selected"
+    | "approval_pending"
+    | "supplier_order_confirmed"
+    | "domestic_shipped"
+    | "warehouse_received"
+    | "packed_for_export"
+    | "international_handover"
+    | "cancelled";
+  route: null | {
+    aggregator: "kuajing84";
+    carrier_code: string;
+    service_code: string;
+    warehouse_id: string;
+    warehouse_name: string;
+    warehouse_address: string;
+    address_valid_at: string;
+    delivery_method_status: "active" | "legacy_only";
+    legacy_connection: boolean;
+    evidence_id: string;
+    selected_at: string;
+  };
+  domestic_warehouse_address_known: boolean;
+  procurement_approval: null | { approval_id: string; offer_id: string; scenario_id: string; quantity: number };
+  procurement_approval_status: null | "pending" | "approved" | "rejected";
+  ready_for_supplier_order: boolean;
+  automatic_supplier_order: false;
+  automatic_payment: false;
+  created_by: string;
+  created_at: string;
+  events: Array<{
+    id: string;
+    sequence: number;
+    event_type: string;
+    effective_at: string;
+    evidence_id: string;
+    facts: Record<string, unknown>;
+  }>;
 };
 export type PassportReadiness = {
   kind: "product" | "compliance" | "quality";

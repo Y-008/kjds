@@ -325,12 +325,14 @@ class SkuWorkbenchService:
         readiness,
         sourcing_store,
         procurement,
+        sales_fulfillment=None,
     ) -> None:
         self.repository = repository
         self.research_inbox = research_inbox
         self.readiness = readiness
         self.sourcing_store = sourcing_store
         self.procurement = procurement
+        self.sales_fulfillment = sales_fulfillment
 
     def snapshot(self, product_or_candidate_ref: str) -> dict[str, Any]:
         requested_ref = SourceAcquisitionService._required(
@@ -380,6 +382,13 @@ class SkuWorkbenchService:
         sample_orders = [
             item for item in self.procurement.list_orders(limit=500) if product and item["product"]["id"] == product.id
         ]
+        sales_fulfillment_plans = [
+            item
+            for item in (
+                self.sales_fulfillment.list_plans(limit=500) if self.sales_fulfillment is not None else []
+            )
+            if product and item["product_id"] == product.id
+        ]
         listing_drafts = [
             item
             for item in self.sourcing_store.list_listing_drafts(limit=500)
@@ -410,6 +419,7 @@ class SkuWorkbenchService:
             "profit_scenarios": [self._scenario_view(item) for item in scenarios],
             "approvals": [asdict(item) for item in approvals],
             "sample_orders": sample_orders,
+            "sales_fulfillment_plans": sales_fulfillment_plans,
             "listing_drafts": [asdict(item) for item in listing_drafts],
             "unknowns": sorted(set(unknowns)),
             "guardrails": {

@@ -21,7 +21,7 @@ test("sidebar navigation targets real dashboard sections", () => {
   const shell = read("../features/dashboard/dashboard-shell.tsx");
   const targets = [...shell.matchAll(/"(#[a-z][a-z0-9-]+)"/g)].map((match) => match[1]);
 
-  assert.equal(targets.length, 9);
+  assert.equal(targets.length, 11);
   for (const target of targets) assert.match(source, new RegExp(`id="${target.slice(1)}"`));
   assert.match(shell, /<a aria-label=\{label\} href=\{href\}/);
   assert.match(shell, /title=\{label\}/);
@@ -52,6 +52,21 @@ test("Agent status comes from the governed operating-workbench briefing", () => 
   assert.doesNotMatch(summary, /\["市场分析", "商品策略"/);
   assert.doesNotMatch(summary, /<span className="badge">影子模式<\/span>/);
   assert.match(summary, /页面不会自行猜测 Agent 状态/);
+});
+
+test("sales fulfillment separates listing, sales order, and supplier purchase order", () => {
+  const view = read("../features/dashboard/dashboard-view.tsx");
+  const hub = read("../features/dashboard/intelligence-hub-panel.tsx");
+  const fulfillment = read("../features/dashboard/sales-fulfillment-panel.tsx");
+  const controller = read("../features/dashboard/use-dashboard-controller.tsx");
+
+  assert.match(view, /<IntelligenceHubPanel model=\{model\}/);
+  assert.match(view, /<SalesFulfillmentPanel model=\{model\}/);
+  assert.match(hub, /上线售卖，不创建采购/);
+  assert.match(hub, /买家真实出单，建立履约需求/);
+  assert.match(fulfillment, /国内收货地址在选定跨境巴士路线后才出现/);
+  assert.match(fulfillment, /不会自动下 1688 订单或付款/);
+  assert.match(controller, /\/backend\/v1\/fulfillment\/plans/);
 });
 
 test("identity failure renders unknown state and hides mutation workspaces", () => {
