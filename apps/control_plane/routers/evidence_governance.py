@@ -43,6 +43,9 @@ async def capture_evidence(
     if source.strip().lower() in {
         "candidate_evidence_authority_review",
         "gate_requirement_review",
+        "listing_russian_native_review",
+        "ozon_execution_identity_authority_review",
+        "ozon-isolated-execution-worker",
         "ozon_finance_report_review",
     }:
         raise HTTPException(status_code=422, detail="Reserved evidence source requires its dedicated workflow")
@@ -126,15 +129,20 @@ def link_evidence(
     evidence_id: str, body: LineageLinkInput, principal: Annotated[Principal, Depends(current_principal)]
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    target_type = body.target_type.strip().lower()
+    relationship = body.relationship.strip().lower()
     if (
-        body.target_type.strip().lower() == "gate_requirement"
+        target_type in {"gate_requirement", "ozon_execution_identity"}
+        or relationship
+        in {
+            "candidate_authority_review",
+            "listing_russian_native_review",
+            "ozon_execution_identity_authority_review",
+            "reviews",
+        }
         or (
-            body.target_type.strip().lower() == "evidence"
-            and body.relationship.strip().lower() in {"candidate_authority_review", "reviews"}
-        )
-        or (
-            body.target_type.strip().lower() == ResearchInboxService.TARGET_TYPE
-            and body.relationship.strip().lower() == ResearchInboxService.RELATIONSHIP
+            target_type == ResearchInboxService.TARGET_TYPE
+            and relationship == ResearchInboxService.RELATIONSHIP
         )
     ):
         raise HTTPException(status_code=422, detail="Reserved lineage requires its dedicated workflow")

@@ -6,7 +6,7 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 8.4 |
+| version | 8.6 |
 | last_reviewed | 2026-07-25 |
 | next_review | 2026-07-27 |
 | gate | G-1–G1 |
@@ -86,7 +86,7 @@
 | BAS-075 | G4 | 财务三方对账双人控制与原件独立性 | 工程+财务 | 对账人不得上传原件、创建分录、批准已采用费用映射或创建已采用 FX；银行与平台侧原件按 Blob SHA-256 独立，即使重复存证也不可冒充；阻断快照可审计；不新增表、依赖或银行解析器 | FIN-001、BAS-074 | DONE_ENGINEERING |
 | BAS-076 | G0–G2 | 实际成本权威证明与执行前复验 | 工程+财务+供应链 | `actual` 必须由非上传者按精确成本项核对原件、计费主体及金额—币种—期间，并使用允许的权威类型固化不可变证明；任一拒绝优先阻断；利润创建、readiness、采购评审、样品下单和 Listing 草稿均重新复验；不新增表、依赖或成本总账 | BAS-063、BAS-075 | DONE_ENGINEERING |
 | BAS-077 | G0–G2 | 实际成本权威复核工作台 | 工程+财务+供应链 | 服务端只读下发 15 项成本及允许权威类型；Reviewer/Compliance/Admin 可在 Web 选择 Evidence、查询状态并提交四项检查与不可变结论；Operator 只读；不复制规则、不自动改场景、入账、采购、定价或上架；不新增表、依赖或前端框架 | BAS-076、BAS-055 | DONE_ENGINEERING |
-| BAS-078 | G0–G4 | 唯一运行时动作授权与 readiness 绑定 | 工程+控制面 | 计划创建/读取、许可排队及 Worker claim 均调用同一 phase-aware `authorize_action()`；L1–L4 动作政策与写路径注册表精确对应，CI 验证入口、正式写点、执行复验、幂等、回读、补偿及外部 HTTP 模块边界；候选晋升复用独立 Approval，Listing 草稿与 ComfyUI 在实际执行前复验；未接入许可和回读的真实动作保持 `policy_only` | BR-037、BR-060、BAS-077 | DONE_ENGINEERING |
+| BAS-078 | G0–G4 | 唯一运行时动作授权与 readiness 绑定 | 工程+控制面 | 计划创建/读取、许可排队及 Worker claim 均调用同一 phase-aware `authorize_action()`；L1–L4 动作政策与写路径注册表精确对应，CI 验证入口、正式写点、执行复验、幂等、回读、补偿及外部 HTTP 模块边界；候选晋升复用独立 Approval，Listing 草稿与 ComfyUI 在实际执行前复验；`availability=enabled` 只表示工程能力存在，不表示运行开关、普通 ListingDraft 接线或真实账户验收已完成；未接入许可和回读的真实动作保持 `policy_only` | BR-037、BR-060、BAS-077 | DONE_ENGINEERING |
 | BAS-079 | G0 | SKU-000 单任务双作用域操作界面 | 工程+商品 | 现有 G0–G1 页面同时展示研究闭环与真实经营状态；上传时选择官方/历史/固定测试来源并保存来源定位；测试数据只能放行研究，不能放行任何真实副作用；不新增后台或 Gate | BAS-048、BAS-078 | DONE_ENGINEERING |
 | BAS-080 | G0–G4 | Readiness 依据冻结进 DecisionPacket | 工程+控制面 | 执行计划申请时把精确需求原件与独立接受证明自动并入计划 Evidence/Lineage，并把每项 readiness 的状态、证据 ID、阻塞码和快照哈希冻结进现有 Approval payload 与 DecisionPacket；读取时另算当前状态但不改写历史依据；任一冻结证据损坏均阻断旧计划 | BR-061、BAS-078 | DONE_ENGINEERING |
 | BAS-081 | G0–G4 | 受限执行组合风险预留与快照 | 工程+控制面 | 复用 Action Policy 与 Limited Executor；同动作同 UTC 日排队在 PostgreSQL 事务中串行预留每日次数，固化同动作/同币种累计风险、派生上限、覆盖边界和快照哈希，授权摘要绑定快照，Worker claim 前重新复验；不新增风险注册表、不虚构店铺/法人/现金阈值；[工程证据](evidence/20260721_LIMITED_EXECUTION_AGGREGATE_RISK_RESERVATION.md) | BR-062、BAS-080 | DONE_ENGINEERING |
@@ -97,6 +97,7 @@
 | BAS-086 | G-1 | 可选 Provider 运行边界 | 工程负责人 | n8n、Firecrawl、Ollama 仅在显式配置后构造、展示和检查；核心 readiness 不依赖可选 Provider；ComfyUI 继续受控且不得直传平台；删除无调用方配置；[工程证据](evidence/20260721_BAS_086_OPTIONAL_PROVIDER_BOUNDARIES.md) | BAS-085 | DONE_ENGINEERING |
 | BAS-087 | G-1 | G1 Harness 收敛 | 工程负责人 | 已冻结场景与覆盖映射；PowerShell 只保留基础设施生命周期、迁移、恢复、Worker、跨进程最小烟测与清理；领域场景由分组 Pytest 合同覆盖；[工程证据](evidence/20260721_BAS_087_G1_HARNESS_CONVERGENCE.md) | BAS-086 | DONE_ENGINEERING |
 | BAS-088 | G0–G4 | 唯一经营工作台 Agent 简报 | 工程+经营 | 单一只读快照聚合 Gate 阻断、运行异常、已有建议与候选组合；动态展示责任 Agent 和当前焦点；Gate 阻断不伪造 SLA；固定禁止自动执行、平台写入和第三方事实晋升；第三方未授权代码不进入仓库；[工程证据](evidence/20260725_BAS_088_UNIFIED_OPERATING_WORKBENCH_AGENT_BRIEFING.md) | BR-065、BAS-065、BAS-086 | DONE_ENGINEERING |
+| BAS-089 | G2–G6 | 批准 Listing 到 Ozon 受控执行闭环 | 工程+商品+控制面 | 批准草稿作为不可变执行来源；服务端派生 item/目标/回滚；俄语母语与执行身份独立复核；12 项 source-aware readiness；独立 Execution Approval、一次写入许可、写前/写后证据、状态轮询、回读、补偿与不确定结果事故闭环；Web 只提供复核和最小计划交接，不提供快捷发布；真实账户和运行开关保持阻塞；[工程证据](evidence/20260725_BAS_089_APPROVED_LISTING_CONTROLLED_EXECUTION.md) | BAS-078、BAS-080、BAS-082、OZN-003 | DONE_ENGINEERING |
 | BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |
 | BAS-004 | G-1 | 环境状态自动生成 | 工程负责人 | 不再依赖过时静态 PASS 文档 | BAS-003 | DONE |
 | SEC-001 | G-1 | API 身份认证 | 工程负责人 | `KJDS_API_KEY` 或正式身份层生效；未授权为 401/403 | BAS-003 | DONE |
@@ -113,6 +114,8 @@
 
 `BLOCKED` 项不是工程问题：需要账号所有者、真实商品/供应商、样品或一手业务文件。增加开发窗口不能消除这些阻塞。
 
+平台发布边界：仓库已有 `apps.control_plane.ozon_worker.OzonExecutionWorker`，并非“没有平台发布器”。BAS-089 已完成普通批准 `ListingDraft` 到受控执行计划、命令、写前/写后证据、状态轮询、回读和补偿的工程接线；Worker 运行时仍受 Gate、Kill Switch 和一次性许可约束且默认关闭，当前仅有 mock/工程合同验收，未完成真实 Ozon 账户验收。写路径注册表中的 `availability=enabled` 仅表示工程能力存在，不表示运行已开启、业务 Gate 已通过或真实账户可执行。
+
 2026-07-19 已核验 Ozon 官方 `data.ozon.ru`：公开页中的商品、销量、搜索量和类目增长均明确标注为报告示例；真实分析入口要求账户主体先接受 Ozon 要约和个人信息处理条件。本次没有替账户主体接受条款。`SKU-000` 因此保持 `PARTIAL_BLOCKED`，公开示例不得写入三个候选；账户负责人完成条款决定并导出真实 28 天原始报告后，才开始候选淘汰、供货核验和三报价。证据见 `docs/project/evidence/20260719_SKU_000_OZON_DEMAND_DATA_ACCESS_GATE.md`。
 
 2026-07-20 已从 Ozon 官方文章定位并实测 Seller“我商品的搜索查询”入口。当前账号可读默认七天的两个历史商品，但跨月 28 天范围未被接受；点击“下载报告”后出现 Premium/Premium Lite 订阅门，本地没有生成原始文件。该结果证明登录态和可见页面，不满足 `SKU-000` 的原件、28 天窗口、哈希和独立复核要求。下一步由经营负责人决定 Ozon Data 条款、Premium 支出，或批准专用只读 Seller API 身份验证等强官方原始响应；不得抓包绕过或用第三方数据替代。证据见 `docs/project/evidence/20260720_SKU_000_OZON_SELLER_ANALYTICS_EXPORT_GATE.md`。
@@ -128,6 +131,16 @@
 同日完成第一轮公开候选预筛：低客单的单个理线夹、毛毡脚垫、宠物除毛滚筒和自粘拖把夹直接淘汰；旅行箱收纳袋套装、手动泵真空收纳袋套装、机械固定铝合金拖把/扫帚墙架进入正式取证队列。公开 Ozon 页面和 Alibaba 展示价只证明“值得继续核验”，不提供 28 天指标、不构成真实报价，也不解除 `SKU-000/001`。三类假设只有补齐 28 天原件、A/B 证据等级、官方合规结论、三家同口径报价和样品实测后，才允许完成候选包并申请人工交接。证据见 `docs/project/evidence/20260722_SKU_001_PUBLIC_CANDIDATE_PRESCREEN.md`。
 
 同日继续完成私密候选包的供应端准备：RU-001、RU-002、RU-003 均已有 3 条可联系供应商发现线索。RU-003 只有 Jiaxing All-Link 的公开页精确匹配 5 位 6 钩；CLEANIC 与 Fuzhou Eastsound 仍须按同一冻结规格书面确认 `60 cm / 5 位 / 6 钩 / 机械固定`，因此不视为三家精确规格供应商或三份报价。公开页面只填入 `supplier_available` 的 `research_signal`，未写入正式报价；启动包 v4 结构校验通过，但 15 行候选指标仍有 15 个阻塞项，需求、竞争、合规、退货、两来源族及全部真实经营 Gate 继续失败关闭。
+
+### 2026-07-23 P0 当前基线复验
+
+- Commit：`b1422d955a150795d7befe1cfbdcf3273febfaaa`。
+- G-1：`.runtime/G1_VERIFICATION.json` 为 `PASS`，迁移 head 为 `20260721_0040`；`cleanup_processes`、`cleanup_database`、`cleanup_files` 均为 `true`。
+- 私密启动包：`real-sku-startup` 符合 `kjds-startup-package-v4` 结构；严格预检退出码为 3，八个资料区均为 `awaiting_inputs`，`formal_fact_promoted=false`。
+- BAS-026：继续为 `PARTIAL_BLOCKED`，仍需真实 Supabase 双用户、AAL2、撤销/恢复和经营签署。
+- 安全边界：未导入数据库，未晋升 Evidence 或 Gate，未执行 Ozon 登录、条款接受、RFQ、付款、采购、发布、广告或其他外部写入。
+- 文档边界：战略草案保持未跟踪、非规范，不作为状态或架构真源。
+- 版本化记录：`evidence/20260723_P0_CURRENT_HEAD_VERIFICATION.md`。
 
 同日完成三候选官方合规框架预审：当前 EEC 的 ТР ТС 017/2011（含 2025 年修订）、ТР ТС 005/2011（含 2024 年修订）和第 299 号决定只证明存在按材料、用途、TN VED 和类目判断的义务，不能直接证明任一具体候选合规或豁免。RU-001～003 的 `compliance_redline` 因此继续为 `UNKNOWN`，私密包不填数值；每个候选须取得供应商材料/用途声明、独立 TN VED 书面判断、当前符合性路径、Ozon 类目要求原件及非上传者复核。证据见 `docs/project/evidence/20260722_SKU_001_COMPLIANCE_PRESCREEN.md`。
 

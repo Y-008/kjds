@@ -7,7 +7,20 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func, select
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    select,
+    text,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -31,6 +44,8 @@ class RetentionClass(StrEnum):
     SECURITY = "security"
 
 
+UNIQUE_SOURCE_REF_SOURCES = {"ozon-isolated-execution-worker"}
+
 RETENTION_REVIEW_DAYS = {
     RetentionClass.OPERATIONAL: 365,
     RetentionClass.FINANCIAL: 3650,
@@ -53,6 +68,14 @@ class EvidenceRecordRow(Base):
     __tablename__ = "evidence_records"
     __table_args__ = (
         UniqueConstraint("blob_sha256", "source", "source_ref", "effective_at", name="uq_evidence_capture"),
+        Index(
+            "uq_execution_evidence_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'ozon-isolated-execution-worker'"),
+            sqlite_where=text("source = 'ozon-isolated-execution-worker'"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -229,6 +252,18 @@ class EvidenceService:
                 )
                 if existing is not None:
                     return self._record(existing, len(content))
+                if source in UNIQUE_SOURCE_REF_SOURCES:
+                    source_ref_winner = self._source_ref_row(
+                        session,
+                        source=source,
+                        source_ref=source_ref,
+                    )
+                    if source_ref_winner is not None:
+                        if not hmac.compare_digest(source_ref_winner.blob_sha256, digest):
+                            raise ValueError(
+                                "Evidence source reference already has different immutable content"
+                            )
+                        return self._record(source_ref_winner, len(content))
                 row = EvidenceRecordRow(
                     id=new_id("evd"),
                     blob_sha256=digest,
@@ -255,8 +290,18 @@ class EvidenceService:
                     source_ref=source_ref,
                     effective_at=effective,
                 )
+                if winner is None and source in UNIQUE_SOURCE_REF_SOURCES:
+                    winner = self._source_ref_row(
+                        session,
+                        source=source,
+                        source_ref=source_ref,
+                    )
                 if winner is None:
                     raise
+                if not hmac.compare_digest(winner.blob_sha256, digest):
+                    raise ValueError(
+                        "Evidence source reference already has different immutable content"
+                    ) from None
                 return self._record(winner, len(content))
 
     def get(self, evidence_id: str) -> EvidenceRecord:
@@ -446,15 +491,54 @@ class EvidenceService:
         )
 
     def require_valid(self, evidence_ids: list[str]) -> None:
+        normalized = self._normalized_evidence_ids(evidence_ids)
+        for evidence_id in normalized:
+            verification = self.verify(evidence_id)
+            if not verification.valid:
+                raise ValueError(f"Evidence failed hash verification: {evidence_id}")
+
+    def require_current(
+        self,
+        evidence_ids: list[str],
+        *,
+        as_of: datetime | None = None,
+    ) -> None:
+        """Require immutable evidence that is effective at the execution decision time."""
+        normalized = self._normalized_evidence_ids(evidence_ids)
+        current = as_of or datetime.now(UTC)
+        if current.tzinfo is None:
+            raise ValueError("as_of must include a timezone")
+        current = current.astimezone(UTC)
+        for evidence_id in normalized:
+            record, verification = self.inspect_integrity(evidence_id)
+            if not verification.valid:
+                raise ValueError(f"Evidence failed hash verification: {evidence_id}")
+            effective_at = self._stored_timestamp(record.effective_at)
+            effective_until = (
+                self._stored_timestamp(record.effective_until)
+                if record.effective_until
+                else None
+            )
+            if effective_at > current:
+                raise ValueError(f"Evidence is not yet effective: {evidence_id}")
+            if effective_until is not None and current >= effective_until:
+                raise ValueError(f"Evidence is no longer effective: {evidence_id}")
+
+    @staticmethod
+    def _normalized_evidence_ids(evidence_ids: list[str]) -> list[str]:
         normalized = [item.strip() for item in evidence_ids if item.strip()]
         if not normalized:
             raise ValueError("At least one immutable evidence record is required")
         if len(normalized) != len(set(normalized)):
             raise ValueError("Duplicate evidence references are not allowed")
-        for evidence_id in normalized:
-            verification = self.verify(evidence_id)
-            if not verification.valid:
-                raise ValueError(f"Evidence failed hash verification: {evidence_id}")
+        return normalized
+
+    @staticmethod
+    def _stored_timestamp(value: str) -> datetime:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
 
     def link(
         self,
@@ -580,6 +664,20 @@ class EvidenceService:
                 EvidenceRecordRow.source == source,
                 EvidenceRecordRow.source_ref == source_ref,
                 EvidenceRecordRow.effective_at == effective_at,
+            )
+        )
+
+    @staticmethod
+    def _source_ref_row(
+        session: Session,
+        *,
+        source: str,
+        source_ref: str,
+    ) -> EvidenceRecordRow | None:
+        return session.scalar(
+            select(EvidenceRecordRow).where(
+                EvidenceRecordRow.source == source,
+                EvidenceRecordRow.source_ref == source_ref,
             )
         )
 

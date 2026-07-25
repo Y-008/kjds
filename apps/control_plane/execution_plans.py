@@ -1,17 +1,51 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, select
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    select,
+)
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .action_policies import ActionAuthorizationService, ActionPolicyRegistry
-from .domain import new_id
+from .domain import ApprovalStatus, new_id
+from .pilot_readiness import OZON_PRODUCT_READ_CONTRACT_VERSION
+from .pilot_runs import ReadOnlyPilotRunRow
+from .read_only_claims import ReadOnlyClaimRow
+from .readiness import ExecutionReadinessContext
 from .sql_repository import Base
+
+CAUSAL_POLICY_HANDOFF = "causal_policy_handoff"
+APPROVED_LISTING_DRAFT = "approved_listing_draft"
+MAX_OZON_RESPONSE_BODY_BYTES = 1024 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionSource:
+    kind: str
+    id: str
+    approval_id: str
+    snapshot_hash: str
+    handoff_id: str | None = None
+    policy_id: str | None = None
+    release_id: str | None = None
+
 
 ADAPTERS = {
     "ozon.listing.draft.v1": {
@@ -44,16 +78,42 @@ class ExecutionPlanRow(Base):
     __tablename__ = "governed_execution_plans"
     __table_args__ = (
         UniqueConstraint("handoff_id", "idempotency_key", name="uq_execution_plan_key"),
+        UniqueConstraint(
+            "source_kind", "source_id", "idempotency_key", name="uq_execution_plan_source_key"
+        ),
+        CheckConstraint(
+            "length(source_kind) > 0 "
+            "AND length(source_id) > 0 "
+            "AND length(source_approval_id) > 0 "
+            "AND length(source_snapshot_hash) = 64",
+            name="ck_execution_plan_source_fields",
+        ),
+        CheckConstraint(
+            "(source_kind = 'causal_policy_handoff' "
+            "AND source_id = handoff_id "
+            "AND handoff_id IS NOT NULL "
+            "AND policy_id IS NOT NULL "
+            "AND release_id IS NOT NULL) "
+            "OR (source_kind = 'approved_listing_draft' "
+            "AND handoff_id IS NULL "
+            "AND policy_id IS NULL "
+            "AND release_id IS NULL)",
+            name="ck_execution_plan_source_variant",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     request_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    handoff_id: Mapped[str] = mapped_column(
-        ForeignKey("causal_policy_activation_handoffs.id"), nullable=False
+    source_kind: Mapped[str] = mapped_column(String, nullable=False)
+    source_id: Mapped[str] = mapped_column(String, nullable=False)
+    source_approval_id: Mapped[str] = mapped_column(ForeignKey("approvals.id"), nullable=False)
+    source_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    handoff_id: Mapped[str | None] = mapped_column(
+        ForeignKey("causal_policy_activation_handoffs.id"), nullable=True
     )
-    policy_id: Mapped[str] = mapped_column(ForeignKey("causal_policies.id"), nullable=False)
-    release_id: Mapped[str] = mapped_column(
-        ForeignKey("causal_policy_releases.id"), nullable=False
+    policy_id: Mapped[str | None] = mapped_column(ForeignKey("causal_policies.id"), nullable=True)
+    release_id: Mapped[str | None] = mapped_column(
+        ForeignKey("causal_policy_releases.id"), nullable=True
     )
     idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
     adapter_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -100,13 +160,17 @@ class ExecutionPlanService:
         commerce,
         action_policies: ActionPolicyRegistry | None = None,
         action_authorization: ActionAuthorizationService | None = None,
-        readiness_provider: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
+        readiness_provider: Callable[[ExecutionReadinessContext], dict[str, Any]] | None = None,
+        sourcing=None,
+        repository=None,
     ) -> None:
         self.engine = engine
         self.policy_shadow = policy_shadow
         self.policies = policies
         self.evidence = evidence
         self.commerce = commerce
+        self.sourcing = sourcing
+        self.repository = repository
         if action_authorization is not None:
             self.action_authorization = action_authorization
             self.action_policies = action_authorization.registry
@@ -140,13 +204,125 @@ class ExecutionPlanService:
             raise ValueError("Execution planning requires an active approved policy handoff")
         policy = self.policies.get(handoff["policy_id"])
         adapter = self._adapter(adapter_id)
-        action_policy = self.action_policies.get(adapter["action_id"])
-        if adapter["live_execution_supported"] and action_policy["decision_scope"] != "real_execution":
-            raise ValueError("Live execution adapter must use a real-execution action policy")
         if adapter["platform"] != policy["applicability"]["platform"]:
             raise ValueError("Execution adapter platform is outside policy applicability")
         if adapter["policy_action"] != policy["action"]["type"]:
             raise ValueError("Execution adapter does not support the policy action")
+        source = ExecutionSource(
+            kind=CAUSAL_POLICY_HANDOFF,
+            id=handoff_id,
+            approval_id=handoff["approval_id"],
+            snapshot_hash=handoff["policy_snapshot_hash"],
+            handoff_id=handoff_id,
+            policy_id=policy["id"],
+            release_id=handoff["release_id"],
+        )
+        return self._create_from_source(
+            source,
+            idempotency_key=idempotency_key,
+            adapter_id=adapter_id,
+            target=target,
+            precondition_state_hash=precondition_state_hash,
+            intended_patch=intended_patch,
+            rollback_patch=rollback_patch,
+            evidence_ids=evidence_ids,
+            created_by=created_by,
+            risk_limits=risk_limits,
+            risk_values=risk_values,
+            risk_currency=risk_currency,
+        )
+
+    def create_from_approved_listing(
+        self,
+        draft_id: str,
+        *,
+        idempotency_key: str,
+        precondition_state_hash: str,
+        evidence_ids: list[str],
+        created_by: str,
+        risk_limits: dict[str, Any] | None = None,
+        risk_values: dict[str, Any] | None = None,
+        risk_currency: str | None = None,
+    ) -> dict[str, Any]:
+        if self.sourcing is None or self.repository is None:
+            raise RuntimeError("Approved Listing execution source is not configured")
+        draft = self.sourcing.store.get_listing_draft(draft_id)
+        if not draft.approval_id:
+            raise ValueError("Listing execution requires a Listing approval")
+        source_approval = self.commerce.repo.get_approval(draft.approval_id)
+        if (
+            source_approval.action != "listing.publish"
+            or source_approval.resource_type != "listing_draft"
+            or source_approval.resource_id != draft.id
+        ):
+            raise ValueError("Listing execution source approval does not match the draft")
+        if source_approval.status != ApprovalStatus.APPROVED or not source_approval.decided_by:
+            raise ValueError("Listing execution requires an approved Listing snapshot")
+        if source_approval.decided_by == source_approval.requested_by:
+            raise ValueError("Listing execution requires an independent Listing reviewer")
+        draft = self.sourcing.verify_listing_approval(
+            draft_id=draft.id,
+            approval_id=source_approval.id,
+            approval_payload=source_approval.payload,
+        )
+        if draft.target_platform.strip().upper() != "OZON":
+            raise ValueError("Approved Listing execution currently supports Ozon only")
+        product = self.repository.get_product(draft.product_id)
+        if product.channel.strip().upper() != "OZON":
+            raise ValueError("Listing product is not bound to the Ozon channel")
+        offer_id = self._required(product.sku, "Ozon offer ID")
+        target = {"offer_id": offer_id}
+        precondition_state_hash = self._state_hash(precondition_state_hash)
+        before_state, rollback_item, before_evidence_id = self._approved_listing_before_state(
+            evidence_ids,
+            offer_id=offer_id,
+        )
+        if self._hash(before_state) != precondition_state_hash:
+            raise ValueError("Approved before-state Evidence does not match the precondition hash")
+        intended_item = self._listing_import_item(draft.listing_data, offer_id=offer_id)
+        source = ExecutionSource(
+            kind=APPROVED_LISTING_DRAFT,
+            id=draft.id,
+            approval_id=source_approval.id,
+            snapshot_hash=self._state_hash(source_approval.payload["listing_snapshot_sha256"]),
+        )
+        return self._create_from_source(
+            source,
+            idempotency_key=idempotency_key,
+            adapter_id="ozon.product.import.v3",
+            target=target,
+            precondition_state_hash=precondition_state_hash,
+            intended_patch={"item": intended_item},
+            rollback_patch={"item": rollback_item},
+            evidence_ids=[*evidence_ids, before_evidence_id],
+            created_by=created_by,
+            risk_limits=risk_limits,
+            risk_values=risk_values,
+            risk_currency=risk_currency,
+            before_state_evidence_id=before_evidence_id,
+        )
+
+    def _create_from_source(
+        self,
+        source: ExecutionSource,
+        *,
+        idempotency_key: str,
+        adapter_id: str,
+        target: dict[str, Any],
+        precondition_state_hash: str,
+        intended_patch: dict[str, Any],
+        rollback_patch: dict[str, Any],
+        evidence_ids: list[str],
+        created_by: str,
+        risk_limits: dict[str, Any] | None,
+        risk_values: dict[str, Any] | None,
+        risk_currency: str | None,
+        before_state_evidence_id: str | None = None,
+    ) -> dict[str, Any]:
+        adapter = self._adapter(adapter_id)
+        action_policy = self.action_policies.get(adapter["action_id"])
+        if adapter["live_execution_supported"] and action_policy["decision_scope"] != "real_execution":
+            raise ValueError("Live execution adapter must use a real-execution action policy")
         idempotency_key = self._required(idempotency_key, "Execution idempotency key")
         created_by = self._required(created_by, "Execution plan creator")
         target = self._target(target, adapter)
@@ -160,7 +336,16 @@ class ExecutionPlanService:
                 raise ValueError("Rollback Ozon import item must match target offer_id")
         if intended_patch == rollback_patch:
             raise ValueError("Rollback patch must restore a different prior state")
-        readiness_snapshot = self.action_readiness_snapshot(adapter["action_id"], target)
+        evidence_ids = self._evidence(evidence_ids)
+        readiness_context = self._readiness_context(
+            action_id=adapter["action_id"],
+            target=target,
+            source=source,
+            precondition_state_hash=precondition_state_hash,
+            evidence_ids=evidence_ids,
+            before_state_evidence_id=before_state_evidence_id,
+        )
+        readiness_snapshot = self.action_readiness_snapshot(readiness_context)
         evidence_ids = self._evidence(
             [*evidence_ids, *self._readiness_evidence_ids(readiness_snapshot)]
         )
@@ -174,11 +359,15 @@ class ExecutionPlanService:
             values=risk_values,
             currency=risk_currency,
             readiness=self._readiness_flags(readiness_snapshot),
+            source_kind=source.kind,
         )
         self.action_authorization.require_allowed(authorization)
         risk = authorization["risk"]
         canonical = {
-            "handoff_id": handoff_id,
+            "source_kind": source.kind,
+            "source_id": source.id,
+            "source_approval_id": source.approval_id,
+            "source_snapshot_hash": source.snapshot_hash,
             "idempotency_key": idempotency_key,
             "adapter_id": adapter_id,
             "action_id": adapter["action_id"],
@@ -204,7 +393,8 @@ class ExecutionPlanService:
                 return self.get(exact.id)
             previous = session.scalar(
                 select(ExecutionPlanRow).where(
-                    ExecutionPlanRow.handoff_id == handoff_id,
+                    ExecutionPlanRow.source_kind == source.kind,
+                    ExecutionPlanRow.source_id == source.id,
                     ExecutionPlanRow.idempotency_key == idempotency_key,
                 )
             )
@@ -216,9 +406,13 @@ class ExecutionPlanService:
             resource_id=request_hash,
             requested_by=created_by,
             payload={
-                "handoff_id": handoff_id,
-                "policy_id": policy["id"],
-                "release_id": handoff["release_id"],
+                "source_kind": source.kind,
+                "source_id": source.id,
+                "source_approval_id": source.approval_id,
+                "source_snapshot_hash": source.snapshot_hash,
+                "handoff_id": source.handoff_id,
+                "policy_id": source.policy_id,
+                "release_id": source.release_id,
                 "adapter_id": adapter_id,
                 "action_id": adapter["action_id"],
                 "action_policy_version": self.action_policies.policy_version,
@@ -233,38 +427,212 @@ class ExecutionPlanService:
                 "risk_currency": risk["currency"],
                 "permit_ttl_seconds": risk["permit_ttl_seconds"],
                 "readiness_snapshot": readiness_snapshot,
-                "live_execution_supported": False,
+                "live_execution_supported": adapter["live_execution_supported"],
             },
         )
-        with Session(self.engine) as session, session.begin():
-            row = ExecutionPlanRow(
-                id=new_id("gxp"),
-                request_hash=request_hash,
-                handoff_id=handoff_id,
-                policy_id=policy["id"],
-                release_id=handoff["release_id"],
-                idempotency_key=idempotency_key,
-                adapter_id=adapter_id,
-                action_id=adapter["action_id"],
-                action_policy_version=self.action_policies.policy_version,
-                target_json=target,
-                precondition_state_hash=precondition_state_hash,
-                intended_patch_json=intended_patch,
-                rollback_patch_json=rollback_patch,
-                risk_limits_json=risk["limits"],
-                risk_values_json=risk["values"],
-                risk_currency=risk["currency"],
-                permit_ttl_seconds=risk["permit_ttl_seconds"],
-                evidence_json=evidence_ids,
-                approval_id=approval.id,
-                created_by=created_by,
-                created_at=datetime.now(UTC),
-            )
-            session.add(row)
-            session.flush()
-            plan_id = row.id
+        try:
+            with Session(self.engine) as session, session.begin():
+                row = ExecutionPlanRow(
+                    id=new_id("gxp"),
+                    request_hash=request_hash,
+                    source_kind=source.kind,
+                    source_id=source.id,
+                    source_approval_id=source.approval_id,
+                    source_snapshot_hash=source.snapshot_hash,
+                    handoff_id=source.handoff_id,
+                    policy_id=source.policy_id,
+                    release_id=source.release_id,
+                    idempotency_key=idempotency_key,
+                    adapter_id=adapter_id,
+                    action_id=adapter["action_id"],
+                    action_policy_version=self.action_policies.policy_version,
+                    target_json=target,
+                    precondition_state_hash=precondition_state_hash,
+                    intended_patch_json=intended_patch,
+                    rollback_patch_json=rollback_patch,
+                    risk_limits_json=risk["limits"],
+                    risk_values_json=risk["values"],
+                    risk_currency=risk["currency"],
+                    permit_ttl_seconds=risk["permit_ttl_seconds"],
+                    evidence_json=evidence_ids,
+                    approval_id=approval.id,
+                    created_by=created_by,
+                    created_at=datetime.now(UTC),
+                )
+                session.add(row)
+                session.flush()
+                plan_id = row.id
+        except IntegrityError:
+            with Session(self.engine) as session:
+                winner = session.scalar(
+                    select(ExecutionPlanRow).where(
+                        ExecutionPlanRow.source_kind == source.kind,
+                        ExecutionPlanRow.source_id == source.id,
+                        ExecutionPlanRow.idempotency_key == idempotency_key,
+                    )
+                )
+            if winner is None or winner.request_hash != request_hash:
+                raise ValueError("Execution idempotency key already has immutable content") from None
+            return self.get(winner.id)
         self._link(evidence_ids, "governed_execution_plan", plan_id, created_by)
         return self.get(plan_id)
+
+    def _approved_listing_before_state(
+        self,
+        evidence_ids: list[str],
+        *,
+        offer_id: str,
+    ) -> tuple[dict[str, Any], dict[str, Any], str]:
+        candidates: list[tuple[ReadOnlyClaimRow, ReadOnlyPilotRunRow]] = []
+        with Session(self.engine) as session:
+            claims = list(
+                session.scalars(
+                    select(ReadOnlyClaimRow).where(
+                        ReadOnlyClaimRow.evidence_id.in_(evidence_ids),
+                        ReadOnlyClaimRow.status == "accepted",
+                    )
+                )
+            )
+            for claim in claims:
+                run = session.get(ReadOnlyPilotRunRow, claim.run_id)
+                if run is not None:
+                    candidates.append((claim, run))
+        target_hash = hashlib.sha256(offer_id.encode()).hexdigest()
+        matching = [
+            (claim, run)
+            for claim, run in candidates
+            if run.operation == "ozon.product.read"
+            and run.status == "completed"
+            and run.outcome == "succeeded"
+            and run.target_hash == target_hash
+            and (run.summary_json or {}).get("contract_version")
+            == OZON_PRODUCT_READ_CONTRACT_VERSION
+            and (run.summary_json or {}).get("state_sha256") == claim.source_state_sha256
+        ]
+        if len(matching) != 1:
+            raise ValueError(
+                "Listing execution requires one accepted Ozon product Claim for the server-derived offer"
+            )
+        claim, run = matching[0]
+        raw_ids = self.evidence.target_evidence_ids(
+            target_type="read_only_pilot_run",
+            target_id=run.id,
+            relationship="raw_response",
+        )
+        if len(raw_ids) != 1:
+            raise ValueError("Listing execution requires one raw before-state Evidence record")
+        self.evidence.require_current([raw_ids[0]])
+        content, record = self.evidence.content(raw_ids[0])
+        verification = self.evidence.verify(raw_ids[0])
+        if (
+            not verification.valid
+            or record.source != "ozon-isolated-read-worker"
+            or record.source_ref != run.id
+            or record.content_type != "application/json"
+            or record.grade.value != "A"
+            or record.metadata.get("raw_response_stored") is not True
+            or record.metadata.get("response_sha256") != run.response_sha256
+            or record.sha256 != run.response_sha256
+            or record.byte_size != run.response_byte_size
+        ):
+            raise ValueError("Raw Ozon before-state Evidence failed integrity verification")
+        state = self._ozon_state_from_bundle(content, offer_id=offer_id)
+        if self._hash(state) != claim.source_state_sha256:
+            raise ValueError("Accepted Ozon Claim does not match raw before-state Evidence")
+        rollback_item = self._rollback_item_from_state(state, offer_id=offer_id)
+        return state, rollback_item, record.id
+
+    @classmethod
+    def _ozon_state_from_bundle(cls, content: bytes, *, offer_id: str) -> dict[str, Any]:
+        try:
+            bundle = json.loads(content)
+            if (
+                bundle.get("schema_version") != "ozon-response-bundle-v2"
+                or bundle.get("contract_version") != OZON_PRODUCT_READ_CONTRACT_VERSION
+            ):
+                raise ValueError
+            responses = bundle["responses"]
+            if not isinstance(responses, list) or not 1 <= len(responses) <= 3:
+                raise ValueError
+            decoded: dict[str, Any] = {}
+            for item in responses:
+                if not isinstance(item, dict) or item.get("status_code") != 200:
+                    raise ValueError
+                path = item["path"]
+                if not isinstance(path, str) or path in decoded:
+                    raise ValueError
+                body = base64.b64decode(item["body_base64"], validate=True)
+                if len(body) > MAX_OZON_RESPONSE_BODY_BYTES:
+                    raise ValueError
+                body_sha256 = item["body_sha256"]
+                if not isinstance(body_sha256, str) or not hmac.compare_digest(
+                    body_sha256, hashlib.sha256(body).hexdigest()
+                ):
+                    raise ValueError
+                decoded[path] = json.loads(body)
+            info = decoded["/v3/product/info/list"]
+            attribute_paths = {
+                "/v4/product/info/attributes",
+                "/v3/products/info/attributes",
+            }.intersection(decoded)
+            if len(attribute_paths) != 1 or len(decoded) != 2:
+                raise ValueError
+            attributes = decoded[attribute_paths.pop()]
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("Raw Ozon before-state Evidence has an unsupported contract") from exc
+        info_items = info.get("items") if isinstance(info, dict) else None
+        result = attributes.get("result") if isinstance(attributes, dict) else None
+        attribute_items = result.get("items") if isinstance(result, dict) else result
+        if not isinstance(info_items, list) or not isinstance(attribute_items, list):
+            raise ValueError("Raw Ozon before-state Evidence is missing product records")
+        for items in (info_items, attribute_items):
+            if (
+                len(items) != 1
+                or not isinstance(items[0], dict)
+                or str(items[0].get("offer_id", "")).strip() != offer_id
+            ):
+                raise ValueError("Raw Ozon before-state Evidence does not prove one target offer")
+        return {
+            "contract_version": OZON_PRODUCT_READ_CONTRACT_VERSION,
+            "offer_id": offer_id,
+            "info": info,
+            "attributes": attributes,
+        }
+
+    @staticmethod
+    def _rollback_item_from_state(state: dict[str, Any], *, offer_id: str) -> dict[str, Any]:
+        result = state["attributes"]["result"]
+        attribute_item = result["items"][0] if isinstance(result, dict) else result[0]
+        rollback_item = dict(attribute_item)
+        rollback_item["offer_id"] = offer_id
+        required = {"name", "description", "description_category_id", "attributes", "images"}
+        if not required.issubset(rollback_item):
+            raise ValueError(
+                "Raw Ozon before-state cannot reconstruct a complete rollback import item"
+            )
+        return rollback_item
+
+    @staticmethod
+    def _listing_import_item(listing_data: dict[str, Any], *, offer_id: str) -> dict[str, Any]:
+        attributes = listing_data.get("attributes")
+        images = listing_data.get("images")
+        if not isinstance(attributes, list) or not attributes:
+            raise ValueError("Approved Listing attributes must be a complete Ozon attribute list")
+        if not isinstance(images, list) or not images:
+            raise ValueError("Approved Listing images must be a non-empty list")
+        item = {
+            "offer_id": offer_id,
+            "name": ExecutionPlanService._required(
+                str(listing_data.get("title", "")), "Approved Listing title"
+            ),
+            "description": ExecutionPlanService._required(
+                str(listing_data.get("description", "")), "Approved Listing description"
+            ),
+            "description_category_id": int(listing_data["category_id"]),
+            "attributes": attributes,
+            "images": images,
+        }
+        return item
 
     def dry_run(
         self,
@@ -280,8 +648,12 @@ class ExecutionPlanService:
         evidence_ids = self._evidence(evidence_ids)
         checks = [
             {
-                "name": "policy_handoff_active",
-                "passed": plan["handoff_validity_status"] == "active",
+                "name": (
+                    "policy_handoff_active"
+                    if plan["source_kind"] == CAUSAL_POLICY_HANDOFF
+                    else "approved_listing_source_active"
+                ),
+                "passed": plan["source_validity_status"] == "active",
             },
             {
                 "name": "precondition_snapshot_matches",
@@ -341,12 +713,11 @@ class ExecutionPlanService:
             dry_run = session.scalar(
                 select(ExecutionDryRunRow).where(ExecutionDryRunRow.plan_id == plan_id)
             )
-        handoff = self.policy_shadow.get_handoff(result["handoff_id"])
+        source_context = self._source_context(result)
         approval = self.commerce.repo.get_approval(result["approval_id"])
-        active = handoff["validity_status"] == "active"
         dry_run_passed = bool(dry_run and dry_run.passed)
         current_readiness_snapshot = self.action_readiness_snapshot(
-            result["action_id"], result["target"]
+            self._plan_readiness_context(result)
         )
         authorization = self.action_authorization.authorize_action(
             action=result["action_id"],
@@ -359,6 +730,7 @@ class ExecutionPlanService:
             currency=result["risk_currency"],
             policy_version=result["action_policy_version"],
             readiness=self._readiness_flags(current_readiness_snapshot),
+            source_kind=result["source_kind"],
             approval_actor_ids=(
                 [approval.decided_by]
                 if approval.status.value == "approved" and approval.decided_by
@@ -366,13 +738,15 @@ class ExecutionPlanService:
             ),
         )
         authorization_blocking_reasons = list(authorization["blocking_reasons"])
+        if source_context["validity_status"] != "active":
+            authorization_blocking_reasons.append("EXECUTION_SOURCE_INVALID")
         frozen_readiness_snapshot = (
             approval.payload.get("readiness_snapshot", {})
             if isinstance(approval.payload, dict)
             else {}
         )
         try:
-            self.evidence.require_valid(result["evidence_ids"])
+            self.evidence.require_current(result["evidence_ids"])
         except (KeyError, RuntimeError, ValueError):
             authorization_blocking_reasons.append("PLAN_EVIDENCE_INVALID")
         frozen_readiness_evidence_ids = self._readiness_evidence_ids(
@@ -380,29 +754,31 @@ class ExecutionPlanService:
         )
         if frozen_readiness_evidence_ids:
             try:
-                self.evidence.require_valid(frozen_readiness_evidence_ids)
+                self.evidence.require_current(frozen_readiness_evidence_ids)
             except (KeyError, RuntimeError, ValueError):
                 authorization_blocking_reasons.append("READINESS_EVIDENCE_INVALID")
         authorization_blocking_reasons = sorted(set(authorization_blocking_reasons))
-        current_action_policy = authorization["action_policy"]
         ready_for_executor = (
-            active
+            source_context["validity_status"] == "active"
             and approval.status.value == "approved"
             and dry_run_passed
             and not authorization_blocking_reasons
         )
         decision_packet = self._decision_packet(
             result=result,
-            handoff=handoff,
+            source_context=source_context,
             approval=approval,
             dry_run=self._dry_run(dry_run) if dry_run else None,
             frozen_readiness_snapshot=frozen_readiness_snapshot,
         )
         return {
             **result,
+            "source_approval_status": source_context["approval_status"],
+            "source_approval_decided_by": source_context["approval_decided_by"],
+            "source_validity_status": source_context["validity_status"],
             "approval_status": approval.status.value,
             "approval_decided_by": approval.decided_by,
-            "handoff_validity_status": handoff["validity_status"],
+            "handoff_validity_status": source_context.get("handoff_validity_status"),
             "dry_run": self._dry_run(dry_run) if dry_run else None,
             "ready_for_executor": ready_for_executor,
             "authorization_blocking_reasons": authorization_blocking_reasons,
@@ -410,22 +786,81 @@ class ExecutionPlanService:
             "decision_packet": decision_packet,
             "execution_eligible": False,
             "adapter": {"id": result["adapter_id"], **self._adapter(result["adapter_id"])},
-            "action_policy": current_action_policy,
+            "action_policy": authorization["action_policy"],
             "live_execution_supported": self._adapter(result["adapter_id"])[
                 "live_execution_supported"
             ],
             "automatic_execution": False,
         }
 
-    def action_readiness(self, action_id: str, target: dict[str, Any]) -> dict[str, bool]:
-        return self._readiness_flags(self.action_readiness_snapshot(action_id, target))
+    def _source_context(self, result: dict[str, Any]) -> dict[str, Any]:
+        if result["source_kind"] == CAUSAL_POLICY_HANDOFF:
+            handoff = self.policy_shadow.get_handoff(result["source_id"])
+            snapshot_matches = handoff["policy_snapshot_hash"] == result["source_snapshot_hash"]
+            source_matches = handoff["approval_id"] == result["source_approval_id"]
+            validity_status = (
+                handoff["validity_status"]
+                if snapshot_matches and source_matches
+                else "source_snapshot_changed"
+            )
+            return {
+                "approval_status": handoff["approval_status"],
+                "approval_decided_by": handoff["approval_decided_by"],
+                "validity_status": validity_status,
+                "handoff_validity_status": validity_status,
+            }
+        if self.sourcing is None:
+            return {
+                "approval_status": "unknown",
+                "approval_decided_by": None,
+                "validity_status": "source_resolver_unavailable",
+            }
+        approval = self.commerce.repo.get_approval(result["source_approval_id"])
+        try:
+            self.sourcing.verify_listing_approval(
+                draft_id=result["source_id"],
+                approval_id=approval.id,
+                approval_payload=approval.payload,
+            )
+        except (KeyError, ValueError):
+            validity_status = "source_snapshot_changed"
+        else:
+            validity_status = (
+                "active"
+                if approval.status == ApprovalStatus.APPROVED
+                and approval.decided_by
+                and approval.decided_by != approval.requested_by
+                and approval.payload.get("listing_snapshot_sha256")
+                == result["source_snapshot_hash"]
+                else "source_approval_invalid"
+            )
+        return {
+            "approval_status": approval.status.value,
+            "approval_decided_by": approval.decided_by,
+            "validity_status": validity_status,
+        }
+
+    def action_readiness(
+        self,
+        plan: dict[str, Any],
+        *,
+        executor_identity_ref: str | None = None,
+    ) -> dict[str, bool]:
+        return self._readiness_flags(
+            self.action_readiness_snapshot(
+                self._plan_readiness_context(
+                    plan,
+                    executor_identity_ref=executor_identity_ref,
+                )
+            )
+        )
 
     def action_readiness_snapshot(
-        self, action_id: str, target: dict[str, Any]
+        self, context: ExecutionReadinessContext
     ) -> dict[str, dict[str, Any]]:
         if self.readiness_provider is None:
             return {}
-        readiness = self.readiness_provider(action_id, target)
+        readiness = self.readiness_provider(context)
         if not isinstance(readiness, dict):
             raise ValueError("Action readiness provider must return a mapping")
         result: dict[str, dict[str, Any]] = {}
@@ -456,6 +891,64 @@ class ExecutionPlanService:
                 "snapshot_hash": self._hash(snapshot),
             }
         return dict(sorted(result.items()))
+
+    @staticmethod
+    def _readiness_context(
+        *,
+        action_id: str,
+        target: dict[str, Any],
+        source: ExecutionSource,
+        precondition_state_hash: str,
+        evidence_ids: list[str],
+        before_state_evidence_id: str | None,
+    ) -> ExecutionReadinessContext:
+        return ExecutionReadinessContext(
+            action_id=action_id,
+            target=target,
+            source_kind=source.kind,
+            source_id=source.id,
+            source_approval_id=source.approval_id,
+            source_snapshot_hash=source.snapshot_hash,
+            precondition_state_hash=precondition_state_hash,
+            evidence_ids=tuple(evidence_ids),
+            before_state_verified=before_state_evidence_id is not None,
+            before_state_evidence_id=before_state_evidence_id,
+        )
+
+    def _plan_readiness_context(
+        self,
+        plan: dict[str, Any],
+        *,
+        executor_identity_ref: str | None = None,
+    ) -> ExecutionReadinessContext:
+        before_state_verified = False
+        before_state_evidence_id = None
+        if plan.get("source_kind") == APPROVED_LISTING_DRAFT:
+            try:
+                before_state, _, before_state_evidence_id = self._approved_listing_before_state(
+                    plan.get("evidence_ids", []),
+                    offer_id=plan["target"]["offer_id"],
+                )
+                before_state_verified = hmac.compare_digest(
+                    self._hash(before_state),
+                    plan["precondition_state_hash"],
+                )
+            except (KeyError, RuntimeError, TypeError, ValueError):
+                before_state_verified = False
+                before_state_evidence_id = None
+        return ExecutionReadinessContext(
+            action_id=plan["action_id"],
+            target=plan["target"],
+            source_kind=plan.get("source_kind"),
+            source_id=plan.get("source_id"),
+            source_approval_id=plan.get("source_approval_id"),
+            source_snapshot_hash=plan.get("source_snapshot_hash"),
+            precondition_state_hash=plan.get("precondition_state_hash"),
+            evidence_ids=tuple(plan.get("evidence_ids", [])),
+            before_state_verified=before_state_verified,
+            before_state_evidence_id=before_state_evidence_id,
+            executor_identity_ref=executor_identity_ref,
+        )
 
     @staticmethod
     def _readiness_flags(snapshot: dict[str, dict[str, Any]]) -> dict[str, bool]:
@@ -534,7 +1027,7 @@ class ExecutionPlanService:
         normalized = sorted({item.strip() for item in values if item.strip()})
         if not normalized:
             raise ValueError("Evidence is required")
-        self.evidence.require_valid(normalized)
+        self.evidence.require_current(normalized)
         return normalized
 
     def _link(self, evidence_ids: list[str], target_type: str, target_id: str, actor: str) -> None:
@@ -572,6 +1065,10 @@ class ExecutionPlanService:
     def _plan(cls, row: ExecutionPlanRow) -> dict[str, Any]:
         return {
             "id": row.id,
+            "source_kind": row.source_kind,
+            "source_id": row.source_id,
+            "source_approval_id": row.source_approval_id,
+            "source_snapshot_hash": row.source_snapshot_hash,
             "handoff_id": row.handoff_id,
             "policy_id": row.policy_id,
             "release_id": row.release_id,
@@ -599,7 +1096,7 @@ class ExecutionPlanService:
         cls,
         *,
         result: dict[str, Any],
-        handoff: dict[str, Any],
+        source_context: dict[str, Any],
         approval,
         dry_run: dict[str, Any] | None,
         frozen_readiness_snapshot: dict[str, Any],
@@ -610,9 +1107,21 @@ class ExecutionPlanService:
             "subject": result["target"],
             "requested_by": result["created_by"],
             "policy_version": result["action_policy_version"],
+            "source": {
+                "kind": result["source_kind"],
+                "id": result["source_id"],
+                "approval_id": result["source_approval_id"],
+                "snapshot_hash": result["source_snapshot_hash"],
+                "approval_status": source_context["approval_status"],
+                "validity_status": source_context["validity_status"],
+            },
             "causal_policy_id": result["policy_id"],
             "causal_policy_release_id": result["release_id"],
-            "causal_policy_snapshot_hash": handoff["policy_snapshot_hash"],
+            "causal_policy_snapshot_hash": (
+                result["source_snapshot_hash"]
+                if result["source_kind"] == CAUSAL_POLICY_HANDOFF
+                else None
+            ),
             "evidence_ids": result["evidence_ids"],
             "readiness_snapshot": frozen_readiness_snapshot,
             "adapter_id": result["adapter_id"],
@@ -628,7 +1137,8 @@ class ExecutionPlanService:
             "dry_run_hash": cls._hash(dry_run) if dry_run else None,
             "expiry_conditions": [
                 "action_policy_version_changes",
-                "causal_policy_snapshot_changes",
+                "source_snapshot_changes",
+                "source_approval_is_not_approved",
                 "approval_is_not_approved",
                 "evidence_becomes_invalid",
                 "readiness_evidence_becomes_invalid",

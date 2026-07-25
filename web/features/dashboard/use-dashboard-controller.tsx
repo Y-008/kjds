@@ -1619,27 +1619,101 @@ export function useDashboardController() {
     finally { setLifecycleBusy(null); }
   }
 
-  async function createExecutionPlan(event: FormEvent<HTMLFormElement>, handoff: PolicyActivationHandoff) {
+  async function prepareListingExecutionPlan(event: FormEvent<HTMLFormElement>, approval: ApprovalRecord) {
     event.preventDefault();
     const form = event.currentTarget;
     const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value.trim() ?? "";
+    const draftId = String(approval.payload.draft_id ?? approval.resource_id);
+    const maximumExpectedLoss = value("execution_max_expected_loss");
     const body = {
-      idempotency_key: `listing-draft-${value("execution_listing_id")}`,
-      adapter_id: "ozon.listing.draft.v1",
-      target: { listing_id: value("execution_listing_id") },
+      idempotency_key: `listing-draft-${draftId}-${approval.id}`,
       precondition_state_hash: value("execution_state_hash"),
-      intended_patch: { title: value("execution_new_title") },
-      rollback_patch: { title: value("execution_old_title") },
       evidence_ids: [value("execution_evidence")],
+      risk_limits: { max_quantity: "1", max_daily_runs: "1", max_expected_loss: maximumExpectedLoss },
+      risk_values: { quantity: "1", expected_loss: value("execution_expected_loss") },
+      risk_currency: value("execution_risk_currency"),
     };
-    setLifecycleBusy(`execution-plan:${handoff.id}`); setNotice("正在建立可回滚执行计划并申请第二次独立审批…");
+    setLifecycleBusy(`listing-execution-plan:${draftId}`);
+    setNotice("正在准备 Ozon Listing 执行计划并申请独立 Execution 审批；不会立即发布…");
     try {
-      const response = await fetchJson(`/backend/v1/causal-policy-activation-handoffs/${handoff.id}/execution-plans`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const response = await fetchJson(`/backend/v1/listings/ozon/drafts/${draftId}/execution-plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const result = await response.json();
-      setNotice(response.ok ? `执行计划 ${result.id} 已固化并进入审批；当前仍不支持平台写入。` : result.detail ?? "执行计划建立失败");
+      setNotice(response.ok ? `执行计划 ${result.id} 已准备并进入独立审批；尚未发布。` : result.detail ?? "执行计划准备失败");
       if (response.ok) { form.reset(); await load(); }
-    } catch { setNotice("无法建立执行计划，请检查服务状态"); }
+    } catch { setNotice("无法准备执行计划，请检查服务状态"); }
     finally { setLifecycleBusy(null); }
+  }
+
+  async function reviewListingRussianNative(event: FormEvent<HTMLFormElement>, approval: ApprovalRecord) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+    const checked = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | null)?.checked ?? false;
+    const draftId = String(approval.payload.draft_id ?? approval.resource_id);
+    const body = {
+      accepted: value("russian_review_decision") === "accepted",
+      native_russian_verified: checked("native_russian_verified"),
+      listing_snapshot_reviewed: checked("listing_snapshot_reviewed"),
+      terminology_accepted: checked("terminology_accepted"),
+      claims_grounded: checked("claims_grounded"),
+      ozon_policy_checked: checked("ozon_policy_checked"),
+      rationale: value("russian_review_rationale"),
+    };
+    setLifecycleBusy(`listing-russian-review:${draftId}`);
+    setNotice("正在固化俄语母语独立复核；不会发布 Listing…");
+    try {
+      const response = await fetchJson(`/backend/v1/listings/ozon/drafts/${draftId}/russian-native-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      setNotice(response.ok ? `俄语母语复核 ${result.review.id} 已不可变固化；仍需通过其余执行门。` : result.detail ?? "俄语母语复核失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch {
+      setNotice("无法提交俄语母语复核，请检查服务状态");
+    } finally {
+      setLifecycleBusy(null);
+    }
+  }
+
+  async function reviewOzonExecutionIdentity(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+    const checked = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | null)?.checked ?? false;
+    const evidenceId = value("execution_identity_evidence");
+    const body = {
+      identity_ref: value("execution_identity_ref"),
+      accepted: value("execution_identity_decision") === "accepted",
+      inventory_complete: checked("inventory_complete"),
+      credential_material_absent: checked("credential_material_absent"),
+      owner_verified: checked("owner_verified"),
+      caller_system_verified: checked("caller_system_verified"),
+      scope_minimized: checked("scope_minimized"),
+      dedicated_executor: checked("dedicated_executor"),
+      rationale: value("execution_identity_rationale"),
+    };
+    setLifecycleBusy(`ozon-execution-identity:${evidenceId}`);
+    setNotice("正在固化 Ozon 执行身份独立复核；不会读取凭证或执行平台写入…");
+    try {
+      const response = await fetchJson(`/backend/v1/operations/ozon/execution-identities/${evidenceId}/authority-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      setNotice(response.ok ? `执行身份复核 ${result.review.id} 已不可变固化；运行开关仍保持关闭。` : result.detail ?? "执行身份复核失败");
+      if (response.ok) { form.reset(); await load(); }
+    } catch {
+      setNotice("无法提交执行身份复核，请检查服务状态");
+    } finally {
+      setLifecycleBusy(null);
+    }
   }
 
   async function dryRunExecutionPlan(event: FormEvent<HTMLFormElement>, plan: GovernedExecutionPlan) {
@@ -1848,6 +1922,9 @@ export function useDashboardController() {
   const realExecutionReadiness = gateReadiness?.decision_scope_readiness?.real_execution;
   const pendingProcurementApprovals = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "pending").length;
   const pendingListingApprovals = approvals.filter((item) => item.action === "listing.publish" && item.status === "pending");
+  const approvedListingApprovals = approvals.filter((item) => item.action === "listing.publish" && item.status === "approved");
+  const listingExecutionPlans = governedExecutionPlans.filter((item) => item.source_kind === "approved_listing_draft");
+  const causalPolicyExecutionPlans = governedExecutionPlans.filter((item) => item.source_kind === "causal_policy_handoff");
   const approvedWithoutSample = approvals.filter((item) => item.action === "procurement.place_order" && item.status === "approved" && !sampleOrders.some((order) => order.approval_id === item.id));
   const selectedProfile = interactionProfiles.find((item) => item.id === selectedProfileId);
   const selectedAnalysisContract = decisionContracts.find((item) => item.id === selectedAnalysisContractId);
@@ -1869,6 +1946,7 @@ export function useDashboardController() {
   ];
   const nextStartupStep = startupSteps.find((item) => !requirement(item.id)?.ready);
   const canReviewFinance = webSession?.roles.some((role) => ["reviewer", "compliance", "admin"].includes(role)) ?? false;
+  const canReviewExecutionAuthority = canReviewFinance;
   const actualCostAuthorityItem = costAuthorityCatalog?.items.find((item) => item.cost_type === actualCostType);
   const reviewableCostEvidence = evidenceRecords.filter((item) => item.source !== "cost_actual_authority_review");
   const researchSignals = evidenceRecords.filter((record) => record.metadata.evidence_role === "research_signal");
@@ -2083,7 +2161,9 @@ export function useDashboardController() {
     recordCausalPolicyOutcome,
     runPolicyShadowBatch,
     requestPolicyActivation,
-    createExecutionPlan,
+    prepareListingExecutionPlan,
+    reviewListingRussianNative,
+    reviewOzonExecutionIdentity,
     dryRunExecutionPlan,
     queueLimitedExecution,
     createObservationWindow,
@@ -2109,6 +2189,9 @@ export function useDashboardController() {
     realExecutionReadiness,
     pendingProcurementApprovals,
     pendingListingApprovals,
+    approvedListingApprovals,
+    listingExecutionPlans,
+    causalPolicyExecutionPlans,
     approvedWithoutSample,
     selectedProfile,
     selectedAnalysisContract,
@@ -2122,6 +2205,7 @@ export function useDashboardController() {
     startupSteps,
     nextStartupStep,
     canReviewFinance,
+    canReviewExecutionAuthority,
     actualCostAuthorityItem,
     reviewableCostEvidence,
     researchSignals

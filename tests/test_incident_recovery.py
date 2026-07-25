@@ -1,10 +1,13 @@
 import pytest
+from fastapi import Request
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from apps.control_plane.api_contracts import LimitedExecutionReceiptInput
 from apps.control_plane.evidence import EvidenceGrade, EvidenceService
 from apps.control_plane.incident_recovery import RECOVERY_CHECKS, IncidentRecoveryService
-from apps.control_plane.security import KillSwitchService
+from apps.control_plane.routers.execution_operations import record_limited_execution_receipt
+from apps.control_plane.security import KillSwitchService, Principal
 from apps.control_plane.sql_repository import Base
 
 
@@ -141,3 +144,60 @@ def test_drill_uses_same_recovery_ledger_without_freezing_production():
     assert incident["mode"] == "drill"
     assert incident["status"] == "open"
     assert kill_switch.current().engaged is False
+
+
+def test_uncertain_execution_receipt_opens_one_containment_incident(monkeypatch):
+    from apps.control_plane.routers import execution_operations
+
+    incidents, kill_switch, source = setup_service()
+    receipt = {
+        "id": "lxr-1",
+        "command_id": "lxc-1",
+        "outcome": "uncertain",
+        "remote_operation_id": "42",
+        "resulting_state_hash": None,
+        "mutation_applied": False,
+        "error_code": "REMOTE_WRITE_UNCERTAIN",
+        "error_detail": "authoritative reconciliation required",
+        "evidence_ids": [source.id],
+    }
+
+    class Executor:
+        def record_receipt(self, command_id, **_values):
+            assert command_id == "lxc-1"
+            return receipt
+
+        def get(self, command_id):
+            assert command_id == "lxc-1"
+            return {
+                "plan_id": "gxp-1",
+                "adapter_id": "ozon.product.import.v3",
+                "target": {"offer_id": "offer-1"},
+            }
+
+    monkeypatch.setattr(execution_operations.runtime, "limited_executor", Executor())
+    monkeypatch.setattr(execution_operations.runtime, "incident_recovery", incidents)
+    request = Request({"type": "http"})
+    request.state.request_id = "req-1"
+    request.state.trace_id = "trace-1"
+    body = LimitedExecutionReceiptInput(**{key: receipt[key] for key in (
+        "outcome",
+        "remote_operation_id",
+        "resulting_state_hash",
+        "mutation_applied",
+        "error_code",
+        "error_detail",
+        "evidence_ids",
+    )})
+    principal = Principal("ozon-worker", frozenset({"executor"}))
+
+    first = record_limited_execution_receipt("lxc-1", body, request, principal)
+    retry = record_limited_execution_receipt("lxc-1", body, request, principal)
+
+    assert retry["incident_id"] == first["incident_id"]
+    assert kill_switch.current().engaged is True
+    stored = incidents.get(first["incident_id"])
+    assert stored["severity"] == "critical"
+    assert stored["trigger_type"] == "remote_write_uncertain"
+    assert stored["source_id"] == "lxc-1"
+    assert len(incidents.list()) == 1

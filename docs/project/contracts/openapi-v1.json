@@ -115,6 +115,57 @@
         "title": "ApprovalInput",
         "type": "object"
       },
+      "ApprovedListingExecutionPlanInput": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "idempotency_key": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "precondition_state_hash": {
+            "pattern": "^[0-9a-fA-F]{64}$",
+            "title": "Precondition State Hash",
+            "type": "string"
+          },
+          "risk_currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Risk Currency",
+            "type": "string"
+          },
+          "risk_limits": {
+            "additionalProperties": true,
+            "title": "Risk Limits",
+            "type": "object"
+          },
+          "risk_values": {
+            "additionalProperties": true,
+            "title": "Risk Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "precondition_state_hash",
+          "evidence_ids",
+          "risk_limits",
+          "risk_values",
+          "risk_currency"
+        ],
+        "title": "ApprovedListingExecutionPlanInput",
+        "type": "object"
+      },
       "AssetAttachInput": {
         "properties": {
           "artifact_ref": {
@@ -636,6 +687,45 @@
           "assumption_evidence"
         ],
         "title": "Body_capture_supplier_comparison_v1_sourcing_comparison_intake_post",
+        "type": "object"
+      },
+      "Body_checkpoint_limited_execution_response_v1_limited_execution_commands__command_id__response_checkpoint_post": {
+        "properties": {
+          "artifact_kind": {
+            "pattern": "^(before_read|product_import_response|import_status_response|after_read)$",
+            "title": "Artifact Kind",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "response_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Response Sha256",
+            "type": "string"
+          },
+          "sequence_number": {
+            "anyOf": [
+              {
+                "maximum": 59.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Number"
+          }
+        },
+        "required": [
+          "artifact_kind",
+          "response_sha256",
+          "file"
+        ],
+        "title": "Body_checkpoint_limited_execution_response_v1_limited_execution_commands__command_id__response_checkpoint_post",
         "type": "object"
       },
       "Body_checkpoint_read_only_pilot_response_v1_read_only_pilot_runs__run_id__response_checkpoint_post": {
@@ -3887,6 +3977,52 @@
         "title": "LineageLinkInput",
         "type": "object"
       },
+      "ListingRussianNativeReviewInput": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "claims_grounded": {
+            "title": "Claims Grounded",
+            "type": "boolean"
+          },
+          "listing_snapshot_reviewed": {
+            "title": "Listing Snapshot Reviewed",
+            "type": "boolean"
+          },
+          "native_russian_verified": {
+            "title": "Native Russian Verified",
+            "type": "boolean"
+          },
+          "ozon_policy_checked": {
+            "title": "Ozon Policy Checked",
+            "type": "boolean"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "terminology_accepted": {
+            "title": "Terminology Accepted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted",
+          "native_russian_verified",
+          "listing_snapshot_reviewed",
+          "terminology_accepted",
+          "claims_grounded",
+          "ozon_policy_checked",
+          "rationale"
+        ],
+        "title": "ListingRussianNativeReviewInput",
+        "type": "object"
+      },
       "LoopValidationInput": {
         "additionalProperties": false,
         "properties": {
@@ -4252,6 +4388,64 @@
           "rationale"
         ],
         "title": "OzonAccrualClassificationInput",
+        "type": "object"
+      },
+      "OzonExecutionIdentityAuthorityReviewInput": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "caller_system_verified": {
+            "title": "Caller System Verified",
+            "type": "boolean"
+          },
+          "credential_material_absent": {
+            "title": "Credential Material Absent",
+            "type": "boolean"
+          },
+          "dedicated_executor": {
+            "title": "Dedicated Executor",
+            "type": "boolean"
+          },
+          "identity_ref": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Identity Ref",
+            "type": "string"
+          },
+          "inventory_complete": {
+            "title": "Inventory Complete",
+            "type": "boolean"
+          },
+          "owner_verified": {
+            "title": "Owner Verified",
+            "type": "boolean"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "scope_minimized": {
+            "title": "Scope Minimized",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "identity_ref",
+          "accepted",
+          "inventory_complete",
+          "credential_material_absent",
+          "owner_verified",
+          "caller_system_verified",
+          "scope_minimized",
+          "dedicated_executor",
+          "rationale"
+        ],
+        "title": "OzonExecutionIdentityAuthorityReviewInput",
         "type": "object"
       },
       "OzonFeeMappingApprovalInput": {
@@ -5648,11 +5842,18 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "KjdsApiKey": {
+        "in": "header",
+        "name": "X-KJDS-API-Key",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
     "title": "KJDS Control Plane",
-    "version": "0.47.0"
+    "version": "0.48.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5749,6 +5950,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Submit Agent Task"
       }
     },
@@ -5765,6 +5971,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Approvals"
       },
       "post": {
@@ -5799,6 +6010,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Request Approval"
       }
     },
@@ -5846,6 +6062,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Decide Approval"
       }
     },
@@ -5862,6 +6083,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Capability Economic Assessments"
       }
     },
@@ -5878,6 +6104,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Capability Economic Summaries"
       }
     },
@@ -5925,6 +6156,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Observe Causal Experiment"
       }
     },
@@ -5941,6 +6177,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Causal Experiments"
       }
     },
@@ -5978,6 +6219,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Causal Experiment"
       }
     },
@@ -6025,6 +6271,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Assign Causal Experiment"
       }
     },
@@ -6062,6 +6313,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Evaluate Causal Experiment"
       }
     },
@@ -6109,6 +6365,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Transition Causal Experiment"
       }
     },
@@ -6156,6 +6417,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Publish Causal Knowledge"
       }
     },
@@ -6193,6 +6459,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Causal Experiment Reviews"
       },
       "post": {
@@ -6238,6 +6509,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Causal Experiment"
       }
     },
@@ -6285,6 +6561,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Record Causal Experiment Safety"
       }
     },
@@ -6323,6 +6604,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Causal Knowledge"
       }
     },
@@ -6360,6 +6646,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Causal Knowledge"
       }
     },
@@ -6376,6 +6667,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Causal Policies"
       },
       "post": {
@@ -6410,6 +6706,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Propose Causal Policy"
       }
     },
@@ -6447,6 +6748,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Causal Policy"
       }
     },
@@ -6494,6 +6800,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Evaluate Causal Policy Context"
       }
     },
@@ -6541,6 +6852,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Release Causal Policy Stage"
       }
     },
@@ -6588,6 +6904,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Causal Policy"
       }
     },
@@ -6604,6 +6925,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Causal Policy Activation Handoffs"
       }
     },
@@ -6641,6 +6967,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Causal Policy Activation Handoff"
       }
     },
@@ -6688,6 +7019,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Governed Execution Plan"
       }
     },
@@ -6732,6 +7068,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Causal Policy Evaluations"
       }
     },
@@ -6779,6 +7120,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Request Causal Policy Activation"
       }
     },
@@ -6826,6 +7172,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Record Causal Policy Evaluation"
       }
     },
@@ -6873,6 +7224,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Record Causal Policy Stage Outcome"
       }
     },
@@ -6920,6 +7276,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Run Causal Policy Shadow Batch"
       }
     },
@@ -6964,6 +7325,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Causal Policy Shadow Batches"
       }
     },
@@ -7000,6 +7366,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Content Asset"
       }
     },
@@ -7047,6 +7418,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Attach Content Asset"
       }
     },
@@ -7084,6 +7460,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Queue Content Asset Generation"
       }
     },
@@ -7121,6 +7502,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Sync Content Asset Generation"
       }
     },
@@ -7168,6 +7554,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Content Asset"
       }
     },
@@ -7184,6 +7575,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Ozon Contracts"
       }
     },
@@ -7228,6 +7624,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Decision Analyses"
       }
     },
@@ -7265,6 +7666,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Decision Analysis"
       }
     },
@@ -7302,6 +7708,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Decision Analysis Reviews"
       },
       "post": {
@@ -7347,6 +7758,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Decision Analysis"
       }
     },
@@ -7363,6 +7779,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Decision Calibration"
       }
     },
@@ -7401,6 +7822,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Decision Contracts"
       },
       "post": {
@@ -7435,6 +7861,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Decision Contract"
       }
     },
@@ -7472,6 +7903,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Decision Contract"
       }
     },
@@ -7519,6 +7955,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Submit Decision Analysis"
       }
     },
@@ -7566,6 +8007,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Resolve Decision Contract"
       }
     },
@@ -7582,6 +8028,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Decision Outcomes"
       }
     },
@@ -7598,6 +8049,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Decision Resolutions"
       }
     },
@@ -7645,6 +8101,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Register Causal Experiment"
       }
     },
@@ -7692,6 +8153,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Record Decision Outcome"
       }
     },
@@ -7730,6 +8196,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Events"
       }
     },
@@ -7768,6 +8239,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Evidence"
       },
       "post": {
@@ -7802,6 +8278,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Capture Evidence"
       }
     },
@@ -7866,6 +8347,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Scan Evidence Integrity"
       }
     },
@@ -7903,6 +8389,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Evidence"
       }
     },
@@ -7940,6 +8431,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Evidence Content"
       }
     },
@@ -7977,6 +8473,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Evidence Lineage"
       },
       "post": {
@@ -8022,6 +8523,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Link Evidence"
       }
     },
@@ -8059,6 +8565,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Evidence Retention"
       }
     },
@@ -8096,6 +8607,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Verify Evidence"
       }
     },
@@ -8112,6 +8628,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Execution Observation Windows"
       }
     },
@@ -8149,6 +8670,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Execution Observation Window"
       }
     },
@@ -8196,6 +8722,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Assess Execution Capability Economics"
       }
     },
@@ -8249,6 +8780,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Evaluate Execution Observation Window"
       }
     },
@@ -8296,6 +8832,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Record Execution Metric Observation"
       }
     },
@@ -8332,6 +8873,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Experiment"
       }
     },
@@ -8369,6 +8915,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Start Experiment"
       }
     },
@@ -8423,6 +8974,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Facts"
       }
     },
@@ -8460,6 +9016,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Fact"
       }
     },
@@ -8533,6 +9094,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Cash Forecast"
       }
     },
@@ -8569,6 +9135,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Add Cash Plan Item"
       }
     },
@@ -8585,6 +9156,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Cost Authority Catalog"
       }
     },
@@ -8631,6 +9207,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Cost Evidence Authority Status"
       },
       "post": {
@@ -8676,6 +9257,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Cost Evidence Authority"
       }
     },
@@ -8736,6 +9322,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Finance Entries"
       },
       "post": {
@@ -8770,6 +9361,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Record Finance Entry"
       }
     },
@@ -8807,6 +9403,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Ingest Finance Fact"
       }
     },
@@ -8851,6 +9452,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Fee Mappings"
       },
       "post": {
@@ -8885,6 +9491,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Register Fee Mapping"
       }
     },
@@ -8929,6 +9540,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Fx Rates"
       },
       "post": {
@@ -8963,6 +9579,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Add Fx Rate"
       }
     },
@@ -9010,6 +9631,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Reconcile Finance"
       }
     },
@@ -9048,6 +9674,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Unknown Fees"
       }
     },
@@ -9092,6 +9723,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Gate Reviews"
       },
       "post": {
@@ -9126,6 +9762,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Gate Review"
       }
     },
@@ -9163,6 +9804,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Gate Review"
       }
     },
@@ -9210,6 +9856,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Decide Gate Review"
       }
     },
@@ -9257,6 +9908,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Submit Gate Review"
       }
     },
@@ -9273,6 +9929,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Governed Execution Adapters"
       }
     },
@@ -9289,6 +9950,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Governed Execution Plans"
       }
     },
@@ -9326,6 +9992,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Governed Execution Plan"
       }
     },
@@ -9363,6 +10034,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Queue Limited Execution Command"
       }
     },
@@ -9410,6 +10086,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Dry Run Governed Execution Plan"
       }
     },
@@ -9446,6 +10127,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Import Ozon"
       }
     },
@@ -9482,6 +10168,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Preflight Ozon Import"
       }
     },
@@ -9519,6 +10210,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Import"
       }
     },
@@ -9556,6 +10252,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Import Accrual Classifications"
       },
       "post": {
@@ -9601,6 +10302,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Approve Import Accrual Classification"
       }
     },
@@ -9638,6 +10344,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Import Fee Codes"
       }
     },
@@ -9685,6 +10396,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Approve Import Fee Mapping"
       }
     },
@@ -9722,6 +10438,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Finance Report Review"
       },
       "post": {
@@ -9767,6 +10488,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Finance Report"
       }
     },
@@ -9804,6 +10530,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Promote Import"
       }
     },
@@ -9840,6 +10571,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Intake Sku Episode"
       }
     },
@@ -9860,6 +10596,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Integration Health"
       }
     },
@@ -9876,6 +10617,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Interaction Profiles"
       }
     },
@@ -9892,6 +10638,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Limited Execution Commands"
       }
     },
@@ -9929,6 +10680,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Limited Execution Command"
       }
     },
@@ -9976,6 +10732,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Claim Limited Execution Command"
       }
     },
@@ -10023,6 +10784,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Execution Observation Window"
       }
     },
@@ -10070,7 +10836,64 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Record Limited Execution Receipt"
+      }
+    },
+    "/v1/limited-execution-commands/{command_id}/response-checkpoint": {
+      "post": {
+        "operationId": "checkpoint_limited_execution_response_v1_limited_execution_commands__command_id__response_checkpoint_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "command_id",
+            "required": true,
+            "schema": {
+              "title": "Command Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_checkpoint_limited_execution_response_v1_limited_execution_commands__command_id__response_checkpoint_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Checkpoint Limited Execution Response"
       }
     },
     "/v1/limited-execution-commands/{command_id}/rollback": {
@@ -10107,7 +10930,54 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Request Limited Execution Rollback"
+      }
+    },
+    "/v1/limited-execution-commands/{command_id}/write-attempt": {
+      "post": {
+        "operationId": "begin_limited_execution_write_attempt_v1_limited_execution_commands__command_id__write_attempt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "command_id",
+            "required": true,
+            "schema": {
+              "title": "Command Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Begin Limited Execution Write Attempt"
       }
     },
     "/v1/listings/ozon/drafts": {
@@ -10145,6 +11015,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Ozon Listing Drafts"
       },
       "post": {
@@ -10179,7 +11054,116 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Ozon Listing Draft"
+      }
+    },
+    "/v1/listings/ozon/drafts/{draft_id}/execution-plan": {
+      "post": {
+        "operationId": "prepare_ozon_listing_execution_plan_v1_listings_ozon_drafts__draft_id__execution_plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovedListingExecutionPlanInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Prepare Ozon Listing Execution Plan"
+      }
+    },
+    "/v1/listings/ozon/drafts/{draft_id}/russian-native-review": {
+      "post": {
+        "operationId": "review_ozon_listing_russian_native_v1_listings_ozon_drafts__draft_id__russian_native_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListingRussianNativeReviewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Review Ozon Listing Russian Native"
       }
     },
     "/v1/loop-engineering/registry": {
@@ -10199,6 +11183,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Loop Engineering Registry"
       }
     },
@@ -10239,6 +11228,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Validate Loop Engineering"
       }
     },
@@ -10285,6 +11279,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Candidate Evidence Authority Status"
       },
       "post": {
@@ -10330,6 +11329,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Candidate Evidence Authority"
       }
     },
@@ -10366,6 +11370,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Assess Candidate Research"
       }
     },
@@ -10402,6 +11411,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Submit Candidate Research"
       }
     },
@@ -10438,6 +11452,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Handoff Candidate To Sourcing"
       }
     },
@@ -10474,6 +11493,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Ingest Observation"
       }
     },
@@ -10510,6 +11534,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Score Opportunity"
       }
     },
@@ -10564,6 +11593,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Research Signals"
       },
       "post": {
@@ -10598,6 +11632,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Capture Research Signal"
       }
     },
@@ -10614,6 +11653,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Models"
       }
     },
@@ -10630,6 +11674,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Discover Models"
       }
     },
@@ -10672,6 +11721,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Operating Workbench Briefing"
       }
     },
@@ -10688,6 +11742,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Operational Incidents"
       },
       "post": {
@@ -10722,6 +11781,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Open Operational Incident"
       }
     },
@@ -10759,6 +11823,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Operational Incident"
       }
     },
@@ -10806,6 +11875,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Record Operational Incident Check"
       }
     },
@@ -10843,6 +11917,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Claim Operational Incident"
       }
     },
@@ -10890,6 +11969,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Close Operational Incident"
       }
     },
@@ -10937,6 +12021,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Operational Incident"
       }
     },
@@ -10974,6 +12063,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Request Operational Incident Review"
       }
     },
@@ -11010,6 +12104,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Scan Operations Control Escalations"
       }
     },
@@ -11026,6 +12125,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Operations Control Escalations"
       }
     },
@@ -11070,6 +12174,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Operations Control Queue"
       }
     },
@@ -11106,6 +12215,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Demand Report"
       }
     },
@@ -11142,7 +12256,64 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Capture Gate Requirement Evidence"
+      }
+    },
+    "/v1/operations/ozon/execution-identities/{evidence_id}/authority-review": {
+      "post": {
+        "operationId": "review_ozon_execution_identity_v1_operations_ozon_execution_identities__evidence_id__authority_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OzonExecutionIdentityAuthorityReviewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Review Ozon Execution Identity"
       }
     },
     "/v1/operations/readiness": {
@@ -11158,6 +12329,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Operations Readiness"
       }
     },
@@ -11194,6 +12370,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Order"
       }
     },
@@ -11241,6 +12422,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Add Charge"
       }
     },
@@ -11278,6 +12464,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Profit"
       }
     },
@@ -11294,6 +12485,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Outbox Status"
       }
     },
@@ -11310,6 +12506,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Passport Review Queue"
       }
     },
@@ -11348,6 +12549,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Sample Purchase Orders"
       },
       "post": {
@@ -11382,6 +12588,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Sample Purchase Order"
       }
     },
@@ -11419,6 +12630,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Sample Purchase Order"
       }
     },
@@ -11456,6 +12672,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Sample Order Backup Options"
       }
     },
@@ -11503,6 +12724,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Record Sample Procurement Event"
       }
     },
@@ -11519,6 +12745,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Supplier Performance"
       }
     },
@@ -11535,6 +12766,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Products"
       },
       "post": {
@@ -11569,6 +12805,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Product"
       }
     },
@@ -11606,6 +12847,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Product Content Assets"
       }
     },
@@ -11653,6 +12899,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Capture Product Media"
       }
     },
@@ -11690,6 +12941,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Product Media Readiness"
       }
     },
@@ -11737,6 +12993,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Add Passport"
       }
     },
@@ -11792,6 +13053,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Passport"
       }
     },
@@ -11829,6 +13095,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Product Readiness"
       }
     },
@@ -11866,6 +13137,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Validate Product"
       }
     },
@@ -11926,6 +13202,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Read Only Claims"
       }
     },
@@ -11963,6 +13244,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Read Only Claim"
       }
     },
@@ -12010,6 +13296,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Read Only Claim"
       }
     },
@@ -12054,6 +13345,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Read Only Pilot Runs"
       }
     },
@@ -12090,6 +13386,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Reap Read Only Pilot Runs"
       }
     },
@@ -12127,6 +13428,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Read Only Pilot Run"
       }
     },
@@ -12174,6 +13480,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Propose Read Only Claim"
       }
     },
@@ -12221,6 +13532,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Complete Read Only Pilot Run"
       }
     },
@@ -12258,6 +13574,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Finalize Read Only Pilot Response"
       }
     },
@@ -12305,6 +13626,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Checkpoint Read Only Pilot Response"
       }
     },
@@ -12352,6 +13678,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Capture Read Only Pilot Response"
       }
     },
@@ -12368,6 +13699,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Read Only Pilots"
       },
       "post": {
@@ -12402,6 +13738,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Read Only Pilot"
       }
     },
@@ -12439,6 +13780,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Read Only Pilot"
       }
     },
@@ -12486,6 +13832,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Activate Read Only Pilot"
       }
     },
@@ -12533,6 +13884,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Attest Read Only Pilot Control"
       }
     },
@@ -12586,6 +13942,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Evaluate Read Only Pilot"
       }
     },
@@ -12633,6 +13994,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Review Read Only Pilot"
       }
     },
@@ -12680,6 +14046,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Submit Read Only Pilot Review"
       }
     },
@@ -12727,6 +14098,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Start Read Only Pilot Run"
       }
     },
@@ -12780,6 +14156,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Read Only Pilot Usage"
       }
     },
@@ -12796,6 +14177,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Recommendations"
       },
       "post": {
@@ -12830,6 +14216,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Create Recommendation"
       }
     },
@@ -12866,6 +14257,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Capture Supplier Comparison"
       }
     },
@@ -12903,6 +14299,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Compare Supplier Offers"
       }
     },
@@ -12919,6 +14320,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Sourcing Connectors"
       }
     },
@@ -12957,6 +14363,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "List Supplier Offers"
       },
       "post": {
@@ -12991,6 +14402,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Capture Supplier Offer"
       }
     },
@@ -13027,6 +14443,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Request Procurement Candidate"
       }
     },
@@ -13063,6 +14484,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Calculate Sourcing Profit"
       }
     },
@@ -13100,6 +14526,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Explain Sourcing Profit Scenario"
       }
     },
@@ -13116,6 +14547,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Get Sourcing Profit Template"
       }
     },
@@ -13132,6 +14568,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Kill Switch State"
       }
     },
@@ -13168,6 +14609,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Engage Kill Switch"
       }
     },
@@ -13204,6 +14650,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
         "summary": "Release Kill Switch"
       }
     },

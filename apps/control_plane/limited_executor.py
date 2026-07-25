@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -12,10 +14,29 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from .action_policies import ActionPolicyRegistry
 from .correlation import correlation_id
 from .domain import new_id
+from .evidence import EvidenceGrade
+from .pilot_readiness import OZON_PRODUCT_READ_CONTRACT_VERSION
 from .sql_repository import Base
 
 CommandKind = Literal["execute", "rollback"]
 ReceiptOutcome = Literal["succeeded", "failed", "uncertain"]
+ExecutionArtifactKind = Literal[
+    "before_read",
+    "product_import_response",
+    "import_status_response",
+    "after_read",
+]
+
+OZON_EXECUTION_EVIDENCE_SOURCE = "ozon-isolated-execution-worker"
+OZON_RESPONSE_BUNDLE_SCHEMA_VERSION = "ozon-response-bundle-v2"
+OZON_EXECUTION_CONTRACT_VERSION = "ozon-execution-v1"
+MAX_OZON_RESPONSE_BODY_BYTES = 1024 * 1024
+EXECUTION_ARTIFACT_RELATIONSHIPS = {
+    "before_read": "before_read_response",
+    "product_import_response": "product_import_response",
+    "import_status_response": "import_status_response",
+    "after_read": "after_read_response",
+}
 
 
 class LimitedExecutionCommandRow(Base):
@@ -178,6 +199,155 @@ class LimitedExecutorService:
             raise RuntimeError("Execution claim did not produce a command")
         return result
 
+    def begin_write_attempt(self, command_id: str, *, worker_id: str) -> dict[str, Any]:
+        """Consume the command's single external-write authorization."""
+        self._enabled()
+        self.kill_switch.ensure_writes_allowed()
+        worker_id = self._required(worker_id, "Executor worker identity")
+        lease_expired = False
+        result = None
+        with Session(self.engine) as session, session.begin():
+            row = session.get(LimitedExecutionCommandRow, command_id, with_for_update=True)
+            if row is None:
+                raise KeyError(f"Limited execution command not found: {command_id}")
+            if row.status != "claimed" or row.claimed_by != worker_id:
+                raise ValueError("Execution write attempt is not available")
+            now = datetime.now(UTC)
+            if row.lease_expires_at is None or self._utc(row.lease_expires_at) <= now:
+                row.status = "uncertain"
+                lease_expired = True
+            else:
+                plan = self.execution_plans.get(row.plan_id)
+                if row.command_kind == "execute" and not plan["ready_for_executor"]:
+                    raise ValueError("Execution plan became invalid before the write attempt")
+                self._authorize_command(session, row, plan, worker_id)
+                self.kill_switch.ensure_writes_allowed()
+                row.status = "write_started"
+                session.flush()
+                result = self._command(row, None)
+        if lease_expired:
+            raise ValueError("Execution lease expired before the write attempt; command is uncertain")
+        if result is None:
+            raise RuntimeError("Execution write attempt did not produce a command")
+        return result
+
+    def capture_execution_artifact(
+        self,
+        command_id: str,
+        *,
+        artifact_kind: ExecutionArtifactKind,
+        content: bytes,
+        response_sha256: str,
+        sequence_number: int | None,
+        worker_id: str,
+    ) -> dict[str, Any]:
+        """Capture one immutable Ozon response artifact bound to its command."""
+        self._enabled()
+        worker_id = self._required(worker_id, "Executor worker identity")
+        if artifact_kind not in EXECUTION_ARTIFACT_RELATIONSHIPS:
+            raise ValueError("Unsupported execution artifact kind")
+        if not content:
+            raise ValueError("Execution artifact content cannot be empty")
+        if len(content) > MAX_OZON_RESPONSE_BODY_BYTES * 3:
+            raise ValueError("Execution artifact exceeds the bounded response contract")
+        response_sha256 = self._state_hash(response_sha256)
+        actual_sha256 = hashlib.sha256(content).hexdigest()
+        if not hmac.compare_digest(response_sha256, actual_sha256):
+            raise ValueError("Execution artifact SHA-256 does not match its content")
+        if artifact_kind == "import_status_response":
+            if (
+                isinstance(sequence_number, bool)
+                or not isinstance(sequence_number, int)
+                or not 0 <= sequence_number < 60
+            ):
+                raise ValueError("Import status artifact requires a bounded sequence number")
+        elif sequence_number is not None:
+            raise ValueError("Only import status artifacts may have a sequence number")
+
+        with Session(self.engine) as session:
+            row = session.get(LimitedExecutionCommandRow, command_id)
+            if row is None:
+                raise KeyError(f"Limited execution command not found: {command_id}")
+            if row.adapter_id != "ozon.product.import.v3":
+                raise ValueError("Execution artifacts are only supported for the Ozon import adapter")
+            if row.claimed_by != worker_id:
+                raise ValueError("Only the worker that claimed the command may capture its artifacts")
+            allowed_statuses = (
+                {"claimed"}
+                if artifact_kind == "before_read"
+                else {"write_started", "succeeded", "failed", "uncertain"}
+            )
+            if row.status not in allowed_statuses:
+                raise ValueError("Execution artifact is not valid for the command state")
+            offer_id = self._required(
+                str(row.target_json.get("offer_id", "")),
+                "Ozon command offer id",
+            )
+            effective_at = self._iso(row.claimed_at or row.created_at)
+
+        parsed = self._parse_execution_artifact(
+            content,
+            artifact_kind=artifact_kind,
+            offer_id=offer_id,
+        )
+        source_ref = self._artifact_source_ref(
+            command_id,
+            artifact_kind,
+            sequence_number,
+        )
+        existing = self.evidence.find_by_source_ref(
+            source=OZON_EXECUTION_EVIDENCE_SOURCE,
+            source_ref=source_ref,
+        )
+        if existing is not None:
+            if not hmac.compare_digest(existing.sha256, response_sha256):
+                raise ValueError("Execution artifact already has different immutable content")
+            self._verify_execution_artifact_record(
+                existing.id,
+                command_id=command_id,
+                artifact_kind=artifact_kind,
+                sequence_number=sequence_number,
+            )
+            return self._artifact_result(existing.id, artifact_kind, sequence_number, parsed)
+
+        captured = self.evidence.capture(
+            content=content,
+            filename=f"{command_id}-{artifact_kind}"
+            + (f"-{sequence_number}" if sequence_number is not None else "")
+            + ".json",
+            content_type="application/json",
+            source=OZON_EXECUTION_EVIDENCE_SOURCE,
+            source_ref=source_ref,
+            grade=EvidenceGrade.A,
+            effective_at=effective_at,
+            effective_until=None,
+            created_by=worker_id,
+            metadata={
+                "retention_class": "operational",
+                "raw_response_stored": True,
+                "response_sha256": response_sha256,
+                "response_byte_size": len(content),
+                "artifact_kind": artifact_kind,
+                "sequence_number": sequence_number,
+                "command_id": command_id,
+                "adapter_id": "ozon.product.import.v3",
+                **parsed,
+            },
+        )
+        self.evidence.link(
+            evidence_id=captured.id,
+            target_type="limited_execution_command",
+            target_id=command_id,
+            relationship=EXECUTION_ARTIFACT_RELATIONSHIPS[artifact_kind],
+            created_by=worker_id,
+        )
+        return self._artifact_result(
+            captured.id,
+            artifact_kind,
+            sequence_number,
+            parsed,
+        )
+
     def record_receipt(
         self,
         command_id: str,
@@ -219,9 +389,8 @@ class LimitedExecutorService:
             "evidence_ids": evidence_ids,
             "recorded_by": recorded_by,
         }
-        request_hash = self._hash(canonical)
+        requested_hash = self._hash(canonical)
         rollback_id = None
-        lease_expired = False
         result = None
         with Session(self.engine) as session, session.begin():
             row = session.get(LimitedExecutionCommandRow, command_id, with_for_update=True)
@@ -233,42 +402,50 @@ class LimitedExecutorService:
                 )
             )
             if existing is not None:
-                if existing.request_hash != request_hash:
+                if existing.request_hash != requested_hash:
                     raise ValueError("Execution receipt is immutable")
                 return self._receipt(existing, self._rollback_for(session, command_id))
-            if row.status != "claimed" or row.claimed_by != recorded_by:
-                raise ValueError("Only the worker holding the command lease may record its receipt")
+            if row.status != "write_started" or row.claimed_by != recorded_by:
+                raise ValueError(
+                    "Only the worker that consumed the command write attempt may record its receipt"
+                )
             now = datetime.now(UTC)
             lease_expires = row.lease_expires_at
             if lease_expires and self._utc(lease_expires) < now:
-                row.status = "uncertain"
-                lease_expired = True
-            else:
-                receipt = LimitedExecutionReceiptRow(
-                    id=new_id("lxr"),
-                    request_hash=request_hash,
-                    command_id=command_id,
-                    request_id=request_id,
-                    trace_id=trace_id,
-                    outcome=outcome,
-                    remote_operation_id=remote_operation_id,
-                    resulting_state_hash=resulting_state_hash,
-                    mutation_applied=mutation_applied,
-                    error_code=error_code,
-                    error_detail=error_detail,
-                    evidence_json=evidence_ids,
-                    recorded_by=recorded_by,
-                    recorded_at=now,
-                )
-                session.add(receipt)
-                row.status = outcome
-                session.flush()
-                if outcome in {"failed", "uncertain"} and mutation_applied:
-                    rollback = self._build_rollback(session, row, resulting_state_hash, recorded_by)
-                    rollback_id = rollback.id
-                result = self._receipt(receipt, rollback_id)
-        if lease_expired:
-            raise ValueError("Execution lease expired; command state is now uncertain")
+                outcome = "uncertain"
+                error_code = "EXECUTION_LEASE_EXPIRED"
+                error_detail = "Execution lease expired before the receipt was durably accepted"
+            self._verify_execution_receipt_evidence(
+                row,
+                evidence_ids=evidence_ids,
+                outcome=outcome,
+                remote_operation_id=remote_operation_id,
+                resulting_state_hash=resulting_state_hash,
+                error_code=error_code,
+            )
+            receipt = LimitedExecutionReceiptRow(
+                id=new_id("lxr"),
+                request_hash=requested_hash,
+                command_id=command_id,
+                request_id=request_id,
+                trace_id=trace_id,
+                outcome=outcome,
+                remote_operation_id=remote_operation_id,
+                resulting_state_hash=resulting_state_hash,
+                mutation_applied=mutation_applied,
+                error_code=error_code,
+                error_detail=error_detail,
+                evidence_json=evidence_ids,
+                recorded_by=recorded_by,
+                recorded_at=now,
+            )
+            session.add(receipt)
+            row.status = outcome
+            session.flush()
+            if outcome in {"failed", "uncertain"} and mutation_applied and resulting_state_hash:
+                rollback = self._build_rollback(session, row, resulting_state_hash, recorded_by)
+                rollback_id = rollback.id
+            result = self._receipt(receipt, rollback_id)
         if result is None:
             raise RuntimeError("Execution receipt did not produce a result")
         self._link(evidence_ids, "limited_execution_receipt", result["id"], recorded_by)
@@ -527,9 +704,8 @@ class LimitedExecutorService:
             values=plan["risk_values"],
             currency=plan["risk_currency"],
             policy_version=plan["action_policy_version"],
-            readiness=self.execution_plans.action_readiness(
-                plan["action_id"], plan["target"]
-            ),
+            readiness=self.execution_plans.action_readiness(plan),
+            source_kind=plan["source_kind"],
             approval_actor_ids=[plan["approval_decided_by"]]
             if plan["approval_decided_by"]
             else [],
@@ -597,8 +773,10 @@ class LimitedExecutorService:
             currency=row.risk_currency,
             policy_version=row.action_policy_version,
             readiness=self.execution_plans.action_readiness(
-                plan["action_id"], plan["target"]
+                plan,
+                executor_identity_ref=worker_id,
             ),
+            source_kind=plan["source_kind"],
             approval_actor_ids=[plan["approval_decided_by"]]
             if plan["approval_decided_by"]
             else [],
@@ -692,6 +870,299 @@ class LimitedExecutorService:
     def _decimal_text(value: Decimal) -> str:
         return format(value.normalize(), "f") if value else "0"
 
+    def _verify_execution_receipt_evidence(
+        self,
+        row: LimitedExecutionCommandRow,
+        *,
+        evidence_ids: list[str],
+        outcome: ReceiptOutcome,
+        remote_operation_id: str | None,
+        resulting_state_hash: str | None,
+        error_code: str | None,
+    ) -> None:
+        if row.adapter_id != "ozon.product.import.v3":
+            return
+        artifacts: dict[str, list[dict[str, Any]]] = {}
+        for evidence_id in evidence_ids:
+            record = self.evidence.get(evidence_id)
+            if record.source != OZON_EXECUTION_EVIDENCE_SOURCE:
+                continue
+            record = self._verify_execution_artifact_record(
+                evidence_id,
+                command_id=row.id,
+            )
+            artifact_kind = str(record.metadata["artifact_kind"])
+            artifacts.setdefault(artifact_kind, []).append(record.metadata)
+        plan = self.execution_plans.get(row.plan_id)
+        if plan["source_kind"] != "approved_listing_draft" and not artifacts:
+            return
+        if len(artifacts.get("before_read", [])) != 1:
+            raise ValueError("Ozon execution receipt requires exactly one before-read Evidence")
+        if len(artifacts.get("product_import_response", [])) > 1:
+            raise ValueError("Ozon execution receipt has duplicate import response Evidence")
+        if len(artifacts.get("after_read", [])) > 1:
+            raise ValueError("Ozon execution receipt has duplicate after-read Evidence")
+        statuses = sorted(
+            artifacts.get("import_status_response", []),
+            key=lambda item: item["sequence_number"],
+        )
+        if [item["sequence_number"] for item in statuses] != list(range(len(statuses))):
+            raise ValueError("Ozon import-status Evidence sequence is not contiguous")
+        import_artifacts = artifacts.get("product_import_response", [])
+        evidence_task_id = import_artifacts[0].get("remote_operation_id") if import_artifacts else None
+        if import_artifacts and evidence_task_id != remote_operation_id:
+            raise ValueError("Receipt remote operation id does not match Ozon import Evidence")
+        if (
+            not import_artifacts
+            and remote_operation_id is not None
+            and error_code != "CONTROL_PLANE_CHECKPOINT_FAILED"
+        ):
+            raise ValueError("Receipt remote operation id requires Ozon import Evidence")
+        if (
+            import_artifacts
+            and import_artifacts[0].get("import_outcome") == "request_failed"
+            and remote_operation_id is not None
+        ):
+            raise ValueError("Rejected Ozon import Evidence cannot prove a remote task id")
+        if statuses and any(item.get("remote_operation_id") != evidence_task_id for item in statuses):
+            raise ValueError("Ozon import-status Evidence refers to a different task")
+        after_artifacts = artifacts.get("after_read", [])
+        if after_artifacts and after_artifacts[0].get("state_hash") != resulting_state_hash:
+            raise ValueError("Receipt resulting state hash does not match after-read Evidence")
+        if outcome == "succeeded":
+            if len(import_artifacts) != 1 or not statuses:
+                raise ValueError("Successful Ozon receipt requires import and status Evidence")
+            if statuses[-1].get("import_outcome") != "succeeded":
+                raise ValueError("Successful Ozon receipt requires terminal imported status Evidence")
+            if len(after_artifacts) != 1:
+                raise ValueError("Successful Ozon receipt requires exactly one after-read Evidence")
+        if error_code == "OZON_READBACK_DIVERGENT" and len(after_artifacts) != 1:
+            raise ValueError("Divergent Ozon receipt requires after-read Evidence")
+
+    def _verify_execution_artifact_record(
+        self,
+        evidence_id: str,
+        *,
+        command_id: str,
+        artifact_kind: str | None = None,
+        sequence_number: int | None = None,
+    ):
+        content, record = self.evidence.content(evidence_id)
+        verification = self.evidence.verify(evidence_id)
+        metadata = record.metadata
+        kind = str(metadata.get("artifact_kind", ""))
+        sequence = metadata.get("sequence_number")
+        expected_ref = self._artifact_source_ref(command_id, kind, sequence)
+        expected_relationship = EXECUTION_ARTIFACT_RELATIONSHIPS.get(kind)
+        linked_ids = (
+            self.evidence.target_evidence_ids(
+                target_type="limited_execution_command",
+                target_id=command_id,
+                relationship=expected_relationship,
+            )
+            if expected_relationship
+            else []
+        )
+        if (
+            not verification.valid
+            or record.source != OZON_EXECUTION_EVIDENCE_SOURCE
+            or record.source_ref != expected_ref
+            or record.grade != EvidenceGrade.A
+            or record.content_type != "application/json"
+            or record.created_by == ""
+            or metadata.get("raw_response_stored") is not True
+            or metadata.get("response_sha256") != record.sha256
+            or metadata.get("response_byte_size") != len(content)
+            or metadata.get("command_id") != command_id
+            or metadata.get("adapter_id") != "ozon.product.import.v3"
+            or expected_relationship is None
+            or evidence_id not in linked_ids
+            or (artifact_kind is not None and kind != artifact_kind)
+            or (artifact_kind is not None and sequence != sequence_number)
+        ):
+            raise ValueError("Ozon execution Evidence contract is invalid")
+        return record
+
+    @classmethod
+    def _parse_execution_artifact(
+        cls,
+        content: bytes,
+        *,
+        artifact_kind: str,
+        offer_id: str,
+    ) -> dict[str, Any]:
+        try:
+            bundle = json.loads(content)
+            if bundle.get("schema_version") != OZON_RESPONSE_BUNDLE_SCHEMA_VERSION:
+                raise ValueError
+            responses = bundle["responses"]
+            expected_contract = (
+                OZON_PRODUCT_READ_CONTRACT_VERSION
+                if artifact_kind in {"before_read", "after_read"}
+                else OZON_EXECUTION_CONTRACT_VERSION
+            )
+            if bundle.get("contract_version") != expected_contract:
+                raise ValueError
+            allowed_bundle_keys = {"schema_version", "contract_version", "responses"}
+            if artifact_kind == "import_status_response":
+                allowed_bundle_keys.add("request_context")
+            if set(bundle) != allowed_bundle_keys:
+                raise ValueError
+            expected_count = 2 if artifact_kind in {"before_read", "after_read"} else 1
+            if not isinstance(responses, list) or len(responses) != expected_count:
+                raise ValueError
+            decoded: dict[str, Any] = {}
+            status_codes: dict[str, int] = {}
+            for item in responses:
+                if not isinstance(item, dict) or set(item) != {
+                    "path",
+                    "status_code",
+                    "headers",
+                    "body_sha256",
+                    "body_base64",
+                }:
+                    raise ValueError
+                path = item["path"]
+                if not isinstance(path, str) or path in decoded:
+                    raise ValueError
+                status_code = item["status_code"]
+                if (
+                    isinstance(status_code, bool)
+                    or not isinstance(status_code, int)
+                    or not 100 <= status_code <= 599
+                    or not isinstance(item["headers"], dict)
+                ):
+                    raise ValueError
+                body = base64.b64decode(item["body_base64"], validate=True)
+                if len(body) > MAX_OZON_RESPONSE_BODY_BYTES:
+                    raise ValueError
+                body_sha256 = item["body_sha256"]
+                if not isinstance(body_sha256, str) or not hmac.compare_digest(
+                    body_sha256,
+                    hashlib.sha256(body).hexdigest(),
+                ):
+                    raise ValueError
+                decoded[path] = json.loads(body)
+                status_codes[path] = status_code
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("Ozon execution Evidence has an unsupported response contract") from exc
+
+        if artifact_kind in {"before_read", "after_read"}:
+            info = decoded.get("/v3/product/info/list")
+            attribute_paths = {
+                "/v4/product/info/attributes",
+                "/v3/products/info/attributes",
+            }.intersection(decoded)
+            if len(attribute_paths) != 1 or len(decoded) != 2:
+                raise ValueError("Ozon product-state Evidence has unexpected endpoints")
+            if any(not 200 <= code < 300 for code in status_codes.values()):
+                raise ValueError("Ozon product-state Evidence contains an unsuccessful response")
+            attributes = decoded[attribute_paths.pop()]
+            info_items = info.get("items") if isinstance(info, dict) else None
+            result = attributes.get("result") if isinstance(attributes, dict) else None
+            attribute_items = result.get("items") if isinstance(result, dict) else result
+            for items in (info_items, attribute_items):
+                if (
+                    not isinstance(items, list)
+                    or len(items) != 1
+                    or not isinstance(items[0], dict)
+                    or str(items[0].get("offer_id", "")).strip() != offer_id
+                ):
+                    raise ValueError("Ozon product-state Evidence does not prove one target offer")
+            state = {
+                "contract_version": OZON_PRODUCT_READ_CONTRACT_VERSION,
+                "offer_id": offer_id,
+                "info": info,
+                "attributes": attributes,
+            }
+            return {"state_hash": cls._hash(state)}
+
+        expected_path = (
+            "/v3/product/import"
+            if artifact_kind == "product_import_response"
+            else "/v1/product/import/info"
+        )
+        if set(decoded) != {expected_path}:
+            raise ValueError("Ozon execution Evidence has an unexpected endpoint")
+        response = decoded[expected_path]
+        result = response.get("result") if isinstance(response, dict) else None
+        if artifact_kind == "product_import_response":
+            if not 200 <= status_codes[expected_path] < 300:
+                return {
+                    "remote_operation_id": None,
+                    "import_outcome": "request_failed",
+                }
+            task_id = result.get("task_id") if isinstance(result, dict) else None
+            if task_id is None:
+                raise ValueError("Ozon import Evidence does not contain a task id")
+            return {
+                "remote_operation_id": str(task_id),
+                "import_outcome": "accepted",
+            }
+        request_context = bundle.get("request_context")
+        task_id = (
+            request_context.get("task_id")
+            if isinstance(request_context, dict)
+            else None
+        )
+        if not isinstance(task_id, str) or not task_id.strip():
+            raise ValueError("Ozon import-status Evidence does not identify its requested task")
+        if set(request_context) != {"task_id"}:
+            raise ValueError("Ozon import-status Evidence has an invalid request context")
+        if not 200 <= status_codes[expected_path] < 300:
+            return {
+                "remote_operation_id": task_id,
+                "import_outcome": "status_request_failed",
+            }
+        items = result.get("items") if isinstance(result, dict) else None
+        if not isinstance(items, list):
+            raise ValueError("Ozon import-status Evidence does not contain result.items")
+        statuses = [
+            str(item.get("status", "")).casefold()
+            for item in items
+            if isinstance(item, dict)
+        ]
+        if statuses and all(status == "imported" for status in statuses):
+            import_outcome = "succeeded"
+        elif any(status in {"failed", "error", "declined"} for status in statuses):
+            import_outcome = "failed"
+        else:
+            import_outcome = "pending"
+        return {
+            "remote_operation_id": str(task_id),
+            "import_outcome": import_outcome,
+        }
+
+    @staticmethod
+    def _artifact_source_ref(
+        command_id: str,
+        artifact_kind: str,
+        sequence_number: int | None,
+    ) -> str:
+        if artifact_kind not in EXECUTION_ARTIFACT_RELATIONSHIPS:
+            raise ValueError("Unsupported execution artifact kind")
+        suffix = (
+            f"import-status/{sequence_number}"
+            if artifact_kind == "import_status_response"
+            else artifact_kind.replace("_", "-")
+        )
+        return f"{command_id}/{suffix}"
+
+    @staticmethod
+    def _artifact_result(
+        evidence_id: str,
+        artifact_kind: str,
+        sequence_number: int | None,
+        parsed: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "evidence_id": evidence_id,
+            "artifact_kind": artifact_kind,
+            "sequence_number": sequence_number,
+            **parsed,
+            "immutable": True,
+        }
+
     def _evidence(self, values: list[str]) -> list[str]:
         normalized = sorted({item.strip() for item in values if item.strip()})
         if not normalized:
@@ -775,6 +1246,8 @@ class LimitedExecutorService:
             "lease_expires_at": cls._iso(row.lease_expires_at),
             "created_at": cls._iso(row.created_at),
             "receipt": cls._receipt(receipt, None) if receipt else None,
+            "write_attempt_consumed": row.status
+            in {"write_started", "succeeded", "failed", "uncertain"},
             "platform_write_performed": bool(receipt and receipt.mutation_applied),
             "immutable_payload": True,
         }

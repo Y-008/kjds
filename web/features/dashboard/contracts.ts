@@ -207,6 +207,11 @@ export type SourcingComparison = {
   }>;
 };
 export type ApprovalRecord = { id: string; action: string; resource_id: string; status: string; requested_by: string; payload: Record<string, unknown> };
+export type ListingDraft = {
+  id: string; product_id: string; offer_id: string; scenario_id: string; target_platform: string;
+  listing_data: Record<string, unknown>; requested_by: string; status: string;
+  approval_id: string | null; created_at: string;
+};
 export type SampleEvent = { id: string; sequence: number; event_type: string; effective_at: string; evidence_id: string; facts: Record<string, unknown> };
 export type SampleOrder = {
   id: string; approval_id: string; product_id: string; product: { sku: string; name: string };
@@ -269,7 +274,7 @@ export type GateReadiness = {
   };
 };
 export type EvidenceSummary = {
-  id: string; filename: string; source: string; source_ref: string; grade: string;
+  id: string; sha256: string; filename: string; source: string; source_ref: string; grade: string;
   effective_at: string; effective_until: string | null; created_by: string;
   metadata: Record<string, unknown>;
 };
@@ -373,19 +378,29 @@ export type PolicyActivationHandoff = {
   id: string; policy_id: string; release_id: string; approval_id: string; approval_status: string;
   validity_status: string; activation_eligible: boolean; execution_eligible: boolean; created_at: string;
 };
+export type LimitedExecutionCommandStatus = "queued" | "claimed" | "write_started" | "succeeded" | "failed" | "uncertain" | "expired" | "precondition_failed";
 export type GovernedExecutionPlan = {
-  id: string; handoff_id: string; policy_id: string; release_id: string; adapter_id: string;
+  id: string;
+  source_kind: "causal_policy_handoff" | "approved_listing_draft";
+  source_id: string;
+  source_approval_id: string;
+  source_snapshot_hash: string;
+  handoff_id: string | null; policy_id: string | null; release_id: string | null; adapter_id: string;
   target: Record<string, string>; precondition_state_hash: string;
   intended_patch: Record<string, unknown>; rollback_patch: Record<string, unknown>;
-  approval_id: string; approval_status: string; handoff_validity_status: string;
+  approval_id: string; approval_status: string; source_approval_status?: string;
+  handoff_validity_status: string | null; source_validity_status: string;
+  authorization_blocking_reasons: string[];
+  current_readiness_snapshot: Record<string, { ready: boolean; evidence_ids: string[]; blocking_reasons: string[] }>;
+  evidence_ids: string[];
   dry_run: null | { id: string; passed: boolean; platform_write_performed: boolean };
   ready_for_executor: boolean; execution_eligible: boolean; live_execution_supported: boolean;
 };
 export type LimitedExecutionCommand = {
   id: string; plan_id: string; parent_command_id: string | null; command_kind: "execute" | "rollback";
   idempotency_token: string; operation: string; target: Record<string, string>;
-  expected_state_hash: string; status: string; claimed_by: string | null;
-  receipt: null | { outcome: string; mutation_applied: boolean; rollback_command_id: string | null };
+  expected_state_hash: string; status: LimitedExecutionCommandStatus; claimed_by: string | null;
+  receipt: null | { outcome: "succeeded" | "failed" | "uncertain"; mutation_applied: boolean; rollback_command_id: string | null; evidence_ids: string[]; error_code: string | null };
   platform_write_performed: boolean;
 };
 export type ExecutionObservationWindow = {

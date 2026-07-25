@@ -201,7 +201,7 @@ KJDS 是“确定性经营内核 + 证据优先数据层 + 受控 Agent 外层�
 - 图片执行状态持久化在 ContentAsset：`brief → queued → generated → approved/qa_failed`，执行错误进入 `execution_failed` 后才可重试。必须记录执行器、模板版本、外部 prompt ID、来源证据、请求人和时间；重复排队不得产生第二个 prompt。
 - 图片批准除通用五项 QA 外，还必须通过商品外观/配件一致性、来源血缘和俄语文字/参数准确性检查；任何一项失败均退回，不得进入 Listing 草稿。
 - QA 请求必须恰好覆盖适用检查项，拒绝缺项、重复项和未知项。每项必须包含 `passed` 与非空审核说明；可附加不可变 Evidence ID。审核人和审核时间由可信服务端身份与 UTC 时钟写入，客户端不得自报。
-- Ozon Listing 草稿的 `images` 必须全部来自请求中明确列出的、同一商品且状态为 `approved` 的图片 ContentAsset 产物证据；草稿保存内容资产 ID 作为血缘。创建草稿仅建立 `listing.publish` 待审批对象，未提供平台写执行器，也不得把审批请求解释为发布。
+- Ozon Listing 草稿的 `images` 必须全部来自请求中明确列出的、同一商品且状态为 `approved` 的图片 ContentAsset 产物证据；草稿保存内容资产 ID 作为血缘。创建草稿仅建立 `listing.publish` 待审批对象。仓库已有 `apps.control_plane.ozon_worker.OzonExecutionWorker` 平台写执行器，并已完成批准草稿到受控执行计划的工程接线，但运行时受 Gate/Kill Switch/一次性许可约束且默认关闭，当前仅通过 mock/合同验收，尚未完成真实账户验收；不得把审批请求、执行计划或注册表 `availability=enabled`（仅表示工程能力存在）解释为已发布或可在真实账户运行。
 - Listing 草稿审批摘要以 `product_id`、`offer_id`、`scenario_id`、`target_platform` 和完整 `listing_data` 的规范 JSON 计算 SHA-256；不得包含草稿 ID、审批 ID、请求时间等非内容字段。审批 payload 必须保存该摘要和可读的标题、类目、CM3、图片资产 ID、图片产物证据，供独立审批人确认“审批的是哪一版”。
 - Listing 审批视图必须明确展示“平台未写入”，不得提供绕过独立身份、快照复核和后续执行门的快捷发布按钮。
 - 批准 Listing 时必须从持久化存储重新加载草稿并复算 SHA-256；摘要缺失、草稿不存在、审批资源不匹配或摘要变化均失败关闭。拒绝请求不产生发布风险，可直接记入审批账。
@@ -538,6 +538,12 @@ Decision Contract
  → Observation Window
  → Receipt / Rollback / Incident
 ```
+
+Listing 发布的工程链必须以已批准草稿为不可变来源，服务端从草稿派生 Ozon `item`、目标 SKU、回滚补丁和前置状态，不接受 Web 自报适配器、目标或 patch。执行计划另行申请独立 Execution Approval，并冻结 Listing Approval、草稿摘要、当前 readiness、原件 Evidence 与组合风险。
+
+`listing_publish` 在批准草稿来源下必须同时复验真实需求范围、Listing 摘要、三类 Passport、俄语母语复核、八项图片 QA、全成本完整性、正 CM3、实际成本权威证明、商品—报价—场景绑定、已接受的 Ozon 写前只读 Claim、专用最小权限执行身份和 Kill Switch。俄语复核与执行身份复核都必须由非提交者固化为不可变 Grade A Evidence；任何拒绝、过期、损坏、血缘缺失或内容变化均失败关闭。
+
+Worker claim 和实际写入前必须重新运行同一授权与 readiness；一次性 permit 只允许一个写入尝试。Ozon 完整响应先以脱敏封装固化，再记录任务 ID、状态轮询和写后回读；租约过期、远端结果不明或证据不完整进入 `uncertain`/Incident，不得猜测成功。回滚必须建立独立命令、再次授权并回读，不得原地改写原命令或历史 receipt。
 
 ---
 

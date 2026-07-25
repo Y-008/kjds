@@ -1,11 +1,409 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from .content_growth import IMAGE_QA, REQUIRED_QA
 from .demand_report_gate import DemandReportGateService
+from .domain import ApprovalStatus, ContentStatus, ContentType
 from .ozon_contracts import OzonRecordType
+
+LISTING_EXECUTION_READINESS_KEYS = (
+    "demand.real_execution",
+    "listing.snapshot_unchanged",
+    "product.passports",
+    "listing.russian_native_review",
+    "listing.image_qa",
+    "finance.cost_complete",
+    "finance.cm3_positive",
+    "finance.actual_cost_authority",
+    "listing.product_source_binding",
+    "ozon.before_state_claim",
+    "ozon.execution_identity",
+    "kill_switch.released",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionReadinessContext:
+    action_id: str
+    target: dict[str, Any]
+    source_kind: str | None = None
+    source_id: str | None = None
+    source_approval_id: str | None = None
+    source_snapshot_hash: str | None = None
+    precondition_state_hash: str | None = None
+    evidence_ids: tuple[str, ...] = ()
+    before_state_verified: bool = False
+    before_state_evidence_id: str | None = None
+    executor_identity_ref: str | None = None
+
+
+class ExecutionReadinessService:
+    """Resolve current execution facts behind one source-aware interface."""
+
+    def __init__(
+        self,
+        *,
+        commerce,
+        sourcing,
+        evidence,
+        demand_reports,
+        kill_switch,
+        listing_execution_authority=None,
+        execution_identity_ref: str | None = None,
+    ) -> None:
+        self.commerce = commerce
+        self.sourcing = sourcing
+        self.evidence = evidence
+        self.demand_reports = demand_reports
+        self.kill_switch = kill_switch
+        self.listing_execution_authority = listing_execution_authority
+        self.execution_identity_ref = (
+            execution_identity_ref.strip() if execution_identity_ref and execution_identity_ref.strip() else None
+        )
+
+    def snapshot(self, context: ExecutionReadinessContext) -> dict[str, dict[str, Any]]:
+        result = {"demand.real_execution": self._demand_readiness()}
+        if context.action_id != "listing_publish":
+            return result
+        if context.source_kind == "causal_policy_handoff":
+            return result
+        if context.source_kind != "approved_listing_draft" or not context.source_id:
+            return result
+
+        draft = self._draft(context)
+        if draft is None:
+            blocker = ["APPROVED_LISTING_SOURCE_UNAVAILABLE"]
+            return {
+                **result,
+                **{
+                    key: self._requirement(False, blockers=blocker)
+                    for key in LISTING_EXECUTION_READINESS_KEYS
+                    if key != "demand.real_execution"
+                },
+            }
+
+        result.update(
+            {
+                "listing.snapshot_unchanged": self._listing_snapshot(context, draft),
+                "product.passports": self._passports(draft),
+                "listing.russian_native_review": self._russian_native_review(draft),
+                "listing.image_qa": self._image_qa(draft),
+                "finance.cost_complete": self._cost_complete(draft),
+                "finance.cm3_positive": self._cm3_positive(draft),
+                "finance.actual_cost_authority": self._actual_cost_authority(draft),
+                "listing.product_source_binding": self._product_source_binding(
+                    context, draft
+                ),
+                "ozon.before_state_claim": self._before_state(context),
+                "ozon.execution_identity": self._execution_identity(context),
+                "kill_switch.released": self._kill_switch(),
+            }
+        )
+        return result
+
+    def _demand_readiness(self) -> dict[str, Any]:
+        try:
+            demand = self.demand_reports.status()["readiness"]["real_execution"]
+            ready = demand["ready"] is True
+            evidence_ids = demand["evidence_ids"]
+            blockers = demand["blocking_reasons"]
+            if (
+                not isinstance(evidence_ids, list)
+                or not all(
+                    isinstance(evidence_id, str) and evidence_id.strip()
+                    for evidence_id in evidence_ids
+                )
+                or not isinstance(blockers, list)
+                or not all(isinstance(blocker, str) and blocker.strip() for blocker in blockers)
+            ):
+                raise ValueError
+            if ready:
+                self.evidence.require_current(evidence_ids)
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            return self._requirement(
+                False,
+                blockers=["REAL_EXECUTION_DEMAND_STATE_INVALID"],
+            )
+        return self._requirement(
+            ready,
+            evidence_ids=evidence_ids if ready else [],
+            blockers=blockers,
+        )
+
+    def _draft(self, context: ExecutionReadinessContext):
+        try:
+            return self.sourcing.store.get_listing_draft(context.source_id)
+        except (KeyError, RuntimeError, ValueError):
+            return None
+
+    def _listing_snapshot(self, context: ExecutionReadinessContext, draft) -> dict[str, Any]:
+        try:
+            approval = self.commerce.repo.get_approval(context.source_approval_id)
+            self.sourcing.verify_listing_approval(
+                draft_id=draft.id,
+                approval_id=approval.id,
+                approval_payload=approval.payload,
+            )
+            ready = (
+                approval.action == "listing.publish"
+                and approval.resource_type == "listing_draft"
+                and approval.resource_id == draft.id
+                and approval.status == ApprovalStatus.APPROVED
+                and bool(approval.decided_by)
+                and approval.decided_by != approval.requested_by
+                and approval.payload.get("listing_snapshot_sha256")
+                == context.source_snapshot_hash
+            )
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            ready = False
+        return self._requirement(
+            ready,
+            blockers=[] if ready else ["LISTING_SNAPSHOT_OR_APPROVAL_INVALID"],
+        )
+
+    def _russian_native_review(self, draft) -> dict[str, Any]:
+        if self.listing_execution_authority is None:
+            return self._requirement(
+                False,
+                blockers=["RUSSIAN_NATIVE_REVIEW_AUTHORITY_UNAVAILABLE"],
+            )
+        try:
+            state = self.listing_execution_authority.require_listing_review(draft)
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            return self._requirement(
+                False,
+                blockers=["RUSSIAN_NATIVE_REVIEW_INVALID"],
+            )
+        return self._requirement(True, evidence_ids=state["review_ids"])
+
+    def _passports(self, draft) -> dict[str, Any]:
+        try:
+            status = self.commerce.product_readiness(draft.product_id)
+            passports = self.commerce.repo.latest_passports(draft.product_id)
+            evidence_ids = sorted(
+                {
+                    evidence_id
+                    for passport in passports.values()
+                    for evidence_id in passport.evidence
+                }
+            )
+            ready = status["ready_for_validation"] is True
+            if ready:
+                self.evidence.require_current(evidence_ids)
+            blockers = [
+                f"PASSPORT_NOT_APPROVED:{item['kind']}:{item['status']}"
+                for item in status["passports"]
+                if item["status"] != "approved"
+            ]
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            return self._requirement(False, blockers=["PRODUCT_PASSPORT_STATE_UNAVAILABLE"])
+        return self._requirement(
+            ready,
+            evidence_ids=evidence_ids if ready else [],
+            blockers=blockers,
+        )
+
+    def _image_qa(self, draft) -> dict[str, Any]:
+        try:
+            asset_ids = draft.listing_data["content_asset_ids"]
+            images = draft.listing_data["images"]
+            if (
+                not isinstance(asset_ids, list)
+                or not asset_ids
+                or len(asset_ids) != len(set(asset_ids))
+            ):
+                raise ValueError
+            assets = [self.commerce.repo.get_content_asset(asset_id) for asset_id in asset_ids]
+            required_checks = REQUIRED_QA | IMAGE_QA
+            evidence_ids: set[str] = set()
+            ready = True
+            for asset in assets:
+                indexed = {
+                    item.get("check"): item
+                    for item in asset.qa_results
+                    if isinstance(item, dict) and isinstance(item.get("check"), str)
+                }
+                ready = ready and (
+                    asset.product_id == draft.product_id
+                    and asset.content_type == ContentType.IMAGE
+                    and asset.status == ContentStatus.APPROVED
+                    and asset.channel.strip().upper() == "OZON"
+                    and asset.locale.strip().lower().startswith("ru")
+                    and bool(asset.artifact_ref)
+                    and set(indexed) == required_checks
+                    and all(
+                        item.get("passed") is True
+                        and isinstance(item.get("reviewed_by"), str)
+                        and bool(item["reviewed_by"].strip())
+                        for item in indexed.values()
+                    )
+                )
+                if asset.artifact_ref:
+                    evidence_ids.add(asset.artifact_ref)
+                for item in indexed.values():
+                    evidence_ids.update(item.get("evidence_ids", []))
+            ready = ready and [asset.artifact_ref for asset in assets] == images
+            if ready:
+                self.evidence.require_current(sorted(evidence_ids))
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            ready = False
+            evidence_ids = set()
+        return self._requirement(
+            ready,
+            evidence_ids=sorted(evidence_ids) if ready else [],
+            blockers=[] if ready else ["LISTING_IMAGE_QA_INVALID"],
+        )
+
+    def _scenario(self, draft):
+        return self.sourcing.store.get_scenario(draft.scenario_id)
+
+    def _cost_complete(self, draft) -> dict[str, Any]:
+        try:
+            scenario = self._scenario(draft)
+            ready = scenario.cost_complete is True
+            evidence_ids = list(scenario.evidence)
+            if ready:
+                self.evidence.require_current(evidence_ids)
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            ready = False
+            evidence_ids = []
+        return self._requirement(
+            ready,
+            evidence_ids=evidence_ids if ready else [],
+            blockers=[] if ready else ["FULL_COST_SCENARIO_INVALID"],
+        )
+
+    def _cm3_positive(self, draft) -> dict[str, Any]:
+        try:
+            scenario = self._scenario(draft)
+            ready = scenario.cm3_cny > 0
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            ready = False
+        return self._requirement(
+            ready,
+            blockers=[] if ready else ["CM3_NOT_POSITIVE"],
+        )
+
+    def _actual_cost_authority(self, draft) -> dict[str, Any]:
+        try:
+            scenario = self._scenario(draft)
+            actual_costs = sorted(
+                key for key, state in scenario.cost_states.items() if state == "actual"
+            )
+            review_ids: list[str] = []
+            if actual_costs and self.sourcing.actual_cost_validator is None:
+                raise ValueError
+            for cost_type in actual_costs:
+                status = self.sourcing.actual_cost_validator(
+                    scenario.cost_evidence[cost_type], cost_type
+                )
+                review_ids.extend(status.get("review_ids", []))
+            evidence_ids = sorted(
+                {
+                    *(scenario.cost_evidence[cost_type] for cost_type in actual_costs),
+                    *review_ids,
+                }
+            )
+            if evidence_ids:
+                self.evidence.require_current(evidence_ids)
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            return self._requirement(
+                False,
+                blockers=["ACTUAL_COST_AUTHORITY_INVALID"],
+            )
+        return self._requirement(True, evidence_ids=evidence_ids)
+
+    def _product_source_binding(self, context: ExecutionReadinessContext, draft) -> dict[str, Any]:
+        try:
+            product = self.commerce.repo.get_product(draft.product_id)
+            offer = self.sourcing.store.get_offer(draft.offer_id)
+            scenario = self._scenario(draft)
+            ready = (
+                draft.target_platform.strip().upper() == "OZON"
+                and product.channel.strip().upper() == "OZON"
+                and offer.product_id == product.id
+                and scenario.offer_id == offer.id
+                and scenario.target_platform.strip().upper() == "OZON"
+                and context.target == {"offer_id": product.sku.strip()}
+            )
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            ready = False
+        return self._requirement(
+            ready,
+            blockers=[] if ready else ["LISTING_PRODUCT_SOURCE_BINDING_INVALID"],
+        )
+
+    def _before_state(self, context: ExecutionReadinessContext) -> dict[str, Any]:
+        evidence_id = context.before_state_evidence_id
+        try:
+            if context.before_state_verified is not True or not evidence_id:
+                raise ValueError
+            self.evidence.require_current([evidence_id])
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            return self._requirement(
+                False,
+                blockers=["OZON_BEFORE_STATE_CLAIM_INVALID"],
+            )
+        return self._requirement(True, evidence_ids=[evidence_id])
+
+    def _execution_identity(
+        self,
+        context: ExecutionReadinessContext,
+    ) -> dict[str, Any]:
+        if self.listing_execution_authority is None:
+            return self._requirement(
+                False,
+                blockers=["OZON_EXECUTION_IDENTITY_AUTHORITY_UNAVAILABLE"],
+            )
+        identity_ref = context.executor_identity_ref or self.execution_identity_ref
+        if not identity_ref:
+            return self._requirement(
+                False,
+                blockers=["OZON_EXECUTION_IDENTITY_REQUIRED"],
+            )
+        if self.execution_identity_ref and identity_ref != self.execution_identity_ref:
+            return self._requirement(
+                False,
+                blockers=["OZON_EXECUTION_IDENTITY_MISMATCH"],
+            )
+        try:
+            state = self.listing_execution_authority.require_execution_identity(identity_ref)
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            return self._requirement(
+                False,
+                blockers=["OZON_EXECUTION_IDENTITY_INVALID"],
+            )
+        return self._requirement(True, evidence_ids=state["evidence_ids"])
+
+    def _kill_switch(self) -> dict[str, Any]:
+        try:
+            ready = self.kill_switch.current().engaged is False
+        except Exception:
+            return self._requirement(
+                False,
+                blockers=["KILL_SWITCH_STATE_UNAVAILABLE"],
+            )
+        return self._requirement(
+            ready,
+            blockers=[] if ready else ["KILL_SWITCH_ENGAGED"],
+        )
+
+    @staticmethod
+    def _requirement(
+        ready: bool,
+        *,
+        evidence_ids: list[str] | None = None,
+        blockers: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "ready": ready is True,
+            "evidence_ids": sorted(set(evidence_ids or [])),
+            "blocking_reasons": sorted(set(blockers or [])),
+        }
 
 
 class GateReadinessService:

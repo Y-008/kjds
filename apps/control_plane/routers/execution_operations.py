@@ -97,6 +97,52 @@ def claim_limited_execution_command(
     return run(lambda: runtime.limited_executor.claim(command_id, **body.model_dump(), worker_id=principal.actor_id))
 
 
+@router.post("/v1/limited-execution-commands/{command_id}/write-attempt")
+def begin_limited_execution_write_attempt(
+    command_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "executor", "admin")
+    return run(
+        lambda: runtime.limited_executor.begin_write_attempt(
+            command_id,
+            worker_id=principal.actor_id,
+        )
+    )
+
+
+@router.post(
+    "/v1/limited-execution-commands/{command_id}/response-checkpoint",
+    status_code=201,
+)
+async def checkpoint_limited_execution_response(
+    command_id: str,
+    artifact_kind: Annotated[
+        str,
+        Form(pattern="^(before_read|product_import_response|import_status_response|after_read)$"),
+    ],
+    response_sha256: Annotated[str, Form(pattern="^[0-9a-f]{64}$")],
+    file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+    sequence_number: Annotated[int | None, Form(ge=0, le=59)] = None,
+):
+    ensure_role(principal, "executor", "admin")
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    content_bytes = await file.read(max_bytes + 1)
+    if len(content_bytes) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Evidence file exceeds {max_bytes} bytes")
+    return run(
+        lambda: runtime.limited_executor.capture_execution_artifact(
+            command_id,
+            artifact_kind=artifact_kind,
+            content=content_bytes,
+            response_sha256=response_sha256,
+            sequence_number=sequence_number,
+            worker_id=principal.actor_id,
+        )
+    )
+
+
 @router.post("/v1/limited-execution-commands/{command_id}/receipt", status_code=201)
 def record_limited_execution_receipt(
     command_id: str,
@@ -105,15 +151,52 @@ def record_limited_execution_receipt(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "executor", "admin")
-    return run(
-        lambda: runtime.limited_executor.record_receipt(
+
+    def record_and_contain():
+        receipt = runtime.limited_executor.record_receipt(
             command_id,
             **body.model_dump(),
             recorded_by=principal.actor_id,
             request_id=request.state.request_id,
             trace_id=request.state.trace_id,
         )
-    )
+        if receipt["outcome"] != "uncertain":
+            return receipt
+        command = runtime.limited_executor.get(command_id)
+        error_code = receipt["error_code"] or "REMOTE_WRITE_UNCERTAIN"
+        trigger_type = (
+            "remote_readback_divergent"
+            if error_code == "OZON_READBACK_DIVERGENT"
+            else "remote_write_uncertain"
+        )
+        impact = [
+            f"execution_command:{command_id}",
+            f"execution_plan:{command['plan_id']}",
+            f"adapter:{command['adapter_id']}",
+            f"offer:{command['target']['offer_id']}",
+            f"error_code:{error_code}",
+        ]
+        if receipt["remote_operation_id"]:
+            impact.append(f"remote_operation_id:{receipt['remote_operation_id']}")
+        incident = runtime.incident_recovery.open(
+            idempotency_key=f"limited-execution-critical:{command_id}",
+            mode="live",
+            severity="critical",
+            trigger_type=trigger_type,
+            source_type="limited_execution_command",
+            source_id=command_id,
+            summary=(
+                "Ozon authoritative readback diverged from the approved execution"
+                if trigger_type == "remote_readback_divergent"
+                else "Ozon write result requires authoritative reconciliation"
+            ),
+            impact=impact,
+            evidence_ids=receipt["evidence_ids"],
+            opened_by="limited-execution-control-plane",
+        )
+        return {**receipt, "incident_id": incident["id"]}
+
+    return run(record_and_contain)
 
 
 @router.post("/v1/limited-execution-commands/{command_id}/rollback", status_code=201)

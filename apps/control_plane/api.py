@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from . import api_contracts
@@ -36,10 +37,17 @@ KILL_SWITCH_CONTROL_PATHS = {
 
 
 def is_write_safety_control_path(path: str) -> bool:
+    limited_execution_bookkeeping = path.startswith(
+        "/v1/limited-execution-commands/"
+    ) and (
+        path.endswith("/response-checkpoint")
+        or path.endswith("/receipt")
+    )
     return (
         path in KILL_SWITCH_CONTROL_PATHS
         or path.startswith("/v1/operational-incidents")
         or path.startswith("/v1/operations-control")
+        or limited_execution_bookkeeping
     )
 
 
@@ -188,6 +196,34 @@ _ROUTE_MODULES = (
 )
 for _module in _ROUTE_MODULES:
     app.include_router(_module.router)
+
+
+def control_plane_openapi() -> dict[str, Any]:
+    if app.openapi_schema is not None:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+    schema.setdefault("components", {}).setdefault("securitySchemes", {})[
+        "KjdsApiKey"
+    ] = {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-KJDS-API-Key",
+    }
+    for path, operations in schema.get("paths", {}).items():
+        if not path.startswith("/v1/"):
+            continue
+        for operation in operations.values():
+            if isinstance(operation, dict):
+                operation["security"] = [{"KjdsApiKey": []}]
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = control_plane_openapi
 
 
 def registered_routes():
