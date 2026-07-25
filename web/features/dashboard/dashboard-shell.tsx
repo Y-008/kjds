@@ -1,5 +1,6 @@
 import {
   Boxes,
+  ChartNoAxesCombined,
   BrainCircuit,
   CircleDollarSign,
   FileUp,
@@ -8,13 +9,15 @@ import {
   LayoutDashboard,
   RefreshCw,
   ShieldCheck,
+  Truck,
   Waypoints,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import type { WebSession } from "./contracts";
+import type { IdentityStatus, WebSession } from "./contracts";
 
 const nav = [
   [LayoutDashboard, "经营总览", "#dashboard-top"],
+  [ChartNoAxesCombined, "市场情报", "#capability-map"],
   [FileUp, "数据中心", "#ozon-import"],
   [Waypoints, "全球货源", "#sourcing-intake"],
   [Boxes, "商品中心", "#sku-intake"],
@@ -23,31 +26,33 @@ const nav = [
   [FlaskConical, "增长实验", "#causal-experiments"],
   [CircleDollarSign, "利润中心", "#actual-cost-review"],
   [ShieldCheck, "审批中心", "#listing-approval"],
+  [Truck, "订单履约", "#sales-fulfillment"],
 ] as const;
 
 type Props = {
   session: WebSession | null;
+  identityStatus: IdentityStatus;
   onRefresh: () => void;
   children: ReactNode;
 };
 
-export function DashboardShell({ session, onRefresh, children }: Props) {
+export function DashboardShell({ session, identityStatus, onRefresh, children }: Props) {
   return <main className="shell">
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark">K</div><div><strong>KJDS</strong><span>俄罗斯经营系统</span></div></div>
       <nav aria-label="经营工作区">{nav.map(([Icon, label, href]) => (
-        <a href={href} key={label}><Icon size={19} /><span>{label}</span></a>
+        <a aria-label={label} href={href} key={label} title={label}><Icon size={19} /><span>{label}</span></a>
       ))}</nav>
-      <div className="sidebar-status"><span className="pulse" /><div><strong>14天影子运行</strong><span>只建议，不执行高风险动作</span></div></div>
+      <div className="sidebar-status"><span className="pulse" /><div><strong>{identityStatus === "ready" ? "受控经营模式" : "身份状态未知"}</strong><span>只建议，不执行高风险动作</span></div></div>
     </aside>
 
     <section className="workspace">
       <header className="topbar" id="dashboard-top">
         <div><p className="eyebrow">OZON · RUSSIA</p><h1>经营指挥中心</h1></div>
         <div className="topbar-actions">
-          <div className="session-chip"><ShieldCheck size={16} /><span>{session?.email ?? (session?.auth_mode === "legacy" ? "本地运营身份" : "身份校验中")}{session ? ` · ${session.actor_id} · ${session.roles.join("/")}` : ""}</span></div>
+          <div className="session-chip"><ShieldCheck size={16} /><span>{identityStatus === "unavailable" ? "身份状态未知" : session?.email ?? (session?.auth_mode === "legacy" ? "本地运营身份" : "身份校验中")}{session && identityStatus === "ready" ? ` · ${session.actor_id} · ${session.roles.join("/")}` : ""}</span></div>
           {session?.auth_mode === "supabase" ? <form action="/auth/logout" method="post"><button className="refresh" type="submit">退出</button></form> : null}
-          <button className="refresh" onClick={onRefresh}><RefreshCw size={17} />刷新状态</button>
+          <button className="refresh" disabled={identityStatus === "checking"} onClick={onRefresh} type="button"><RefreshCw size={17} />刷新状态</button>
         </div>
       </header>
       {children}

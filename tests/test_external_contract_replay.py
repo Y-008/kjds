@@ -38,6 +38,8 @@ def test_external_contract_manifest_is_complete_and_immutable():
     assert manifest["contains_sensitive_data"] is False
     assert len({case["id"] for case in cases}) == len(cases)
     assert {case["system"] for case in cases} == {
+        "1688_cli",
+        "1688_opencli",
         "ozon_seller_api",
         "comfyui",
         "ozon_finance_export",

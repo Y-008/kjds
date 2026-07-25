@@ -76,6 +76,17 @@ def test_openapi_exposes_read_only_operating_workbench_briefing() -> None:
     assert set(schema["paths"]["/v1/operating-workbench/briefing"]) == {"get"}
 
 
+def test_openapi_exposes_governed_source_acquisition_and_sku_workbench() -> None:
+    schema = app.openapi()
+
+    assert set(schema["paths"]["/v1/sourcing/connectors"]) == {"get"}
+    assert set(schema["paths"]["/v1/sourcing/discoveries"]) == {"get"}
+    assert set(schema["paths"]["/v1/sourcing/acquisitions/pull"]) == {"post"}
+    assert set(schema["paths"]["/v1/workbench/skus/{product_or_candidate_ref}"]) == {"get"}
+    pull = schema["components"]["schemas"]["SourceAcquisitionPullInput"]
+    assert set(pull["required"]) == {"connector_name"}
+
+
 def test_cost_authority_catalog_is_read_only_and_complete() -> None:
     result = cost_authority_catalog(Principal("operator-1", frozenset({"operator"})))
 

@@ -1,7 +1,7 @@
 {
   "registry_id": "KJDS-ACTION-POLICY-001",
   "schema_version": "1.0",
-  "policy_version": "2026-07-21.2",
+  "policy_version": "2026-07-25.1",
   "status": "active",
   "risk_tiers": [
     {
@@ -43,6 +43,22 @@
     }
   ],
   "actions": [
+    {
+      "id": "source_discover",
+      "decision_scope": "research",
+      "risk_tier": "L0",
+      "side_effect_class": "evidence_capture",
+      "external_business_side_effect": false,
+      "execution_permit_required": false,
+      "request_revalidation": true,
+      "execution_revalidation": false,
+      "idempotency_required": true,
+      "readback_required": false,
+      "rollback_required": false,
+      "limit_keys": [],
+      "allowed_executor": "control_plane",
+      "fail_closed": true
+    },
     {
       "id": "candidate_analyze",
       "decision_scope": "research",

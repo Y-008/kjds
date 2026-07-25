@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.47.0"
+APP_VERSION = "0.48.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -144,6 +144,12 @@ class CandidateEvidenceAuthorityReviewInput(BaseModel):
     source_scope_matches: bool
     authority_basis_verified: bool
     rationale: str = Field(min_length=1, max_length=2000)
+
+
+class SourceAcquisitionPullInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    connector_name: str = Field(min_length=1, max_length=120)
+    cursor: str | None = Field(default=None, max_length=500)
 
 
 class CostEvidenceAuthorityReviewInput(BaseModel):
@@ -300,6 +306,49 @@ class ProcurementCandidateInput(BaseModel):
 class SampleOrderInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     approval_id: str = Field(min_length=1)
+
+
+class SalesFulfillmentPlanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sales_order_id: str = Field(min_length=1, max_length=200)
+
+
+class SalesFulfillmentRouteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    effective_at: str
+    evidence_id: str = Field(min_length=1)
+    aggregator: Literal["kuajing84"] = "kuajing84"
+    carrier_code: str = Field(min_length=2, max_length=40)
+    service_code: str = Field(min_length=1, max_length=120)
+    warehouse_id: str = Field(min_length=1, max_length=200)
+    warehouse_name: str = Field(min_length=1, max_length=300)
+    warehouse_address: str = Field(min_length=1, max_length=1000)
+    address_valid_at: str
+    delivery_method_status: Literal["active", "legacy_only"]
+    legacy_connection: bool = False
+
+
+class SalesFulfillmentProcurementApprovalInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    offer_id: str = Field(min_length=1)
+    scenario_id: str = Field(min_length=1)
+    quantity: int = Field(ge=1)
+    rationale: str = Field(default="", max_length=2000)
+
+
+class SalesFulfillmentEventInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    event_type: Literal[
+        "supplier_order_confirmed",
+        "domestic_shipped",
+        "warehouse_received",
+        "packed_for_export",
+        "international_handover",
+        "cancelled",
+    ]
+    effective_at: str
+    evidence_id: str = Field(min_length=1)
+    facts: dict[str, Any]
 
 
 class OzonListingDraftInput(BaseModel):

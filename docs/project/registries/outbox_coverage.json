@@ -173,6 +173,13 @@
       "activation_trigger": "外部事实晋级或分析消费者上线"
     },
     {
+      "module": "sales_fulfillment.py",
+      "status": "deferred_until_gate",
+      "delivery_contract": "none",
+      "rationale": "销售单、路线和采购审批当前只形成内部不可变履约账，不调用供应商、支付或物流写接口。",
+      "activation_trigger": "真实供应商下单或物流预报写动作放行前"
+    },
+    {
       "module": "security.py",
       "status": "internal_only",
       "delivery_contract": "none",

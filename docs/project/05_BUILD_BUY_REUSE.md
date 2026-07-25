@@ -96,7 +96,7 @@ Agent 工作流同样按缺口复用：若现有 Agent 壳层确实缺少 handof
 
 ### 采集合同蓝图与复利指标
 
-注册表先冻结 22 个连续环节的验收合同：来源权威与许可、账户/会话范围、官方 API/导出、确定性登录浏览器、AI 浏览器后备、原始响应留存、文件安全与隐私、解析与 schema 版本、SKU/供应商身份、时间窗/分页/控制总数、哈希去重与历史、字段级来源与置信度、独立复核、Evidence 血缘、research→formal→actual 晋升、漂移隔离与回放、限流/重试/熔断/人工接管、服务端回读与对账、保留与撤销、监控/SLO/事件、人工分钟与成本、复用资产登记。每一环都在 [`registries/cross_border_automation_ecosystem.json`](registries/cross_border_automation_ecosystem.json) 固定 `primary`、`fallback`、`owner`、`boundary`、`status`、`verification` 和 `provenance`；当前只是机器可读合同，不是统一运行时实现，任一关键环节缺失即保持 blocked 或 requires_review。
+注册表先冻结 22 个连续环节的验收合同：来源权威与许可、账户/会话范围、官方 API/导出、确定性登录浏览器、AI 浏览器后备、原始响应留存、文件安全与隐私、解析与 schema 版本、SKU/供应商身份、时间窗/分页/控制总数、哈希去重与历史、字段级来源与置信度、独立复核、Evidence 血缘、research→formal→actual 晋升、漂移隔离与回放、限流/重试/熔断/人工接管、服务端回读与对账、保留与撤销、监控/SLO/事件、人工分钟与成本、复用资产登记。每一环都在 [`registries/cross_border_automation_ecosystem.json`](registries/cross_border_automation_ecosystem.json) 固定 `primary`、`fallback`、`owner`、`boundary`、`status`、`verification` 和 `provenance`。BR-066/ADR-0018 开始把其中的 1688 只读采集、统一快照、哈希去重、真实健康和人工接管落入 KJDS 运行时；未配置、未登录、Schema 漂移和外部业务 Gate 仍保持 blocked 或 requires_review。
 
 浏览器路径固定为“官方 API/导出优先 → 专用 KJDS 浏览器 Profile 的确定性适配器 → Stagehand/browser-use/Skyvern 等 AI 浏览器隔离试验 → 登录、MFA、CAPTCHA 或账户歧义时可见人工接管”。不得导出 Edge 主 Profile 的 Cookie、密码或 2FA，不得混用个人 CPA/金融会话；AI 浏览器没有反爬绕过权限，也没有独立写权限。当前 1688 RU-001 是用户人工发送后的带外只读回读，虽取得服务端消息 ID、目标供应商与回复“您好，稍等”，但没有 KJDS ExecutionPermit/`authorize_action()` 记录，不能算受控写链验收；正式书面报价仍为 0，不能晋升 actual。Ozon 连续至少 28 天官方数据仍缺获批身份或原始导出。
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import asdict
@@ -59,29 +60,37 @@ class ResearchInboxService:
         raw_fields = self._raw_fields(raw_fields)
         candidate_refs = self._candidate_refs(candidate_refs)
         captured_at = datetime.now(UTC).isoformat()
-        record = self.evidence.capture(
-            content=content,
-            filename=filename,
-            content_type=content_type,
+        digest = hashlib.sha256(content).hexdigest()
+        record = self.evidence.find_by_source_hash(
             source=provider,
             source_ref=provider_record_id,
-            grade=declared_grade,
-            effective_at=observed_at,
-            effective_until=None,
-            created_by=created_by,
-            metadata={
-                "evidence_role": self.EVIDENCE_ROLE,
-                "provider": provider,
-                "provider_record_id": provider_record_id,
-                "source_url": source_url,
-                "captured_at": captured_at,
-                "raw_fields": raw_fields,
-                "license_status": license_status,
-                "review_status": "pending_authority_review",
-                "declared_grade": declared_grade.value,
-                "promotion_status": "auxiliary_only",
-            },
+            sha256=digest,
         )
+        duplicate = record is not None
+        if record is None:
+            record = self.evidence.capture(
+                content=content,
+                filename=filename,
+                content_type=content_type,
+                source=provider,
+                source_ref=provider_record_id,
+                grade=declared_grade,
+                effective_at=observed_at,
+                effective_until=None,
+                created_by=created_by,
+                metadata={
+                    "evidence_role": self.EVIDENCE_ROLE,
+                    "provider": provider,
+                    "provider_record_id": provider_record_id,
+                    "source_url": source_url,
+                    "captured_at": captured_at,
+                    "raw_fields": raw_fields,
+                    "license_status": license_status,
+                    "review_status": "pending_authority_review",
+                    "declared_grade": declared_grade.value,
+                    "promotion_status": "auxiliary_only",
+                },
+            )
         for candidate_ref in candidate_refs:
             self.evidence.link(
                 evidence_id=record.id,
@@ -90,7 +99,7 @@ class ResearchInboxService:
                 relationship=self.RELATIONSHIP,
                 created_by=created_by,
             )
-        return self._view(record, self._linked_candidates(record.id))
+        return self._view(record, self._linked_candidates(record.id), duplicate=duplicate)
 
     def list(self, *, candidate_ref: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         if limit < 1 or limit > 100:
@@ -123,12 +132,13 @@ class ResearchInboxService:
             and edge.relationship == self.RELATIONSHIP
         )
 
-    def _view(self, record, candidate_refs: list[str]) -> dict[str, Any]:
+    def _view(self, record, candidate_refs: list[str], *, duplicate: bool = False) -> dict[str, Any]:
         verification = self.evidence.verify(record.id)
         return {
             "evidence": asdict(record),
             "candidate_refs": sorted(candidate_refs),
             "integrity_valid": verification.valid,
+            "duplicate": duplicate,
             "decision_use": "auxiliary_only_pending_independent_authority_review",
             "automatic_listing": False,
             "automatic_procurement": False,

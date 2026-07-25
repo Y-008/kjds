@@ -10,6 +10,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from ..api_contracts import (
     ProcurementCandidateInput,
     ProfitScenarioInput,
+    SalesFulfillmentEventInput,
+    SalesFulfillmentPlanInput,
+    SalesFulfillmentProcurementApprovalInput,
+    SalesFulfillmentRouteInput,
     SampleOrderInput,
     SupplierOfferInput,
     current_principal,
@@ -187,6 +191,84 @@ def create_sample_purchase_order(body: SampleOrderInput, principal: Annotated[Pr
 @router.get("/v1/procurement/sample-orders")
 def list_sample_purchase_orders(limit: int = 100):
     return run(lambda: runtime.procurement.list_orders(limit))
+
+
+@router.post("/v1/fulfillment/plans", status_code=201)
+def create_sales_fulfillment_plan(
+    body: SalesFulfillmentPlanInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    """Create an address-free sourcing plan only after a marketplace order exists."""
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: runtime.sales_fulfillment.create_plan(
+            body.sales_order_id,
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@router.get("/v1/fulfillment/plans")
+def list_sales_fulfillment_plans(limit: int = 100):
+    return run(lambda: runtime.sales_fulfillment.list_plans(limit))
+
+
+@router.get("/v1/fulfillment/plans/{plan_id}")
+def get_sales_fulfillment_plan(plan_id: str):
+    return run(lambda: runtime.sales_fulfillment.get_plan(plan_id))
+
+
+@router.post("/v1/fulfillment/plans/{plan_id}/route-selection", status_code=201)
+def select_sales_fulfillment_route(
+    plan_id: str,
+    body: SalesFulfillmentRouteInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    values = body.model_dump()
+    effective_at = values.pop("effective_at")
+    evidence_id = values.pop("evidence_id")
+    return run(
+        lambda: runtime.sales_fulfillment.select_route(
+            plan_id,
+            effective_at=effective_at,
+            evidence_id=evidence_id,
+            facts=values,
+            created_by=principal.actor_id,
+        )
+    )
+
+
+@router.post("/v1/fulfillment/plans/{plan_id}/procurement-approval-request", status_code=201)
+def request_sales_fulfillment_procurement_approval(
+    plan_id: str,
+    body: SalesFulfillmentProcurementApprovalInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: runtime.sales_fulfillment.request_procurement_approval(
+            plan_id,
+            **body.model_dump(),
+            requested_by=principal.actor_id,
+        )
+    )
+
+
+@router.post("/v1/fulfillment/plans/{plan_id}/events", status_code=201)
+def record_sales_fulfillment_event(
+    plan_id: str,
+    body: SalesFulfillmentEventInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "admin")
+    return run(
+        lambda: runtime.sales_fulfillment.record_event(
+            plan_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+    )
 
 
 @router.get("/v1/procurement/sample-orders/{order_id}")

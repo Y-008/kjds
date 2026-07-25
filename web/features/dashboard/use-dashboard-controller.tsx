@@ -5,6 +5,7 @@ import { fetchJson, settleJsonRequests } from "../../lib/fetch-json";
 import type { DomainState } from "./domain-status-panel";
 import type {
   Health,
+  IdentityStatus,
   WebSession,
   OzonImportResult,
   OzonImportPreview,
@@ -25,6 +26,7 @@ import type {
   ApprovalRecord,
   SampleEvent,
   SampleOrder,
+  SalesFulfillmentPlan,
   SupplierPerformance,
   BackupOption,
   GateRequirement,
@@ -75,6 +77,7 @@ import { useDashboardBoot } from "./use-dashboard-boot";
 export function useDashboardController() {
 
   const [webSession, setWebSession] = useState<WebSession | null>(null);
+  const [identityStatus, setIdentityStatus] = useState<IdentityStatus>("checking");
   const [health, setHealth] = useState<Record<string, Health>>({});
   const [operatingWorkbench, setOperatingWorkbench] = useState<OperatingWorkbenchBriefing | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -84,6 +87,7 @@ export function useDashboardController() {
   const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
   const [sampleOrders, setSampleOrders] = useState<SampleOrder[]>([]);
+  const [salesFulfillmentPlans, setSalesFulfillmentPlans] = useState<SalesFulfillmentPlan[]>([]);
   const [supplierPerformance, setSupplierPerformance] = useState<SupplierPerformance[]>([]);
   const [backupOptions, setBackupOptions] = useState<Record<string, BackupOption[]>>({});
   const [backupRationales, setBackupRationales] = useState<Record<string, string>>({});
@@ -162,7 +166,7 @@ export function useDashboardController() {
     setDomainStates({ core: "loading", product: "loading", finance: "loading", science: "loading", execution: "loading" });
     const request = (input: RequestInfo | URL, init: RequestInit = {}) =>
       fetchJson(input, { ...init, signal: signal ?? init.signal });
-    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse] = await settleJsonRequests([
+    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, salesFulfillmentResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse] = await settleJsonRequests([
       request("/backend/v1/integrations/health", { cache: "no-store" }),
       request("/backend/v1/operating-workbench/briefing", { cache: "no-store" }),
       request("/backend/v1/recommendations", { cache: "no-store" }),
@@ -173,6 +177,7 @@ export function useDashboardController() {
       request("/backend/v1/passport-reviews", { cache: "no-store" }),
       request("/backend/v1/approvals", { cache: "no-store" }),
       request("/backend/v1/procurement/sample-orders", { cache: "no-store" }),
+      request("/backend/v1/fulfillment/plans", { cache: "no-store" }),
       request("/backend/v1/procurement/suppliers/performance", { cache: "no-store" }),
       request("/backend/v1/evidence", { cache: "no-store" }),
       request("/backend/v1/interaction-profiles", { cache: "no-store" }),
@@ -197,7 +202,7 @@ export function useDashboardController() {
     ]);
     setDomainStates({
       core: [healthResponse, operatingWorkbenchResponse].every((response) => response.ok) ? "ready" : "error",
-      product: [connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse].every((response) => response.ok) ? "ready" : "error",
+      product: [connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, salesFulfillmentResponse, supplierPerformanceResponse, evidenceResponse].every((response) => response.ok) ? "ready" : "error",
       finance: costAuthorityResponse.ok ? "ready" : "error",
       science: [profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse].every((response) => response.ok) ? "ready" : "error",
       execution: [policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse].every((response) => response.ok) ? "ready" : "error",
@@ -212,6 +217,7 @@ export function useDashboardController() {
     if (reviewResponse.ok) setPassportReviews(await reviewResponse.json());
     if (approvalsResponse.ok) setApprovals(await approvalsResponse.json());
     if (sampleOrdersResponse.ok) setSampleOrders(await sampleOrdersResponse.json());
+    if (salesFulfillmentResponse.ok) setSalesFulfillmentPlans(await salesFulfillmentResponse.json());
     if (supplierPerformanceResponse.ok) setSupplierPerformance(await supplierPerformanceResponse.json());
     if (evidenceResponse.ok) setEvidenceRecords(await evidenceResponse.json());
     if (costAuthorityResponse.ok) setCostAuthorityCatalog(await costAuthorityResponse.json());
@@ -293,7 +299,7 @@ export function useDashboardController() {
     }
   }, []);
 
-  useDashboardBoot({ load, setSession: setWebSession, setNotice });
+  useDashboardBoot({ load, setSession: setWebSession, setIdentityStatus, setNotice });
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1876,6 +1882,8 @@ export function useDashboardController() {
   return {
     webSession,
     setWebSession,
+    identityStatus,
+    setIdentityStatus,
     health,
     setHealth,
     operatingWorkbench,
@@ -1894,6 +1902,8 @@ export function useDashboardController() {
     setApprovals,
     sampleOrders,
     setSampleOrders,
+    salesFulfillmentPlans,
+    setSalesFulfillmentPlans,
     supplierPerformance,
     setSupplierPerformance,
     backupOptions,

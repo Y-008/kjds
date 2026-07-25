@@ -1,0 +1,19 @@
+[
+  {
+    "offer_id": "900000000001",
+    "title": "脱敏压缩收纳候选样品",
+    "main_count": 5,
+    "sku_count": 3,
+    "detail_count": 12,
+    "video_count": 1,
+    "main_images": [
+      "https://cdn.example.invalid/900000000001-main.jpg?version=fixture"
+    ],
+    "sku_images": [],
+    "detail_images": [],
+    "videos": [
+      "https://cdn.example.invalid/900000000001-video.mp4"
+    ],
+    "other_images": []
+  }
+]

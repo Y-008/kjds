@@ -1,7 +1,7 @@
 {
   "registry_version": "1.6",
   "last_reviewed": "2026-07-25",
-  "principle": "Borrow product workflow patterns, never third-party truth claims or unapproved write authority.",
+  "principle": "Every product, website, plugin, and screenshot supplied by the user on 2026-07-25 is a competitor benchmark only. Borrow workflow patterns, never branding, third-party truth claims, production dependency, or unapproved write authority.",
   "shared_contracts": [
     {
       "id": "three_candidate_portfolio_decision_view_v1",
@@ -44,11 +44,11 @@
     {
       "id": "seerfar",
       "url": "https://www.seerfar.cn/features/",
-      "observed_capabilities": ["product_trends_30_90_days", "market_and_keyword_analysis", "competitor_monitoring", "open_api_entry"],
-      "patterns_to_borrow": ["research_inbox", "trend_snapshot", "keyword_competitor_candidate_graph", "change_alert"],
-      "do_not_copy": ["estimated_sales_as_account_fact", "session_sharing", "unreviewed_browser_extension"],
+      "observed_capabilities": ["hot_product_keyword_tag_category_store_brand_discovery", "product_library", "keyword_mining_reverse_search_library_cleaning", "store_product_keyword_listing_monitoring", "listing_and_review_analysis", "profit_calculator", "collection_box", "store_and_advertising_operations", "open_api_entry"],
+      "patterns_to_borrow": ["research_inbox", "trend_snapshot", "keyword_competitor_candidate_graph", "change_alert", "discovery_to_product_library_navigation", "single_sku_operating_workbench"],
+      "do_not_copy": ["brand_copy_or_visual_assets", "estimated_sales_as_account_fact", "session_sharing", "unreviewed_browser_extension", "automatic_listing_pricing_advertising_or_procurement"],
       "evidence_tier": "C",
-      "integration_status": "open_api_documentation_requires_review",
+      "integration_status": "competitor_reference_only_open_api_documentation_requires_review",
       "requires_review": true,
       "implemented_contract": "manual_export_research_signal_inbox_v1",
       "next_contract": "provider_neutral_read_only_market_signal_adapter_after_admission"

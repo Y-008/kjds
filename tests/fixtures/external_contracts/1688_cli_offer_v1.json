@@ -1,0 +1,72 @@
+{
+  "offerId": "900000000001",
+  "title": "脱敏压缩收纳候选样品",
+  "priceRange": "18.80-24.00",
+  "priceMin": 18.8,
+  "priceMax": 24,
+  "unitName": "件",
+  "minOrderQty": 2,
+  "priceTiers": [
+    {
+      "minQty": 2,
+      "price": 24
+    },
+    {
+      "minQty": 100,
+      "price": 18.8
+    }
+  ],
+  "attributes": [
+    {
+      "name": "材质",
+      "value": "涤纶"
+    },
+    {
+      "name": "页面压缩声明",
+      "value": "可压缩"
+    }
+  ],
+  "packageInfo": [
+    {
+      "skuId": "fixture-sku-001",
+      "spec": "灰色>大号",
+      "length": "40",
+      "width": "30",
+      "height": "5",
+      "weight": "0.8",
+      "volume": "6000"
+    }
+  ],
+  "supplier": {
+    "name": "脱敏供应商甲有限公司",
+    "loginId": "fixture-login",
+    "memberId": "fixture-member-001"
+  },
+  "freight": {
+    "receiveAddress": null,
+    "sendArea": "浙江",
+    "province": "浙江",
+    "city": "金华",
+    "unitWeight": "0.8"
+  },
+  "skus": [
+    {
+      "skuId": "fixture-sku-001",
+      "specs": "灰色>大号",
+      "price": 24,
+      "multiPrice": null,
+      "stock": 300,
+      "saleCount": 20,
+      "image": "https://cdn.example.invalid/fixture-sku-001.jpg"
+    },
+    {
+      "skuId": "fixture-sku-002",
+      "specs": "蓝色>大号",
+      "price": 24,
+      "multiPrice": null,
+      "stock": 200,
+      "saleCount": 10,
+      "image": "https://cdn.example.invalid/fixture-sku-002.jpg"
+    }
+  ]
+}

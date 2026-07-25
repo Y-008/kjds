@@ -35,7 +35,7 @@ export function OperationsPanel({ model }: { model: DashboardModel }) {
               </article>;
             })}
           </div>
-        </section><section className="decision-workbench">
+        </section><section className="decision-workbench" id="operations-control">
           <div className="panel-title"><div><p className="eyebrow">OPERATIONS CONTROL</p><h3>今日异常中心与 Ozon 只读试点</h3></div><button type="button" disabled={lifecycleBusy === "operations-scan"} onClick={scanOperationsQueue}>扫描逾期升级</button></div>
           <p className="section-copy">Gate 阻断来自服务端 readiness，不伪造 SLA；事故、命令和观察合同继续按真实截止时间升级。这里只解释和导航，不会自动补证、关事故或写平台。</p>
           <div className="lifecycle-summary"><article><span>经营阻断</span><b>{gateReadiness?.exception_workspace.blocked_count ?? 0}</b><small>按 Gate、来源对象和责任角色展示</small></article><article><span>运行待处理</span><b>{operationsQueue.length}</b><small>事故、命令和观察合同按 SLA 排序</small></article><article><span>已逾期</span><b>{operationsQueue.filter((item) => item.overdue).length}</b><small>只升级提醒，不自动执行经营动作</small></article><article><span>未关闭事故</span><b>{operationalIncidents.filter((item) => item.status !== "closed").length}</b><small>严重事故阻断试点准入</small></article></div>

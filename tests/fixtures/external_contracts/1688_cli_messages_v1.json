@@ -1,0 +1,24 @@
+{
+  "conversation": "脱敏供应商甲",
+  "total": 2,
+  "messages": [
+    {
+      "sender": "seller",
+      "time": "2026-07-25T08:00:00+08:00",
+      "isMine": false,
+      "content": "样品两件，包装尺寸和运费需要按目的地复核。",
+      "read": false,
+      "kind": "text",
+      "messageId": "fixture-message-001"
+    },
+    {
+      "sender": "seller",
+      "time": "2026-07-25T08:00:00+08:00",
+      "isMine": false,
+      "content": "样品两件，包装尺寸和运费需要按目的地复核。",
+      "read": false,
+      "kind": "text",
+      "messageId": "fixture-message-001"
+    }
+  ]
+}

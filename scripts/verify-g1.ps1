@@ -671,14 +671,32 @@ try {
         $resolvedRuntime = [IO.Path]::GetFullPath($Runtime).TrimEnd("\") + "\"
         $resolvedPytestTemp = [IO.Path]::GetFullPath($PytestTemp)
         if ($resolvedPytestTemp.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
-            [IO.Directory]::Delete($resolvedPytestTemp, $true)
+            [IO.Directory]::EnumerateFiles($resolvedPytestTemp, "*", [IO.SearchOption]::AllDirectories) |
+                ForEach-Object { [IO.File]::SetAttributes($_, [IO.FileAttributes]::Normal) }
+            for ($attempt = 1; $attempt -le 16 -and (Test-Path $PytestTemp); $attempt++) {
+                try {
+                    [IO.Directory]::Delete($resolvedPytestTemp, $true)
+                } catch {
+                    $result.cleanup_file_errors += $_.Exception.Message
+                    Start-Sleep -Milliseconds 500
+                }
+            }
         }
     }
     if (Test-Path $BackupSmokeDirectory) {
         $resolvedRuntime = [IO.Path]::GetFullPath($Runtime).TrimEnd("\") + "\"
         $resolvedBackup = [IO.Path]::GetFullPath($BackupSmokeDirectory)
         if ($resolvedBackup.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
-            [IO.Directory]::Delete($resolvedBackup, $true)
+            [IO.Directory]::EnumerateFiles($resolvedBackup, "*", [IO.SearchOption]::AllDirectories) |
+                ForEach-Object { [IO.File]::SetAttributes($_, [IO.FileAttributes]::Normal) }
+            for ($attempt = 1; $attempt -le 16 -and (Test-Path $BackupSmokeDirectory); $attempt++) {
+                try {
+                    [IO.Directory]::Delete($resolvedBackup, $true)
+                } catch {
+                    $result.cleanup_file_errors += $_.Exception.Message
+                    Start-Sleep -Milliseconds 500
+                }
+            }
         }
     }
     Remove-Item -LiteralPath $EvidenceSmokeFile -Force -ErrorAction SilentlyContinue

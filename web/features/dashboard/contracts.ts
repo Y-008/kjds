@@ -1,4 +1,5 @@
 export type Health = { name: string; status: string; detail?: string | null };
+export type IdentityStatus = "checking" | "ready" | "unavailable";
 export type WebSession = {
   authenticated: boolean;
   auth_mode: "legacy" | "supabase";
@@ -126,11 +127,113 @@ export type Recommendation = {
   shadow_mode: boolean;
 };
 export type SourceConnector = {
+  name: string;
   platform: string;
   ingestion: string;
   authentication: string;
   status: string;
+  maturity: string;
   notes: string;
+  tool_installed: boolean | null;
+  browser_bridge_connected: boolean | null;
+  logged_in: boolean | null;
+  target_count: number;
+  search_count?: number;
+  last_success_at: string | null;
+  schema_version: string | null;
+  error_code: string | null;
+  human_action_required: boolean;
+  capabilities: string[];
+  external_write_allowed: false;
+};
+export type SourceDiscovery = {
+  evidence_id: string;
+  sha256: string;
+  provider: string | null;
+  provider_record_id: string | null;
+  source_url: string | null;
+  observed_at: string;
+  captured_at: string | null;
+  contract_id: string | null;
+  fields: Record<string, string | number | boolean | null>;
+  license_status: string | null;
+  review_status: string | null;
+  integrity_valid: boolean;
+  decision_use: string;
+};
+export type SkuWorkbenchSnapshot = {
+  contract_id: "kjds-sku-workbench-v1";
+  requested_ref: string;
+  candidate_ref: string;
+  product: ProductIdentity | null;
+  research: {
+    market_signals: SourceDiscovery[];
+    source_listings: SourceDiscovery[];
+    asset_manifests: SourceDiscovery[];
+    supplier_messages: SourceDiscovery[];
+  };
+  formal_offers: unknown[];
+  profit_scenarios: Array<{ cost_complete: boolean; cm3_cny: string; cm3_rate: string }>;
+  approvals: unknown[];
+  sample_orders: unknown[];
+  sales_fulfillment_plans: SalesFulfillmentPlan[];
+  listing_drafts: unknown[];
+  unknowns: string[];
+  guardrails: {
+    advisory_only: true;
+    automatic_fact_promotion: false;
+    automatic_supplier_contact: false;
+    automatic_procurement: false;
+    automatic_payment: false;
+    automatic_listing: false;
+    platform_write_allowed: false;
+  };
+};
+export type SalesFulfillmentPlan = {
+  id: string;
+  sales_order_id: string;
+  external_sales_order_id: string;
+  product_id: string;
+  quantity: number;
+  status:
+    | "awaiting_route"
+    | "route_selected"
+    | "approval_pending"
+    | "supplier_order_confirmed"
+    | "domestic_shipped"
+    | "warehouse_received"
+    | "packed_for_export"
+    | "international_handover"
+    | "cancelled";
+  route: null | {
+    aggregator: "kuajing84";
+    carrier_code: string;
+    service_code: string;
+    warehouse_id: string;
+    warehouse_name: string;
+    warehouse_address: string;
+    address_valid_at: string;
+    delivery_method_status: "active" | "legacy_only";
+    legacy_connection: boolean;
+    evidence_id: string;
+    selected_at: string;
+  };
+  domestic_warehouse_address_known: boolean;
+  procurement_approval: null | { approval_id: string; offer_id: string; scenario_id: string; quantity: number };
+  procurement_approval_status: null | "pending" | "approved" | "rejected";
+  ready_for_supplier_order: boolean;
+  automatic_supplier_order: false;
+  automatic_payment: false;
+  created_by: string;
+  created_at: string;
+  events: Array<{
+    id: string;
+    sequence: number;
+    event_type: string;
+    effective_at: string;
+    evidence_id: string;
+    facts: Record<string, unknown>;
+  }>;
 };
 export type PassportReadiness = {
   kind: "product" | "compliance" | "quality";

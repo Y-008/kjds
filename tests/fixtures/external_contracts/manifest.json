@@ -50,6 +50,54 @@
       "path": "ozon_finance_schema_drift_v1.csv",
       "sha256": "b76f570ae0b93c77034896902dd2ccd3871eea56c4cdc3a99c48c5ee1438d473",
       "expected_outcome": "schema_drift"
+    },
+    {
+      "id": "1688.opencli-item.success.v1",
+      "system": "1688_opencli",
+      "contract_version": "source-listing-snapshot-v1",
+      "path": "1688_opencli_item_v1.json",
+      "sha256": "9d0f801503dff557e2410a08a06b48957a577146c15831eda11fd4ae532e7048",
+      "expected_outcome": "accepted"
+    },
+    {
+      "id": "1688.opencli-item.schema-drift.v1",
+      "system": "1688_opencli",
+      "contract_version": "source-listing-snapshot-v1",
+      "path": "1688_opencli_item_schema_drift_v1.json",
+      "sha256": "0fb420028a27efd1401e09a90097978001b772dcd715e15ebb0ed14445ed0e69",
+      "expected_outcome": "schema_drift"
+    },
+    {
+      "id": "1688.opencli-assets.success.v1",
+      "system": "1688_opencli",
+      "contract_version": "asset-manifest-v1",
+      "path": "1688_opencli_assets_v1.json",
+      "sha256": "487433c381d8bca3baf96473e6b7a728dc4c2aa8857bb0499cfa4ab3051dccc6",
+      "expected_outcome": "accepted"
+    },
+    {
+      "id": "1688.cli-search.success.v1",
+      "system": "1688_cli",
+      "contract_version": "source-listing-snapshot-v1",
+      "path": "1688_cli_search_v1.json",
+      "sha256": "3b4f2524e28f052d8b34f3576a99f041a8b55aa6cabf473d3497c24be0c5c6bd",
+      "expected_outcome": "accepted"
+    },
+    {
+      "id": "1688.cli-offer.success.v1",
+      "system": "1688_cli",
+      "contract_version": "source-listing-snapshot-v1",
+      "path": "1688_cli_offer_v1.json",
+      "sha256": "4bd7f1100b8a818c44b13753a1cf2caff0bbb83f76f800249da953614a97ba98",
+      "expected_outcome": "accepted"
+    },
+    {
+      "id": "1688.cli-messages.success.v1",
+      "system": "1688_cli",
+      "contract_version": "supplier-message-snapshot-v1",
+      "path": "1688_cli_messages_v1.json",
+      "sha256": "f140c22eb66ffccee906b519c3f71dcd5fe731c8360c1c5403df5eb64862d5e4",
+      "expected_outcome": "accepted"
     }
   ]
 }

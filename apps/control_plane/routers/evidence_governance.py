@@ -23,7 +23,6 @@ from ..evidence import EvidenceGrade
 from ..research_inbox import ResearchInboxService
 from ..runtime import runtime
 from ..security import Principal
-from ..source_connectors import source_connector_catalog
 
 router = APIRouter()
 
@@ -146,11 +145,6 @@ def link_evidence(
 @router.get("/v1/evidence/{evidence_id}/lineage")
 def evidence_lineage(evidence_id: str):
     return [asdict(item) for item in runtime.evidence.lineage(evidence_id)]
-
-
-@router.get("/v1/sourcing/connectors")
-def sourcing_connectors():
-    return source_connector_catalog()
 
 
 @router.get("/v1/operations/readiness")

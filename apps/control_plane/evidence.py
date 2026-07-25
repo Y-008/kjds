@@ -219,7 +219,9 @@ class EvidenceService:
             with Session(self.engine) as session, session.begin():
                 blob = session.get(EvidenceBlobRow, digest)
                 if blob is None:
-                    session.add(EvidenceBlobRow(sha256=digest, byte_size=len(content), content_bytes=content, created_at=now))
+                    session.add(
+                        EvidenceBlobRow(sha256=digest, byte_size=len(content), content_bytes=content, created_at=now)
+                    )
                 existing = self._captured_row(
                     session,
                     digest=digest,
@@ -300,6 +302,37 @@ class EvidenceService:
             row, byte_size = result
             return self._record(row, byte_size)
 
+    def find_by_source_hash(
+        self,
+        *,
+        source: str,
+        source_ref: str,
+        sha256: str,
+    ) -> EvidenceRecord | None:
+        source = source.strip()
+        source_ref = source_ref.strip()
+        sha256 = sha256.strip().lower()
+        if not source or not source_ref:
+            raise ValueError("Evidence source and source_ref are required")
+        if len(sha256) != 64 or any(character not in "0123456789abcdef" for character in sha256):
+            raise ValueError("Evidence SHA-256 must be 64 lowercase hexadecimal characters")
+        with Session(self.engine) as session:
+            result = session.execute(
+                select(EvidenceRecordRow, EvidenceBlobRow.byte_size)
+                .join(EvidenceBlobRow, EvidenceBlobRow.sha256 == EvidenceRecordRow.blob_sha256)
+                .where(
+                    EvidenceRecordRow.source == source,
+                    EvidenceRecordRow.source_ref == source_ref,
+                    EvidenceRecordRow.blob_sha256 == sha256,
+                )
+                .order_by(EvidenceRecordRow.recorded_at, EvidenceRecordRow.id)
+                .limit(1)
+            ).first()
+            if result is None:
+                return None
+            row, byte_size = result
+            return self._record(row, byte_size)
+
     def content(self, evidence_id: str) -> tuple[bytes, EvidenceRecord]:
         with Session(self.engine) as session:
             row = session.get(EvidenceRecordRow, evidence_id)
@@ -341,9 +374,7 @@ class EvidenceService:
                 count_query = count_query.where(source_filter)
                 rows_query = rows_query.where(source_filter)
             total = int(session.scalar(count_query) or 0)
-            rows = list(
-                session.execute(rows_query).all()
-            )
+            rows = list(session.execute(rows_query).all())
             snapshots = [
                 (
                     row.id,
@@ -399,9 +430,7 @@ class EvidenceService:
             findings=tuple(findings),
         )
 
-    def inspect_integrity(
-        self, evidence_id: str
-    ) -> tuple[EvidenceRecord, EvidenceVerification]:
+    def inspect_integrity(self, evidence_id: str) -> tuple[EvidenceRecord, EvidenceVerification]:
         """Read record and blob in one snapshot and recompute the blob digest."""
         with Session(self.engine) as session:
             row = session.get(EvidenceRecordRow, evidence_id)
