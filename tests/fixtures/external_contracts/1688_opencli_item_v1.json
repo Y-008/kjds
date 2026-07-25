@@ -1,0 +1,49 @@
+[
+  {
+    "offer_id": "900000000001",
+    "member_id": "fixture-member-001",
+    "shop_id": "fixture-shop-001",
+    "title": "脱敏压缩收纳候选样品",
+    "price_text": "¥18.80-24.00",
+    "price_tiers": [
+      {
+        "quantity_text": "2件",
+        "quantity_min": 2,
+        "price_text": "24.00",
+        "price": 24,
+        "currency": "CNY"
+      },
+      {
+        "quantity_text": "100件",
+        "quantity_min": 100,
+        "price_text": "18.80",
+        "price": 18.8,
+        "currency": "CNY"
+      }
+    ],
+    "currency": "CNY",
+    "moq_text": "2件起批",
+    "moq_value": 2,
+    "seller_name": "脱敏供应商甲",
+    "origin_place": "浙江",
+    "delivery_days_text": "72小时内发货",
+    "customization_text": "支持来样定制",
+    "private_label_text": "支持贴牌",
+    "visible_attributes": [
+      {
+        "key": "材质",
+        "value": "涤纶"
+      },
+      {
+        "key": "是否可压缩",
+        "value": "供应商页面声明可压缩"
+      }
+    ],
+    "sales_text": "已售1000+件",
+    "service_badges": [
+      "品质保障",
+      "延期必赔"
+    ],
+    "stock_quantity": 500
+  }
+]

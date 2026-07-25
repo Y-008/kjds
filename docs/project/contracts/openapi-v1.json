@@ -5423,6 +5423,34 @@
         "title": "SampleOrderInput",
         "type": "object"
       },
+      "SourceAcquisitionPullInput": {
+        "additionalProperties": false,
+        "properties": {
+          "connector_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Connector Name",
+            "type": "string"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          }
+        },
+        "required": [
+          "connector_name"
+        ],
+        "title": "SourceAcquisitionPullInput",
+        "type": "object"
+      },
       "SourcePlatform": {
         "enum": [
           "1688",
@@ -12833,6 +12861,42 @@
         "summary": "Create Recommendation"
       }
     },
+    "/v1/sourcing/acquisitions/pull": {
+      "post": {
+        "operationId": "pull_source_acquisition_v1_sourcing_acquisitions_pull_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceAcquisitionPullInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pull Source Acquisition"
+      }
+    },
     "/v1/sourcing/comparison-intake": {
       "post": {
         "operationId": "capture_supplier_comparison_v1_sourcing_comparison_intake_post",
@@ -12920,6 +12984,57 @@
           }
         },
         "summary": "Sourcing Connectors"
+      }
+    },
+    "/v1/sourcing/discoveries": {
+      "get": {
+        "operationId": "sourcing_discoveries_v1_sourcing_discoveries_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "candidate_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "minLength": 1,
+              "title": "Candidate Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sourcing Discoveries"
       }
     },
     "/v1/sourcing/offers": {
@@ -13205,6 +13320,43 @@
           }
         },
         "summary": "Release Kill Switch"
+      }
+    },
+    "/v1/workbench/skus/{product_or_candidate_ref}": {
+      "get": {
+        "operationId": "sku_workbench_v1_workbench_skus__product_or_candidate_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_or_candidate_ref",
+            "required": true,
+            "schema": {
+              "title": "Product Or Candidate Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sku Workbench"
       }
     },
     "/version": {

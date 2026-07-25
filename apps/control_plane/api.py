@@ -18,6 +18,7 @@ from .routers import (
     ozon_platform,
     procurement_supply,
     product_content,
+    source_acquisition,
     system,
 )
 from .runtime import runtime
@@ -185,6 +186,7 @@ _ROUTE_MODULES = (
     ozon_platform,
     product_content,
     finance_imports,
+    source_acquisition,
 )
 for _module in _ROUTE_MODULES:
     app.include_router(_module.router)

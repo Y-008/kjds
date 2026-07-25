@@ -38,3 +38,9 @@ class ConnectorRegistry:
             return self._connectors[name]
         except KeyError as exc:
             raise KeyError(f"Unknown connector: {name}") from exc
+
+    def items(self) -> tuple[tuple[str, CommerceConnector], ...]:
+        return tuple(sorted(self._connectors.items()))
+
+    def names(self) -> tuple[str, ...]:
+        return tuple(name for name, _ in self.items())

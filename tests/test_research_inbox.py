@@ -39,6 +39,7 @@ def test_signal_is_append_only_deduplicated_and_can_link_multiple_candidates():
     retry = capture(service, candidate_refs=["candidate://storage-box-v1", "candidate://storage-box-v2"])
 
     assert retry["evidence"]["id"] == first["evidence"]["id"]
+    assert retry["duplicate"] is True
     assert retry["candidate_refs"] == ["candidate://storage-box-v1", "candidate://storage-box-v2"]
     assert retry["integrity_valid"] is True
     assert retry["automatic_listing"] is False
@@ -46,6 +47,14 @@ def test_signal_is_append_only_deduplicated_and_can_link_multiple_candidates():
 
     changed = capture(service, content=b"new provider export row")
     assert changed["evidence"]["id"] != first["evidence"]["id"]
+
+    later_retry = capture(
+        service,
+        observed_at="2026-07-21T00:00:00Z",
+        candidate_refs=["candidate://storage-box-v1"],
+    )
+    assert later_retry["evidence"]["id"] == first["evidence"]["id"]
+    assert later_retry["duplicate"] is True
 
 
 def test_candidate_filter_returns_only_linked_research_signals():

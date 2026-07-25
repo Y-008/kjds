@@ -5,6 +5,7 @@ import { fetchJson, settleJsonRequests } from "../../lib/fetch-json";
 import type { DomainState } from "./domain-status-panel";
 import type {
   Health,
+  IdentityStatus,
   WebSession,
   OzonImportResult,
   OzonImportPreview,
@@ -75,6 +76,7 @@ import { useDashboardBoot } from "./use-dashboard-boot";
 export function useDashboardController() {
 
   const [webSession, setWebSession] = useState<WebSession | null>(null);
+  const [identityStatus, setIdentityStatus] = useState<IdentityStatus>("checking");
   const [health, setHealth] = useState<Record<string, Health>>({});
   const [operatingWorkbench, setOperatingWorkbench] = useState<OperatingWorkbenchBriefing | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -293,7 +295,7 @@ export function useDashboardController() {
     }
   }, []);
 
-  useDashboardBoot({ load, setSession: setWebSession, setNotice });
+  useDashboardBoot({ load, setSession: setWebSession, setIdentityStatus, setNotice });
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1876,6 +1878,8 @@ export function useDashboardController() {
   return {
     webSession,
     setWebSession,
+    identityStatus,
+    setIdentityStatus,
     health,
     setHealth,
     operatingWorkbench,

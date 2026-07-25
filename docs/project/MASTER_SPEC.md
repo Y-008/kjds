@@ -159,6 +159,7 @@ KJDS 是“确定性经营内核 + 证据优先数据层 + 受控 Agent 外层�
 | BR-063 | 外部合同回放与漂移门 | Ozon、ComfyUI 和财务文件适配必须以版本化、脱敏、无凭证的固定样本在 CI 中回放；每个样本声明外部系统、合同版本、预期结果和 SHA-256，样本缺失、哈希变化或预期行为漂移均失败。第一阶段只复用现有客户端、导入器、MockTransport 和测试运行器，不建设生产回放服务或通用录制框架。回放至少覆盖成功响应、结构漂移和失败关闭；限流、超时、写入结果不确定、幂等重放与回读不一致继续由现有专项测试验证，获得真实脱敏响应后再替换对应合成样本。生产流量、密钥、个人信息和原始商户数据禁止写入仓库。 | P0 |
 | BR-064 | Champion/Challenger 影子对照账 | 既有 Policy Shadow 的每个可用于阶段结果或激活的 Evaluation 必须冻结一个由不同身份产生的 `champion` 或 `human` 基线结果、其 Evidence、基线/挑战者摘要哈希、精确差异路径和是否完全一致；基线与业务上下文使用相同的敏感字段、大小和不可变幂等限制。零暴露批次可以先采集无基线评估用于诊断，但缺少完整独立对照的批次不得记录可晋升阶段结果，也不得申请有限激活；激活时必须重新验证全部 Evaluation Evidence。第一阶段把对照投影保存在现有 Evaluation `result_json`，不新增表、服务、依赖或第二套 Shadow；真实增量价值、人工成本和利润仍由 Observation Window 与 Capability Economics 在有限执行后记录，影子一致率不得冒充经营收益。 | P0 |
 | BR-065 | 唯一经营工作台与 Agent 只读简报 | KJDS 必须把既有 Gate readiness、候选组合、运行异常队列和已存证建议通过单一版本化只读接口投影为经营简报；页面不得自行重算 Gate、优先级或 Agent 责任。每项简报必须保留来源类型/ID、下一动作、责任 Agent、风险和人工要求；Gate 阻断不得伪造截止时间或 SLA，运行异常继续保留原 SLA。Agent 只允许解释、排序和提出下一步，固定 `automatic_execution=false`、`platform_write_allowed=false`，不得直接写 Repository、创建 Product/采购/Listing、调用外部平台或把第三方工具信号晋升为正式事实。荔枝、毛子 ERP 等第三方产品只作为功能模式与 C/D 级辅助信号参考；无兼容许可证的二进制、扩展或压缩源码不得复制进仓库。 | P0 |
+| BR-066 | 受控货源采集与真实连接器状态 | KJDS 必须复用 `CommerceConnector` 和 Research Inbox 接入 1688 CLI、OpenCLI 1688 Adapter 及既有 Ozon 官方读取路径；统一输出版本化商品、市场、素材和供应商消息快照，以 provider、稳定记录 ID 和内容哈希精确去重，字段变化追加历史。单轮最多 20 个候选、每候选 5 家供应商；连接器状态必须明确工具安装、浏览器桥接、登录、最近成功、Schema 和稳定错误码。登录、MFA、CAPTCHA、账户歧义或 Schema 漂移必须失败关闭并要求人工接管。采集只形成 `research_signal`，不得自动晋升正式报价、创建 Product、发送消息、改购物车、下单、支付或写平台；SKU 只读工作台只聚合既有事实与 Gate。 | P0 |
 
 ### 2.2 功能需求
 
@@ -948,6 +949,7 @@ KJDS 的成功不是拥有最多 Agent，而是在真实跨境经营中，用可
 | ADR-0010（Accepted） | Ozon 连接器可靠性 | timeout、有界重试、熔断、schema 漂移和原始响应证据 |
 | ADR-0011（Accepted） | 运行身份与密钥扫描 | 开发/生产身份边界、失败关闭、非敏感摘要和仓库扫描 |
 | ADR-0017（Accepted） | 外部合同固定样本回放 | 版本化脱敏样本、完整性、漂移失败关闭与测试期边界 |
+| ADR-0018（Accepted） | 受控货源采集 | `CommerceConnector` Adapter、统一快照、哈希去重、真实健康、人工接管与 SKU 读模型 |
 | ADR-0008（Accepted） | 时间/金额语义 | UTC、effective/recorded、Decimal、FX、度量和舍入规则 |
 | ADR-006 | 备份与灾备 | RPO/RTO、恢复演练、证据保留和密钥恢复 |
 | ADR-007 | Agent 运行时 | 何时从脚本升级为持久化工作流 |

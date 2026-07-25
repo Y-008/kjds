@@ -97,6 +97,7 @@
 | BAS-086 | G-1 | 可选 Provider 运行边界 | 工程负责人 | n8n、Firecrawl、Ollama 仅在显式配置后构造、展示和检查；核心 readiness 不依赖可选 Provider；ComfyUI 继续受控且不得直传平台；删除无调用方配置；[工程证据](evidence/20260721_BAS_086_OPTIONAL_PROVIDER_BOUNDARIES.md) | BAS-085 | DONE_ENGINEERING |
 | BAS-087 | G-1 | G1 Harness 收敛 | 工程负责人 | 已冻结场景与覆盖映射；PowerShell 只保留基础设施生命周期、迁移、恢复、Worker、跨进程最小烟测与清理；领域场景由分组 Pytest 合同覆盖；[工程证据](evidence/20260721_BAS_087_G1_HARNESS_CONVERGENCE.md) | BAS-086 | DONE_ENGINEERING |
 | BAS-088 | G0–G4 | 唯一经营工作台 Agent 简报 | 工程+经营 | 单一只读快照聚合 Gate 阻断、运行异常、已有建议与候选组合；动态展示责任 Agent 和当前焦点；Gate 阻断不伪造 SLA；固定禁止自动执行、平台写入和第三方事实晋升；第三方未授权代码不进入仓库；[工程证据](evidence/20260725_BAS_088_UNIFIED_OPERATING_WORKBENCH_AGENT_BRIEFING.md) | BR-065、BAS-065、BAS-086 | DONE_ENGINEERING |
+| BAS-089 | G0–G1 | 受控真实 SKU 采集与只读 SKU 工作台 | 工程+商品 | 复用 CommerceConnector/Research Inbox 接入 1688 CLI 与 OpenCLI；四类快照合同、内容哈希去重、20×5 控制总数、真实健康与人工接管失败关闭；发现和 SKU 聚合只读；身份失败不显示伪零或可操作控件；不发送消息、改购物车、下单、支付或晋升正式事实；[工程证据](evidence/20260725_BAS_089_GOVERNED_REAL_SKU_ACQUISITION.md) | BR-066、BAS-088、SKU-000、SKU-003 | DONE_ENGINEERING |
 | BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |
 | BAS-004 | G-1 | 环境状态自动生成 | 工程负责人 | 不再依赖过时静态 PASS 文档 | BAS-003 | DONE |
 | SEC-001 | G-1 | API 身份认证 | 工程负责人 | `KJDS_API_KEY` 或正式身份层生效；未授权为 401/403 | BAS-003 | DONE |

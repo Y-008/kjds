@@ -146,6 +146,12 @@ class CandidateEvidenceAuthorityReviewInput(BaseModel):
     rationale: str = Field(min_length=1, max_length=2000)
 
 
+class SourceAcquisitionPullInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    connector_name: str = Field(min_length=1, max_length=120)
+    cursor: str | None = Field(default=None, max_length=500)
+
+
 class CostEvidenceAuthorityReviewInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     cost_type: Literal[

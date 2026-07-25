@@ -2,12 +2,13 @@
 
 import { Boxes, ShieldCheck } from "lucide-react";
 import { sourcingCostDefinitions, costStateLabels, procurementStatusLabels, procurementEventLabels } from "./dashboard-config";
+import { SkuWorkbenchPanel } from "./sku-workbench-panel";
 import type { DashboardModel } from "./use-dashboard-controller";
 
 
 export function SourcingPanel({ model }: { model: DashboardModel }) {
   const { approvedWithoutSample, backupOptions, backupRationales, comparisons, createSampleOrder, gateReadiness, loadBackupOptions, pendingProcurementApprovals, procurementBusy, procurementDrafts, products, recordSampleEvent, requestBackupProcurement, requestProcurement, sampleOrders, setBackupRationales, setProcurementDrafts, skuReadiness, sourcingUploading, supplierPerformance, uploadSupplierComparison } = model;
-  return <><section className="sourcing-intake-panel" id="sourcing-intake">
+  return <><SkuWorkbenchPanel /><section className="sourcing-intake-panel" id="sourcing-intake">
           <div className="panel-title"><div><p className="eyebrow">THREE-QUOTE GATE</p><h3>三家供应商证据化比价</h3></div><span className="badge">{pendingProcurementApprovals} 项采购待审批</span></div>
           <form className="sourcing-intake" onSubmit={uploadSupplierComparison}>
             <div className="sourcing-common">
@@ -22,15 +23,15 @@ export function SourcingPanel({ model }: { model: DashboardModel }) {
               <label>损耗准备 CNY<input name="loss_reserve_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>未分类成本 CNY（放行须为 0）<input name="other_cost_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
               <label>全成本依据清单<input name="assumption_evidence" type="file" required /></label>
             </div>
-            <fieldset className="cost-state-grid"><legend>逐项证据状态 · v1.0.0</legend>{sourcingCostDefinitions.map(([key, label]) => <label key={key}>{label}<select name={`cost_state_${key}`} defaultValue="estimate">{(key === "product_cost" || key === "domestic_logistics" ? ["estimate", "actual"] : ["estimate", "actual", "unknown"]).map((state) => <option value={state} key={state}>{costStateLabels[state as keyof typeof costStateLabels]}</option>)}</select></label>)}</fieldset>
+            <fieldset className="cost-state-grid"><legend>逐项证据状态 · v1.0.0</legend>{sourcingCostDefinitions.map(([key, label]) => <label key={key}>{label}<select name={`cost_state_${key}`} defaultValue={key === "product_cost" || key === "domestic_logistics" ? "estimate" : "unknown"}>{(key === "product_cost" || key === "domestic_logistics" ? ["estimate", "actual"] : ["estimate", "actual", "unknown"]).map((state) => <option value={state} key={state}>{costStateLabels[state as keyof typeof costStateLabels]}</option>)}</select></label>)}</fieldset>
             <div className="supplier-entry-grid">{[1, 2, 3].map((index) => <details open key={index}><summary><span>{index}</span><strong>供应商 {index}</strong><small>原始报价与实测条件</small></summary><div className="supplier-fields">
               <label>供应商标识<input name={`supplier_ref_${index}`} required /></label><label>来源平台<select name={`platform_${index}`} defaultValue="1688"><option value="1688">1688</option><option value="alibaba">Alibaba</option><option value="manual">线下/人工</option></select></label>
               <label>报价快照编号<input name={`external_id_${index}`} required /></label><label>商品标题<input name={`offer_title_${index}`} required /></label>
               <label className="wide">原始链接<input name={`source_url_${index}`} type="url" required /></label><label>币种<input name={`currency_${index}`} defaultValue="CNY" maxLength={3} required /></label>
               <label>单价<input name={`unit_price_${index}`} type="number" min="0.01" step="0.01" required /></label><label>兑 CNY 汇率<input name={`source_to_cny_rate_${index}`} type="number" min="0.0001" step="0.0001" defaultValue="1" required /></label>
               <label>MOQ<input name={`moq_${index}`} type="number" min="1" required /></label><label>重量 kg<input name={`supplier_weight_${index}`} type="number" min="0.001" step="0.001" required /></label>
-              <label>长 cm<input name={`supplier_length_${index}`} type="number" min="0" step="0.1" defaultValue="0" required /></label><label>宽 cm<input name={`supplier_width_${index}`} type="number" min="0" step="0.1" defaultValue="0" required /></label>
-              <label>高 cm<input name={`supplier_height_${index}`} type="number" min="0" step="0.1" defaultValue="0" required /></label><label>国内物流/件<input name={`domestic_logistics_${index}`} type="number" min="0" step="0.01" defaultValue="0" required /></label>
+              <label>长 cm<input name={`supplier_length_${index}`} type="number" min="0.1" step="0.1" required /></label><label>宽 cm<input name={`supplier_width_${index}`} type="number" min="0.1" step="0.1" required /></label>
+              <label>高 cm<input name={`supplier_height_${index}`} type="number" min="0.1" step="0.1" required /></label><label>国内物流/件<input name={`domestic_logistics_${index}`} type="number" min="0" step="0.01" required /></label>
               <label className="wide">报价证据<input name={`supplier_evidence_${index}`} type="file" required /></label>
             </div></details>)}</div>
             <div className="intake-submit"><p>三份报价和共同利润假设都会哈希固化；系统只生成比较与审批申请，不会自动采购。</p><button disabled={sourcingUploading}>{sourcingUploading ? "正在比较…" : "建立三家报价比较"}</button></div>

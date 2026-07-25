@@ -1,0 +1,44 @@
+{
+  "keyword": "真空压缩收纳袋",
+  "sort": "relevance",
+  "totalBeforeFilter": 2,
+  "total": 2,
+  "offers": [
+    {
+      "offerId": "900000000001",
+      "title": "脱敏压缩收纳候选样品",
+      "price": {
+        "text": "¥18.80",
+        "min": 18.8,
+        "max": 18.8
+      },
+      "supplier": {
+        "name": "脱敏供应商甲",
+        "years": 5
+      },
+      "location": {
+        "province": "浙江",
+        "city": "金华"
+      },
+      "isP4P": false
+    },
+    {
+      "offerId": "900000000002",
+      "title": "脱敏普通低价对照样品",
+      "price": {
+        "text": "¥8.60",
+        "min": 8.6,
+        "max": 8.6
+      },
+      "supplier": {
+        "name": "脱敏供应商乙",
+        "years": 3
+      },
+      "location": {
+        "province": "河北",
+        "city": "保定"
+      },
+      "isP4P": false
+    }
+  ]
+}
