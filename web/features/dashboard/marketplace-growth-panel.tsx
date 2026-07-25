@@ -5,6 +5,7 @@ import {
   BarChart3,
   CheckCircle2,
   CircleDollarSign,
+  Database,
   Image as ImageIcon,
   Layers3,
   Megaphone,
@@ -84,6 +85,9 @@ export function MarketplaceGrowthPanel({ model }: { model: DashboardModel }) {
     ),
   );
   const plan = model.marketplaceGrowthPlan;
+  const ozonRawEvidence = model.evidenceRecords.filter(
+    (item) => item.source === "ozon-isolated-read-worker" && item.grade === "A",
+  );
 
   useEffect(() => {
     setLocalNow(new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16));
@@ -102,6 +106,76 @@ export function MarketplaceGrowthPanel({ model }: { model: DashboardModel }) {
           <strong>本页面只生成建议</strong>
           <p>自动改价：关闭<br />自动投广告：关闭<br />自动发布：关闭</p>
         </div>
+      </section>
+
+      <section className="growth-fact-hub catalog-hub">
+        <div className="section-heading">
+          <div>
+            <span>VERIFIED COMMERCE DATA HUB</span>
+            <h3>真实 Ozon 商品目录</h3>
+            <p>只从完整性已复验的 Seller 原始响应同步 SKU、详情、价格、库存、属性和媒体引用。</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void model.loadMarketplaceCatalog()}
+            disabled={model.marketplaceCatalogBusy}
+          >
+            <Database size={14} />
+            {model.marketplaceCatalogBusy ? "正在同步…" : "刷新目录"}
+          </button>
+        </div>
+        <form className="catalog-import-form" onSubmit={model.importMarketplaceCatalog}>
+          <label>店铺范围
+            <input name="catalog_store_ref" defaultValue={model.marketplaceCatalogStoreRef} required />
+            <small>内部隔离标识，不是 Ozon 密钥或 Client ID。</small>
+          </label>
+          <label>本次幂等键
+            <input name="catalog_idempotency_key" placeholder="例如 ozon-catalog-2026-07-26-01" required />
+            <small>同一键只能对应同一组不可变 Evidence。</small>
+          </label>
+          <label className="wide">已验证 Seller 原始响应
+            <select name="catalog_evidence_ids" multiple size={Math.min(Math.max(ozonRawEvidence.length, 2), 5)} required>
+              {ozonRawEvidence.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.id} · {new Date(item.effective_at).toLocaleString("zh-CN")}
+                </option>
+              ))}
+            </select>
+            <small>可多选最多 50 份。原始正文不会显示在页面，也不会被复制到日志。</small>
+          </label>
+          <button type="submit" disabled={!ozonRawEvidence.length || model.marketplaceCatalogBusy}>
+            <Database size={14} /> 导入不可变目录快照
+          </button>
+        </form>
+        {!model.marketplaceCatalogLoaded ? (
+          <div className="growth-facts-empty">正在读取商品目录…</div>
+        ) : model.marketplaceCatalogItems.length ? (
+          <div className="growth-fact-list catalog-item-list">
+            {model.marketplaceCatalogItems.map((item) => (
+              <article key={item.offer_id}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>Offer {item.offer_id} · SKU {item.marketplace_sku ?? "未返回"}</span>
+                </div>
+                <dl>
+                  <div><dt>售价</dt><dd>{String(item.prices.price ?? "—")} {item.currency_code ?? ""}</dd></div>
+                  <div><dt>可售库存</dt><dd>{item.available_stock ?? "—"}</dd></div>
+                  <div><dt>图片引用</dt><dd>{item.image_references.length}</dd></div>
+                  <div><dt>视频引用</dt><dd>{item.video_references.length}</dd></div>
+                </dl>
+                <small>
+                  媒体：未核权外部引用 · 观察于 {new Date(item.observed_at).toLocaleString("zh-CN")} · Evidence {item.source_evidence_id}
+                </small>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="growth-facts-empty">
+            <PackageSearch size={25} />
+            <strong>{ozonRawEvidence.length ? "已有原始响应，等待导入目录" : "暂无可导入的 A 级 Seller 原始响应"}</strong>
+            <p>目录导入不会自动创建 Product、修改 Ozon、采购或投放广告。</p>
+          </div>
+        )}
       </section>
 
       <section className="growth-fact-hub">

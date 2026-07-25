@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.50.0"
+APP_VERSION = "0.51.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -137,6 +137,13 @@ class MarketplaceLatestGrowthPlanInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     target_cm3_rate: Decimal = Field(gt=0, lt=Decimal("0.5"))
     as_of: str | None = None
+
+
+class OzonCatalogEvidenceImportInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evidence_ids: list[str] = Field(min_length=1, max_length=50)
+    store_ref: str = Field(min_length=1, max_length=160)
+    idempotency_key: str = Field(min_length=1, max_length=160)
 
 
 class OpportunityInput(BaseModel):

@@ -53,6 +53,9 @@ test("marketplace growth stays recommendation-only while using governed evidence
   assert.match(controller, /\/backend\/v1\/marketplace-growth\/snapshots/);
   assert.match(controller, /\/backend\/v1\/marketplace-growth\/portfolio-plan\/latest/);
   assert.match(controller, /\/backend\/v1\/marketplace-growth\/observations\/latest/);
+  assert.match(controller, /\/backend\/v1\/marketplace-catalog\/ozon\/import-evidence/);
+  assert.match(controller, /\/backend\/v1\/marketplace-catalog\/items\/latest/);
+  assert.match(panel, /unverified_external_reference|未核权外部引用/);
   assert.match(controller, /competitor_prices_rub/);
   assert.match(controller, /Number\.isFinite\(item\) && item > 0/);
   assert.match(controller, /scenario_id/);

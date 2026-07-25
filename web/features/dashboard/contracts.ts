@@ -288,6 +288,29 @@ export type MarketplaceGrowthObservation = {
   captured_by: string;
   captured_at: string;
 };
+export type MarketplaceCatalogItem = {
+  offer_id: string;
+  marketplace_sku: string | null;
+  name: string;
+  currency_code: string | null;
+  prices: Record<string, unknown>;
+  available_stock: number | null;
+  stocks: unknown[];
+  statuses: Record<string, unknown>;
+  dimensions: Record<string, unknown>;
+  attributes: unknown[];
+  attributes_with_defaults: unknown[];
+  complex_attributes: unknown[];
+  image_references: string[];
+  video_references: string[];
+  document_references: string[];
+  media_rights_status: "unverified_external_reference";
+  source_evidence_id: string;
+  observed_at: string;
+  item_hash: string;
+  canonical_product_id: string | null;
+  snapshot_id: string;
+};
 export type ApprovalRecord = { id: string; action: string; resource_id: string; status: string; requested_by: string; payload: Record<string, unknown> };
 export type ListingDraft = {
   id: string; product_id: string; offer_id: string; scenario_id: string; target_platform: string;

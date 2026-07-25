@@ -22,7 +22,12 @@ export async function fetchJson<T = any>(
   else init.signal?.addEventListener("abort", abort, { once: true });
 
   try {
-    const response = await fetch(input, { ...init, signal: controller.signal });
+    const headers = new Headers(init.headers);
+    const method = (init.method ?? "GET").toUpperCase();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      headers.set("x-kjds-csrf", "same-origin-fetch");
+    }
+    const response = await fetch(input, { ...init, headers, signal: controller.signal });
     const body = await response.json().catch(() => ({}));
     return { ok: response.ok, status: response.status, json: async () => body as T };
   } catch (error) {

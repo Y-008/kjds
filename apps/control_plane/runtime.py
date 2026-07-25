@@ -31,6 +31,7 @@ from .intake import ProductMediaEvidenceService, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .limited_executor import LimitedExecutorService
 from .loop_engineering import LoopEngineeringService
+from .marketplace_catalog import MarketplaceCatalogWorkspace, SqlMarketplaceCatalogStore
 from .marketplace_growth import MarketplaceGrowthPlanner
 from .marketplace_growth_workspace import (
     MarketplaceGrowthWorkspace,
@@ -96,6 +97,7 @@ class RuntimeServices:
     limited_executor: Any
     loop_engineering: Any
     market: Any
+    marketplace_catalog: Any
     marketplace_growth: Any
     operating_workbench: Any
     operations_queue: Any
@@ -329,6 +331,11 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
         lease_seconds=int(os.getenv("KJDS_PILOT_RUN_LEASE_SECONDS", "900")),
     )
+    marketplace_catalog = MarketplaceCatalogWorkspace(
+        verified_bundle_loader=pilot_runs.verified_product_response_bundle,
+        store=SqlMarketplaceCatalogStore(engine),
+        evidence=evidence,
+    )
     providers = {"comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189"))}
     if url := os.getenv("KJDS_OLLAMA_URL", "").strip():
         providers["ollama"] = OllamaProvider(url)
@@ -376,6 +383,7 @@ def build_runtime() -> RuntimeServices:
         limited_executor=limited_executor,
         loop_engineering=loop_engineering,
         market=market,
+        marketplace_catalog=marketplace_catalog,
         marketplace_growth=marketplace_growth,
         operating_workbench=operating_workbench,
         operations_queue=operations_queue,

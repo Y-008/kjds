@@ -57,10 +57,17 @@ export function DashboardView({ model }: { model: DashboardModel }) {
   }, []);
 
   useEffect(() => {
-    if (activeWorkspace === "growth" && !model.marketplaceGrowthFactsLoaded) {
-      void model.loadMarketplaceGrowthFacts();
+    if (activeWorkspace === "growth") {
+      if (!model.marketplaceCatalogLoaded) void model.loadMarketplaceCatalog();
+      if (!model.marketplaceGrowthFactsLoaded) void model.loadMarketplaceGrowthFacts();
     }
-  }, [activeWorkspace, model.loadMarketplaceGrowthFacts, model.marketplaceGrowthFactsLoaded]);
+  }, [
+    activeWorkspace,
+    model.loadMarketplaceCatalog,
+    model.loadMarketplaceGrowthFacts,
+    model.marketplaceCatalogLoaded,
+    model.marketplaceGrowthFactsLoaded,
+  ]);
 
   const navigate = (workspace: WorkspaceId) => {
     setActiveWorkspace(workspace);

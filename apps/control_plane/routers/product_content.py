@@ -23,6 +23,7 @@ from ..api_contracts import (
     ObservationInput,
     OpportunityInput,
     OrderInput,
+    OzonCatalogEvidenceImportInput,
     PassportInput,
     PassportReviewInput,
     ProductInput,
@@ -413,6 +414,35 @@ def plan_marketplace_portfolio_growth(
             target_cm3_rate=body.target_cm3_rate,
             created_by=principal.actor_id,
             as_of=body.as_of,
+        )
+    )
+
+
+@router.post("/v1/marketplace-catalog/ozon/import-evidence", status_code=201)
+def import_ozon_catalog_evidence(
+    body: OzonCatalogEvidenceImportInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: runtime.marketplace_catalog.import_ozon_evidence(
+            **body.model_dump(),
+            imported_by=principal.actor_id,
+        )
+    )
+
+
+@router.get("/v1/marketplace-catalog/items/latest")
+def list_latest_marketplace_catalog_items(
+    store_ref: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    limit: int = 100,
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(
+        lambda: runtime.marketplace_catalog.latest_items(
+            store_ref=store_ref,
+            limit=limit,
         )
     )
 

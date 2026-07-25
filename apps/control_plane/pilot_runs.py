@@ -600,6 +600,36 @@ class PilotRunService:
         with Session(self.engine) as session:
             return self._serialize(self._row(session, run_id))
 
+    def verified_product_response_bundle(self, evidence_id: str):
+        """Return bytes only after replaying the complete product-read Evidence contract."""
+        candidate = self.evidence.get(evidence_id)
+        if (
+            candidate.source != "ozon-isolated-read-worker"
+            or candidate.content_type != "application/json"
+            or candidate.grade != EvidenceGrade.A
+        ):
+            raise ValueError("Evidence is not an Ozon raw product response")
+        with Session(self.engine) as session:
+            row = self._row(session, candidate.source_ref)
+            if (
+                row.operation != "ozon.product.read"
+                or row.status != "completed"
+                or row.outcome != "succeeded"
+                or row.response_sha256 is None
+                or row.response_byte_size is None
+            ):
+                raise ValueError("Ozon product read run is not a verified success")
+            expected_sha256 = row.response_sha256
+            expected_byte_size = row.response_byte_size
+        verified = self._verified_raw_response(
+            candidate.source_ref,
+            expected_sha256=expected_sha256,
+            expected_byte_size=expected_byte_size,
+        )
+        if verified.id != evidence_id:
+            raise ValueError("Evidence is not the unique raw response for its run")
+        return self.evidence.content(evidence_id)
+
     def list(self, *, pilot_id: str | None = None) -> list[dict[str, Any]]:
         query = select(ReadOnlyPilotRunRow).order_by(
             ReadOnlyPilotRunRow.started_at.desc(), ReadOnlyPilotRunRow.id

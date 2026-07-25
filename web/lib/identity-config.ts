@@ -135,9 +135,17 @@ export function mutationOriginIsAllowed(request: Request): boolean {
   const method = request.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return true;
   const origin = request.headers.get("origin");
-  if (!origin) return false;
   try {
-    return new URL(origin).origin === new URL(request.url).origin;
+    const requestOrigin = new URL(request.url).origin;
+    if (origin && origin !== "null") return new URL(origin).origin === requestOrigin;
+    if (request.headers.get("x-kjds-csrf") === "same-origin-fetch") return true;
+    const fetchSite = request.headers.get("sec-fetch-site");
+    const referer = request.headers.get("referer");
+    return (
+      Boolean(referer)
+      && new URL(referer as string).origin === requestOrigin
+      && fetchSite !== "cross-site"
+    );
   } catch {
     return false;
   }

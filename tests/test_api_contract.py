@@ -239,6 +239,31 @@ def test_openapi_exposes_persisted_marketplace_growth_fact_loop() -> None:
         assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
 
 
+def test_openapi_exposes_verified_marketplace_catalog_import() -> None:
+    schema = app.openapi()
+
+    assert set(
+        schema["paths"]["/v1/marketplace-catalog/ozon/import-evidence"]
+    ) == {"post"}
+    assert set(
+        schema["paths"]["/v1/marketplace-catalog/items/latest"]
+    ) == {"get"}
+    request_schema = schema["components"]["schemas"][
+        "OzonCatalogEvidenceImportInput"
+    ]
+    assert request_schema["additionalProperties"] is False
+    assert set(request_schema["required"]) == {
+        "evidence_ids",
+        "store_ref",
+        "idempotency_key",
+    }
+    for path, method in (
+        ("/v1/marketplace-catalog/ozon/import-evidence", "post"),
+        ("/v1/marketplace-catalog/items/latest", "get"),
+    ):
+        assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
+
+
 def test_cost_authority_catalog_is_read_only_and_complete() -> None:
     result = cost_authority_catalog(Principal("operator-1", frozenset({"operator"})))
 
