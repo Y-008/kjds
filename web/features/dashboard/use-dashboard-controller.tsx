@@ -15,6 +15,8 @@ import type {
   AccrualClassificationStatus,
   Recommendation,
   SourceConnector,
+  LogisticsRateCard,
+  LogisticsCalculation,
   PassportReadiness,
   ProductReadiness,
   ProductMediaReadiness,
@@ -82,6 +84,9 @@ export function useDashboardController() {
   const [operatingWorkbench, setOperatingWorkbench] = useState<OperatingWorkbenchBriefing | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [sourceConnectors, setSourceConnectors] = useState<SourceConnector[]>([]);
+  const [logisticsRateCards, setLogisticsRateCards] = useState<LogisticsRateCard[]>([]);
+  const [logisticsCalculations, setLogisticsCalculations] = useState<LogisticsCalculation[]>([]);
+  const [logisticsBusy, setLogisticsBusy] = useState(false);
   const [offers, setOffers] = useState<unknown[]>([]);
   const [products, setProducts] = useState<ProductIdentity[]>([]);
   const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
@@ -173,7 +178,7 @@ export function useDashboardController() {
     setDomainStates({ core: "loading", product: "loading", finance: "loading", science: "loading", execution: "loading" });
     const request = (input: RequestInfo | URL, init: RequestInit = {}) =>
       fetchJson(input, { ...init, signal: signal ?? init.signal });
-    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse] = await settleJsonRequests([
+    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse, logisticsRateCardsResponse, logisticsCalculationsResponse] = await settleJsonRequests([
       request("/backend/v1/integrations/health", { cache: "no-store" }),
       request("/backend/v1/operating-workbench/briefing", { cache: "no-store" }),
       request("/backend/v1/recommendations", { cache: "no-store" }),
@@ -205,10 +210,12 @@ export function useDashboardController() {
       request("/backend/v1/operations-control/queue", { cache: "no-store" }),
       request("/backend/v1/read-only-pilots", { cache: "no-store" }),
       request("/backend/v1/finance/cost-authorities", { cache: "no-store" }),
+      request("/backend/v1/logistics/rate-cards", { cache: "no-store" }),
+      request("/backend/v1/logistics/calculations", { cache: "no-store" }),
     ]);
     setDomainStates({
       core: [healthResponse, operatingWorkbenchResponse].every((response) => response.ok) ? "ready" : "error",
-      product: [connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse].every((response) => response.ok) ? "ready" : "error",
+      product: [connectorResponse, offersResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, logisticsRateCardsResponse, logisticsCalculationsResponse].every((response) => response.ok) ? "ready" : "error",
       finance: costAuthorityResponse.ok ? "ready" : "error",
       science: [profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse].every((response) => response.ok) ? "ready" : "error",
       execution: [policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse].every((response) => response.ok) ? "ready" : "error",
@@ -226,6 +233,8 @@ export function useDashboardController() {
     if (supplierPerformanceResponse.ok) setSupplierPerformance(await supplierPerformanceResponse.json());
     if (evidenceResponse.ok) setEvidenceRecords(await evidenceResponse.json());
     if (costAuthorityResponse.ok) setCostAuthorityCatalog(await costAuthorityResponse.json());
+    if (logisticsRateCardsResponse.ok) setLogisticsRateCards(await logisticsRateCardsResponse.json());
+    if (logisticsCalculationsResponse.ok) setLogisticsCalculations(await logisticsCalculationsResponse.json());
     if (profileResponse.ok) setInteractionProfiles(await profileResponse.json());
     if (contractResponse.ok) setDecisionContracts(await contractResponse.json());
     if (analysisResponse.ok) {
@@ -1110,6 +1119,113 @@ export function useDashboardController() {
     }
   }
 
+  async function captureLogisticsRateCard(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) =>
+      (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
+    const payload = {
+      provider: value("logistics_provider"),
+      route_code: value("logistics_route_code"),
+      service_name: value("logistics_service_name"),
+      origin_country: value("logistics_origin_country"),
+      destination_country: value("logistics_destination_country"),
+      marketplace: value("logistics_marketplace"),
+      currency: value("logistics_currency"),
+      declared_value_currency: value("logistics_declared_value_currency"),
+      price_per_kg: value("logistics_price_per_kg"),
+      base_charge_per_parcel: value("logistics_base_charge"),
+      minimum_charge_per_parcel: value("logistics_minimum_charge"),
+      volumetric_divisor_cm3_per_kg: value("logistics_volumetric_divisor"),
+      weight_increment_kg: value("logistics_weight_increment"),
+      min_weight_kg: value("logistics_min_weight"),
+      max_weight_kg: value("logistics_max_weight"),
+      max_length_cm: value("logistics_max_length"),
+      max_width_cm: value("logistics_max_width"),
+      max_height_cm: value("logistics_max_height"),
+      max_dimensions_sum_cm: value("logistics_max_dimension_sum"),
+      min_declared_value: value("logistics_min_declared_value"),
+      max_declared_value: value("logistics_max_declared_value"),
+      effective_at: new Date(value("logistics_effective_at")).toISOString(),
+      effective_until: value("logistics_effective_until")
+        ? new Date(value("logistics_effective_until")).toISOString()
+        : null,
+      evidence_id: value("logistics_evidence_id"),
+      source_sheet: value("logistics_source_sheet"),
+      source_range: value("logistics_source_range"),
+    };
+    setLogisticsBusy(true);
+    setNotice("正在固化版本化物流线路规则…");
+    try {
+      const response = await fetchJson("/backend/v1/logistics/rate-cards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      setNotice(
+        response.ok
+          ? `${result.provider} · ${result.route_code} 已固化；可开始计费重测算`
+          : result.detail ?? "线路规则保存失败",
+      );
+      if (response.ok) {
+        form.reset();
+        await load();
+      }
+    } catch {
+      setNotice("无法保存线路规则，请检查服务状态");
+    } finally {
+      setLogisticsBusy(false);
+    }
+  }
+
+  async function calculateLogisticsCost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) =>
+      (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
+    const payload = {
+      rate_card_id: value("logistics_calculation_rate_card_id"),
+      physical_weight_kg: value("logistics_physical_weight"),
+      length_cm: value("logistics_length"),
+      width_cm: value("logistics_width"),
+      height_cm: value("logistics_height"),
+      declared_value: value("logistics_declared_value"),
+      quantity: Number(value("logistics_quantity")),
+      currency_to_cny_rate: value("logistics_currency_to_cny_rate"),
+      fx_evidence_id: value("logistics_fx_evidence_id") || null,
+      idempotency_key: value("logistics_idempotency_key"),
+      evaluated_at: new Date().toISOString(),
+    };
+    setLogisticsBusy(true);
+    setNotice("正在按线路版本计算实重、体积重与计费重…");
+    try {
+      const response = await fetchJson("/backend/v1/logistics/calculations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "物流测算失败");
+        return;
+      }
+      const supportResponse = await fetchJson(
+        `/backend/v1/logistics/calculations/${result.id}/decision-support`,
+        { cache: "no-store" },
+      );
+      const support = supportResponse.ok ? await supportResponse.json() : null;
+      const alert = support?.alerts?.[0]?.detail ? `；${support.alerts[0].detail}` : "";
+      setNotice(`物流预估 ${result.total_charge_cny} CNY，计费重 ${result.billable_weight_kg} kg${alert}`);
+      form.reset();
+      await load();
+    } catch {
+      setNotice("无法执行物流测算，请检查服务状态");
+    } finally {
+      setLogisticsBusy(false);
+    }
+  }
+
   async function uploadSupplierComparison(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1139,6 +1255,9 @@ export function useDashboardController() {
     const body = new FormData();
     body.append("product_id", value("sourcing_product_id")); body.append("effective_at", new Date().toISOString());
     body.append("offers_json", JSON.stringify(offerRows)); body.append("profit_inputs_json", JSON.stringify(profitInputs));
+    body.append("logistics_rate_card_id", value("logistics_rate_card_id"));
+    body.append("logistics_currency_to_cny_rate", value("comparison_logistics_currency_to_cny_rate"));
+    body.append("logistics_fx_evidence_id", value("comparison_logistics_fx_evidence_id"));
     evidenceFiles.forEach((item, index) => body.append(`offer_evidence_${index + 1}`, item as File));
     body.append("assumption_evidence", assumptions);
     setSourcingUploading(true); setNotice("正在固化三家报价并计算可比 CM3…");
@@ -2166,6 +2285,12 @@ export function useDashboardController() {
     setRecommendations,
     sourceConnectors,
     setSourceConnectors,
+    logisticsRateCards,
+    setLogisticsRateCards,
+    logisticsCalculations,
+    setLogisticsCalculations,
+    logisticsBusy,
+    setLogisticsBusy,
     offers,
     setOffers,
     products,
@@ -2359,6 +2484,8 @@ export function useDashboardController() {
     reviewImageAsset,
     createListingDraft,
     reviewPassport,
+    captureLogisticsRateCard,
+    calculateLogisticsCost,
     uploadSupplierComparison,
     importMarketplaceCatalog,
     loadMarketplaceCatalog,

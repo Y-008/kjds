@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.51.0"
+APP_VERSION = "0.52.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -358,6 +358,52 @@ class ProfitScenarioInput(BaseModel):
     cost_evidence: dict[str, str] = Field(default_factory=dict)
     template_id: str = PROFIT_TEMPLATE_ID
     cost_states: dict[str, Literal["estimate", "actual", "unknown"]] = Field(default_factory=dict)
+    logistics_calculation_id: str | None = None
+
+
+class LogisticsRateCardInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str = Field(min_length=1, max_length=160)
+    route_code: str = Field(min_length=1, max_length=160)
+    service_name: str = Field(min_length=1, max_length=300)
+    origin_country: str = Field(min_length=2, max_length=12)
+    destination_country: str = Field(min_length=2, max_length=12)
+    marketplace: str = Field(min_length=1, max_length=40)
+    currency: str = Field(min_length=3, max_length=3)
+    declared_value_currency: str = Field(min_length=3, max_length=3)
+    price_per_kg: Decimal
+    base_charge_per_parcel: Decimal = Decimal("0")
+    minimum_charge_per_parcel: Decimal = Decimal("0")
+    volumetric_divisor_cm3_per_kg: Decimal = Decimal("0")
+    weight_increment_kg: Decimal = Decimal("0.001")
+    min_weight_kg: Decimal = Decimal("0")
+    max_weight_kg: Decimal
+    max_length_cm: Decimal = Decimal("0")
+    max_width_cm: Decimal = Decimal("0")
+    max_height_cm: Decimal = Decimal("0")
+    max_dimensions_sum_cm: Decimal = Decimal("0")
+    min_declared_value: Decimal = Decimal("0")
+    max_declared_value: Decimal = Decimal("0")
+    effective_at: str
+    effective_until: str | None = None
+    evidence_id: str = Field(min_length=1)
+    source_sheet: str = Field(min_length=1, max_length=300)
+    source_range: str = Field(min_length=1, max_length=80)
+
+
+class LogisticsCalculationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rate_card_id: str = Field(min_length=1)
+    physical_weight_kg: Decimal
+    length_cm: Decimal = Decimal("0")
+    width_cm: Decimal = Decimal("0")
+    height_cm: Decimal = Decimal("0")
+    declared_value: Decimal = Decimal("0")
+    quantity: int = Field(default=1, ge=1)
+    currency_to_cny_rate: Decimal = Decimal("1")
+    fx_evidence_id: str | None = None
+    idempotency_key: str = Field(min_length=1, max_length=160)
+    evaluated_at: str | None = None
 
 
 class ProcurementCandidateInput(BaseModel):

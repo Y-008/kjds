@@ -1,5 +1,6 @@
 from dataclasses import asdict
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest import TestCase
 
 from apps.control_plane.domain import ContentAsset, ContentStatus, ContentType, PassportType
@@ -174,6 +175,54 @@ class SourcingFlowTest(TestCase):
             result.evidence,
             ["capture://1688/100/2026-07-13", "evidence://assumptions/ru/2026-07-13"],
         )
+
+    def test_versioned_logistics_calculation_replaces_manual_per_kg_assumption(self):
+        calculation = SimpleNamespace(
+            id="lgc-1",
+            quantity=1,
+            physical_weight_kg=Decimal("0.5"),
+            length_cm=Decimal("30"),
+            width_cm=Decimal("20"),
+            height_cm=Decimal("10"),
+            total_charge_cny=Decimal("18.25"),
+            evidence_id="evidence://carrier/rate-card-v1",
+        )
+        sourcing = SourcingService(
+            self.store,
+            self.repo,
+            evidence_validator=lambda _: None,
+            logistics_profit_resolver=lambda calculation_id, **kwargs: calculation,
+        )
+        cost_evidence = {
+            **FULL_COST_EVIDENCE,
+            "international_logistics": "evidence://manual/legacy-rate",
+        }
+
+        result = sourcing.calculate_profit(
+            self.offer.id,
+            ProfitInputs(
+                sale_price_rub=Decimal("1800"),
+                rub_per_cny=Decimal("12"),
+                international_freight_cny_per_kg=Decimal("0"),
+                packaging_cny=Decimal("2"),
+                last_mile_cny=Decimal("10"),
+                customs_rate=Decimal("0.10"),
+                platform_fee_rate=Decimal("0.10"),
+                advertising_rate=Decimal("0.05"),
+                return_reserve_rate=Decimal("0.10"),
+            ),
+            ["evidence://assumptions/ru/2026-07-13"],
+            cost_evidence,
+            logistics_calculation_id="lgc-1",
+        )
+
+        self.assertEqual(result.international_logistics_cny, Decimal("18.25"))
+        self.assertEqual(result.logistics_calculation_id, "lgc-1")
+        self.assertEqual(
+            result.cost_evidence["international_logistics"],
+            "evidence://carrier/rate-card-v1",
+        )
+        self.assertEqual(result.cost_states["international_logistics"], "estimate")
 
     def test_comparison_does_not_reuse_profit_from_superseded_supplier_offer(self):
         self.scenario()

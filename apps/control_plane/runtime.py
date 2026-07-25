@@ -30,6 +30,7 @@ from .incident_recovery import IncidentRecoveryService
 from .intake import ProductMediaEvidenceService, SkuEpisodeIntakeService
 from .intelligence import MarketIntelligenceService
 from .limited_executor import LimitedExecutorService
+from .logistics import LogisticsQuoteWorkspace, SqlLogisticsStore
 from .loop_engineering import LoopEngineeringService
 from .marketplace_catalog import MarketplaceCatalogWorkspace, SqlMarketplaceCatalogStore
 from .marketplace_growth import MarketplaceGrowthPlanner
@@ -95,6 +96,8 @@ class RuntimeServices:
     intake: Any
     kill_switch: Any
     limited_executor: Any
+    logistics: Any
+    logistics_store: Any
     loop_engineering: Any
     market: Any
     marketplace_catalog: Any
@@ -212,6 +215,14 @@ def build_runtime() -> RuntimeServices:
     automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
     loop_engineering = LoopEngineeringService()
     sourcing_store = SqlSourcingStore(engine)
+    logistics_store = SqlLogisticsStore(engine)
+    logistics = LogisticsQuoteWorkspace(
+        store=logistics_store,
+        evidence_validator=evidence.require_valid,
+        evidence_linker=evidence.link,
+        evidence_resolver=evidence.get,
+        fx_evidence_current_validator=evidence.require_current,
+    )
     cost_evidence_authority = CostEvidenceAuthorityService(evidence=evidence)
     sourcing = SourcingService(
         sourcing_store,
@@ -219,6 +230,7 @@ def build_runtime() -> RuntimeServices:
         evidence_validator=evidence.require_valid,
         actual_cost_validator=cost_evidence_authority.require_actual,
         action_authorization=action_authorization,
+        logistics_profit_resolver=logistics.resolve_profit_cost,
     )
     marketplace_growth_planner = MarketplaceGrowthPlanner(
         sourcing_store=sourcing_store,
@@ -230,7 +242,11 @@ def build_runtime() -> RuntimeServices:
         planner=marketplace_growth_planner,
         store=SqlMarketplaceGrowthStore(engine),
     )
-    sourcing_intake = SupplierComparisonIntakeService(sourcing=sourcing, evidence=evidence)
+    sourcing_intake = SupplierComparisonIntakeService(
+        sourcing=sourcing,
+        evidence=evidence,
+        logistics=logistics,
+    )
     procurement = ProcurementService(
         engine=engine,
         repository=repo,
@@ -381,6 +397,8 @@ def build_runtime() -> RuntimeServices:
         intake=intake,
         kill_switch=kill_switch,
         limited_executor=limited_executor,
+        logistics=logistics,
+        logistics_store=logistics_store,
         loop_engineering=loop_engineering,
         market=market,
         marketplace_catalog=marketplace_catalog,

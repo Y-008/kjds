@@ -264,6 +264,36 @@ def test_openapi_exposes_verified_marketplace_catalog_import() -> None:
         assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
 
 
+def test_openapi_exposes_versioned_logistics_cost_workspace() -> None:
+    schema = app.openapi()
+
+    for path, methods in (
+        ("/v1/logistics/rate-cards", {"get", "post"}),
+        ("/v1/logistics/calculations", {"get", "post"}),
+        (
+            "/v1/logistics/calculations/{calculation_id}/decision-support",
+            {"get"},
+        ),
+    ):
+        assert set(schema["paths"][path]) == methods
+        for method in methods:
+            assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
+    rate_card = schema["components"]["schemas"]["LogisticsRateCardInput"]
+    calculation = schema["components"]["schemas"]["LogisticsCalculationInput"]
+    assert rate_card["additionalProperties"] is False
+    assert calculation["additionalProperties"] is False
+    assert {
+        "evidence_id",
+        "source_sheet",
+        "source_range",
+        "declared_value_currency",
+        "effective_at",
+    }.issubset(rate_card["required"])
+    assert "logistics_calculation_id" in schema["components"]["schemas"][
+        "ProfitScenarioInput"
+    ]["properties"]
+
+
 def test_cost_authority_catalog_is_read_only_and_complete() -> None:
     result = cost_authority_catalog(Principal("operator-1", frozenset({"operator"})))
 

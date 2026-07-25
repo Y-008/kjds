@@ -6,14 +6,57 @@ import type { DashboardModel } from "./use-dashboard-controller";
 
 
 export function SourcingPanel({ model }: { model: DashboardModel }) {
-  const { approvedWithoutSample, backupOptions, backupRationales, comparisons, createSampleOrder, gateReadiness, loadBackupOptions, pendingProcurementApprovals, procurementBusy, procurementDrafts, products, recordSampleEvent, requestBackupProcurement, requestProcurement, sampleOrders, setBackupRationales, setProcurementDrafts, skuReadiness, sourcingUploading, supplierPerformance, uploadSupplierComparison } = model;
-  return <><section className="sourcing-intake-panel" id="sourcing-intake">
+  const { approvedWithoutSample, backupOptions, backupRationales, calculateLogisticsCost, captureLogisticsRateCard, comparisons, createSampleOrder, evidenceRecords, gateReadiness, loadBackupOptions, logisticsBusy, logisticsCalculations, logisticsRateCards, pendingProcurementApprovals, procurementBusy, procurementDrafts, products, recordSampleEvent, requestBackupProcurement, requestProcurement, sampleOrders, setBackupRationales, setProcurementDrafts, skuReadiness, sourcingUploading, supplierPerformance, uploadSupplierComparison } = model;
+  const rateCardEvidenceRecords = evidenceRecords.filter((item) => ["operator_logistics_rate_card", "carrier_rate_card", "logistics_rate_card", "carrier_quote"].includes(item.source.toLowerCase()) && ["A", "B"].includes(item.grade));
+  const fxEvidenceRecords = evidenceRecords.filter((item) => ["fx_rate_snapshot", "central_bank_fx_rate", "bank_fx_quote"].includes(item.source.toLowerCase()) && ["A", "B"].includes(item.grade));
+  return <><section className="sourcing-intake-panel logistics-workspace" id="logistics-workspace">
+          <div className="panel-title"><div><p className="eyebrow">LOGISTICS COST INTELLIGENCE</p><h3>物流线路、计费重与 AI 决策辅助</h3></div><span className="badge">{logisticsRateCards.length} 个版本化线路 · {logisticsCalculations.length} 次测算</span></div>
+          <p className="section-copy">公式按 Evidence 固化：实重、体积重、进位、最低收费和每票固定费均由确定性引擎计算；AI 只解释异常和建议比价，不能自动改利润、采购或上架。</p>
+          <div className="logistics-layout">
+            <form className="sourcing-intake logistics-rate-form" onSubmit={captureLogisticsRateCard}>
+              <div className="comparison-title"><strong>1. 固化承运商线路版本</strong><span>报价表 → Evidence → 规则</span></div>
+              <div className="sourcing-common">
+                <label>承运商<input name="logistics_provider" required /></label><label>线路编码<input name="logistics_route_code" required /></label>
+                <label>服务名称<input name="logistics_service_name" required /></label><label>平台<input name="logistics_marketplace" defaultValue="OZON" required /></label>
+                <label>始发国家<input name="logistics_origin_country" defaultValue="CN" required /></label><label>目的国家<input name="logistics_destination_country" defaultValue="RU" required /></label>
+                <label>计价币种<input name="logistics_currency" defaultValue="CNY" maxLength={3} required /></label><label>申报价值币种<input name="logistics_declared_value_currency" defaultValue="RUB" maxLength={3} required /></label>
+                <label>每 kg 价格<input name="logistics_price_per_kg" type="number" min="0" step="0.0001" required /></label>
+                <label>每票固定费<input name="logistics_base_charge" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>每票最低收费<input name="logistics_minimum_charge" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+                <label>体积重除数 cm³/kg<input name="logistics_volumetric_divisor" type="number" min="0" step="1" defaultValue="12000" required /></label><label>计重进位 kg<input name="logistics_weight_increment" type="number" min="0.001" step="0.001" defaultValue="0.001" required /></label>
+                <label>最低实重 kg<input name="logistics_min_weight" type="number" min="0" step="0.001" defaultValue="0.001" required /></label><label>最高实重 kg<input name="logistics_max_weight" type="number" min="0.001" step="0.001" required /></label>
+                <label>最大长 cm<input name="logistics_max_length" type="number" min="0" step="0.1" defaultValue="0" required /></label><label>最大宽 cm<input name="logistics_max_width" type="number" min="0" step="0.1" defaultValue="0" required /></label>
+                <label>最大高 cm<input name="logistics_max_height" type="number" min="0" step="0.1" defaultValue="0" required /></label><label>三边和上限 cm<input name="logistics_max_dimension_sum" type="number" min="0" step="0.1" defaultValue="0" required /></label>
+                <label>申报价值下限<input name="logistics_min_declared_value" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>申报价值上限<input name="logistics_max_declared_value" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+                <label>生效时间<input name="logistics_effective_at" type="datetime-local" required /></label>
+                <label>失效时间<input name="logistics_effective_until" type="datetime-local" /></label><label>报价证据<select name="logistics_evidence_id" required><option value="">选择承运商报价 Evidence</option>{rateCardEvidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.source} · …{item.id.slice(-8)}</option>)}</select></label>
+                <label>来源工作表<input name="logistics_source_sheet" placeholder="如 realFBS资费试算表" required /></label><label>来源区域<input name="logistics_source_range" placeholder="如 D5:M24" required /></label>
+              </div>
+              <button disabled={logisticsBusy}>{logisticsBusy ? "正在固化…" : "保存线路版本"}</button>
+            </form>
+            <form className="sourcing-intake logistics-calculation-form" onSubmit={calculateLogisticsCost}>
+              <div className="comparison-title"><strong>2. 测算单件物流成本</strong><span>只产生 estimate</span></div>
+              <div className="sourcing-common">
+                <label>线路版本<select name="logistics_calculation_rate_card_id" required><option value="">选择线路</option>{logisticsRateCards.map((item) => <option value={item.id} key={item.id}>{item.provider} · {item.route_code}</option>)}</select></label>
+                <label>实重 kg<input name="logistics_physical_weight" type="number" min="0.001" step="0.001" required /></label>
+                <label>长 cm<input name="logistics_length" type="number" min="0" step="0.1" defaultValue="0" required /></label><label>宽 cm<input name="logistics_width" type="number" min="0" step="0.1" defaultValue="0" required /></label>
+                <label>高 cm<input name="logistics_height" type="number" min="0" step="0.1" defaultValue="0" required /></label><label>申报价值<input name="logistics_declared_value" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+                <label>件数<input name="logistics_quantity" type="number" min="1" defaultValue="1" required /></label><label>计价币种兑 CNY<input name="logistics_currency_to_cny_rate" type="number" min="0.0001" step="0.0001" defaultValue="1" required /></label>
+                <label>FX Evidence（非 CNY 必填）<select name="logistics_fx_evidence_id"><option value="">CNY 线路无需选择</option>{fxEvidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.source} · …{item.id.slice(-8)}</option>)}</select></label>
+                <label className="wide">幂等键<input name="logistics_idempotency_key" placeholder="SKU-线路-报价日期" required /></label>
+              </div>
+              <button disabled={logisticsBusy || !logisticsRateCards.length}>{logisticsBusy ? "正在计算…" : "计算并生成决策辅助"}</button>
+            </form>
+          </div>
+          {logisticsCalculations.length > 0 && <div className="logistics-result-grid">{logisticsCalculations.slice(0, 6).map((item) => <article className="comparison-card" key={item.id}><strong>预估 {item.total_charge_cny} CNY</strong><small>实重 {item.physical_weight_kg} kg · 体积重 {item.volumetric_weight_kg} kg</small><div className="cm3"><span>最终计费重</span><b>{item.billable_weight_kg} kg</b><small>Evidence …{item.evidence_id.slice(-8)} · actual 需承运商最终账单</small></div></article>)}</div>}
+        </section><section className="sourcing-intake-panel" id="sourcing-intake">
           <div className="panel-title"><div><p className="eyebrow">THREE-QUOTE GATE</p><h3>三家供应商证据化比价</h3></div><span className="badge">{pendingProcurementApprovals} 项采购待审批</span></div>
           <form className="sourcing-intake" onSubmit={uploadSupplierComparison}>
             <div className="sourcing-common">
               <label>候选 SKU<select name="sourcing_product_id" required><option value="">选择 SKU</option>{products.map((item) => <option value={item.id} key={item.id}>{item.sku} · {item.name}</option>)}</select></label>
               <label>目标售价 RUB<input name="sale_price_rub" type="number" min="0.01" step="0.01" required /></label><label>RUB/CNY<input name="rub_per_cny" type="number" min="0.0001" step="0.0001" required /></label>
-              <label>国际运费 CNY/kg<input name="international_freight" type="number" min="0" step="0.01" required /></label><label>包装 CNY<input name="packaging_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
+              <label>物流线路版本<select name="logistics_rate_card_id" defaultValue=""><option value="">手填 CNY/kg（兼容）</option>{logisticsRateCards.map((item) => <option value={item.id} key={item.id}>{item.provider} · {item.route_code}</option>)}</select></label><label>线路币种兑 CNY<input name="comparison_logistics_currency_to_cny_rate" type="number" min="0.0001" step="0.0001" defaultValue="1" required /></label>
+              <label>线路 FX Evidence<select name="comparison_logistics_fx_evidence_id"><option value="">CNY 线路无需选择</option>{fxEvidenceRecords.map((item) => <option value={item.id} key={item.id}>{item.source} · …{item.id.slice(-8)}</option>)}</select></label>
+              <label>手填国际运费 CNY/kg<input name="international_freight" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>包装 CNY<input name="packaging_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>
               <label>尾程 CNY<input name="last_mile_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label><label>关税率<input name="customs_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label>
               <label>平台费率<input name="platform_fee_rate" type="number" min="0" max="0.9999" step="0.0001" required /></label><label>广告率<input name="advertising_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label>
               <label>退货准备率<input name="return_reserve_rate" type="number" min="0" max="0.9999" step="0.0001" defaultValue="0" required /></label><label>仓储 CNY<input name="warehousing_cny" type="number" min="0" step="0.01" defaultValue="0" required /></label>

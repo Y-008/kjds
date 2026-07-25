@@ -256,6 +256,7 @@ class ProfitScenario:
     cost_evidence: dict[str, str] = field(default_factory=dict)
     template_id: str = PROFIT_TEMPLATE_ID
     cost_states: dict[str, str] = field(default_factory=dict)
+    logistics_calculation_id: str | None = None
     id: str = field(default_factory=lambda: new_id("scn"))
     created_at: str = field(default_factory=utc_now)
 
@@ -336,6 +337,7 @@ class ProfitScenario:
             "unclassified_cost_cny": str(self.other_cost_cny),
             "release_ready": self.cost_complete,
             "automatic_pricing": False,
+            "logistics_calculation_id": self.logistics_calculation_id,
         }
 
 
@@ -422,12 +424,14 @@ class SourcingService:
         evidence_validator: Callable[[list[str]], None],
         actual_cost_validator: Callable[[str, str], Any] | None = None,
         action_authorization: ActionAuthorizationService | None = None,
+        logistics_profit_resolver: Callable[..., Any] | None = None,
     ) -> None:
         self.store = store
         self.repository = repository
         self.evidence_validator = evidence_validator
         self.actual_cost_validator = actual_cost_validator
         self.action_authorization = action_authorization or ActionAuthorizationService()
+        self.logistics_profit_resolver = logistics_profit_resolver
 
     def capture_offer(self, offer: SupplierOffer) -> SupplierOffer:
         self.repository.get_product(offer.product_id)
@@ -448,6 +452,7 @@ class SourcingService:
         cost_evidence: dict[str, str] | None = None,
         cost_states: dict[str, str] | None = None,
         template_id: str = PROFIT_TEMPLATE_ID,
+        logistics_calculation_id: str | None = None,
     ) -> ProfitScenario:
         if template_id != PROFIT_TEMPLATE_ID:
             raise ValueError(f"Unsupported profit template: {template_id}")
@@ -474,6 +479,33 @@ class SourcingService:
             for key, value in (cost_states or {}).items()
             if key.strip() and value.strip()
         }
+        logistics_calculation = None
+        if logistics_calculation_id:
+            if self.logistics_profit_resolver is None:
+                raise ValueError("Logistics calculation workspace is not configured")
+            if inputs.international_freight_cny_per_kg != 0:
+                raise ValueError(
+                    "Set manual international freight rate to zero when using a logistics calculation"
+                )
+            logistics_calculation = self.logistics_profit_resolver(
+                logistics_calculation_id,
+                marketplace="OZON",
+                destination_country="RU",
+                declared_value_currency="RUB",
+                declared_value=inputs.sale_price_rub,
+                physical_weight_kg=offer.weight_kg,
+                length_cm=offer.length_cm,
+                width_cm=offer.width_cm,
+                height_cm=offer.height_cm,
+            )
+            normalized_cost_evidence["international_logistics"] = (
+                logistics_calculation.evidence_id
+            )
+            normalized_cost_states["international_logistics"] = "estimate"
+            if fx_evidence_id := getattr(
+                logistics_calculation, "fx_evidence_id", None
+            ):
+                normalized_assumptions.append(fx_evidence_id)
         unknown_state_keys = sorted(normalized_cost_states.keys() - REQUIRED_COST_EVIDENCE_KEYS)
         if unknown_state_keys:
             raise ValueError(f"Unknown cost state keys: {', '.join(unknown_state_keys)}")
@@ -516,12 +548,17 @@ class SourcingService:
                 and existing.cost_evidence == normalized_cost_evidence
                 and existing.template_id == template_id
                 and existing.cost_states == normalized_cost_states
+                and existing.logistics_calculation_id == logistics_calculation_id
             ):
                 return existing
         revenue = money(inputs.sale_price_rub / inputs.rub_per_cny)
         purchase = offer.unit_cost_cny
         domestic = offer.domestic_logistics_cny
-        international = money(offer.weight_kg * inputs.international_freight_cny_per_kg)
+        international = (
+            money(logistics_calculation.total_charge_cny)
+            if logistics_calculation is not None
+            else money(offer.weight_kg * inputs.international_freight_cny_per_kg)
+        )
         landed_before_customs = purchase + domestic + international + inputs.packaging_cny
         customs = money(landed_before_customs * inputs.customs_rate)
         platform_fee = money(revenue * inputs.platform_fee_rate)
@@ -575,6 +612,7 @@ class SourcingService:
             cost_evidence=normalized_cost_evidence,
             template_id=template_id,
             cost_states=normalized_cost_states,
+            logistics_calculation_id=logistics_calculation_id,
         )
         return self.store.save_scenario(scenario)
 
