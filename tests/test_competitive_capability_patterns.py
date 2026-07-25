@@ -14,6 +14,8 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
     providers = registry["providers"]
 
     assert {item["id"] for item in providers} == {
+        "lizhi_ozon_assistant",
+        "maozierp",
         "menglar_ozon_tools",
         "seerfar",
         "miaoshou_erp",
@@ -63,3 +65,8 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
     selling51 = next(item for item in providers if item["id"] == "selling51_erp")
     assert "field_level_source_badge" in selling51["patterns_to_borrow"]
     assert "explicit_unmapped_finance_queue" in selling51["patterns_to_borrow"]
+
+    unverified = {item["id"]: item for item in registry["unverified_candidates"]}
+    assert set(unverified) == {"ozon_bigsell", "xiongmao_xcw", "yduanerp_client"}
+    assert all(item["evidence_tier"] == "D" for item in unverified.values())
+    assert all(item["admission"] == "defer" for item in unverified.values())

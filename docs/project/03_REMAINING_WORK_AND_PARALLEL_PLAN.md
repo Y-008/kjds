@@ -6,7 +6,7 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 8.5 |
+| version | 8.6 |
 | last_reviewed | 2026-07-25 |
 | next_review | 2026-07-27 |
 | gate | G-1–G1 |
@@ -96,7 +96,8 @@
 | BAS-085 | G-1 | Web 组合根收敛 | 工程负责人 | `page.tsx` 只保留 Dashboard 组合入口；统一原生 `fetchJson` 与实际使用的合同类型；按财务、运营、决策科学、研究门禁、商品内容和采购拆分领域面板；请求失败按领域隔离；页面不重算 Gate、利润、权限或 Evidence；[工程证据](evidence/20260721_BAS_085_WEB_COMPOSITION_ROOT.md) | BAS-084 | DONE_ENGINEERING |
 | BAS-086 | G-1 | 可选 Provider 运行边界 | 工程负责人 | n8n、Firecrawl、Ollama 仅在显式配置后构造、展示和检查；核心 readiness 不依赖可选 Provider；ComfyUI 继续受控且不得直传平台；删除无调用方配置；[工程证据](evidence/20260721_BAS_086_OPTIONAL_PROVIDER_BOUNDARIES.md) | BAS-085 | DONE_ENGINEERING |
 | BAS-087 | G-1 | G1 Harness 收敛 | 工程负责人 | 已冻结场景与覆盖映射；PowerShell 只保留基础设施生命周期、迁移、恢复、Worker、跨进程最小烟测与清理；领域场景由分组 Pytest 合同覆盖；[工程证据](evidence/20260721_BAS_087_G1_HARNESS_CONVERGENCE.md) | BAS-086 | DONE_ENGINEERING |
-| BAS-088 | G2–G6 | 批准 Listing 到 Ozon 受控执行闭环 | 工程+商品+控制面 | 批准草稿作为不可变执行来源；服务端派生 item/目标/回滚；俄语母语与执行身份独立复核；12 项 source-aware readiness；独立 Execution Approval、一次写入许可、写前/写后证据、状态轮询、回读、补偿与不确定结果事故闭环；Web 只提供复核和最小计划交接，不提供快捷发布；真实账户和运行开关保持阻塞；[工程证据](evidence/20260725_BAS_088_APPROVED_LISTING_CONTROLLED_EXECUTION.md) | BAS-078、BAS-080、BAS-082、OZN-003 | DONE_ENGINEERING |
+| BAS-088 | G0–G4 | 唯一经营工作台 Agent 简报 | 工程+经营 | 单一只读快照聚合 Gate 阻断、运行异常、已有建议与候选组合；动态展示责任 Agent 和当前焦点；Gate 阻断不伪造 SLA；固定禁止自动执行、平台写入和第三方事实晋升；第三方未授权代码不进入仓库；[工程证据](evidence/20260725_BAS_088_UNIFIED_OPERATING_WORKBENCH_AGENT_BRIEFING.md) | BR-065、BAS-065、BAS-086 | DONE_ENGINEERING |
+| BAS-089 | G2–G6 | 批准 Listing 到 Ozon 受控执行闭环 | 工程+商品+控制面 | 批准草稿作为不可变执行来源；服务端派生 item/目标/回滚；俄语母语与执行身份独立复核；12 项 source-aware readiness；独立 Execution Approval、一次写入许可、写前/写后证据、状态轮询、回读、补偿与不确定结果事故闭环；Web 只提供复核和最小计划交接，不提供快捷发布；真实账户和运行开关保持阻塞；[工程证据](evidence/20260725_BAS_089_APPROVED_LISTING_CONTROLLED_EXECUTION.md) | BAS-078、BAS-080、BAS-082、OZN-003 | DONE_ENGINEERING |
 | BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |
 | BAS-004 | G-1 | 环境状态自动生成 | 工程负责人 | 不再依赖过时静态 PASS 文档 | BAS-003 | DONE |
 | SEC-001 | G-1 | API 身份认证 | 工程负责人 | `KJDS_API_KEY` 或正式身份层生效；未授权为 401/403 | BAS-003 | DONE |
@@ -113,7 +114,7 @@
 
 `BLOCKED` 项不是工程问题：需要账号所有者、真实商品/供应商、样品或一手业务文件。增加开发窗口不能消除这些阻塞。
 
-平台发布边界：仓库已有 `apps.control_plane.ozon_worker.OzonExecutionWorker`，并非“没有平台发布器”。BAS-088 已完成普通批准 `ListingDraft` 到受控执行计划、命令、写前/写后证据、状态轮询、回读和补偿的工程接线；Worker 运行时仍受 Gate、Kill Switch 和一次性许可约束且默认关闭，当前仅有 mock/工程合同验收，未完成真实 Ozon 账户验收。写路径注册表中的 `availability=enabled` 仅表示工程能力存在，不表示运行已开启、业务 Gate 已通过或真实账户可执行。
+平台发布边界：仓库已有 `apps.control_plane.ozon_worker.OzonExecutionWorker`，并非“没有平台发布器”。BAS-089 已完成普通批准 `ListingDraft` 到受控执行计划、命令、写前/写后证据、状态轮询、回读和补偿的工程接线；Worker 运行时仍受 Gate、Kill Switch 和一次性许可约束且默认关闭，当前仅有 mock/工程合同验收，未完成真实 Ozon 账户验收。写路径注册表中的 `availability=enabled` 仅表示工程能力存在，不表示运行已开启、业务 Gate 已通过或真实账户可执行。
 
 2026-07-19 已核验 Ozon 官方 `data.ozon.ru`：公开页中的商品、销量、搜索量和类目增长均明确标注为报告示例；真实分析入口要求账户主体先接受 Ozon 要约和个人信息处理条件。本次没有替账户主体接受条款。`SKU-000` 因此保持 `PARTIAL_BLOCKED`，公开示例不得写入三个候选；账户负责人完成条款决定并导出真实 28 天原始报告后，才开始候选淘汰、供货核验和三报价。证据见 `docs/project/evidence/20260719_SKU_000_OZON_DEMAND_DATA_ACCESS_GATE.md`。
 

@@ -21,7 +21,7 @@ export function DashboardView({ model }: { model: DashboardModel }) {
       <ResearchGatePanel model={model} />
       <ProductContentPanel model={model} />
       <SourcingPanel model={model} />
-      <OperationsSummaryPanel health={model.health} recommendations={model.recommendations} sourceConnectors={model.sourceConnectors} offersCount={model.offers.length} skuReadiness={model.skuReadiness} />
+      <OperationsSummaryPanel health={model.health} operatingWorkbench={model.operatingWorkbench} recommendations={model.recommendations} sourceConnectors={model.sourceConnectors} offersCount={model.offers.length} skuReadiness={model.skuReadiness} />
     </DashboardShell>
   );
 }
