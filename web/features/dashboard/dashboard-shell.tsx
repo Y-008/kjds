@@ -1,56 +1,158 @@
 import {
-  Boxes,
+  Activity,
   BrainCircuit,
+  ChevronRight,
   CircleDollarSign,
-  FileUp,
-  FlaskConical,
-  Image as ImageIcon,
+  Database,
   LayoutDashboard,
+  LockKeyhole,
+  LogOut,
+  PackageSearch,
   RefreshCw,
+  ScanSearch,
   ShieldCheck,
+  Store,
+  TrendingUp,
   Waypoints,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { WebSession } from "./contracts";
+import {
+  workspaceDefinition,
+  workspaceDefinitions,
+  type WorkspaceId,
+} from "./dashboard-workspaces";
 
-const nav = [
-  [LayoutDashboard, "经营总览", "#dashboard-top"],
-  [FileUp, "数据中心", "#ozon-import"],
-  [Waypoints, "全球货源", "#sourcing-intake"],
-  [Boxes, "商品中心", "#sku-intake"],
-  [BrainCircuit, "AI 工作台", "#decision-workbench"],
-  [ImageIcon, "内容工厂", "#product-media-intake"],
-  [FlaskConical, "增长实验", "#causal-experiments"],
-  [CircleDollarSign, "利润中心", "#actual-cost-review"],
-  [ShieldCheck, "审批中心", "#listing-approval"],
-] as const;
+const workspaceIcons: Record<WorkspaceId, LucideIcon> = {
+  overview: LayoutDashboard,
+  data: Database,
+  research: ScanSearch,
+  products: PackageSearch,
+  sourcing: Waypoints,
+  growth: TrendingUp,
+  finance: CircleDollarSign,
+  science: BrainCircuit,
+  governance: ShieldCheck,
+  system: Activity,
+};
+
+const workspaceGroups = ["经营", "业务", "控制"] as const;
 
 type Props = {
   session: WebSession | null;
+  activeWorkspace: WorkspaceId;
+  ozonConnection: { label: string; ready: boolean };
+  onNavigate: (workspace: WorkspaceId) => void;
   onRefresh: () => void;
   children: ReactNode;
 };
 
-export function DashboardShell({ session, onRefresh, children }: Props) {
-  return <main className="shell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brand-mark">K</div><div><strong>KJDS</strong><span>俄罗斯经营系统</span></div></div>
-      <nav aria-label="经营工作区">{nav.map(([Icon, label, href]) => (
-        <a href={href} key={label}><Icon size={19} /><span>{label}</span></a>
-      ))}</nav>
-      <div className="sidebar-status"><span className="pulse" /><div><strong>14天影子运行</strong><span>只建议，不执行高风险动作</span></div></div>
-    </aside>
+export function DashboardShell({
+  session,
+  activeWorkspace,
+  ozonConnection,
+  onNavigate,
+  onRefresh,
+  children,
+}: Props) {
+  const current = workspaceDefinition(activeWorkspace);
+  const displayName = session?.email ?? (session?.auth_mode === "legacy" ? "本地运营身份" : "身份校验中");
 
-    <section className="workspace">
-      <header className="topbar" id="dashboard-top">
-        <div><p className="eyebrow">OZON · RUSSIA</p><h1>经营指挥中心</h1></div>
-        <div className="topbar-actions">
-          <div className="session-chip"><ShieldCheck size={16} /><span>{session?.email ?? (session?.auth_mode === "legacy" ? "本地运营身份" : "身份校验中")}{session ? ` · ${session.actor_id} · ${session.roles.join("/")}` : ""}</span></div>
-          {session?.auth_mode === "supabase" ? <form action="/auth/logout" method="post"><button className="refresh" type="submit">退出</button></form> : null}
-          <button className="refresh" onClick={onRefresh}><RefreshCw size={17} />刷新状态</button>
+  return (
+    <main className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">K</div>
+          <div>
+            <strong>KJDS</strong>
+            <span>跨境经营控制平台</span>
+          </div>
         </div>
-      </header>
-      {children}
-    </section>
-  </main>;
+
+        <div className="store-switcher" aria-label="当前经营主体">
+          <Store size={16} />
+          <div>
+            <span>当前店铺</span>
+            <strong>Ozon RU · 当前作用域</strong>
+          </div>
+          <ChevronRight size={15} />
+        </div>
+
+        <nav aria-label="经营工作区">
+          {workspaceGroups.map((group) => (
+            <div className="nav-group" key={group}>
+              <span className="nav-group-label">{group}</span>
+              {workspaceDefinitions.filter((item) => item.group === group).map((item) => {
+                const Icon = workspaceIcons[item.id];
+                const selected = activeWorkspace === item.id;
+                return (
+                  <button
+                    type="button"
+                    className={selected ? "nav-item active" : "nav-item"}
+                    aria-current={selected ? "page" : undefined}
+                    onClick={() => onNavigate(item.id)}
+                    key={item.id}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                    {selected ? <span className="nav-active-dot" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        <div className="sidebar-status">
+          <span className="pulse" />
+          <div>
+            <strong>真实写入通道受控</strong>
+            <span>每次外部动作都需要证据、审批、单次许可和回读</span>
+          </div>
+        </div>
+      </aside>
+
+      <section className="workspace">
+        <header className="topbar">
+          <div className="page-heading">
+            <p className="eyebrow">{current.eyebrow}</p>
+            <h1>{current.title}</h1>
+            <p>{current.description}</p>
+          </div>
+          <div className="topbar-actions">
+            <div className={ozonConnection.ready ? "live-store-chip" : "live-store-chip pending"}>
+              <span className="live-dot" />
+              <span>{ozonConnection.label}</span>
+            </div>
+            <button className="icon-action" type="button" onClick={onRefresh} aria-label="刷新全部状态">
+              <RefreshCw size={17} />
+            </button>
+            <div className="session-chip" title={session ? `${session.actor_id} · ${session.roles.join("/")}` : ""}>
+              <span className="session-avatar">{displayName.slice(0, 1).toUpperCase()}</span>
+              <div>
+                <strong>{displayName}</strong>
+                <span>{session?.roles.join(" / ") || "正在验证权限"}</span>
+              </div>
+            </div>
+            {session?.auth_mode === "supabase" ? (
+              <form action="/auth/logout" method="post">
+                <button className="icon-action" type="submit" aria-label="退出登录">
+                  <LogOut size={17} />
+                </button>
+              </form>
+            ) : null}
+          </div>
+        </header>
+
+        <div className="control-boundary">
+          <LockKeyhole size={16} />
+          <span>当前页面不会保存平台密钥；推荐、审批与真实执行是三个独立阶段。</span>
+          <button type="button" onClick={() => onNavigate("governance")}>查看执行边界</button>
+        </div>
+
+        {children}
+      </section>
+    </main>
+  );
 }

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "KJDS 俄罗斯经营指挥中心",
-  description: "以单品净利润为目标的 AI 跨境电商操作系统",
+  title: "KJDS · Ozon 统一经营平台",
+  description: "连接 Ozon 店铺、1688 供应链、商品内容、广告、订单利润与受控执行的 AI 经营操作系统",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

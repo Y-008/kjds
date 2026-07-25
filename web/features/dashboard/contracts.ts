@@ -206,6 +206,68 @@ export type SourcingComparison = {
     has_positive_cm3: boolean;
   }>;
 };
+export type MarketplaceGrowthPlan = {
+  plan_id: string;
+  snapshot_hash: string;
+  created_by: string;
+  evaluated_at: string;
+  target_cm3_rate: string;
+  execution_mode: "recommendation_only";
+  automatic_marketplace_write: false;
+  automatic_ad_spend: false;
+  summary: {
+    sku_count: number;
+    blocked_count: number;
+    price_reset_count: number;
+    source_mismatch_count: number;
+    ad_test_eligible_count: number;
+  };
+  portfolio: Array<{
+    marketplace_sku: string;
+    product_id: string;
+    product_name: string;
+    scenario_id: string;
+    snapshot_hash: string;
+    evidence_ids: string[];
+    commercial_status: string;
+    priority_score: number;
+    current: {
+      price_rub: string;
+      price_cny: string;
+      stock: number;
+      orders_14d: number;
+      review_count: number;
+      rating: string;
+      content_score: string;
+      price_position: string;
+      price_gap_to_median: string;
+    };
+    market: {
+      competitor_count: number;
+      p25_rub: string;
+      median_rub: string;
+      p75_rub: string;
+      observation_age_days: number;
+    };
+    economics: {
+      cost_release_ready: boolean;
+      fixed_costs_cny: string;
+      target_floor_price_rub: string;
+      recommended_test_price_rub: string | null;
+      break_even_acos: string;
+      target_acos_ceiling: string;
+      max_ad_spend_per_order_cny: string;
+      max_cpc_cny: string | null;
+    };
+    gates: Record<string, boolean>;
+    ad_eligible: boolean;
+    content_plan: {
+      image_roles: Array<{ role: string; objective: string }>;
+      copy_requirements: string[];
+    };
+    actions: Array<{ type: string; reason: string }>;
+  }>;
+};
 export type ApprovalRecord = { id: string; action: string; resource_id: string; status: string; requested_by: string; payload: Record<string, unknown> };
 export type ListingDraft = {
   id: string; product_id: string; offer_id: string; scenario_id: string; target_platform: string;
