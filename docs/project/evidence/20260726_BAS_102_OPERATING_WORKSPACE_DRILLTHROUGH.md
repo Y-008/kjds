@@ -45,21 +45,31 @@ KJDS `0.56.0` 已完成 BR-077/BAS-102 工程闭环。143 个原子点、14 条�
 - OpenAPI、FastAPI 路由、TypeScript 合同和 Next.js 动态路由使用同一字段边界。
 - capability atlas 首页版本由服务端 `release_version` 和 `registry_version` 驱动，
   不再硬编码 KJDS 0.55.0。
+- Operating Workspace 顶栏也读取同一服务端 `release_version` 和
+  `registry_version`，不保留客户端发布版本常量。
 - 版本源、能力图谱、`/health/ready`、OpenAPI、Python 包和 Web 包统一为
   `0.56.0`。
+
+最新镜像上的认证运行快照：
+
+| 工作区 | 阶段 | 运行状态分布 | `workspace_sha256` |
+|---|---:|---|---|
+| `points/trend_event_calendar` | 1 | `contract_only=1` | `58bd30de21d4bedad3856ef2d69e5b824210823445f2d5c1df36cf57aee62d9b` |
+| `lines/trend_to_opportunity` | 6 | `blocked=2, contract_only=4` | `8adfc65a78cc9f27e41bd49cc98d3a2b0e15b8908afc0047cfa51dd9ff872b7f` |
+| `surfaces/agent_skill_surface` | 30 | `blocked=4, contract_only=25, no_data=1` | `90c4e5f02189ae8659fa5dbb3028128ca1ed21b405da8ea4cd9d73cd09358c31` |
 
 ## 自动化质量门
 
 | 门禁 | 实测结果 |
 |---|---|
-| `uv run python scripts/verify_secrets.py` | PASS；554 个非忽略工作区文件、548 个历史路径 |
+| `uv run python scripts/verify_secrets.py` | PASS；555 个非忽略工作区文件、548 个历史路径 |
 | `uv run ruff check .` | PASS |
 | `uv run pytest -q -p no:cacheprovider --basetemp=.runtime/pytest-local` | PASS；511 passed |
 | Operating Workspace/Atlas/API 定向测试 | PASS；37 passed |
 | `uv run python scripts/build_cross_border_operating_graph.py --check` | PASS；注册表 current |
 | `npm ci` | PASS；0 vulnerabilities |
 | `npm test` | PASS；43 passed |
-| `npm run build` | PASS；Next.js 生产构建与动态点线面路由生成 |
+| `npm run build` / `npm run build -- --webpack` | PASS；Next.js 生产构建与动态点线面路由生成 |
 | `git diff --check` | PASS |
 | Alembic heads/current | PASS；唯一且当前为 `20260726_0050 (head)` |
 | `uv run alembic upgrade head` | PASS |
@@ -82,8 +92,10 @@ Python 全量测试只有既有 Starlette/httpx 适配弃用警告；未跳过�
    `market_signal_inbox`；该阶段显示服务端 `blocked`，没有把能力
    `implemented` 冒充真实运行完成。
 4. 继续进入 `/operations/surfaces/agent_skill_surface`；经营面展示 30 个阶段、
-   9 条关联线、8 个真实域信号和 4 条现有领域工作区动作。
+   4 条关联线、9 个真实域信号和 9 条现有领域工作区动作。
 5. 390 px 移动端实测 `scrollWidth=390`、`innerWidth=390`，无横向溢出。
+6. 最新 webpack standalone 页面实测 console 0 errors；保留 1 条 Next.js CSS preload
+   未使用 warning，不影响合同、渲染或交互。
 
 忽略目录中的正式截图均已逐张检查：
 
@@ -102,6 +114,7 @@ Python 全量测试只有既有 Starlette/httpx 适配弃用警告；未跳过�
 | P1 | 无 | no-op |
 | P2 | 无 | no-op |
 | Info | Starlette/httpx TestClient 弃用警告 | defer；依赖升级时复核 |
+| Info | Next.js 页面出现 1 条 CSS preload 未使用 warning | defer；框架资源提示，不影响渲染、合同或交互 |
 | Info | Playwright CLI headed 首次启动超时，随后无头认证会话成功完成回归 | no-op；不影响页面、截图或合同证据 |
 
 ## 未宣称事项
