@@ -234,6 +234,14 @@ def test_existing_listing_binding_creates_active_product_without_candidate_promo
     assert catalog.latest_items(store_ref="store-main")[0][
         "canonical_product_id"
     ] == first["product"].id
+    current = catalog.require_bound_current_item(
+        store_ref="store-main",
+        offer_id="seller-offer-1",
+        expected_item_hash=item["item_hash"],
+    )
+    assert current["product"].id == first["product"].id
+    assert current["binding"]["product_id"] == first["product"].id
+    assert current["item"]["item_hash"] == item["item_hash"]
     events = catalog.repository.events_after(0)
     assert sum(
         event["type"]
@@ -248,6 +256,26 @@ def test_existing_listing_binding_creates_active_product_without_candidate_promo
         link["relationship"] == "existing_listing_basis"
         for link in evidence.links
     )
+
+
+def test_current_catalog_item_requires_binding_before_downstream_work():
+    catalog, _ = workspace(
+        bundles={"evd-1": product_bundle(offer_id="seller-offer-1")}
+    )
+    catalog.import_ozon_evidence(
+        evidence_ids=["evd-1"],
+        store_ref="store-main",
+        idempotency_key="catalog-existing-1",
+        imported_by="operator-1",
+    )
+    item = catalog.latest_items(store_ref="store-main")[0]
+
+    with pytest.raises(ValueError, match="must be bound"):
+        catalog.require_bound_current_item(
+            store_ref="store-main",
+            offer_id="seller-offer-1",
+            expected_item_hash=item["item_hash"],
+        )
 
 
 def test_existing_listing_binding_fails_closed_on_stale_catalog_hash():

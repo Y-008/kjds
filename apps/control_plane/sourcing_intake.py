@@ -23,11 +23,20 @@ class OfferEvidencePayload:
 
 
 class SupplierComparisonIntakeService:
-    def __init__(self, *, sourcing, evidence, quote_authority, logistics=None) -> None:
+    def __init__(
+        self,
+        *,
+        sourcing,
+        evidence,
+        quote_authority,
+        logistics=None,
+        rfq_packages=None,
+    ) -> None:
         self.sourcing = sourcing
         self.evidence = evidence
         self.quote_authority = quote_authority
         self.logistics = logistics
+        self.rfq_packages = rfq_packages
 
     def capture_quote_source(
         self,
@@ -41,11 +50,20 @@ class SupplierComparisonIntakeService:
         effective_at: str,
         effective_until: str | None,
         created_by: str,
+        rfq_package_evidence_id: str | None = None,
     ):
         self._require_sourcing_handoff(product_id)
+        rfq_record = None
+        if rfq_package_evidence_id:
+            if self.rfq_packages is None:
+                raise ValueError("Supplier RFQ package workspace is not configured")
+            rfq_record = self.rfq_packages.require_for_product(
+                rfq_package_evidence_id,
+                product_id=product_id,
+            )
         values = dict(offer_data)
         values["product_id"] = product_id
-        return self.quote_authority.capture(
+        record = self.quote_authority.capture(
             product_id=product_id,
             document_kind=document_kind,
             offer_data=values,
@@ -55,7 +73,19 @@ class SupplierComparisonIntakeService:
             effective_at=effective_at,
             effective_until=effective_until,
             created_by=created_by,
+            rfq_package_evidence_id=(
+                rfq_record.id if rfq_record is not None else None
+            ),
         )
+        if rfq_record is not None:
+            self.evidence.link(
+                evidence_id=rfq_record.id,
+                target_type="evidence",
+                target_id=record.id,
+                relationship="supplier_response_context_for",
+                created_by=created_by,
+            )
+        return record
 
     def ingest(
         self,

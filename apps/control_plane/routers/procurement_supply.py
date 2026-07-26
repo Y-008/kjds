@@ -17,6 +17,7 @@ from ..api_contracts import (
     SampleOrderInput,
     SupplierOfferInput,
     SupplierQuoteAuthorityReviewInput,
+    SupplierRfqPackageInput,
     current_principal,
     ensure_role,
     run,
@@ -54,6 +55,61 @@ def list_supplier_offers(limit: int = 100):
     return run(lambda: runtime.sourcing_store.list_offers(min(max(limit, 1), 500)))
 
 
+@router.post("/v1/sourcing/rfq-packages", status_code=201)
+def create_supplier_rfq_package(
+    body: SupplierRfqPackageInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+
+    def create():
+        result = runtime.supplier_rfq.create(
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+        return {
+            **result,
+            "evidence": asdict(result["evidence"]),
+        }
+
+    return run(create)
+
+
+@router.get("/v1/sourcing/rfq-packages")
+def list_supplier_rfq_packages(
+    principal: Annotated[Principal, Depends(current_principal)],
+    product_id: str | None = None,
+    limit: int = 100,
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(
+        lambda: [
+            {**item, "evidence": asdict(item["evidence"])}
+            for item in runtime.supplier_rfq.list(
+                product_id=product_id,
+                limit=min(max(limit, 1), 500),
+            )
+        ]
+    )
+
+
+@router.get("/v1/sourcing/rfq-packages/{evidence_id}")
+def get_supplier_rfq_package(
+    evidence_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+
+    def get():
+        result = runtime.supplier_rfq.get(evidence_id)
+        return {
+            **result,
+            "evidence": asdict(result["evidence"]),
+        }
+
+    return run(get)
+
+
 @router.post("/v1/sourcing/quote-evidence", status_code=201)
 async def capture_supplier_quote_evidence(
     product_id: Annotated[str, Form()],
@@ -63,6 +119,7 @@ async def capture_supplier_quote_evidence(
     offer_json: Annotated[str, Form()],
     file: Annotated[UploadFile, File()],
     principal: Annotated[Principal, Depends(current_principal)],
+    rfq_package_evidence_id: Annotated[str, Form()] = "",
 ):
     ensure_role(principal, "operator", "reviewer", "admin")
     try:
@@ -92,6 +149,7 @@ async def capture_supplier_quote_evidence(
             effective_at=effective_at,
             effective_until=effective_until.strip() or None,
             created_by=principal.actor_id,
+            rfq_package_evidence_id=rfq_package_evidence_id.strip() or None,
         )
     )
 

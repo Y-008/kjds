@@ -441,6 +441,80 @@ def test_existing_listing_handoff_can_enter_governed_supplier_quote_intake():
     assert store.offers == {}
 
 
+def test_supplier_response_preserves_rfq_package_lineage():
+    product, store, intake = make_intake()
+    rfq_record = intake.evidence.capture(
+        content=b'{"contract_version":"supplier-rfq-package-v1"}',
+        filename="supplier-rfq.json",
+        content_type="application/json",
+        source="supplier_rfq_package",
+        source_ref=f"supplier-rfq://{product.id}/rfq-1",
+        grade=EvidenceGrade.C,
+        effective_at="2026-07-16T00:00:00+08:00",
+        effective_until="2026-07-23T00:00:00+08:00",
+        created_by="operator-1",
+        metadata={"product_id": product.id},
+    )
+
+    class RfqPackages:
+        def require_for_product(self, evidence_id, *, product_id):
+            if evidence_id != rfq_record.id or product_id != product.id:
+                raise ValueError("RFQ package does not belong to the selected product")
+            return rfq_record
+
+    intake.rfq_packages = RfqPackages()
+    payload = offers()[0]
+    quote_record = intake.capture_quote_source(
+        product_id=product.id,
+        document_kind="supplier_confirmed_quote",
+        offer_data=payload.offer_data,
+        content=payload.content,
+        filename=payload.filename,
+        content_type=payload.content_type,
+        effective_at="2026-07-16T00:00:00+08:00",
+        effective_until="2027-07-16T00:00:00+08:00",
+        created_by="operator-1",
+        rfq_package_evidence_id=rfq_record.id,
+    )
+
+    assert quote_record.metadata["rfq_package_evidence_id"] == rfq_record.id
+    assert intake.evidence.target_evidence_ids(
+        target_type="evidence",
+        target_id=quote_record.id,
+        relationship="supplier_response_context_for",
+    ) == [rfq_record.id]
+    assert store.offers == {}
+
+
+def test_supplier_response_rejects_rfq_package_from_another_product():
+    product, _, intake = make_intake()
+
+    class RfqPackages:
+        def require_for_product(self, _evidence_id, *, product_id):
+            raise ValueError(
+                f"RFQ package does not belong to the selected product {product_id}"
+            )
+
+    intake.rfq_packages = RfqPackages()
+    payload = offers()[0]
+    with pytest.raises(ValueError, match="does not belong"):
+        intake.capture_quote_source(
+            product_id=product.id,
+            document_kind="supplier_confirmed_quote",
+            offer_data=payload.offer_data,
+            content=payload.content,
+            filename=payload.filename,
+            content_type=payload.content_type,
+            effective_at="2026-07-16T00:00:00+08:00",
+            effective_until="2027-07-16T00:00:00+08:00",
+            created_by="operator-1",
+            rfq_package_evidence_id="evd_another_product",
+        )
+    assert intake.quote_authority.evidence.list_by_source(
+        "supplier_quote_source"
+    ) == []
+
+
 def test_identical_procurement_approval_request_is_idempotent():
     product, _, intake = make_intake()
     payload = {"product_id": product.id, "offer_id": "offer-1", "quantity": 100}

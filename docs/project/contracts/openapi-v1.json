@@ -663,6 +663,11 @@
           "product_id": {
             "title": "Product Id",
             "type": "string"
+          },
+          "rfq_package_evidence_id": {
+            "default": "",
+            "title": "Rfq Package Evidence Id",
+            "type": "string"
           }
         },
         "required": [
@@ -6621,6 +6626,146 @@
           "rationale"
         ],
         "title": "SupplierQuoteAuthorityReviewInput",
+        "type": "object"
+      },
+      "SupplierRfqPackageInput": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "destination": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Destination",
+            "type": "string"
+          },
+          "expected_item_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Item Hash",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "offer_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Offer Id",
+            "type": "string"
+          },
+          "operator_notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Notes"
+          },
+          "packaging_requirements": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Packaging Requirements",
+            "type": "array"
+          },
+          "quantity_breaks": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Quantity Breaks",
+            "type": "array"
+          },
+          "required_documents": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Required Documents",
+            "type": "array"
+          },
+          "required_specifications": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierRfqSpecificationInput"
+            },
+            "maxItems": 40,
+            "minItems": 1,
+            "title": "Required Specifications",
+            "type": "array"
+          },
+          "response_due_at": {
+            "title": "Response Due At",
+            "type": "string"
+          },
+          "sample_required": {
+            "title": "Sample Required",
+            "type": "boolean"
+          },
+          "store_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          },
+          "tax_invoice_required": {
+            "title": "Tax Invoice Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "store_ref",
+          "offer_id",
+          "expected_item_hash",
+          "idempotency_key",
+          "quantity_breaks",
+          "required_specifications",
+          "destination",
+          "response_due_at",
+          "sample_required",
+          "tax_invoice_required",
+          "required_documents",
+          "packaging_requirements",
+          "confirmed"
+        ],
+        "title": "SupplierRfqPackageInput",
+        "type": "object"
+      },
+      "SupplierRfqSpecificationInput": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "required_value": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Required Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "required_value"
+        ],
+        "title": "SupplierRfqSpecificationInput",
         "type": "object"
       },
       "ValidationError": {
@@ -16091,6 +16236,146 @@
           }
         ],
         "summary": "Review Supplier Quote Authority"
+      }
+    },
+    "/v1/sourcing/rfq-packages": {
+      "get": {
+        "operationId": "list_supplier_rfq_packages_v1_sourcing_rfq_packages_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "product_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "List Supplier Rfq Packages"
+      },
+      "post": {
+        "operationId": "create_supplier_rfq_package_v1_sourcing_rfq_packages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierRfqPackageInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Create Supplier Rfq Package"
+      }
+    },
+    "/v1/sourcing/rfq-packages/{evidence_id}": {
+      "get": {
+        "operationId": "get_supplier_rfq_package_v1_sourcing_rfq_packages__evidence_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Get Supplier Rfq Package"
       }
     },
     "/v1/system/kill-switch": {

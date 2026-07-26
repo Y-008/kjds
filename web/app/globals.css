@@ -1059,6 +1059,29 @@ body {
 .login-footer { margin: 17px 0 0; color: #a2a9b6; font-size: 8px; letter-spacing: .08em; }
 
 .quote-authority-workspace { display: grid; gap: 18px; }
+.rfq-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(390px, .95fr); gap: 16px; align-items: start; }
+.rfq-create-form,
+.rfq-package-list { border: 1px solid #dce3ef; border-radius: 14px; background: linear-gradient(180deg, #fff, #fbfcff); padding: 17px; }
+.rfq-create-form .comparison-title strong,
+.rfq-package-list .comparison-title strong { display: inline-flex; align-items: center; gap: 7px; }
+.rfq-checks { display: flex; flex-wrap: wrap; gap: 14px; margin: 11px 0; }
+.rfq-checks label { display: flex; align-items: center; gap: 7px; color: #5f6b7e; font-size: 9px; }
+.rfq-checks input { width: 15px; height: 15px; }
+.rfq-package-list { display: grid; gap: 10px; max-height: 1050px; overflow: auto; }
+.rfq-package-card { display: grid; gap: 11px; padding: 14px; border: 1px solid #dfe5f0; border-radius: 12px; background: #fff; box-shadow: 0 8px 24px rgba(44, 58, 91, .045); }
+.rfq-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.rfq-card-heading > div { display: grid; gap: 5px; min-width: 0; }
+.rfq-card-heading strong { font-size: 11px; overflow-wrap: anywhere; }
+.rfq-card-heading small { color: #788397; font-size: 8px; overflow-wrap: anywhere; }
+.rfq-card-heading button { min-height: 31px; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; background: #536dfe; font-size: 8px; }
+.rfq-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.rfq-facts span { display: grid; gap: 2px; padding: 8px; border-radius: 8px; background: #f4f6fb; color: #7a8496; font-size: 7px; }
+.rfq-facts strong { color: #475269; font-size: 8px; overflow-wrap: anywhere; }
+.rfq-package-card details { border: 1px solid #e5e9f1; border-radius: 9px; background: #fbfcfe; }
+.rfq-package-card summary { cursor: pointer; padding: 9px 10px; color: #5e6d87; font-size: 8px; font-weight: 750; }
+.rfq-package-card pre { max-height: 360px; margin: 0; padding: 12px; overflow: auto; border-top: 1px solid #e5e9f1; color: #414d62; font-family: inherit; font-size: 8px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rfq-package-card code { color: #788397; font-size: 7px; overflow-wrap: anywhere; }
+.rfq-package-card > p { margin: 0; padding: 8px 10px; border-radius: 8px; background: #fff7e8; color: #8b6420; font-size: 8px; line-height: 1.5; }
 .quote-stage-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr); gap: 16px; align-items: start; }
 .quote-source-form,
 .quote-review-queue,
@@ -1089,6 +1112,7 @@ body {
   .sidebar { padding-inline: 12px; }
   .workspace { padding-inline: 25px; }
   .overview-kpis { grid-template-columns: 1fr 1fr; }
+  .rfq-workspace-grid { grid-template-columns: 1fr; }
   .quote-stage-grid { grid-template-columns: 1fr; }
   .capability-grid { grid-template-columns: repeat(2, 1fr); }
   .overview-grid,

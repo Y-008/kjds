@@ -154,6 +154,37 @@ class ExistingOzonListingBindingInput(BaseModel):
     confirmed: Literal[True]
 
 
+class SupplierRfqSpecificationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=100)
+    required_value: str = Field(min_length=1, max_length=500)
+
+
+class SupplierRfqPackageInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(min_length=1, max_length=160)
+    offer_id: str = Field(min_length=1, max_length=160)
+    expected_item_hash: str = Field(pattern="^[0-9a-f]{64}$")
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+    quantity_breaks: list[int] = Field(min_length=1, max_length=6)
+    required_specifications: list[SupplierRfqSpecificationInput] = Field(
+        min_length=1,
+        max_length=40,
+    )
+    destination: str = Field(min_length=1, max_length=240)
+    response_due_at: str
+    sample_required: bool
+    tax_invoice_required: bool
+    required_documents: list[str] = Field(min_length=1, max_length=20)
+    packaging_requirements: list[str] = Field(min_length=1, max_length=20)
+    operator_notes: str | None = Field(default=None, max_length=2000)
+    confirmed: Literal[True]
+
+
 class OpportunityInput(BaseModel):
     market: str
     category: str
