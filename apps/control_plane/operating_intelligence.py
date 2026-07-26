@@ -406,6 +406,139 @@ class OperatingIntelligenceService:
         with Session(self.engine) as session:
             return [self._task(row) for row in session.scalars(query)]
 
+    def ensure_internal_task(
+        self,
+        *,
+        task_kind: str,
+        scope: dict[str, Any],
+        title: str,
+        severity: str,
+        owner: str,
+        evidence_ids: list[str],
+        snapshot: dict[str, Any],
+        actor_id: str,
+        cooldown_minutes: int = 1440,
+        as_of: str | None = None,
+    ) -> dict[str, Any]:
+        """Project an internal blocker into the existing task/event ledger."""
+        task_kind = task_kind.strip()
+        title = title.strip()
+        owner = owner.strip()
+        actor = actor_id.strip()
+        if not task_kind or not title or not owner or not actor:
+            raise ValueError(
+                "Internal task requires kind, title, owner, and actor"
+            )
+        if severity not in {"critical", "high", "medium", "low"}:
+            raise ValueError("Unknown internal task severity")
+        if (
+            not isinstance(scope, dict)
+            or not scope
+            or not isinstance(snapshot, dict)
+        ):
+            raise ValueError("Internal task requires scope and snapshot objects")
+        if not 1 <= cooldown_minutes <= 525_600:
+            raise ValueError(
+                "Internal task cooldown must be 1 to 525600 minutes"
+            )
+        normalized_evidence = self._evidence_ids(evidence_ids)
+        if normalized_evidence:
+            self.evidence.require_valid(normalized_evidence)
+        now = self._datetime(as_of) if as_of else datetime.now(UTC)
+        metric_id = f"internal:{task_kind}"
+        with Session(
+            self.engine, expire_on_commit=False
+        ) as session, session.begin():
+            active = self._cooldown_task(
+                session,
+                metric_id=metric_id,
+                scope=scope,
+                now=now,
+            )
+            if active is not None:
+                active.last_detected_at = now
+                active.updated_at = now
+                active.evidence_ids_json = sorted(
+                    set(active.evidence_ids_json)
+                    | set(normalized_evidence)
+                )
+                active.snapshot_json = {
+                    **active.snapshot_json,
+                    **snapshot,
+                    "automatic_business_action": False,
+                    "external_write_allowed": False,
+                }
+                self._append_event_row(
+                    session,
+                    task=active,
+                    event_type="observation",
+                    from_status=active.status,
+                    to_status=active.status,
+                    reason=(
+                        "Internal blocker repeated inside cooldown; "
+                        "no duplicate task created"
+                    ),
+                    evidence_ids=normalized_evidence,
+                    payload={"snapshot": snapshot},
+                    actor_id=actor,
+                    occurred_at=now,
+                )
+                session.flush()
+                return self._task(active)
+            bucket = int(now.timestamp()) // (cooldown_minutes * 60)
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    {
+                        "registry_version": "operating-internal-task/1.0.0",
+                        "task_kind": task_kind,
+                        "scope": scope,
+                        "cooldown_bucket": bucket,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
+            task = OperatingTaskRow(
+                id=new_id("tsk"),
+                fingerprint=fingerprint,
+                metric_id=metric_id,
+                scope_json=scope,
+                title=title,
+                severity=severity,
+                owner=owner,
+                status="open",
+                first_detected_at=now,
+                last_detected_at=now,
+                cooldown_until=now
+                + timedelta(minutes=cooldown_minutes),
+                evidence_ids_json=normalized_evidence,
+                snapshot_json={
+                    **snapshot,
+                    "automatic_business_action": False,
+                    "external_write_allowed": False,
+                },
+                created_by=actor,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(task)
+            session.flush()
+            self._append_event_row(
+                session,
+                task=task,
+                event_type="opened",
+                from_status="open",
+                to_status="open",
+                reason="Internal operating blocker projected by a deep module",
+                evidence_ids=normalized_evidence,
+                payload={"snapshot": snapshot},
+                actor_id=actor,
+                occurred_at=now,
+            )
+            session.flush()
+            return self._task(task)
+
     def scans(self, *, limit: int = 50) -> list[dict[str, Any]]:
         if not 1 <= limit <= 500:
             raise ValueError("Anomaly scan limit must be between 1 and 500")
@@ -548,7 +681,8 @@ class OperatingIntelligenceService:
                         "overdue_minutes": overdue_minutes,
                         "escalation_level": level,
                         "next_action": (
-                            "确认指标来源与 Evidence，并记录任务状态事件"
+                            row.snapshot_json.get("next_action")
+                            or "确认指标来源与 Evidence，并记录任务状态事件"
                         ),
                     }
                 )

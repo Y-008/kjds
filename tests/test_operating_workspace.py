@@ -180,8 +180,8 @@ def test_operating_workspace_resolves_point_line_and_surface(service):
     )
 
     assert point["context"]["type"] == "point"
-    assert point["release_version"] == "0.57.1"
-    assert point["registry_version"] == "0.57.1"
+    assert point["release_version"] == "0.58.0"
+    assert point["registry_version"] == "0.58.0"
     assert point["stages"][0]["runtime_status"] == "blocked"
     assert point["stages"][0]["evidence_ids"] == []
     assert point["actions"][0]["href"] == "/#research"

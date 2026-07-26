@@ -16,6 +16,7 @@ from .routers import (
     evidence_governance,
     execution_operations,
     finance_imports,
+    marketplace_observation,
     ozon_platform,
     procurement_supply,
     product_content,
@@ -191,6 +192,7 @@ _ROUTE_MODULES = (
     execution_operations,
     procurement_supply,
     ozon_platform,
+    marketplace_observation,
     product_content,
     finance_imports,
 )

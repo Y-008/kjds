@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.57.1"
+APP_VERSION = "0.58.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -102,6 +102,77 @@ class ObservationInput(BaseModel):
     source_ref: str
     confidence: Decimal
     dimensions: dict[str, str] = Field(default_factory=dict)
+
+
+class MarketplaceObservationItemInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    external_item_id: str = Field(min_length=1, max_length=240)
+    supplier_ref: str = Field(min_length=1, max_length=240)
+    title: str = Field(min_length=1, max_length=2000)
+    variant_key: str = Field(min_length=1, max_length=500)
+    currency: str = Field(
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Za-z]{3}$",
+    )
+    displayed_price: Decimal = Field(gt=0)
+    price_kind: Literal[
+        "public_display_price",
+        "new_customer_price",
+        "member_price",
+        "range_minimum",
+        "marketplace_listing_price",
+    ]
+    min_order_quantity: int | None = Field(default=None, ge=1)
+    availability: str = Field(default="unknown", min_length=1, max_length=80)
+    specifications: dict[str, str] = Field(default_factory=dict)
+    target_product_id: str | None = Field(
+        default=None, min_length=1, max_length=160
+    )
+    target_offer_id: str | None = Field(
+        default=None, min_length=1, max_length=160
+    )
+    source_url: str | None = Field(
+        default=None, min_length=8, max_length=2000
+    )
+
+
+class MarketplaceObservationCaptureInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_profile: Literal[
+        "browser_observation",
+        "seller_tool_export",
+        "manual_verified_public_page",
+    ]
+    marketplace: Literal["1688", "ozon"]
+    store_ref: str = Field(default="external", min_length=1, max_length=160)
+    source_url: str = Field(min_length=8, max_length=2000)
+    observed_at: str
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+    capture_note: str | None = Field(default=None, max_length=4000)
+    items: list[MarketplaceObservationItemInput] = Field(
+        min_length=1, max_length=1000
+    )
+    confirmed: Literal[True]
+
+
+class PortfolioPilotPrepareInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    product_id: str = Field(min_length=1, max_length=160)
+    target_specification: dict[str, str] = Field(min_length=1, max_length=80)
+    policy_id: Literal["ozon-cny-research-screening-v1"] = (
+        "ozon-cny-research-screening-v1"
+    )
+    candidate_target: int = Field(default=100, ge=1, le=1000)
+    pilot_limit: int = Field(default=10, ge=1, le=100)
+    max_loss_cny: Decimal = Field(default=Decimal("500"), gt=0)
+    cm3_floor_cny: Decimal = Field(default=Decimal("0"))
+    as_of: str | None = None
 
 
 class MarketplaceSkuGrowthObservationInput(BaseModel):

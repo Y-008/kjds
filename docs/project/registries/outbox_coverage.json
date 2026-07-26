@@ -117,6 +117,13 @@
       "activation_trigger": "领取模式替换为事件推送"
     },
     {
+      "module": "marketplace_observation.py",
+      "status": "internal_only",
+      "delivery_contract": "operations_queue_projection",
+      "rationale": "市场观察和候选筛选只写 Evidence、内部观察快照和现有 OperatingTask，不触发供应商或平台副作用。",
+      "activation_trigger": "观察结果驱动独立供应商联系、采购或平台执行服务"
+    },
+    {
       "module": "media_workbench.py",
       "status": "polling_contract",
       "delivery_contract": "postgresql_lease_claim_api",

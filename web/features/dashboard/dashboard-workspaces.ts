@@ -3,6 +3,7 @@ export type WorkspaceId =
   | "data"
   | "research"
   | "products"
+  | "pilot"
   | "sourcing"
   | "growth"
   | "finance"
@@ -34,6 +35,14 @@ export const workspaceDefinitions: WorkspaceDefinition[] = [
     eyebrow: "PRICE · CONTENT · ADS",
     title: "现有商品增长工作台",
     description: "用全成本、同行价格、评价、内容和转化证据生成可解释增长方案。",
+    group: "经营",
+  },
+  {
+    id: "pilot",
+    label: "选品 Pilot",
+    eyebrow: "OBSERVE · SCREEN · PILOT",
+    title: "页面数据到限额利润 Pilot",
+    description: "把公开观察、规格差距、下行情景和全成本证据合成可解释候选排序。",
     group: "经营",
   },
   {
