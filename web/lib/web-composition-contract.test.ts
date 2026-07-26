@@ -73,6 +73,31 @@ test("marketplace growth stays recommendation-only while using governed evidence
   assert.doesNotMatch(panel, /\/commands|\/write-attempt|\/receipt/);
 });
 
+test("supplier RFQ workspace freezes current listing requirements without sending", () => {
+  const controller = read("../features/dashboard/use-dashboard-controller.tsx");
+  const panel = read("../features/dashboard/supplier-quote-workspace.tsx");
+  const contracts = read("../features/dashboard/contracts.ts");
+
+  assert.match(controller, /\/backend\/v1\/sourcing\/rfq-packages/);
+  assert.match(controller, /expected_item_hash: catalogItem\.item_hash/);
+  assert.match(controller, /required_specifications: requiredSpecifications/);
+  assert.match(controller, /confirmed: true/);
+  assert.match(controller, /navigator\.clipboard\.writeText\(item\.package\.message_text\)/);
+  assert.match(controller, /body\.append\("rfq_package_evidence_id"/);
+  assert.match(panel, /已绑定 Ozon Listing/);
+  assert.match(panel, /名称=要求/);
+  assert.match(panel, /复制 ≠ 已发送 ≠ 已报价/);
+  assert.match(panel, /商品标题、重量和尺寸只是 Ozon 目录观察/);
+  assert.match(panel, /未自动联系供应商、未采购、未付款、未创建正式报价、未写入 Ozon/);
+  assert.match(contracts, /contract_version: "supplier-rfq-package-v1"/);
+  assert.match(contracts, /automatic_supplier_contact: false/);
+  const createRfq = controller.slice(
+    controller.indexOf("async function createSupplierRfq"),
+    controller.indexOf("async function copySupplierRfqMessage"),
+  );
+  assert.doesNotMatch(createRfq, /1688|supplier\/contact|\/commands|\/write-attempt|\/receipt/);
+});
+
 test("approved listings expose only the minimal execution-plan handoff", () => {
   const controller = read("../features/dashboard/use-dashboard-controller.tsx");
   const productPanel = read("../features/dashboard/product-content-panel.tsx");

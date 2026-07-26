@@ -279,6 +279,48 @@ def test_openapi_exposes_verified_marketplace_catalog_and_existing_binding() -> 
         assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
 
 
+def test_openapi_exposes_immutable_supplier_rfq_and_reply_lineage() -> None:
+    schema = app.openapi()
+    collection = schema["paths"]["/v1/sourcing/rfq-packages"]
+    item = schema["paths"]["/v1/sourcing/rfq-packages/{evidence_id}"]
+
+    assert set(collection) == {"get", "post"}
+    assert set(item) == {"get"}
+    request_schema = schema["components"]["schemas"]["SupplierRfqPackageInput"]
+    assert request_schema["additionalProperties"] is False
+    assert set(request_schema["required"]) == {
+        "store_ref",
+        "offer_id",
+        "expected_item_hash",
+        "idempotency_key",
+        "quantity_breaks",
+        "required_specifications",
+        "destination",
+        "response_due_at",
+        "sample_required",
+        "tax_invoice_required",
+        "required_documents",
+        "packaging_requirements",
+        "confirmed",
+    }
+    assert request_schema["properties"]["confirmed"]["const"] is True
+    for path, method in (
+        ("/v1/sourcing/rfq-packages", "get"),
+        ("/v1/sourcing/rfq-packages", "post"),
+        ("/v1/sourcing/rfq-packages/{evidence_id}", "get"),
+    ):
+        assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
+
+    quote_operation = schema["paths"]["/v1/sourcing/quote-evidence"]["post"]
+    multipart_ref = quote_operation["requestBody"]["content"][
+        "multipart/form-data"
+    ]["schema"]["$ref"]
+    multipart_schema = schema["components"]["schemas"][
+        multipart_ref.rsplit("/", 1)[-1]
+    ]
+    assert "rfq_package_evidence_id" in multipart_schema["properties"]
+
+
 def test_openapi_exposes_versioned_logistics_cost_workspace() -> None:
     schema = app.openapi()
 

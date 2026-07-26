@@ -804,6 +804,38 @@ class MarketplaceCatalogWorkspace:
             raise ValueError("Marketplace catalog item limit must be 1 to 1000")
         return self.store.latest_items(store_ref=store_scope, limit=limit)
 
+    def require_bound_current_item(
+        self,
+        *,
+        store_ref: str,
+        offer_id: str,
+        expected_item_hash: str,
+    ) -> dict[str, Any]:
+        store_scope, external_offer_id, item = self._require_current_item(
+            store_ref=store_ref,
+            offer_id=offer_id,
+            expected_item_hash=expected_item_hash,
+        )
+        binding = self.store.get_binding(
+            marketplace="ozon",
+            store_ref=store_scope,
+            offer_id=external_offer_id,
+        )
+        if binding is None:
+            raise ValueError("Marketplace listing must be bound before downstream work")
+        product = self.repository.get_product(binding["product_id"])
+        if (
+            product.status != ProductStatus.ACTIVE
+            or product.channel != "OZON"
+            or product.market != "RU"
+        ):
+            raise ValueError("Bound marketplace product is not active for Ozon RU")
+        return {
+            "item": item,
+            "binding": binding,
+            "product": product,
+        }
+
     def bind_existing_listing(
         self,
         *,
@@ -815,35 +847,12 @@ class MarketplaceCatalogWorkspace:
     ) -> dict[str, Any]:
         if not confirmed:
             raise ValueError("Existing listing binding requires explicit human confirmation")
-        store_scope = _required_text(store_ref, "store_ref", max_length=160)
-        external_offer_id = _required_text(
-            offer_id, "offer_id", max_length=160
-        )
         actor = _required_text(bound_by, "bound_by", max_length=160)
-        expected_hash = _required_text(
-            expected_item_hash, "expected_item_hash", max_length=64
+        store_scope, external_offer_id, item = self._require_current_item(
+            store_ref=store_ref,
+            offer_id=offer_id,
+            expected_item_hash=expected_item_hash,
         )
-        if len(expected_hash) != 64 or any(
-            character not in "0123456789abcdef" for character in expected_hash
-        ):
-            raise ValueError("Expected catalog item hash must be lowercase SHA-256")
-
-        item = next(
-            (
-                candidate
-                for candidate in self.store.latest_items(
-                    store_ref=store_scope,
-                    limit=1000,
-                )
-                if candidate["offer_id"] == external_offer_id
-            ),
-            None,
-        )
-        if item is None:
-            raise KeyError("Unknown current marketplace catalog item")
-        if item["item_hash"] != expected_hash:
-            raise ValueError("Catalog item changed; refresh before binding")
-        self.evidence.require_current([item["source_evidence_id"]])
 
         identity = json.dumps(
             {
@@ -999,3 +1008,39 @@ class MarketplaceCatalogWorkspace:
             "automatic_listing": False,
             "automatic_marketplace_write": False,
         }
+
+    def _require_current_item(
+        self,
+        *,
+        store_ref: str,
+        offer_id: str,
+        expected_item_hash: str,
+    ) -> tuple[str, str, dict[str, Any]]:
+        store_scope = _required_text(store_ref, "store_ref", max_length=160)
+        external_offer_id = _required_text(
+            offer_id, "offer_id", max_length=160
+        )
+        expected_hash = _required_text(
+            expected_item_hash, "expected_item_hash", max_length=64
+        )
+        if len(expected_hash) != 64 or any(
+            character not in "0123456789abcdef" for character in expected_hash
+        ):
+            raise ValueError("Expected catalog item hash must be lowercase SHA-256")
+        item = next(
+            (
+                candidate
+                for candidate in self.store.latest_items(
+                    store_ref=store_scope,
+                    limit=1000,
+                )
+                if candidate["offer_id"] == external_offer_id
+            ),
+            None,
+        )
+        if item is None:
+            raise KeyError("Unknown current marketplace catalog item")
+        if item["item_hash"] != expected_hash:
+            raise ValueError("Catalog item changed; refresh before continuing")
+        self.evidence.require_current([item["source_evidence_id"]])
+        return store_scope, external_offer_id, item

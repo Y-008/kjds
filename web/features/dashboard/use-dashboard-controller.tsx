@@ -26,6 +26,7 @@ import type {
   MarketplaceGrowthPlan,
   PassportReview,
   ProductIdentity,
+  SupplierRfqPackage,
   SupplierQuoteEvidence,
   SourcingComparison,
   ApprovalRecord,
@@ -89,6 +90,8 @@ export function useDashboardController() {
   const [logisticsCalculations, setLogisticsCalculations] = useState<LogisticsCalculation[]>([]);
   const [logisticsBusy, setLogisticsBusy] = useState(false);
   const [offers, setOffers] = useState<unknown[]>([]);
+  const [supplierRfqPackages, setSupplierRfqPackages] = useState<SupplierRfqPackage[]>([]);
+  const [supplierRfqBusy, setSupplierRfqBusy] = useState(false);
   const [supplierQuoteEvidence, setSupplierQuoteEvidence] = useState<SupplierQuoteEvidence[]>([]);
   const [products, setProducts] = useState<ProductIdentity[]>([]);
   const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
@@ -180,13 +183,18 @@ export function useDashboardController() {
     setDomainStates({ core: "loading", product: "loading", finance: "loading", science: "loading", execution: "loading" });
     const request = (input: RequestInfo | URL, init: RequestInit = {}) =>
       fetchJson(input, { ...init, signal: signal ?? init.signal });
-    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, quoteEvidenceResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse, logisticsRateCardsResponse, logisticsCalculationsResponse] = await settleJsonRequests([
+    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, rfqPackagesResponse, quoteEvidenceResponse, marketplaceCatalogResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse, logisticsRateCardsResponse, logisticsCalculationsResponse] = await settleJsonRequests([
       request("/backend/v1/integrations/health", { cache: "no-store" }),
       request("/backend/v1/operating-workbench/briefing", { cache: "no-store" }),
       request("/backend/v1/recommendations", { cache: "no-store" }),
       request("/backend/v1/sourcing/connectors", { cache: "no-store" }),
       request("/backend/v1/sourcing/offers", { cache: "no-store" }),
+      request("/backend/v1/sourcing/rfq-packages", { cache: "no-store" }),
       request("/backend/v1/sourcing/quote-evidence", { cache: "no-store" }),
+      request(
+        `/backend/v1/marketplace-catalog/items/latest?store_ref=${encodeURIComponent(marketplaceCatalogStoreRef)}&limit=100`,
+        { cache: "no-store" },
+      ),
       request("/backend/v1/products", { cache: "no-store" }),
       request("/backend/v1/operations/readiness", { cache: "no-store" }),
       request("/backend/v1/passport-reviews", { cache: "no-store" }),
@@ -218,7 +226,7 @@ export function useDashboardController() {
     ]);
     setDomainStates({
       core: [healthResponse, operatingWorkbenchResponse].every((response) => response.ok) ? "ready" : "error",
-      product: [connectorResponse, offersResponse, quoteEvidenceResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, logisticsRateCardsResponse, logisticsCalculationsResponse].every((response) => response.ok) ? "ready" : "error",
+      product: [connectorResponse, offersResponse, rfqPackagesResponse, quoteEvidenceResponse, marketplaceCatalogResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, logisticsRateCardsResponse, logisticsCalculationsResponse].every((response) => response.ok) ? "ready" : "error",
       finance: costAuthorityResponse.ok ? "ready" : "error",
       science: [profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse].every((response) => response.ok) ? "ready" : "error",
       execution: [policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse].every((response) => response.ok) ? "ready" : "error",
@@ -228,7 +236,12 @@ export function useDashboardController() {
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
     if (connectorResponse.ok) setSourceConnectors(await connectorResponse.json());
     if (offersResponse.ok) setOffers(await offersResponse.json());
+    if (rfqPackagesResponse.ok) setSupplierRfqPackages(await rfqPackagesResponse.json());
     if (quoteEvidenceResponse.ok) setSupplierQuoteEvidence(await quoteEvidenceResponse.json());
+    if (marketplaceCatalogResponse.ok) {
+      setMarketplaceCatalogItems(await marketplaceCatalogResponse.json());
+      setMarketplaceCatalogLoaded(true);
+    }
     const gateData: GateReadiness | null = gateResponse.ok ? await gateResponse.json() : null;
     if (gateData) setGateReadiness(gateData);
     if (reviewResponse.ok) setPassportReviews(await reviewResponse.json());
@@ -315,7 +328,7 @@ export function useDashboardController() {
       }));
       setComparisons(comparisonRows.filter((item): item is SourcingComparison => item !== null && item.offer_count > 0));
     }
-  }, []);
+  }, [marketplaceCatalogStoreRef]);
 
   useDashboardBoot({ load, setSession: setWebSession, setNotice });
 
@@ -1230,6 +1243,104 @@ export function useDashboardController() {
     }
   }
 
+  async function createSupplierRfq(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) =>
+      (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value.trim();
+    const checked = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).checked;
+    const offerId = value("rfq_offer_id");
+    const catalogItem = marketplaceCatalogItems.find((item) => item.offer_id === offerId);
+    if (!catalogItem?.canonical_product_id) {
+      setNotice("请选择已经绑定标准商品、且仍在当前目录中的 Ozon Listing");
+      return;
+    }
+    const quantityTokens = value("rfq_quantity_breaks").split(/[\s,，]+/).filter(Boolean);
+    const quantityBreaks = [...new Set(quantityTokens.map(Number))];
+    if (
+      !quantityBreaks.length
+      || quantityBreaks.length > 6
+      || quantityBreaks.some((item) => !Number.isInteger(item) || item < 1)
+    ) {
+      setNotice("数量阶梯需要 1–6 个正整数，例如 1、10、50、100");
+      return;
+    }
+    const specificationLines = value("rfq_specifications").split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    const requiredSpecifications = specificationLines.map((line) => {
+      const match = line.match(/^([^=：]+)[=：](.+)$/);
+      return match ? { name: match[1].trim(), required_value: match[2].trim() } : null;
+    });
+    if (!requiredSpecifications.length || requiredSpecifications.some((item) => !item?.name || !item.required_value)) {
+      setNotice("每条采购规格必须单独一行并使用“名称=要求”格式");
+      return;
+    }
+    const textLines = (name: string) => value(name).split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    const requiredDocuments = textLines("rfq_required_documents");
+    const packagingRequirements = textLines("rfq_packaging_requirements");
+    if (!requiredDocuments.length || !packagingRequirements.length) {
+      setNotice("请至少填写一项文件要求和一项包装要求");
+      return;
+    }
+    const due = new Date(value("rfq_response_due_at"));
+    if (Number.isNaN(due.getTime())) {
+      setNotice("请选择有效的回复截止时间");
+      return;
+    }
+    setSupplierRfqBusy(true);
+    setNotice("正在复验当前 Ozon 商品哈希并冻结可比询价包…");
+    try {
+      const response = await fetchJson("/backend/v1/sourcing/rfq-packages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_ref: marketplaceCatalogStoreRef,
+          offer_id: catalogItem.offer_id,
+          expected_item_hash: catalogItem.item_hash,
+          idempotency_key: value("rfq_idempotency_key"),
+          quantity_breaks: quantityBreaks,
+          required_specifications: requiredSpecifications,
+          destination: value("rfq_destination"),
+          response_due_at: due.toISOString(),
+          sample_required: checked("rfq_sample_required"),
+          tax_invoice_required: checked("rfq_tax_invoice_required"),
+          required_documents: requiredDocuments,
+          packaging_requirements: packagingRequirements,
+          operator_notes: value("rfq_operator_notes") || null,
+          confirmed: true,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "询价包创建失败");
+        return;
+      }
+      const created = result as SupplierRfqPackage;
+      setSupplierRfqPackages((current) => [
+        created,
+        ...current.filter((item) => item.evidence.id !== created.evidence.id),
+      ]);
+      form.reset();
+      setNotice(
+        result.idempotent
+          ? "相同询价包已存在，没有重复写入，也没有联系供应商"
+          : `询价包 …${created.evidence.id.slice(-8)} 已冻结；请人工复制发送，系统未联系供应商`,
+      );
+    } catch {
+      setNotice("无法创建供应商询价包，请检查服务状态");
+    } finally {
+      setSupplierRfqBusy(false);
+    }
+  }
+
+  async function copySupplierRfqMessage(item: SupplierRfqPackage) {
+    try {
+      await navigator.clipboard.writeText(item.package.message_text);
+      setNotice(`询价包 …${item.evidence.id.slice(-8)} 文案已复制；复制不代表已发送或已取得报价`);
+    } catch {
+      setNotice("浏览器无法写入剪贴板，请从询价包正文手工复制");
+    }
+  }
+
   async function captureSupplierQuote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1250,6 +1361,7 @@ export function useDashboardController() {
     body.append("effective_at", new Date(value("quote_effective_at")).toISOString());
     body.append("effective_until", value("quote_effective_until") ? new Date(value("quote_effective_until")).toISOString() : "");
     body.append("offer_json", JSON.stringify(offer));
+    body.append("rfq_package_evidence_id", value("quote_rfq_package_evidence_id"));
     body.append("file", sourceFile);
     setSourcingUploading(true);
     setNotice("正在把供应商资料固化为 B 级线索，不会创建正式报价…");
@@ -2390,6 +2502,10 @@ export function useDashboardController() {
     setLogisticsBusy,
     offers,
     setOffers,
+    supplierRfqPackages,
+    setSupplierRfqPackages,
+    supplierRfqBusy,
+    setSupplierRfqBusy,
     supplierQuoteEvidence,
     setSupplierQuoteEvidence,
     products,
@@ -2585,6 +2701,8 @@ export function useDashboardController() {
     reviewPassport,
     captureLogisticsRateCard,
     calculateLogisticsCost,
+    createSupplierRfq,
+    copySupplierRfqMessage,
     uploadSupplierComparison,
     captureSupplierQuote,
     reviewSupplierQuote,

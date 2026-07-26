@@ -44,7 +44,10 @@ class RetentionClass(StrEnum):
     SECURITY = "security"
 
 
-UNIQUE_SOURCE_REF_SOURCES = {"ozon-isolated-execution-worker"}
+UNIQUE_SOURCE_REF_SOURCES = {
+    "ozon-isolated-execution-worker",
+    "supplier_rfq_package",
+}
 
 RETENTION_REVIEW_DAYS = {
     RetentionClass.OPERATIONAL: 365,

@@ -35,6 +35,9 @@ def operator():
         "listing_russian_native_review",
         "ozon_execution_identity_authority_review",
         "ozon_finance_report_review",
+        "supplier_quote_authority_review",
+        "supplier_quote_source",
+        "supplier_rfq_package",
     ],
 )
 def test_generic_capture_cannot_forge_reserved_review_source(source):
@@ -109,6 +112,11 @@ def test_generic_lineage_cannot_forge_gate_or_review_relationships():
     assert authority_exc.value.status_code == 422
 
     for target_type, target_id, relationship in (
+        (
+            "evidence",
+            "evd_supplier_rfq",
+            "catalog_context_for",
+        ),
         ("listing_draft", "lst_forged", "listing_russian_native_review"),
         (
             "evidence",
@@ -119,6 +127,21 @@ def test_generic_lineage_cannot_forge_gate_or_review_relationships():
             "ozon_execution_identity",
             "ozon-worker",
             "ozon_execution_identity_authority_review",
+        ),
+        (
+            "product",
+            "prd_supplier_rfq",
+            "rfq_package_for",
+        ),
+        (
+            "evidence",
+            "evd_supplier_quote",
+            "supplier_quote_authority_review",
+        ),
+        (
+            "evidence",
+            "evd_supplier_quote",
+            "supplier_response_context_for",
         ),
     ):
         with pytest.raises(HTTPException) as execution_authority_exc:

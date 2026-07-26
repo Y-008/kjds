@@ -47,6 +47,9 @@ async def capture_evidence(
         "ozon_execution_identity_authority_review",
         "ozon-isolated-execution-worker",
         "ozon_finance_report_review",
+        "supplier_quote_authority_review",
+        "supplier_quote_source",
+        "supplier_rfq_package",
     }:
         raise HTTPException(status_code=422, detail="Reserved evidence source requires its dedicated workflow")
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
@@ -136,9 +139,13 @@ def link_evidence(
         or relationship
         in {
             "candidate_authority_review",
+            "catalog_context_for",
             "listing_russian_native_review",
             "ozon_execution_identity_authority_review",
+            "rfq_package_for",
             "reviews",
+            "supplier_quote_authority_review",
+            "supplier_response_context_for",
         }
         or (
             target_type == ResearchInboxService.TARGET_TYPE

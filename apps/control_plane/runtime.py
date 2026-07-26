@@ -63,6 +63,7 @@ from .sourcing_intake import SupplierComparisonIntakeService
 from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 from .supplier_quote_authority import SupplierQuoteAuthorityService
+from .supplier_rfq import SupplierRfqWorkspace
 
 
 @dataclass(slots=True)
@@ -123,6 +124,7 @@ class RuntimeServices:
     sourcing_intake: Any
     sourcing_store: Any
     supplier_quote_authority: Any
+    supplier_rfq: Any
 
 
 def build_repository():
@@ -246,12 +248,6 @@ def build_runtime() -> RuntimeServices:
         planner=marketplace_growth_planner,
         store=SqlMarketplaceGrowthStore(engine),
     )
-    sourcing_intake = SupplierComparisonIntakeService(
-        sourcing=sourcing,
-        evidence=evidence,
-        quote_authority=supplier_quote_authority,
-        logistics=logistics,
-    )
     procurement = ProcurementService(
         engine=engine,
         repository=repo,
@@ -358,6 +354,17 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
         repository=repo,
     )
+    supplier_rfq = SupplierRfqWorkspace(
+        marketplace_catalog=marketplace_catalog,
+        evidence=evidence,
+    )
+    sourcing_intake = SupplierComparisonIntakeService(
+        sourcing=sourcing,
+        evidence=evidence,
+        quote_authority=supplier_quote_authority,
+        logistics=logistics,
+        rfq_packages=supplier_rfq,
+    )
     providers = {"comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189"))}
     if url := os.getenv("KJDS_OLLAMA_URL", "").strip():
         providers["ollama"] = OllamaProvider(url)
@@ -429,6 +436,7 @@ def build_runtime() -> RuntimeServices:
         sourcing_intake=sourcing_intake,
         sourcing_store=sourcing_store,
         supplier_quote_authority=supplier_quote_authority,
+        supplier_rfq=supplier_rfq,
     )
 
 

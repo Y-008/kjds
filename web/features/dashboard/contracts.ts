@@ -229,6 +229,80 @@ export type PassportReview = {
   };
 };
 export type ProductIdentity = { id: string; sku: string; name: string };
+export type SupplierRfqPackage = {
+  evidence: EvidenceSummary & {
+    metadata: {
+      product_id: string;
+      store_ref: string;
+      offer_id: string;
+      marketplace_sku: string | null;
+      package_hash: string;
+      status: "draft";
+      counts_as_supplier_quote: false;
+      automatic_supplier_contact: false;
+      automatic_procurement: false;
+      automatic_payment: false;
+      automatic_listing: false;
+      automatic_marketplace_write: false;
+    };
+  };
+  package: {
+    contract_version: "supplier-rfq-package-v1";
+    package_hash: string;
+    product: ProductIdentity;
+    listing: {
+      marketplace: "ozon";
+      store_ref: string;
+      offer_id: string;
+      marketplace_sku: string | null;
+    };
+    catalog_observation: {
+      notice: string;
+      catalog_title: string;
+      observed_at: string;
+      source_evidence_id: string;
+      item_hash: string;
+      package_weight_kg: string | null;
+      package_dimensions_cm: null | {
+        length: string;
+        width: string;
+        height: string;
+      };
+      image_reference_count: number;
+      video_reference_count: number;
+      media_rights_status: "unverified_external_reference";
+    };
+    buyer_requirement: {
+      quantity_breaks: number[];
+      currency_requested: "CNY";
+      required_specifications: Array<{
+        name: string;
+        required_value: string;
+      }>;
+      destination: string;
+      response_due_at: string;
+      sample_required: boolean;
+      tax_invoice_required: boolean;
+      required_documents: string[];
+      packaging_requirements: string[];
+      operator_notes: string | null;
+    };
+    message_text: string;
+    response_checklist: string[];
+    unanswered_questions: string[];
+    authority: {
+      status: "draft";
+      counts_as_supplier_quote: false;
+      formal_offer_eligible: false;
+      automatic_supplier_contact: false;
+      automatic_procurement: false;
+      automatic_payment: false;
+      automatic_listing: false;
+      automatic_marketplace_write: false;
+    };
+  };
+  idempotent?: boolean;
+};
 export type SupplierQuoteEvidence = {
   evidence: EvidenceSummary & {
     effective_until: string | null;
@@ -236,6 +310,7 @@ export type SupplierQuoteEvidence = {
       product_id: string;
       supplier_ref: string;
       document_kind: "public_display_price" | "supplier_confirmed_quote" | "proforma_invoice";
+      rfq_package_evidence_id: string | null;
       offer_data: {
         product_id: string;
         supplier_ref: string;

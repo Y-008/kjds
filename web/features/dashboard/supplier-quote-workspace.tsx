@@ -1,6 +1,6 @@
 "use client";
 
-import { FileCheck2, Search, ShieldCheck } from "lucide-react";
+import { Copy, FileCheck2, Search, ShieldCheck } from "lucide-react";
 import { sourcingCostDefinitions, costStateLabels } from "./dashboard-config";
 import type { DashboardModel } from "./use-dashboard-controller";
 
@@ -21,37 +21,122 @@ export function SupplierQuoteWorkspace({ model }: { model: DashboardModel }) {
   const {
     canReviewSupplierQuotes,
     captureSupplierQuote,
+    copySupplierRfqMessage,
+    createSupplierRfq,
     logisticsRateCards,
+    marketplaceCatalogItems,
+    marketplaceCatalogStoreRef,
     products,
     reviewSupplierQuote,
     reviewingKey,
     sourcingUploading,
+    supplierRfqBusy,
+    supplierRfqPackages,
     supplierQuoteEvidence,
     uploadSupplierComparison,
   } = model;
   const acceptedQuotes = supplierQuoteEvidence.filter((item) => item.status === "accepted");
+  const boundCatalogItems = marketplaceCatalogItems.filter((item) => item.canonical_product_id);
 
   return (
     <section className="sourcing-intake-panel quote-authority-workspace" id="supplier-quote-authority">
       <div className="panel-title">
         <div>
           <p className="eyebrow">SUPPLIER QUOTE AUTHORITY</p>
-          <h3>线索 → 独立复核 → 三家正式比价</h3>
+          <h3>可比询价包 → 回复归因 → 独立复核 → 三家正式比价</h3>
         </div>
-        <span className="badge">{acceptedQuotes.length} 份已接受 · {supplierQuoteEvidence.length} 份原件</span>
+        <span className="badge">{supplierRfqPackages.length} 个询价包 · {acceptedQuotes.length} 份已接受报价</span>
       </div>
       <p className="section-copy">
-        1688 页面价、聊天和文件先进入 B 级线索。公开展示价永远不能成为采购报价；上传人与复核人必须是不同身份。
+        先从已绑定且哈希仍为最新的 Ozon 商品冻结统一采购要求，再人工复制给不同供应商。系统不会自动联系供应商；公开展示价永远不能成为采购报价，上传人与复核人必须是不同身份。
       </p>
+
+      <div className="rfq-workspace-grid">
+        <form className="sourcing-intake rfq-create-form" onSubmit={createSupplierRfq}>
+          <div className="comparison-title">
+            <strong><Search size={16} /> 1. 冻结可比询价包</strong>
+            <span>{marketplaceCatalogStoreRef} · 只生成草稿</span>
+          </div>
+          <div className="sourcing-common">
+            <label className="wide">已绑定 Ozon Listing
+              <select name="rfq_offer_id" required defaultValue="">
+                <option value="" disabled>选择当前目录商品</option>
+                {boundCatalogItems.map((item) => <option value={item.offer_id} key={`${item.snapshot_id}:${item.offer_id}`}>
+                  {item.offer_id} · {item.name} · SKU {item.marketplace_sku ?? "—"}
+                </option>)}
+              </select>
+            </label>
+            <label>幂等编号<input name="rfq_idempotency_key" placeholder="例如 2105343364UB-20260726-v1" pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,159}" required /></label>
+            <label>数量阶梯<input name="rfq_quantity_breaks" defaultValue="1,10,50,100" required /></label>
+            <label>回复截止<input name="rfq_response_due_at" type="datetime-local" required /></label>
+            <label>交付目的地<input name="rfq_destination" placeholder="国内集货仓；最终地址下单前确认" required /></label>
+            <label className="wide">采购规格（每行“名称=要求”）
+              <textarea name="rfq_specifications" rows={7} placeholder={"额定载重=必须明确本次报价档位\n电压频率=220V±10%，50Hz\n控制方式=有线与无线配置逐项确认"} required />
+            </label>
+            <label className="wide">必需文件（每行一项）
+              <textarea name="rfq_required_documents" rows={4} placeholder={"营业执照与生产主体\n已有合规证书编号，不得虚构\n质检报告、说明书与质保条款"} required />
+            </label>
+            <label className="wide">包装要求（每行一项）
+              <textarea name="rfq_packaging_requirements" rows={4} placeholder={"确认单件净重、毛重与外箱尺寸\n防潮防跌落方案\n中性包装与定制包装分别报价"} required />
+            </label>
+            <label className="wide">运营备注<textarea name="rfq_operator_notes" rows={3} placeholder="例如：不接受低载重引流价；每个数量阶梯必须对应同一冻结规格。" /></label>
+          </div>
+          <div className="rfq-checks">
+            <label><input name="rfq_sample_required" type="checkbox" defaultChecked /> 需要样品报价</label>
+            <label><input name="rfq_tax_invoice_required" type="checkbox" defaultChecked /> 需要含税发票</label>
+          </div>
+          <p className="field-help">
+            商品标题、重量和尺寸只是 Ozon 目录观察；采购规格必须由运营明确填写，系统不会把目录属性猜成供应商承诺。
+          </p>
+          <button disabled={supplierRfqBusy || !boundCatalogItems.length}>
+            {supplierRfqBusy ? "正在复验并冻结…" : boundCatalogItems.length ? "创建 C 级不可变询价包" : "先绑定当前 Ozon Listing"}
+          </button>
+        </form>
+
+        <div className="rfq-package-list">
+          <div className="comparison-title">
+            <strong><Copy size={16} /> 待人工发送</strong>
+            <span>复制 ≠ 已发送 ≠ 已报价</span>
+          </div>
+          {supplierRfqPackages.length ? supplierRfqPackages.map((item) => {
+            const requirement = item.package.buyer_requirement;
+            const observation = item.package.catalog_observation;
+            const dimensions = observation.package_dimensions_cm;
+            return <article className="rfq-package-card" key={item.evidence.id}>
+              <div className="rfq-card-heading">
+                <div>
+                  <span className="gate">C 级草稿</span>
+                  <strong>{item.package.product.sku}</strong>
+                  <small>Ozon Offer {item.package.listing.offer_id} · SKU {item.package.listing.marketplace_sku ?? "—"}</small>
+                </div>
+                <button type="button" onClick={() => copySupplierRfqMessage(item)}><Copy size={13} /> 复制询价文案</button>
+              </div>
+              <div className="rfq-facts">
+                <span>阶梯 <strong>{requirement.quantity_breaks.join(" / ")}</strong></span>
+                <span>截止 <strong>{new Date(requirement.response_due_at).toLocaleString("zh-CN")}</strong></span>
+                <span>目录实重 <strong>{observation.package_weight_kg ?? "未知"} kg</strong></span>
+                <span>目录尺寸 <strong>{dimensions ? `${dimensions.length}×${dimensions.width}×${dimensions.height} cm` : "未知"}</strong></span>
+              </div>
+              <details>
+                <summary>查看并手工复制完整询价正文</summary>
+                <pre>{item.package.message_text}</pre>
+              </details>
+              <code>Evidence {item.evidence.id} · package {item.package.package_hash}</code>
+              <p>未自动联系供应商、未采购、未付款、未创建正式报价、未写入 Ozon。</p>
+            </article>;
+          }) : <div className="empty-state">还没有询价包。先选择已绑定的当前 Ozon Listing，明确采购规格后冻结。</div>}
+        </div>
+      </div>
 
       <div className="quote-stage-grid">
         <form className="sourcing-intake quote-source-form" onSubmit={captureSupplierQuote}>
           <div className="comparison-title">
-            <strong><Search size={16} /> 1. 固化单份供应商原件</strong>
+            <strong><Search size={16} /> 2. 固化单份供应商回复</strong>
             <span>不会创建 SupplierOffer</span>
           </div>
           <div className="sourcing-common">
             <label>候选 SKU<select name="quote_product_id" required><option value="">选择候选商品</option>{products.map((item) => <option value={item.id} key={item.id}>{item.sku} · {item.name}</option>)}</select></label>
+            <label>对应询价包<select name="quote_rfq_package_evidence_id" defaultValue=""><option value="">未关联历史询价包</option>{supplierRfqPackages.map((item) => <option value={item.evidence.id} key={item.evidence.id}>{item.package.product.sku} · …{item.evidence.id.slice(-8)}</option>)}</select></label>
             <label>资料类型<select name="quote_document_kind" required defaultValue=""><option value="" disabled>选择原件类型</option><option value="public_display_price">公开展示价（只作研究）</option><option value="supplier_confirmed_quote">供应商确认报价</option><option value="proforma_invoice">形式发票</option></select></label>
             <label>供应商标识<input name="quote_supplier_ref" required /></label>
             <label>来源平台<select name="quote_platform" defaultValue="1688"><option value="1688">1688</option><option value="alibaba">Alibaba</option><option value="manual">线下/人工</option></select></label>
@@ -71,13 +156,13 @@ export function SupplierQuoteWorkspace({ model }: { model: DashboardModel }) {
             <label>报价失效时间<input name="quote_effective_until" type="datetime-local" /></label>
             <label className="wide">原始文件/截图<input name="quote_evidence_file" type="file" required /></label>
           </div>
-          <p className="field-help">确认报价和形式发票必须填写失效时间；公开页面价可留空，但只会进入研究线索。</p>
+          <p className="field-help">确认报价和形式发票必须填写失效时间；如选择询价包，后端会强制校验它与候选商品一致并建立回复血缘。</p>
           <button disabled={sourcingUploading}>{sourcingUploading ? "正在固化…" : "保存为 B 级报价线索"}</button>
         </form>
 
         <div className="quote-review-queue">
           <div className="comparison-title">
-            <strong><ShieldCheck size={16} /> 2. 独立复核队列</strong>
+            <strong><ShieldCheck size={16} /> 3. 独立复核队列</strong>
             <span>{canReviewSupplierQuotes ? "当前身份可复核" : "需要 Reviewer / Compliance / Admin"}</span>
           </div>
           {supplierQuoteEvidence.length ? supplierQuoteEvidence.map((item) => {
@@ -108,7 +193,7 @@ export function SupplierQuoteWorkspace({ model }: { model: DashboardModel }) {
 
       <form className="sourcing-intake quote-finalize-form" onSubmit={uploadSupplierComparison}>
         <div className="comparison-title">
-          <strong><FileCheck2 size={16} /> 3. 最终化三家正式比价</strong>
+          <strong><FileCheck2 size={16} /> 4. 最终化三家正式比价</strong>
           <span>只读取已复核冻结条款</span>
         </div>
         <div className="sourcing-common">

@@ -47,6 +47,7 @@ class SupplierQuoteAuthorityService:
         effective_at: str,
         effective_until: str | None,
         created_by: str,
+        rfq_package_evidence_id: str | None = None,
     ) -> EvidenceRecord:
         document_kind = document_kind.strip()
         if document_kind not in QUOTE_DOCUMENT_KINDS:
@@ -80,6 +81,7 @@ class SupplierQuoteAuthorityService:
                 "supplier_ref": supplier_ref,
                 "document_kind": document_kind,
                 "offer_data": normalized_offer,
+                "rfq_package_evidence_id": rfq_package_evidence_id,
                 "formal_offer_eligible": (
                     document_kind in CONFIRMABLE_QUOTE_DOCUMENT_KINDS
                 ),
