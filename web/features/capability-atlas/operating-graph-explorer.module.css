@@ -657,7 +657,7 @@
   scrollbar-width: thin;
 }
 
-.stageLane > div {
+.stageLane > a {
   position: relative;
   flex: 0 0 132px;
   min-height: 92px;
@@ -668,13 +668,20 @@
   border: 1px solid rgba(149, 190, 207, 0.12);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.018);
+  color: inherit;
+  text-decoration: none;
 }
 
-.stageLane > div.filteredStage {
+.stageLane > a:hover {
+  border-color: rgba(119, 230, 255, 0.32);
+  background: rgba(119, 230, 255, 0.04);
+}
+
+.stageLane > a.filteredStage {
   opacity: 0.28;
 }
 
-.stageLane > div > span {
+.stageLane > a > span {
   width: 19px;
   height: 19px;
   display: grid;

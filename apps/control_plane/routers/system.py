@@ -134,6 +134,32 @@ def capability_atlas_snapshot(
     return run(runtime.cross_border_capability_atlas.snapshot)
 
 
+@router.get("/v1/operating-workspaces/{kind}/{item_id}")
+def operating_workspace_snapshot(
+    kind: str,
+    item_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(
+        lambda: runtime.operating_workspace.snapshot(
+            kind=kind,
+            item_id=item_id,
+            store_ref=store_ref,
+        )
+    )
+
+
 @router.post("/v1/evidenceops/plan")
 def evidenceops_plan(
     body: EvidenceOpsPlanInput,

@@ -228,6 +228,21 @@ def test_openapi_exposes_read_only_cross_border_capability_atlas() -> None:
     assert schema["paths"][path]["get"]["security"] == [{"KjdsApiKey": []}]
 
 
+def test_openapi_exposes_read_only_operating_workspace_drillthrough() -> None:
+    schema = app.openapi()
+
+    path = "/v1/operating-workspaces/{kind}/{item_id}"
+    assert set(schema["paths"][path]) == {"get"}
+    assert schema["paths"][path]["get"]["security"] == [{"KjdsApiKey": []}]
+    parameters = {
+        item["name"]: item for item in schema["paths"][path]["get"]["parameters"]
+    }
+    assert set(parameters) == {"kind", "item_id", "store_ref"}
+    assert parameters["kind"]["in"] == "path"
+    assert parameters["item_id"]["in"] == "path"
+    assert parameters["store_ref"]["in"] == "query"
+
+
 def test_openapi_exposes_evidenceops_plan_as_one_protected_post() -> None:
     schema = app.openapi()
 

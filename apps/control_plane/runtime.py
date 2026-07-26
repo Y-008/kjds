@@ -42,6 +42,7 @@ from .marketplace_growth_workspace import (
 )
 from .operating_analytics import OperatingAnalyticsService
 from .operating_workbench import OperatingWorkbenchService
+from .operating_workspace import OperatingWorkspaceService
 from .operations_queue import OperationsQueueService
 from .outbox import OutboxService
 from .ozon_finance_review import (
@@ -112,6 +113,7 @@ class RuntimeServices:
     marketplace_growth: Any
     operating_analytics: Any
     operating_workbench: Any
+    operating_workspace: Any
     operations_queue: Any
     outbox: Any
     ozon_accrual_classifications: Any
@@ -384,6 +386,10 @@ def build_runtime() -> RuntimeServices:
         finance=finance,
         product_media=product_media,
     )
+    operating_workspace = OperatingWorkspaceService(
+        capability_atlas=cross_border_capability_atlas,
+        operating_analytics=operating_analytics,
+    )
     evidenceops_copilot = EvidenceOpsCopilot(
         operating_analytics=operating_analytics,
         operating_workbench=operating_workbench,
@@ -451,6 +457,7 @@ def build_runtime() -> RuntimeServices:
         marketplace_growth=marketplace_growth,
         operating_analytics=operating_analytics,
         operating_workbench=operating_workbench,
+        operating_workspace=operating_workspace,
         operations_queue=operations_queue,
         outbox=outbox,
         ozon_accrual_classifications=ozon_accrual_classifications,

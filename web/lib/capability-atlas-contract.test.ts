@@ -14,6 +14,9 @@ test("capability atlas is a server-owned read-only tree with truthful status bou
   assert.match(page, /<CapabilityAtlas\s*\/>/);
   assert.doesNotMatch(page, /\/backend\//);
   assert.match(atlas, /\/backend\/v1\/capability-atlas\/snapshot/);
+  assert.match(atlas, /atlas\?\.release_version/);
+  assert.match(atlas, /atlas\?\.registry_version/);
+  assert.doesNotMatch(atlas, /KJDS 0\.\d+\.\d+/);
   assert.match(atlas, /atlas\.domains/);
   assert.match(atlas, /domain\.capabilities/);
   assert.match(atlas, /selected\.linkfox/);
@@ -42,6 +45,8 @@ test("capability atlas is a server-owned read-only tree with truthful status bou
   assert.match(graph, /surface\.truth_owner/);
   assert.match(graph, /surface\.write_boundary/);
   assert.match(contracts, /"implemented" \| "ready" \| "gated" \| "research_only"/);
+  assert.match(contracts, /release_version: string/);
+  assert.match(contracts, /registry_version: string/);
   assert.match(contracts, /contract_id: "kjds-cross-border-operating-graph-v1"/);
   assert.match(contracts, /marketing_claims_are_business_facts: false/);
   assert.match(contracts, /linkfox_ozon_integration_verified: false/);

@@ -261,7 +261,8 @@ export function CapabilityAtlas() {
         <div className={styles.heroCopy}>
           <span className={styles.eyebrow}>
             <Radar size={14} />
-            KJDS 0.55.0 · CROSS-BORDER AI OPERATING GRAPH
+            KJDS {atlas?.release_version ?? "—"} · REGISTRY{" "}
+            {atlas?.registry_version ?? "—"} · CROSS-BORDER AI OPERATING GRAPH
           </span>
           <h1>
             不止覆盖 LinkFox 每个入口，
