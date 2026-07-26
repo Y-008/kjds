@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.53.0"
+APP_VERSION = "0.54.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -48,6 +48,12 @@ def run(call):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class EvidenceOpsPlanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    objective: str = Field(min_length=3, max_length=1000)
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
 
 
 class ProductInput(BaseModel):
