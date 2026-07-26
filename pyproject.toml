@@ -1,6 +1,6 @@
 [project]
 name = "kjds-control-plane"
-version = "0.56.0"
+version = "0.57.0"
 description = "AI-native cross-border commerce control plane"
 requires-python = ">=3.12,<3.13"
 dependencies = [

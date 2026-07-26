@@ -15,7 +15,7 @@ REGISTRY_PATH = (
 )
 
 STATUS = {"implemented", "ready", "gated", "research_only"}
-REGISTRY_VERSION = "0.56.0"
+REGISTRY_VERSION = "0.57.0"
 DOMAIN_WORKSPACE_IDS = {
     "overview",
     "data",

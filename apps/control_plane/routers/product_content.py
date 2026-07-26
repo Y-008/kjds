@@ -21,6 +21,8 @@ from ..api_contracts import (
     MarketplaceGrowthSnapshotInput,
     MarketplaceLatestGrowthPlanInput,
     MarketplacePortfolioGrowthPlanInput,
+    MediaBatchExecutionInput,
+    MediaExecutionInput,
     ObservationInput,
     OpportunityInput,
     OrderInput,
@@ -526,6 +528,89 @@ def queue_content_asset_generation(asset_id: str, principal: Annotated[Principal
 def sync_content_asset_generation(asset_id: str, principal: Annotated[Principal, Depends(current_principal)]):
     ensure_role(principal, "operator", "admin")
     return run(lambda: runtime.image_execution.sync(asset_id, requested_by=principal.actor_id))
+
+
+@router.get("/v1/media/workbench")
+def media_workbench(
+    principal: Annotated[Principal, Depends(current_principal)],
+    product_id: str | None = None,
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(lambda: runtime.media_workbench.snapshot(product_id=product_id))
+
+
+@router.post("/v1/content/assets/{asset_id}/execution", status_code=202)
+def execute_content_asset(
+    asset_id: str,
+    body: MediaExecutionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: runtime.media_workbench.queue(
+            asset_id,
+            idempotency_key=body.idempotency_key,
+            requested_by=principal.actor_id,
+            retry=body.retry,
+        )
+    )
+
+
+@router.post("/v1/media/executions/batch", status_code=202)
+def execute_content_asset_batch(
+    body: MediaBatchExecutionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: runtime.media_workbench.queue_batch(
+            idempotency_key=body.idempotency_key,
+            items=[item.model_dump() for item in body.items],
+            requested_by=principal.actor_id,
+        )
+    )
+
+
+@router.post("/v1/content/assets/{asset_id}/execution/sync")
+def sync_content_asset_execution(
+    asset_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    return run(
+        lambda: runtime.media_workbench.sync(
+            asset_id, requested_by=principal.actor_id
+        )
+    )
+
+
+@router.get("/v1/content/assets/{asset_id}/delivery-manifest")
+def content_asset_delivery_manifest(
+    asset_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "admin",
+    )
+    return run(
+        lambda: runtime.media_workbench.delivery_manifest(
+            asset_id, requested_by=principal.actor_id
+        )
+    )
 
 
 @router.post("/v1/content/assets/{asset_id}/generated")

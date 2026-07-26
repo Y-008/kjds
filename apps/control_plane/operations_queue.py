@@ -29,11 +29,20 @@ class OperationsEscalationEventRow(Base):
 class OperationsQueueService:
     INCIDENT_SLA_MINUTES = {"critical": 15, "high": 30, "medium": 240, "low": 1440}
 
-    def __init__(self, *, engine, incidents, limited_executor, post_execution) -> None:
+    def __init__(
+        self,
+        *,
+        engine,
+        incidents,
+        limited_executor,
+        post_execution,
+        operating_tasks=None,
+    ) -> None:
         self.engine = engine
         self.incidents = incidents
         self.limited_executor = limited_executor
         self.post_execution = post_execution
+        self.operating_tasks = operating_tasks
 
     def queue(self, *, as_of: str | None = None) -> list[dict[str, Any]]:
         now = self._datetime(as_of) if as_of else datetime.now(UTC)
@@ -126,6 +135,8 @@ class OperationsQueueService:
                     ),
                 )
             )
+        if self.operating_tasks is not None:
+            items.extend(self.operating_tasks.queue_items(now=now))
         rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
         return sorted(items, key=lambda item: (not item["overdue"], rank[item["priority"]], item["due_at"]))
 

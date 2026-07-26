@@ -9,9 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..api_contracts import (
     API_SCHEMA_VERSION,
     APP_VERSION,
+    AnomalyScanInput,
     EvidenceOpsPlanInput,
     KillSwitchInput,
     LoopValidationInput,
+    OperatingTaskTransitionInput,
     RecommendationInput,
     current_principal,
     ensure_role,
@@ -158,6 +160,178 @@ def operating_workspace_snapshot(
             store_ref=store_ref,
         )
     )
+
+
+@router.get("/v1/profit-ledger")
+def profit_ledger(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    sku: str | None = None,
+    order_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    grain: str = "order",
+    currency: str = "CNY",
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(
+        lambda: runtime.profit_ledger.snapshot(
+            store_ref=store_ref,
+            sku=sku,
+            order_id=order_id,
+            date_from=date_from,
+            date_to=date_to,
+            grain=grain,
+            currency=currency,
+        )
+    )
+
+
+@router.get("/v1/profit-ledger/erosion")
+def profit_erosion(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    sku: str | None = None,
+    order_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    grain: str = "order",
+    currency: str = "CNY",
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(
+        lambda: runtime.profit_ledger.erosion(
+            store_ref=store_ref,
+            sku=sku,
+            order_id=order_id,
+            date_from=date_from,
+            date_to=date_to,
+            grain=grain,
+            currency=currency,
+        )
+    )
+
+
+@router.get("/v1/metrics")
+def operating_metric_registry(
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return runtime.operating_intelligence.metrics()
+
+
+@router.post("/v1/anomaly-scans", status_code=201)
+def scan_operating_anomalies(
+    body: AnomalyScanInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(principal, "operator", "reviewer", "monitor", "admin")
+    return run(
+        lambda: runtime.operating_intelligence.scan(
+            store_ref=body.store_ref,
+            actor_id=principal.actor_id,
+            as_of=body.as_of,
+        )
+    )
+
+
+@router.get("/v1/anomaly-scans")
+def list_anomaly_scans(
+    principal: Annotated[Principal, Depends(current_principal)],
+    limit: int = 50,
+) -> list[dict]:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(lambda: runtime.operating_intelligence.scans(limit=limit))
+
+
+@router.get("/v1/operating-tasks")
+def list_operating_tasks(
+    principal: Annotated[Principal, Depends(current_principal)],
+    limit: int = 100,
+) -> list[dict]:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(lambda: runtime.operating_intelligence.tasks(limit=limit))
+
+
+@router.post("/v1/operating-tasks/{task_id}/events", status_code=201)
+def transition_operating_task(
+    task_id: str,
+    body: OperatingTaskTransitionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin")
+    return run(
+        lambda: runtime.operating_intelligence.append_task_event(
+            task_id,
+            event_type=body.event_type,
+            reason=body.reason,
+            evidence_ids=body.evidence_ids,
+            actor_id=principal.actor_id,
+        )
+    )
+
+
+@router.get("/v1/operating-tasks/{task_id}/events")
+def operating_task_events(
+    task_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> list[dict]:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(lambda: runtime.operating_intelligence.task_events(task_id))
 
 
 @router.post("/v1/evidenceops/plan")

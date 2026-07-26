@@ -117,6 +117,20 @@
       "activation_trigger": "领取模式替换为事件推送"
     },
     {
+      "module": "media_workbench.py",
+      "status": "polling_contract",
+      "delivery_contract": "postgresql_lease_claim_api",
+      "rationale": "媒体执行通过 PostgreSQL 租约领取，产物和不可变事件保留在控制面内。",
+      "activation_trigger": "媒体 Worker 改为事件推送或获得外部平台写入权限"
+    },
+    {
+      "module": "operating_intelligence.py",
+      "status": "internal_only",
+      "delivery_contract": "operations_queue_projection",
+      "rationale": "异常扫描只创建内部运营任务并投影到现有运营队列，不触发平台副作用。",
+      "activation_trigger": "运营任务驱动独立执行服务"
+    },
+    {
       "module": "operations_queue.py",
       "status": "internal_only",
       "delivery_contract": "none",
