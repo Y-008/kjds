@@ -1,6 +1,6 @@
 {
   "contract_id": "kjds-cross-border-capability-atlas-v1",
-  "registry_version": "0.55.0",
+  "registry_version": "0.56.0",
   "status": "active",
   "last_reviewed": "2026-07-26",
   "primary_market": "RU",
@@ -2302,7 +2302,8 @@
         "value_stream_ids": [
           "trend_to_opportunity"
         ],
-        "workspace": "/capability-atlas"
+        "workspace_id": "research",
+        "workspace": "/operations/points/trend_event_calendar"
       },
       {
         "id": "inspiration_signal_capture",
@@ -2368,7 +2369,8 @@
           "trend_to_opportunity",
           "signal_to_experiment"
         ],
-        "workspace": "/capability-atlas"
+        "workspace_id": "research",
+        "workspace": "/operations/points/inspiration_signal_capture"
       },
       {
         "id": "public_source_snapshot",
@@ -2441,7 +2443,8 @@
           "trend_to_opportunity",
           "signal_to_experiment"
         ],
-        "workspace": "/#data"
+        "workspace_id": "data",
+        "workspace": "/operations/points/public_source_snapshot"
       },
       {
         "id": "reference_url_parse",
@@ -2513,7 +2516,8 @@
         "value_stream_ids": [
           "trend_to_opportunity"
         ],
-        "workspace": "/#data"
+        "workspace_id": "data",
+        "workspace": "/operations/points/reference_url_parse"
       },
       {
         "id": "catalog_csv_import",
@@ -2584,7 +2588,8 @@
         "value_stream_ids": [
           "product_to_passport"
         ],
-        "workspace": "/#data"
+        "workspace_id": "data",
+        "workspace": "/operations/points/catalog_csv_import"
       },
       {
         "id": "reference_link_workspace",
@@ -2656,7 +2661,8 @@
           "trend_to_opportunity",
           "product_to_passport"
         ],
-        "workspace": "/#data"
+        "workspace_id": "data",
+        "workspace": "/operations/points/reference_link_workspace"
       },
       {
         "id": "canonical_product_identity",
@@ -2717,7 +2723,8 @@
         "value_stream_ids": [
           "product_to_passport"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/canonical_product_identity"
       },
       {
         "id": "external_listing_identity_map",
@@ -2778,7 +2785,8 @@
           "product_to_passport",
           "listing_to_publish"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/external_listing_identity_map"
       },
       {
         "id": "product_passport_assembly",
@@ -2840,7 +2848,8 @@
           "product_to_passport",
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/product_passport_assembly"
       },
       {
         "id": "media_delivery_manifest",
@@ -2901,7 +2910,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/media_delivery_manifest"
       },
       {
         "id": "asset_rights_scope",
@@ -2963,7 +2973,8 @@
           "product_to_passport",
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/asset_rights_scope"
       },
       {
         "id": "brand_token_registry",
@@ -3025,7 +3036,8 @@
           "product_to_passport",
           "passport_to_content"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/brand_token_registry"
       },
       {
         "id": "sensitive_term_rulepack",
@@ -3087,7 +3099,8 @@
           "product_to_passport",
           "content_to_listing"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/sensitive_term_rulepack"
       },
       {
         "id": "team_asset_workspace",
@@ -3148,7 +3161,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/team_asset_workspace"
       },
       {
         "id": "ai_free_conversation",
@@ -3212,7 +3226,8 @@
           "trend_to_opportunity",
           "passport_to_content"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/ai_free_conversation"
       },
       {
         "id": "observed_zx35_conversation",
@@ -3275,7 +3290,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/observed_zx35_conversation"
       },
       {
         "id": "observed_zx4_conversation",
@@ -3338,7 +3354,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/observed_zx4_conversation"
       },
       {
         "id": "objective_interpreter",
@@ -3402,7 +3419,8 @@
           "trend_to_opportunity",
           "passport_to_content"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/objective_interpreter"
       },
       {
         "id": "product_profile_agent",
@@ -3466,7 +3484,8 @@
           "trend_to_opportunity",
           "product_to_passport"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/product_profile_agent"
       },
       {
         "id": "multilingual_glossary",
@@ -3528,7 +3547,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/multilingual_glossary"
       },
       {
         "id": "personal_prompt_template",
@@ -3589,7 +3609,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/personal_prompt_template"
       },
       {
         "id": "template_conversation",
@@ -3652,7 +3673,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/template_conversation"
       },
       {
         "id": "sensitive_word_preflight",
@@ -3714,7 +3736,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/sensitive_word_preflight"
       },
       {
         "id": "page_context_capture",
@@ -3777,7 +3800,8 @@
           "trend_to_opportunity",
           "signal_to_experiment"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/page_context_capture"
       },
       {
         "id": "operating_template_catalog",
@@ -3839,7 +3863,8 @@
           "passport_to_content",
           "signal_to_experiment"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/operating_template_catalog"
       },
       {
         "id": "evidence_grounded_analysis",
@@ -3903,7 +3928,8 @@
           "trend_to_opportunity",
           "signal_to_experiment"
         ],
-        "workspace": "/evidenceops"
+        "workspace_id": "evidenceops",
+        "workspace": "/operations/points/evidence_grounded_analysis"
       },
       {
         "id": "skill_plan_builder",
@@ -3964,7 +3990,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/skill_plan_builder"
       },
       {
         "id": "scheduled_agent_task",
@@ -4029,7 +4056,8 @@
           "signal_to_experiment",
           "exception_to_human_control"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/scheduled_agent_task"
       },
       {
         "id": "claw_worker_admission",
@@ -4090,7 +4118,8 @@
         "value_stream_ids": [
           "exception_to_human_control"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/claw_worker_admission"
       },
       {
         "id": "product_image_suite",
@@ -4152,7 +4181,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/product_image_suite"
       },
       {
         "id": "product_replace",
@@ -4214,7 +4244,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/product_replace"
       },
       {
         "id": "scene_variation",
@@ -4277,7 +4308,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#growth"
+        "workspace_id": "growth",
+        "workspace": "/operations/points/scene_variation"
       },
       {
         "id": "handheld_composite",
@@ -4339,7 +4371,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/handheld_composite"
       },
       {
         "id": "image_translation",
@@ -4403,7 +4436,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/image_translation"
       },
       {
         "id": "white_background",
@@ -4466,7 +4500,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/white_background"
       },
       {
         "id": "detail_closeup",
@@ -4529,7 +4564,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/detail_closeup"
       },
       {
         "id": "selling_point_card",
@@ -4591,7 +4627,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/selling_point_card"
       },
       {
         "id": "spec_size_card",
@@ -4653,7 +4690,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/spec_size_card"
       },
       {
         "id": "batch_product_variants",
@@ -4716,7 +4754,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/batch_product_variants"
       },
       {
         "id": "apparel_image_suite",
@@ -4777,7 +4816,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/apparel_image_suite"
       },
       {
         "id": "model_swap",
@@ -4841,7 +4881,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/model_swap"
       },
       {
         "id": "model_scene_swap",
@@ -4903,7 +4944,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/model_scene_swap"
       },
       {
         "id": "virtual_try_on",
@@ -4965,7 +5007,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/virtual_try_on"
       },
       {
         "id": "pose_variation",
@@ -5028,7 +5071,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/pose_variation"
       },
       {
         "id": "wearable_composite",
@@ -5089,7 +5133,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/wearable_composite"
       },
       {
         "id": "apparel_ugc_card",
@@ -5150,7 +5195,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/apparel_ugc_card"
       },
       {
         "id": "apparel_size_card",
@@ -5211,7 +5257,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/apparel_size_card"
       },
       {
         "id": "garment_fidelity_qa",
@@ -5272,7 +5319,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/garment_fidelity_qa"
       },
       {
         "id": "design_canvas",
@@ -5334,7 +5382,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/design_canvas"
       },
       {
         "id": "platform_design_template",
@@ -5396,7 +5445,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/platform_design_template"
       },
       {
         "id": "personal_design_template",
@@ -5458,7 +5508,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/personal_design_template"
       },
       {
         "id": "team_design_template",
@@ -5520,7 +5571,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/team_design_template"
       },
       {
         "id": "pod_scene_material",
@@ -5585,7 +5637,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/pod_scene_material"
       },
       {
         "id": "similar_design_variation",
@@ -5650,7 +5703,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/similar_design_variation"
       },
       {
         "id": "free_ai_drawing",
@@ -5715,7 +5769,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/free_ai_drawing"
       },
       {
         "id": "pod_material_fit",
@@ -5780,7 +5835,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/pod_material_fit"
       },
       {
         "id": "print_extract",
@@ -5845,7 +5901,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/print_extract"
       },
       {
         "id": "design_preflight",
@@ -5909,7 +5966,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/design_preflight"
       },
       {
         "id": "smart_repair",
@@ -5972,7 +6030,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/smart_repair"
       },
       {
         "id": "long_image_rebuild",
@@ -6036,7 +6095,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/long_image_rebuild"
       },
       {
         "id": "local_inpaint",
@@ -6099,7 +6159,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/local_inpaint"
       },
       {
         "id": "local_erase",
@@ -6162,7 +6223,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/local_erase"
       },
       {
         "id": "recolor",
@@ -6225,7 +6287,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/recolor"
       },
       {
         "id": "recolor_v2",
@@ -6288,7 +6351,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/recolor_v2"
       },
       {
         "id": "image_crop",
@@ -6353,7 +6417,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/image_crop"
       },
       {
         "id": "image_upscale",
@@ -6418,7 +6483,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/image_upscale"
       },
       {
         "id": "image_outpaint",
@@ -6483,7 +6549,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/image_outpaint"
       },
       {
         "id": "product_retouch",
@@ -6546,7 +6613,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/product_retouch"
       },
       {
         "id": "color_difference_repair",
@@ -6609,7 +6677,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/color_difference_repair"
       },
       {
         "id": "print_repair",
@@ -6672,7 +6741,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/print_repair"
       },
       {
         "id": "hand_repair",
@@ -6735,7 +6805,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/hand_repair"
       },
       {
         "id": "precision_cutout",
@@ -6798,7 +6869,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/precision_cutout"
       },
       {
         "id": "batch_auto_cutout",
@@ -6861,7 +6933,8 @@
         "value_stream_ids": [
           "passport_to_content"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/batch_auto_cutout"
       },
       {
         "id": "image_to_video",
@@ -6927,7 +7000,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/image_to_video"
       },
       {
         "id": "talking_avatar",
@@ -6992,7 +7066,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/talking_avatar"
       },
       {
         "id": "localized_script_voice",
@@ -7057,7 +7132,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/localized_script_voice"
       },
       {
         "id": "video_clone",
@@ -7121,7 +7197,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/video_clone"
       },
       {
         "id": "video_stitch",
@@ -7184,7 +7261,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/video_stitch"
       },
       {
         "id": "video_caption_trim",
@@ -7247,7 +7325,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/video_caption_trim"
       },
       {
         "id": "video_product_truth_qa",
@@ -7313,7 +7392,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/video_product_truth_qa"
       },
       {
         "id": "platform_video_encode",
@@ -7376,7 +7456,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/platform_video_encode"
       },
       {
         "id": "video_delivery_manifest",
@@ -7439,7 +7520,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/video_delivery_manifest"
       },
       {
         "id": "compute_quota",
@@ -7504,7 +7586,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/compute_quota"
       },
       {
         "id": "concurrency_budget",
@@ -7569,7 +7652,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/concurrency_budget"
       },
       {
         "id": "storage_budget",
@@ -7634,7 +7718,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/storage_budget"
       },
       {
         "id": "history_retention",
@@ -7695,7 +7780,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/history_retention"
       },
       {
         "id": "priority_queue_policy",
@@ -7760,7 +7846,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/priority_queue_policy"
       },
       {
         "id": "account_team_scope",
@@ -7821,7 +7908,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/account_team_scope"
       },
       {
         "id": "batch_ai_conversation",
@@ -7885,7 +7973,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/batch_ai_conversation"
       },
       {
         "id": "batch_image_generation",
@@ -7949,7 +8038,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#system"
+        "workspace_id": "system",
+        "workspace": "/operations/points/batch_image_generation"
       },
       {
         "id": "enterprise_api_admission",
@@ -8010,7 +8100,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/enterprise_api_admission"
       },
       {
         "id": "market_signal_inbox",
@@ -8076,7 +8167,8 @@
           "trend_to_opportunity",
           "signal_to_experiment"
         ],
-        "workspace": "/#research"
+        "workspace_id": "research",
+        "workspace": "/operations/points/market_signal_inbox"
       },
       {
         "id": "ozon_activity_rules",
@@ -8137,7 +8229,8 @@
           "trend_to_opportunity",
           "content_to_listing"
         ],
-        "workspace": "/#research"
+        "workspace_id": "research",
+        "workspace": "/operations/points/ozon_activity_rules"
       },
       {
         "id": "keyword_demand_clustering",
@@ -8201,7 +8294,8 @@
         "value_stream_ids": [
           "trend_to_opportunity"
         ],
-        "workspace": "/#research"
+        "workspace_id": "research",
+        "workspace": "/operations/points/keyword_demand_clustering"
       },
       {
         "id": "competitor_signal_watch",
@@ -8265,7 +8359,8 @@
         "value_stream_ids": [
           "signal_to_experiment"
         ],
-        "workspace": "/#research"
+        "workspace_id": "research",
+        "workspace": "/operations/points/competitor_signal_watch"
       },
       {
         "id": "supplier_discovery",
@@ -8328,7 +8423,8 @@
         "value_stream_ids": [
           "opportunity_to_supplier"
         ],
-        "workspace": "/#sourcing"
+        "workspace_id": "sourcing",
+        "workspace": "/operations/points/supplier_discovery"
       },
       {
         "id": "supplier_rfq_package",
@@ -8390,7 +8486,8 @@
         "value_stream_ids": [
           "opportunity_to_supplier"
         ],
-        "workspace": "/#sourcing"
+        "workspace_id": "sourcing",
+        "workspace": "/operations/points/supplier_rfq_package"
       },
       {
         "id": "rfq_dispatch_proof",
@@ -8452,7 +8549,8 @@
         "value_stream_ids": [
           "opportunity_to_supplier"
         ],
-        "workspace": "/#sourcing"
+        "workspace_id": "sourcing",
+        "workspace": "/operations/points/rfq_dispatch_proof"
       },
       {
         "id": "supplier_response_capture",
@@ -8515,7 +8613,8 @@
         "value_stream_ids": [
           "opportunity_to_supplier"
         ],
-        "workspace": "/#sourcing"
+        "workspace_id": "sourcing",
+        "workspace": "/operations/points/supplier_response_capture"
       },
       {
         "id": "supplier_quote_review",
@@ -8578,7 +8677,8 @@
           "opportunity_to_supplier",
           "supplier_to_unit_economics"
         ],
-        "workspace": "/#sourcing"
+        "workspace_id": "sourcing",
+        "workspace": "/operations/points/supplier_quote_review"
       },
       {
         "id": "three_offer_comparison",
@@ -8643,7 +8743,8 @@
           "supplier_to_unit_economics",
           "demand_to_replenishment"
         ],
-        "workspace": "/#sourcing"
+        "workspace_id": "sourcing",
+        "workspace": "/operations/points/three_offer_comparison"
       },
       {
         "id": "logistics_route_quote",
@@ -8706,7 +8807,8 @@
         "value_stream_ids": [
           "supplier_to_unit_economics"
         ],
-        "workspace": "/#overview"
+        "workspace_id": "overview",
+        "workspace": "/operations/points/logistics_route_quote"
       },
       {
         "id": "full_landed_cost",
@@ -8768,7 +8870,8 @@
         "value_stream_ids": [
           "supplier_to_unit_economics"
         ],
-        "workspace": "/#finance"
+        "workspace_id": "finance",
+        "workspace": "/operations/points/full_landed_cost"
       },
       {
         "id": "cm3_projection",
@@ -8830,7 +8933,8 @@
         "value_stream_ids": [
           "supplier_to_unit_economics"
         ],
-        "workspace": "/#finance"
+        "workspace_id": "finance",
+        "workspace": "/operations/points/cm3_projection"
       },
       {
         "id": "price_corridor",
@@ -8892,7 +8996,8 @@
         "value_stream_ids": [
           "supplier_to_unit_economics"
         ],
-        "workspace": "/#finance"
+        "workspace_id": "finance",
+        "workspace": "/operations/points/price_corridor"
       },
       {
         "id": "ozon_catalog_read",
@@ -8955,7 +9060,8 @@
           "product_to_passport",
           "listing_to_publish"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/ozon_catalog_read"
       },
       {
         "id": "listing_draft_generate",
@@ -9018,7 +9124,8 @@
           "content_to_listing",
           "listing_to_publish"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/listing_draft_generate"
       },
       {
         "id": "listing_policy_lint",
@@ -9079,7 +9186,8 @@
           "content_to_listing",
           "listing_to_publish"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/listing_policy_lint"
       },
       {
         "id": "listing_human_approval",
@@ -9140,7 +9248,8 @@
           "content_to_listing",
           "listing_to_publish"
         ],
-        "workspace": "/#products"
+        "workspace_id": "products",
+        "workspace": "/operations/points/listing_human_approval"
       },
       {
         "id": "execution_permit",
@@ -9201,7 +9310,8 @@
           "listing_to_publish",
           "exception_to_human_control"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/execution_permit"
       },
       {
         "id": "ozon_listing_write",
@@ -9263,7 +9373,8 @@
         "value_stream_ids": [
           "listing_to_publish"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/ozon_listing_write"
       },
       {
         "id": "platform_readback",
@@ -9327,7 +9438,8 @@
           "publish_to_growth",
           "order_to_delivery"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/platform_readback"
       },
       {
         "id": "ad_diagnostic",
@@ -9389,7 +9501,8 @@
         "value_stream_ids": [
           "publish_to_growth"
         ],
-        "workspace": "/#growth"
+        "workspace_id": "growth",
+        "workspace": "/operations/points/ad_diagnostic"
       },
       {
         "id": "experiment_hypothesis",
@@ -9453,7 +9566,8 @@
           "publish_to_growth",
           "signal_to_experiment"
         ],
-        "workspace": "/#growth"
+        "workspace_id": "growth",
+        "workspace": "/operations/points/experiment_hypothesis"
       },
       {
         "id": "shadow_budget",
@@ -9515,7 +9629,8 @@
           "publish_to_growth",
           "signal_to_experiment"
         ],
-        "workspace": "/#growth"
+        "workspace_id": "growth",
+        "workspace": "/operations/points/shadow_budget"
       },
       {
         "id": "causal_readout",
@@ -9579,7 +9694,8 @@
           "publish_to_growth",
           "signal_to_experiment"
         ],
-        "workspace": "/#growth"
+        "workspace_id": "growth",
+        "workspace": "/operations/points/causal_readout"
       },
       {
         "id": "inventory_demand_signal",
@@ -9641,7 +9757,8 @@
           "demand_to_replenishment",
           "order_to_delivery"
         ],
-        "workspace": "/#overview"
+        "workspace_id": "overview",
+        "workspace": "/operations/points/inventory_demand_signal"
       },
       {
         "id": "replenishment_decision",
@@ -9704,7 +9821,8 @@
         "value_stream_ids": [
           "demand_to_replenishment"
         ],
-        "workspace": "/#overview"
+        "workspace_id": "overview",
+        "workspace": "/operations/points/replenishment_decision"
       },
       {
         "id": "purchase_order_approval",
@@ -9765,7 +9883,8 @@
         "value_stream_ids": [
           "demand_to_replenishment"
         ],
-        "workspace": "/#overview"
+        "workspace_id": "overview",
+        "workspace": "/operations/points/purchase_order_approval"
       },
       {
         "id": "order_ingest",
@@ -9827,7 +9946,8 @@
         "value_stream_ids": [
           "order_to_delivery"
         ],
-        "workspace": "/#overview"
+        "workspace_id": "overview",
+        "workspace": "/operations/points/order_ingest"
       },
       {
         "id": "delivery_monitor",
@@ -9890,7 +10010,8 @@
           "order_to_delivery",
           "delivery_to_return_support"
         ],
-        "workspace": "/#overview"
+        "workspace_id": "overview",
+        "workspace": "/operations/points/delivery_monitor"
       },
       {
         "id": "return_case",
@@ -9950,7 +10071,8 @@
         "value_stream_ids": [
           "delivery_to_return_support"
         ],
-        "workspace": "/#overview"
+        "workspace_id": "overview",
+        "workspace": "/operations/points/return_case"
       },
       {
         "id": "finance_transaction_ingest",
@@ -10012,7 +10134,8 @@
         "value_stream_ids": [
           "settlement_to_reconciliation"
         ],
-        "workspace": "/#finance"
+        "workspace_id": "finance",
+        "workspace": "/operations/points/finance_transaction_ingest"
       },
       {
         "id": "fee_accrual_normalize",
@@ -10074,7 +10197,8 @@
         "value_stream_ids": [
           "settlement_to_reconciliation"
         ],
-        "workspace": "/#finance"
+        "workspace_id": "finance",
+        "workspace": "/operations/points/fee_accrual_normalize"
       },
       {
         "id": "settlement_match",
@@ -10136,7 +10260,8 @@
         "value_stream_ids": [
           "settlement_to_reconciliation"
         ],
-        "workspace": "/#finance"
+        "workspace_id": "finance",
+        "workspace": "/operations/points/settlement_match"
       },
       {
         "id": "fx_authority",
@@ -10200,7 +10325,8 @@
           "supplier_to_unit_economics",
           "settlement_to_reconciliation"
         ],
-        "workspace": "/#finance"
+        "workspace_id": "finance",
+        "workspace": "/operations/points/fx_authority"
       },
       {
         "id": "reconciliation_exception",
@@ -10262,7 +10388,8 @@
           "settlement_to_reconciliation",
           "exception_to_human_control"
         ],
-        "workspace": "/#finance"
+        "workspace_id": "finance",
+        "workspace": "/operations/points/reconciliation_exception"
       },
       {
         "id": "evidence_ledger_append",
@@ -10324,7 +10451,8 @@
           "product_to_passport",
           "exception_to_human_control"
         ],
-        "workspace": "/#data"
+        "workspace_id": "data",
+        "workspace": "/operations/points/evidence_ledger_append"
       },
       {
         "id": "lineage_edge_validate",
@@ -10386,7 +10514,8 @@
           "product_to_passport",
           "exception_to_human_control"
         ],
-        "workspace": "/#data"
+        "workspace_id": "data",
+        "workspace": "/operations/points/lineage_edge_validate"
       },
       {
         "id": "approval_separation",
@@ -10449,7 +10578,8 @@
           "delivery_to_return_support",
           "exception_to_human_control"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/approval_separation"
       },
       {
         "id": "execution_scope_guard",
@@ -10510,7 +10640,8 @@
           "demand_to_replenishment",
           "exception_to_human_control"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/execution_scope_guard"
       },
       {
         "id": "external_write_kill_switch",
@@ -10570,7 +10701,8 @@
         "value_stream_ids": [
           "exception_to_human_control"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/external_write_kill_switch"
       },
       {
         "id": "readback_receipt",
@@ -10632,7 +10764,8 @@
           "listing_to_publish",
           "exception_to_human_control"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/readback_receipt"
       },
       {
         "id": "rollback_compensation",
@@ -10695,7 +10828,8 @@
         "value_stream_ids": [
           "exception_to_human_control"
         ],
-        "workspace": "/#governance"
+        "workspace_id": "governance",
+        "workspace": "/operations/points/rollback_compensation"
       },
       {
         "id": "schema_drift_guard",
@@ -10768,7 +10902,8 @@
         "value_stream_ids": [
           "exception_to_human_control"
         ],
-        "workspace": "/capability-atlas"
+        "workspace_id": "system",
+        "workspace": "/operations/points/schema_drift_guard"
       },
       {
         "id": "adapter_admission",
@@ -10841,7 +10976,8 @@
         "value_stream_ids": [
           "exception_to_human_control"
         ],
-        "workspace": "/capability-atlas"
+        "workspace_id": "system",
+        "workspace": "/operations/points/adapter_admission"
       },
       {
         "id": "market_rule_pack",
@@ -10915,7 +11051,8 @@
           "product_to_passport",
           "content_to_listing"
         ],
-        "workspace": "/capability-atlas"
+        "workspace_id": "system",
+        "workspace": "/operations/points/market_rule_pack"
       },
       {
         "id": "language_localization_pack",
@@ -10989,7 +11126,8 @@
           "passport_to_content",
           "content_to_listing"
         ],
-        "workspace": "/capability-atlas"
+        "workspace_id": "system",
+        "workspace": "/operations/points/language_localization_pack"
       },
       {
         "id": "currency_tax_pack",
@@ -11065,7 +11203,8 @@
           "supplier_to_unit_economics",
           "settlement_to_reconciliation"
         ],
-        "workspace": "/capability-atlas"
+        "workspace_id": "system",
+        "workspace": "/operations/points/currency_tax_pack"
       },
       {
         "id": "model_provider_router",
@@ -11127,7 +11266,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#science"
+        "workspace_id": "science",
+        "workspace": "/operations/points/model_provider_router"
       },
       {
         "id": "model_skill_eval",
@@ -11189,7 +11329,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#science"
+        "workspace_id": "science",
+        "workspace": "/operations/points/model_skill_eval"
       },
       {
         "id": "cost_latency_observability",
@@ -11251,7 +11392,8 @@
           "passport_to_content",
           "exception_to_human_control"
         ],
-        "workspace": "/#science"
+        "workspace_id": "science",
+        "workspace": "/operations/points/cost_latency_observability"
       },
       {
         "id": "audit_export",
@@ -11313,7 +11455,8 @@
           "settlement_to_reconciliation",
           "exception_to_human_control"
         ],
-        "workspace": "/#data"
+        "workspace_id": "data",
+        "workspace": "/operations/points/audit_export"
       }
     ],
     "value_streams": [
@@ -11363,7 +11506,8 @@
           "page_context_capture",
           "operating_template_catalog",
           "ozon_activity_rules"
-        ]
+        ],
+        "workspace": "/operations/lines/trend_to_opportunity"
       },
       {
         "id": "opportunity_to_supplier",
@@ -11403,7 +11547,8 @@
         ],
         "sla": "RFQ 24h 内发出；报价到达后 1 个工作日复核",
         "adapter_boundary": "不自动联系供应商；任何消息发送必须有显式授权和证明。",
-        "supporting_point_ids": []
+        "supporting_point_ids": [],
+        "workspace": "/operations/lines/opportunity_to_supplier"
       },
       {
         "id": "supplier_to_unit_economics",
@@ -11445,7 +11590,8 @@
         "adapter_boundary": "物流报价保持 estimate；最终账单须经独立权威复核。",
         "supporting_point_ids": [
           "currency_tax_pack"
-        ]
+        ],
+        "workspace": "/operations/lines/supplier_to_unit_economics"
       },
       {
         "id": "product_to_passport",
@@ -11492,7 +11638,8 @@
           "evidence_ledger_append",
           "lineage_edge_validate",
           "market_rule_pack"
-        ]
+        ],
+        "workspace": "/operations/lines/product_to_passport"
       },
       {
         "id": "passport_to_content",
@@ -11610,7 +11757,8 @@
           "model_provider_router",
           "model_skill_eval",
           "cost_latency_observability"
-        ]
+        ],
+        "workspace": "/operations/lines/passport_to_content"
       },
       {
         "id": "content_to_listing",
@@ -11666,7 +11814,8 @@
           "ozon_activity_rules",
           "market_rule_pack",
           "language_localization_pack"
-        ]
+        ],
+        "workspace": "/operations/lines/content_to_listing"
       },
       {
         "id": "listing_to_publish",
@@ -11713,7 +11862,8 @@
         "adapter_boundary": "当前只承认仓库已测试 Ozon 合同；其他平台必须重新准入。",
         "supporting_point_ids": [
           "external_listing_identity_map"
-        ]
+        ],
+        "workspace": "/operations/lines/listing_to_publish"
       },
       {
         "id": "publish_to_growth",
@@ -11753,7 +11903,8 @@
         ],
         "sla": "实验达到停止条件后 24h 内复盘",
         "adapter_boundary": "广告写入未独立准入时保持诊断/建议只读。",
-        "supporting_point_ids": []
+        "supporting_point_ids": [],
+        "workspace": "/operations/lines/publish_to_growth"
       },
       {
         "id": "demand_to_replenishment",
@@ -11795,7 +11946,8 @@
         ],
         "sla": "高缺货风险每日复核",
         "adapter_boundary": "未建立受控采购发送通道前只产生批准合同，不自动下单。",
-        "supporting_point_ids": []
+        "supporting_point_ids": [],
+        "workspace": "/operations/lines/demand_to_replenishment"
       },
       {
         "id": "order_to_delivery",
@@ -11835,7 +11987,8 @@
         ],
         "sla": "高风险物流异常 4h 内确认",
         "adapter_boundary": "平台/承运商状态保持各自权威，不由 AI 猜测。",
-        "supporting_point_ids": []
+        "supporting_point_ids": [],
+        "workspace": "/operations/lines/order_to_delivery"
       },
       {
         "id": "delivery_to_return_support",
@@ -11874,7 +12027,8 @@
         ],
         "sla": "客户/平台期限前完成下一动作",
         "adapter_boundary": "AI 只生成候选回复；发送和赔付需独立授权。",
-        "supporting_point_ids": []
+        "supporting_point_ids": [],
+        "workspace": "/operations/lines/delivery_to_return_support"
       },
       {
         "id": "settlement_to_reconciliation",
@@ -11918,7 +12072,8 @@
         "adapter_boundary": "只有平台/银行原始文件与独立复核可晋升 actual/reconciled。",
         "supporting_point_ids": [
           "currency_tax_pack"
-        ]
+        ],
+        "workspace": "/operations/lines/settlement_to_reconciliation"
       },
       {
         "id": "signal_to_experiment",
@@ -11965,7 +12120,8 @@
           "page_context_capture",
           "operating_template_catalog",
           "scheduled_agent_task"
-        ]
+        ],
+        "workspace": "/operations/lines/signal_to_experiment"
       },
       {
         "id": "exception_to_human_control",
@@ -12028,7 +12184,8 @@
           "adapter_admission",
           "model_provider_router",
           "cost_latency_observability"
-        ]
+        ],
+        "workspace": "/operations/lines/exception_to_human_control"
       }
     ],
     "operating_surfaces": [
@@ -12077,7 +12234,8 @@
           "履约超时",
           "未对账金额超阈值"
         ],
-        "write_boundary": "本面只读聚合；任何外部动作跳转到原工作区并重新验证角色、批准和 Permit。"
+        "write_boundary": "本面只读聚合；任何外部动作跳转到原工作区并重新验证角色、批准和 Permit。",
+        "workspace": "/operations/surfaces/store_operating_matrix"
       },
       {
         "id": "product_truth_surface",
@@ -12120,7 +12278,8 @@
           "合规原件缺失",
           "平台映射冲突"
         ],
-        "write_boundary": "人工确认只能通过现有 Product/Passport 工作区；图谱不修改商品事实。"
+        "write_boundary": "人工确认只能通过现有 Product/Passport 工作区；图谱不修改商品事实。",
+        "workspace": "/operations/surfaces/product_truth_surface"
       },
       {
         "id": "content_factory_surface",
@@ -12165,7 +12324,8 @@
           "模型回归",
           "成本/并发超限"
         ],
-        "write_boundary": "生成只产生候选；批准与平台发布分离。"
+        "write_boundary": "生成只产生候选；批准与平台发布分离。",
+        "workspace": "/operations/surfaces/content_factory_surface"
       },
       {
         "id": "controlled_execution_surface",
@@ -12212,7 +12372,8 @@
           "Kill Switch 状态异常",
           "重复故障"
         ],
-        "write_boundary": "只有独立受限 Worker 可写；面板本身保持只读。"
+        "write_boundary": "只有独立受限 Worker 可写；面板本身保持只读。",
+        "workspace": "/operations/surfaces/controlled_execution_surface"
       },
       {
         "id": "supply_profit_surface",
@@ -12260,7 +12421,8 @@
           "库存风险",
           "未对账金额"
         ],
-        "write_boundary": "补货/采购建议不等于采购承诺；必须由现有审批链执行。"
+        "write_boundary": "补货/采购建议不等于采购承诺；必须由现有审批链执行。",
+        "workspace": "/operations/surfaces/supply_profit_surface"
       },
       {
         "id": "customer_after_sales_surface",
@@ -12305,7 +12467,8 @@
           "重复退货原因",
           "退款/库存不一致"
         ],
-        "write_boundary": "AI 只生成回复候选；发送、赔付和申诉需授权。"
+        "write_boundary": "AI 只生成回复候选；发送、赔付和申诉需授权。",
+        "workspace": "/operations/surfaces/customer_after_sales_surface"
       },
       {
         "id": "agent_skill_surface",
@@ -12355,7 +12518,8 @@
           "质量回归",
           "轨迹缺失"
         ],
-        "write_boundary": "Agent 不持有独立业务写权；每次工具调用仍受 endpoint 权限与 Permit。"
+        "write_boundary": "Agent 不持有独立业务写权；每次工具调用仍受 endpoint 权限与 Permit。",
+        "workspace": "/operations/surfaces/agent_skill_surface"
       },
       {
         "id": "global_expansion_surface",
@@ -12403,7 +12567,8 @@
           "规则包冲突",
           "币税权威缺失"
         ],
-        "write_boundary": "除 Ozon 已验证合同外均保持 gated；每个平台独立准入，不继承 Ozon 权限。"
+        "write_boundary": "除 Ozon 已验证合同外均保持 gated；每个平台独立准入，不继承 Ozon 权限。",
+        "workspace": "/operations/surfaces/global_expansion_surface"
       }
     ]
   }

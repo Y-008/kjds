@@ -4,7 +4,7 @@
 |---|---|
 | doc_id | KJDS-MASTER-SPEC-001 |
 | status | Active |
-| version | 8.2 |
+| version | 8.3 |
 | last_reviewed | 2026-07-26 |
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
@@ -170,6 +170,7 @@ KJDS 是“确定性经营内核 + 证据优先数据层 + 受控 Agent 外层�
 | BR-074 | 经营流转分析快照与可视化驾驶舱 | 服务端必须用一个版本化只读投影聚合 Gate readiness、Ozon 商品目录、现有 SKU 增长快照、RFQ/发送证明、样品采购、受控执行计划和财务正式事实，返回稳定 `stage/funnel/coverage/focal_listing` 合同与快照哈希。每个阶段必须保留来源 requirement 或对象 ID、当前/目标、状态、下一动作和工作区导航；缺失历史序列、竞品价格、真实 CM3、订单或结算时必须显示 `no_data/blocked`，不得用演示数、插值或静态图冒充经营事实。Web 必须用真实商品图引用、价格带、库存、媒体构成、经营漏斗和证据覆盖图形成可下钻 HTML 驾驶舱；外部图片继续标记未核权引用，不下载、不取得媒体权利。AI 只能按服务端阻断给出下一步和模式建议；店群、铺货、精细化、品牌和新手模式共用同一事实、权限、审批、回读和止损内核。该快照不新建分析事实库、不改变任何 Gate、不获得 Ozon/供应商写权限。 | P0 |
 | BR-075 | EvidenceOps Copilot 目标到证据任务合同 | 提供独立认证产品入口，把一个明确经营目标编译成版本化、带哈希的只读任务合同。服务端深模块只能组合 BR-065 经营简报和 BR-074 经营分析快照，必须区分已验证事实、未知项、推断意图、任务、验证条件和禁止动作；每个任务保留来源、责任 Agent、工作区、当前/目标和人工要求。目标文本不得成为事实或执行许可，客户端不得自行重算任务优先级、Gate 或风险。首版不调用外部模型、不保存会话、不自动选品、联系供应商、采购、改价、发布、投放、付款或写平台；未来模型只能作为可替换规划适配器，其输出仍须通过同一 Evidence、评测、影子、审批和回读链。独立入口共享 KJDS 身份和业务真源，不建立第二数据库、第二权限面或通用 Agent 市场。 | P0 |
 | BR-076 | 俄罗斯优先的全球跨境能力运行图谱 | KJDS 必须用一个服务端版本化、机器可读的合同同时表达三层结构：①“点”逐项拆解 LinkFox 公开原子功能、KJDS 经营原子能力和控制原子能力，每点声明业务对象、操作类型、输入输出、Evidence、责任人、失败队列、回读、KPI、状态与不可越权边界；②“线”把点按对象状态变化串成从趋势、选品、供应商、CM3、商品档案、内容、Listing、审批发布、广告、库存订单、履约退货、结算对账到实验复盘的端到端价值流，并明确入口/出口门、事件、异常和人工接管；③“面”把跨店铺、商品、内容、执行、供应利润、售后、Agent/Skill 和全球扩展组织为经营控制面，明确维度、真源、决策、预警和写权限。LinkFox 只作为 C 级公开营销工作流参考，页面观察不得冒充已验证 API、Ozon 接入、模型效果或经营事实；“同功能覆盖”表示产品/合同设计覆盖，不得把 `ready`、`research_only` 或 `gated` 展示为已运行。Web 必须从认证只读接口呈现可搜索、可筛选、可下钻的 HTML/SVG 点—线—面图谱与逐节点合同，客户端不得重算状态、路径或编造能力。图谱第一市场为 Russia/Ozon，并把平台、国家、语言、税务、合规、物流、支付和模型提供方隔离为适配器；扩展 Amazon、Wildberries、Yandex Market、AliExpress、TikTok Shop、Shopify、eBay、Shopee、Lazada、Temu、SHEIN、Etsy 等平台时继续复用同一 Canonical Product、Evidence、Passport、CM3、Approval、Execution 和 Reconciliation 内核。任何生成式模型、Skill、Agent、浏览器或第三方 API 只有通过许可、数据合同、最小权限、评测、影子、成本、审计、回滚和真实样本对账后才能晋级，技术新颖性不构成准入理由。 | P0 |
+| BR-077 | 点线面到真实业务工作区穿透 | 图谱中的每个原子点、每条价值流和每个经营控制面必须解析到独立、可分享、可回退的认证工作区路由，不能跳回图谱自身或只落到无上下文菜单锚点。服务端 `OperatingWorkspace` 深模块以 `kind + item_id + store_ref` 为唯一外部接口，组合 BR-076 图谱合同与 BR-074 真实经营分析，返回节点上下文、阶段顺序、运行状态、事实、Evidence 引用、数据缺口、下一动作、责任人、异常、回读、相关价值流和现有领域工作区导航；客户端不得重新映射阶段或编造业务状态。14 条价值流必须逐条具有完整阶段穿透，8 个经营面必须可下钻到关联价值流和核心点，143 个点必须可回到所属线和真实领域工作区。缺少真实订单、结算、供应商、CM3、媒体权利或平台权限时必须显示 `no_data/blocked/contract_only`，不得用 `ready/implemented` 冒充正在运行。工作区首版只读，不新增数据库、外部写权限或自动执行；任何高风险动作继续回到既有 Evidence、Approval、Permit、Readback、Kill Switch 和 Compensation 链。 | P0 |
 
 ### 2.2 功能需求
 
@@ -961,6 +962,17 @@ Agent 分派、验证条件、控制包和规范哈希。它不直接读取 Repo
 不进入 Ozon 或经营事实。边界和 `best_solution` 选择见
 `docs/adr/ADR-0027-cross-border-capability-atlas.md`；人可读点线面设计见
 `docs/project/12_CROSS_BORDER_POINT_LINE_SURFACE_OPERATING_GRAPH.md`。
+
+`BR-077/BAS-102` 在图谱与既有经营模块之间增加 `OperatingWorkspace` 深模块。外部
+interface 只接收 `kind`、稳定节点 ID 和 `store_ref`，内部组合
+`CrossBorderCapabilityAtlas.snapshot()` 与 `OperatingAnalyticsService.snapshot()`，
+把点、线、面统一投影为可用工作区：阶段卡保留合同状态和真实运行状态两套语义，事实、
+Evidence、缺口和下一动作来自现有服务端投影，所有继续操作只导航到既有领域工作区。
+点、线、面的专用路由分别为 `/operations/points/{id}`、
+`/operations/lines/{id}` 和 `/operations/surfaces/{id}`；未知 kind/ID 失败关闭。前端
+不得用图谱的 `implemented/ready` 推断业务已完成，也不得从浏览器重新计算线或面关系。
+边界和 `best_solution` 选择见
+`docs/adr/ADR-0028-operating-workspace-drillthrough.md`。
 
 ### 17.2 P1：G2/G4/G5 前补齐
 

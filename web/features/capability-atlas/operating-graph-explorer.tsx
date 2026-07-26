@@ -354,6 +354,13 @@ function StreamDetail({
         label="支撑原子点"
         values={stream.supporting_point_ids.map((id) => pointIndex.get(id)?.label ?? id)}
       />
+      <footer className={styles.detailFooter}>
+        <Link href={stream.workspace}>
+          打开端到端业务工作区
+          <ArrowUpRight size={14} />
+        </Link>
+        <small>逐阶段展示真实信号、Evidence、异常、责任与下一动作。</small>
+      </footer>
     </>
   );
 }
@@ -410,7 +417,11 @@ function StreamView({
                   const point = pointIndex.get(pointId);
                   const visible = visiblePointIds.has(pointId);
                   return (
-                    <div className={visible ? "" : styles.filteredStage} key={pointId}>
+                    <Link
+                      className={visible ? "" : styles.filteredStage}
+                      href={point?.workspace ?? stream.workspace}
+                      key={pointId}
+                    >
                       <span>{index + 1}</span>
                       <strong>{point?.label ?? pointId}</strong>
                       <small>{point?.business_object ?? "unknown"}</small>
@@ -418,7 +429,7 @@ function StreamView({
                       {index < stream.stage_point_ids.length - 1 ? (
                         <ArrowRight className={styles.stageArrow} size={14} />
                       ) : null}
-                    </div>
+                    </Link>
                   );
                 })}
               </div>
@@ -503,6 +514,13 @@ function SurfaceDetail({
           <p>{surface.write_boundary}</p>
         </div>
       </section>
+      <footer className={styles.detailFooter}>
+        <Link href={surface.workspace}>
+          打开经营控制面工作区
+          <ArrowUpRight size={14} />
+        </Link>
+        <small>跨价值流汇总真实经营信号，不在客户端重算状态。</small>
+      </footer>
     </>
   );
 }

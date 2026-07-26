@@ -13,7 +13,8 @@ def test_atlas_exposes_complete_russia_first_tree_with_truthful_boundaries():
     snapshot = runtime.cross_border_capability_atlas.snapshot()
 
     assert snapshot["contract_id"] == "kjds-cross-border-capability-atlas-v1"
-    assert snapshot["registry_version"] == "0.55.0"
+    assert snapshot["release_version"] == "0.56.0"
+    assert snapshot["registry_version"] == "0.56.0"
     assert snapshot["primary_market"] == "RU"
     assert snapshot["primary_platform"] == "ozon"
     assert snapshot["counts"]["domains"] == 10
@@ -135,6 +136,37 @@ def test_atlas_point_line_surface_graph_closes_every_reference_and_control_bound
         point["status"] == "implemented"
         for point in points
         if point["source_kind"] == "linkfox_public_C"
+    )
+
+
+def test_every_point_line_and_surface_resolves_to_a_dedicated_operating_workspace():
+    graph = runtime.cross_border_capability_atlas.snapshot()["operating_graph"]
+    valid_domain_workspaces = {
+        "overview",
+        "data",
+        "research",
+        "products",
+        "sourcing",
+        "growth",
+        "finance",
+        "science",
+        "governance",
+        "system",
+        "evidenceops",
+    }
+
+    assert all(
+        point["workspace"] == f"/operations/points/{point['id']}"
+        and point["workspace_id"] in valid_domain_workspaces
+        for point in graph["atomic_points"]
+    )
+    assert all(
+        stream["workspace"] == f"/operations/lines/{stream['id']}"
+        for stream in graph["value_streams"]
+    )
+    assert all(
+        surface["workspace"] == f"/operations/surfaces/{surface['id']}"
+        for surface in graph["operating_surfaces"]
     )
 
 

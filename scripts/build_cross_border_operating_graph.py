@@ -15,6 +15,24 @@ REGISTRY_PATH = (
 )
 
 STATUS = {"implemented", "ready", "gated", "research_only"}
+REGISTRY_VERSION = "0.56.0"
+DOMAIN_WORKSPACE_IDS = {
+    "overview",
+    "data",
+    "research",
+    "products",
+    "sourcing",
+    "growth",
+    "finance",
+    "science",
+    "governance",
+    "system",
+    "evidenceops",
+}
+FALLBACK_WORKSPACE_BY_DOMAIN = {
+    "command_and_assets": "research",
+    "governance_and_global": "system",
+}
 SOURCE_KINDS = {
     "linkfox_public_C": {
         "evidence_tier": "C",
@@ -206,6 +224,18 @@ def build_graph(atlas: dict[str, Any]) -> dict[str, Any]:
         domain_id, capability = capability_index[parent]
         profile = PROFILES[profile_id]
         source = SOURCE_KINDS[source_kind]
+        legacy_workspace = capability["workspace"]
+        workspace_id = (
+            legacy_workspace.removeprefix("/#")
+            if legacy_workspace.startswith("/#")
+            else "evidenceops"
+            if legacy_workspace == "/evidenceops"
+            else FALLBACK_WORKSPACE_BY_DOMAIN.get(domain_id, "overview")
+        )
+        if workspace_id not in DOMAIN_WORKSPACE_IDS:
+            raise ValueError(
+                f"Unknown domain workspace for {point_id}: {workspace_id}"
+            )
         points.append(
             {
                 "id": point_id,
@@ -235,7 +265,8 @@ def build_graph(atlas: dict[str, Any]) -> dict[str, Any]:
                 "platforms": platforms or list(capability["platforms"]),
                 "controls": sorted(set(profile["controls"] + capability["controls"])),
                 "value_stream_ids": streams,
-                "workspace": capability["workspace"],
+                "workspace_id": workspace_id,
+                "workspace": f"/operations/points/{point_id}",
             }
         )
 
@@ -745,6 +776,11 @@ def build_graph(atlas: dict[str, Any]) -> dict[str, Any]:
         },
     ]
 
+    for stream in stream_specs:
+        stream["workspace"] = f"/operations/lines/{stream['id']}"
+    for surface in surfaces:
+        surface["workspace"] = f"/operations/surfaces/{surface['id']}"
+
     graph = {
         "contract_id": "kjds-cross-border-operating-graph-v1",
         "model": "point-line-surface",
@@ -788,21 +824,30 @@ def validate_graph(
             raise ValueError(f"Unknown status for {point['id']}")
         if not set(point["value_stream_ids"]) <= stream_set:
             raise ValueError(f"Unknown stream membership for {point['id']}")
+        if point.get("workspace_id") not in DOMAIN_WORKSPACE_IDS:
+            raise ValueError(f"Unknown workspace id for {point['id']}")
+        if point.get("workspace") != f"/operations/points/{point['id']}":
+            raise ValueError(f"Invalid point workspace for {point['id']}")
     for stream in graph["value_streams"]:
         refs = stream["stage_point_ids"] + stream["supporting_point_ids"]
         if not refs or not set(refs) <= point_set:
             raise ValueError(f"Unknown/empty point reference for {stream['id']}")
         if len(refs) != len(set(refs)):
             raise ValueError(f"Duplicate point reference for {stream['id']}")
+        if stream.get("workspace") != f"/operations/lines/{stream['id']}":
+            raise ValueError(f"Invalid line workspace for {stream['id']}")
     for surface in graph["operating_surfaces"]:
         if not set(surface["value_stream_ids"]) <= stream_set:
             raise ValueError(f"Unknown stream reference for {surface['id']}")
         if not set(surface["focus_point_ids"]) <= point_set:
             raise ValueError(f"Unknown point reference for {surface['id']}")
+        if surface.get("workspace") != f"/operations/surfaces/{surface['id']}":
+            raise ValueError(f"Invalid surface workspace for {surface['id']}")
 
 
 def render_registry() -> str:
     atlas = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    atlas["registry_version"] = REGISTRY_VERSION
     atlas["operating_graph"] = build_graph(atlas)
     return json.dumps(atlas, ensure_ascii=False, indent=2) + "\n"
 

@@ -53,6 +53,7 @@ export type AtomicPoint = {
   platforms: string[];
   controls: string[];
   value_stream_ids: string[];
+  workspace_id: string;
   workspace: string;
 };
 
@@ -71,6 +72,7 @@ export type ValueStream = {
   kpi: string[];
   sla: string;
   adapter_boundary: string;
+  workspace: string;
 };
 
 export type OperatingSurface = {
@@ -85,6 +87,7 @@ export type OperatingSurface = {
   kpi: string[];
   alerts: string[];
   write_boundary: string;
+  workspace: string;
 };
 
 export type OperatingGraph = {
@@ -122,6 +125,7 @@ export type OperatingGraph = {
 
 export type CapabilityAtlasSnapshot = {
   contract_id: "kjds-cross-border-capability-atlas-v1";
+  release_version: string;
   registry_version: string;
   last_reviewed: string;
   primary_market: "RU";

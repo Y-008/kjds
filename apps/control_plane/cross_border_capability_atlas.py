@@ -8,7 +8,22 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from .api_contracts import APP_VERSION
+
 ATLAS_STATUSES = ("implemented", "ready", "gated", "research_only")
+OPERATING_WORKSPACE_IDS = {
+    "overview",
+    "data",
+    "research",
+    "products",
+    "sourcing",
+    "growth",
+    "finance",
+    "science",
+    "governance",
+    "system",
+    "evidenceops",
+}
 REQUIRED_CAPABILITY_FIELDS = (
     "id",
     "label",
@@ -54,6 +69,7 @@ REQUIRED_POINT_FIELDS = (
     "platforms",
     "controls",
     "value_stream_ids",
+    "workspace_id",
     "workspace",
 )
 REQUIRED_STREAM_FIELDS = (
@@ -71,6 +87,7 @@ REQUIRED_STREAM_FIELDS = (
     "kpi",
     "sla",
     "adapter_boundary",
+    "workspace",
 )
 REQUIRED_SURFACE_FIELDS = (
     "id",
@@ -84,6 +101,7 @@ REQUIRED_SURFACE_FIELDS = (
     "kpi",
     "alerts",
     "write_boundary",
+    "workspace",
 )
 
 
@@ -301,6 +319,7 @@ class CrossBorderCapabilityAtlas:
                 "sla",
                 "owner",
                 "reviewer",
+                "workspace_id",
                 "workspace",
             ):
                 cls._required_text(point, field, point_id)
@@ -318,6 +337,14 @@ class CrossBorderCapabilityAtlas:
             if not set(point["value_stream_ids"]) <= stream_ids:
                 raise CapabilityAtlasError(
                     f"Atomic point {point_id} references unknown value stream"
+                )
+            if point["workspace_id"] not in OPERATING_WORKSPACE_IDS:
+                raise CapabilityAtlasError(
+                    f"Atomic point {point_id} references unknown domain workspace"
+                )
+            if point["workspace"] != f"/operations/points/{point_id}":
+                raise CapabilityAtlasError(
+                    f"Atomic point {point_id} has an unresolved drilldown"
                 )
             if point["source_kind"] == "linkfox_public_C":
                 if point["evidence_tier"] != "C":
@@ -344,6 +371,7 @@ class CrossBorderCapabilityAtlas:
                 "human_takeover",
                 "sla",
                 "adapter_boundary",
+                "workspace",
             ):
                 cls._required_text(stream, field, stream_id)
             for field in (
@@ -366,6 +394,10 @@ class CrossBorderCapabilityAtlas:
                 raise CapabilityAtlasError(
                     f"Value stream {stream_id} has duplicate or unknown point refs"
                 )
+            if stream["workspace"] != f"/operations/lines/{stream_id}":
+                raise CapabilityAtlasError(
+                    f"Value stream {stream_id} has an unresolved drilldown"
+                )
 
         cls._unique_object_ids(surfaces, "operating surface")
         for surface in surfaces:
@@ -382,6 +414,7 @@ class CrossBorderCapabilityAtlas:
                 "mission",
                 "truth_owner",
                 "write_boundary",
+                "workspace",
             ):
                 cls._required_text(surface, field, surface_id)
             for field in (
@@ -400,6 +433,10 @@ class CrossBorderCapabilityAtlas:
             if not set(surface["focus_point_ids"]) <= point_ids:
                 raise CapabilityAtlasError(
                     f"Operating surface {surface_id} references unknown point"
+                )
+            if surface["workspace"] != f"/operations/surfaces/{surface_id}":
+                raise CapabilityAtlasError(
+                    f"Operating surface {surface_id} has an unresolved drilldown"
                 )
 
     @classmethod
@@ -517,6 +554,7 @@ class CrossBorderCapabilityAtlas:
         )
         return {
             "contract_id": self.registry["contract_id"],
+            "release_version": APP_VERSION,
             "registry_version": self.registry["registry_version"],
             "last_reviewed": self.registry["last_reviewed"],
             "primary_market": self.registry["primary_market"],
