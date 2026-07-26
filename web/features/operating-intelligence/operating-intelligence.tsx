@@ -177,7 +177,7 @@ export function OperatingIntelligence() {
     const responses = await settleJsonRequests([
       fetchJson<ProfitLedger>("/backend/v1/profit-ledger?store_ref=ozon-primary&grain=order", { cache: "no-store", signal }),
       fetchJson<ProfitErosion>("/backend/v1/profit-ledger/erosion?store_ref=ozon-primary&grain=order", { cache: "no-store", signal }),
-      fetchJson<MetricRegistry>("/backend/v1/metrics", { cache: "no-store", signal }),
+      fetchJson<MetricRegistry>("/backend/v1/operating-intelligence/metrics", { cache: "no-store", signal }),
       fetchJson<OperatingTask[]>("/backend/v1/operating-tasks?limit=100", { cache: "no-store", signal }),
       fetchJson<MediaSnapshot>("/backend/v1/media/workbench", { cache: "no-store", signal }),
     ]);
@@ -199,7 +199,7 @@ export function OperatingIntelligence() {
     setActionBusy("scan");
     setActionNotice("");
     try {
-      const response = await fetchJson("/backend/v1/anomaly-scans", {
+      const response = await fetchJson("/backend/v1/operating-intelligence/anomaly-scans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ store_ref: "ozon-primary" }),

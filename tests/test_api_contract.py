@@ -84,6 +84,54 @@ def test_openapi_declares_api_key_security_for_protected_operations() -> None:
     ]
 
 
+def test_operating_intelligence_named_aliases_share_endpoints_and_require_authentication(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.api import registered_routes
+    from apps.control_plane.runtime import runtime
+    from apps.control_plane.security import AuthenticationFailure
+
+    routes = {
+        (route.path, method): route.endpoint
+        for route in registered_routes()
+        if hasattr(route, "endpoint")
+        for method in getattr(route, "methods", set())
+    }
+    pairs = (
+        (
+            ("/v1/operating-intelligence/metrics", "GET"),
+            ("/v1/metrics", "GET"),
+        ),
+        (
+            ("/v1/operating-intelligence/anomaly-scans", "POST"),
+            ("/v1/anomaly-scans", "POST"),
+        ),
+    )
+    schema = app.openapi()
+    for canonical, legacy in pairs:
+        assert routes[canonical] is routes[legacy]
+        assert schema["paths"][canonical[0]][canonical[1].lower()][
+            "security"
+        ] == [{"KjdsApiKey": []}]
+        assert schema["paths"][legacy[0]][legacy[1].lower()][
+            "security"
+        ] == [{"KjdsApiKey": []}]
+
+    def reject_missing_key(_key):
+        raise AuthenticationFailure("X-KJDS-API-Key is required", 401)
+
+    monkeypatch.setattr(runtime.authenticator, "authenticate", reject_missing_key)
+    client = TestClient(app)
+    assert client.get("/v1/operating-intelligence/metrics").status_code == 401
+    assert (
+        client.post(
+            "/v1/operating-intelligence/anomaly-scans",
+            json={"store_ref": "ozon-primary"},
+        ).status_code
+        == 401
+    )
+
+
 def test_execution_checkpoint_contract_is_closed_and_protected() -> None:
     operation = app.openapi()["paths"][
         "/v1/limited-execution-commands/{command_id}/response-checkpoint"
