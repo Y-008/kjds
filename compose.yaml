@@ -16,7 +16,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   api:
-    build: .
+    build:
+      context: .
+      target: api
     ports:
       - "8000:8000"
     environment:
@@ -75,9 +77,34 @@ services:
       timeout: 3s
       retries: 20
 
+  media-worker:
+    build:
+      context: .
+      target: media-worker
+    command:
+      - python
+      - -m
+      - apps.control_plane.media_worker
+      - --worker-id
+      - media-worker-compose
+    environment:
+      KJDS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hermes}:${POSTGRES_PASSWORD:-hermes_dev}@postgres:5432/${POSTGRES_DB:-hermes}
+      KJDS_ENVIRONMENT: development
+      KJDS_COMFYUI_URL: ${KJDS_COMFYUI_URL:-http://host.docker.internal:8189}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   ozon-worker:
     profiles: ["live-execution"]
-    build: .
+    build:
+      context: .
+      target: api
     command:
       - python
       - -m
@@ -101,7 +128,9 @@ services:
 
   ozon-read-worker:
     profiles: ["read-only-pilot"]
-    build: .
+    build:
+      context: .
+      target: api
     command:
       - python
       - -m

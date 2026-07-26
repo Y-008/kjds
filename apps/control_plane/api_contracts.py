@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.56.0"
+APP_VERSION = "0.57.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -972,6 +972,35 @@ class IncidentClosureInput(BaseModel):
 class OperationsQueueScanInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     as_of: str | None = None
+
+
+class AnomalyScanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    as_of: str | None = None
+
+
+class OperatingTaskTransitionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    event_type: Literal["acknowledge", "start", "resolve", "dismiss"]
+    reason: str = Field(min_length=1, max_length=2000)
+    evidence_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
+class MediaExecutionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    retry: bool = False
+
+
+class MediaBatchItemInput(MediaExecutionInput):
+    asset_id: str = Field(min_length=1, max_length=300)
+
+
+class MediaBatchExecutionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    idempotency_key: str = Field(min_length=1, max_length=300)
+    items: list[MediaBatchItemInput] = Field(min_length=1, max_length=100)
 
 
 class ReadOnlyPilotInput(BaseModel):

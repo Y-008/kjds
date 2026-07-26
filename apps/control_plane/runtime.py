@@ -40,7 +40,9 @@ from .marketplace_growth_workspace import (
     MarketplaceGrowthWorkspace,
     SqlMarketplaceGrowthStore,
 )
+from .media_workbench import MediaWorkbenchService
 from .operating_analytics import OperatingAnalyticsService
+from .operating_intelligence import OperatingIntelligenceService
 from .operating_workbench import OperatingWorkbenchService
 from .operating_workspace import OperatingWorkspaceService
 from .operations_queue import OperationsQueueService
@@ -55,6 +57,7 @@ from .pilot_runs import PilotRunService
 from .policy_shadow import PolicyShadowService
 from .post_execution import PostExecutionService
 from .procurement import ProcurementService
+from .profit_ledger import ProfitLedgerService
 from .providers import ComfyUIProvider, FirecrawlProvider, N8nProvider, OllamaProvider
 from .read_only_claims import ReadOnlyClaimService
 from .readiness import ExecutionReadinessService, GateReadinessService
@@ -111,7 +114,9 @@ class RuntimeServices:
     market: Any
     marketplace_catalog: Any
     marketplace_growth: Any
+    media_workbench: Any
     operating_analytics: Any
+    operating_intelligence: Any
     operating_workbench: Any
     operating_workspace: Any
     operations_queue: Any
@@ -123,6 +128,7 @@ class RuntimeServices:
     policy_shadow: Any
     post_execution: Any
     procurement: Any
+    profit_ledger: Any
     product_media: Any
     providers: Any
     read_only_claims: Any
@@ -336,11 +342,21 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
         incidents=incident_recovery,
     )
+    profit_ledger = ProfitLedgerService(
+        engine=engine,
+        sourcing_store=sourcing_store,
+    )
+    operating_intelligence = OperatingIntelligenceService(
+        engine=engine,
+        profit_ledger=profit_ledger,
+        evidence=evidence,
+    )
     operations_queue = OperationsQueueService(
         engine=engine,
         incidents=incident_recovery,
         limited_executor=limited_executor,
         post_execution=post_execution,
+        operating_tasks=operating_intelligence,
     )
     operating_workbench = OperatingWorkbenchService(
         readiness=readiness,
@@ -416,6 +432,12 @@ def build_runtime() -> RuntimeServices:
         provider=providers["comfyui"],
         action_authorization=action_authorization,
     )
+    media_workbench = MediaWorkbenchService(
+        engine=engine,
+        repository=repo,
+        evidence=evidence,
+        image_execution=image_execution,
+    )
     return RuntimeServices(
         action_authorization=action_authorization,
         action_policies=action_policies,
@@ -455,7 +477,9 @@ def build_runtime() -> RuntimeServices:
         market=market,
         marketplace_catalog=marketplace_catalog,
         marketplace_growth=marketplace_growth,
+        media_workbench=media_workbench,
         operating_analytics=operating_analytics,
+        operating_intelligence=operating_intelligence,
         operating_workbench=operating_workbench,
         operating_workspace=operating_workspace,
         operations_queue=operations_queue,
@@ -467,6 +491,7 @@ def build_runtime() -> RuntimeServices:
         policy_shadow=policy_shadow,
         post_execution=post_execution,
         procurement=procurement,
+        profit_ledger=profit_ledger,
         product_media=product_media,
         providers=providers,
         read_only_claims=read_only_claims,
