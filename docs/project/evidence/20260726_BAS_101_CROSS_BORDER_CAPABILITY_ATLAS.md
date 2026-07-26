@@ -5,7 +5,8 @@
 - Branch: `feature/cross-border-capability-atlas-055`
 - Requirement: BR-076
 - ADR: [ADR-0027](../../adr/ADR-0027-cross-border-capability-atlas.md)
-- Status: point-line-surface implementation, full quality gates, Docker runtime, and motion proof passed; clean IAB desktop/mobile proof capture and user-approved MP4 render pending
+- Status: DONE; point-line-surface implementation, full quality gates, Docker runtime,
+  clean IAB desktop/mobile proof, and user-approved MP4 render passed
 
 ## Delivered outcome
 
@@ -118,7 +119,7 @@ Verified after the point-line-surface extension on 2026-07-26:
 - `GET /health/ready`: `status=ok`, version `0.55.0`, database `ok`.
 - PostgreSQL `pg_isready`: accepting connections.
 - Alembic: one head, `20260726_0050`; database current at the same head.
-- Secret scan: 545 non-ignored worktree files and 525 historical paths passed.
+- Secret scan: 546 non-ignored worktree files and 548 historical paths passed.
 - Ruff: passed.
 - Python: 503 passed; one upstream Starlette/httpx deprecation warning.
 - Web: 40 passed.
@@ -129,11 +130,12 @@ Verified after the point-line-surface extension on 2026-07-26:
   points, 14 value streams, 8 operating surfaces; 73 C-tier public observations,
   50 repository-verified contracts, 20 product-architecture points and 0 public
   observations promoted to implemented. UTF-8 JSON payload is about 312 KB.
-- Browser interaction before the deep extension loaded 10 domains/49 leaves,
-  `CM3` search returned the expected capabilities, and the Russia filter retained
-  all Russia-scoped macro leaves. A clean IAB point/line/surface desktop/mobile
-  capture is still required; no terminal browser substitute is used as fidelity
-  evidence.
+- The named in-app Browser loaded the authenticated local page and the service-owned
+  counts `143/14/8/0`. Fixed-viewport Point, Line, and Surface desktop captures plus
+  a responsive Point mobile capture were visually inspected. The selected
+  `aria-pressed` state was independently read as `true` for Line and Surface, and
+  the Browser console error log was empty. No terminal-browser substitute is used
+  as fidelity evidence.
 - HyperFrames 0.7.72 default full check: runtime 0 errors/0 warnings, layout
   0 issues across 9 samples, motion 0 errors/0 warnings, and 203/203 text
   contrast checks passed WCAG AA. Lint retains one reviewed maintainability
@@ -162,13 +164,24 @@ Targeted post-extension evidence:
 
 Ignored release artifacts are kept under `output/release-0.55.0/`:
 
-- `capability-atlas-desktop-viewport.jpg` — desktop fixed-viewport proof, visually
-  inspected.
+- `capability-atlas-point-desktop.png` — 1425×891 Point desktop proof with the
+  `143/14/8/0` release counters, public-observation boundary, and Point tab selected;
+  visually inspected.
+- `capability-atlas-line-desktop.png` — 1425×891 Line desktop proof with the
+  end-to-end value-stream map and selected Line tab; visually inspected.
+- `capability-atlas-surface-desktop.png` — 1425×891 Surface desktop proof with the
+  governed-kernel control plane and selected Surface tab; visually inspected.
+- `capability-atlas-point-mobile.png` — 375×812 responsive proof with release
+  counters, source boundary, and a correctly reflowed Point/Line/Surface/Trunk
+  selector; visually inspected.
+- `capability-atlas-desktop-viewport.jpg` and
+  `capability-atlas-mobile-viewport.jpg` — earlier fixed-viewport macro-atlas
+  references retained for comparison.
 - `capability-atlas-desktop.png` — raw in-app-browser full-page capture; the browser's
   long-page compositor repeats tiles and this file is not used as a fidelity claim.
-- `capability-atlas-mobile.png` — raw mobile full-page capture; the same compositor
-  distortion was observed and a clean fixed-viewport replacement is required before
-  BAS-101 is marked done.
+- `capability-atlas-mobile.png` — raw mobile full-page capture with the same
+  compositor distortion; it is superseded by the clean fixed-viewport mobile proof
+  and is not used as a fidelity claim.
 - `motion-capability-tree-proof/contact-sheet.jpg` and six proof frames at
   0.4s, 1.25s, 3.7s, 5.45s, 6.45s, and 8.05s — visually inspected; the
   deterministic build-up preserves the 3-branch, 10-domain, 49-leaf hierarchy and
@@ -177,7 +190,14 @@ Ignored release artifacts are kept under `output/release-0.55.0/`:
   same timestamps — visually inspected; the deterministic build renders 143
   connected atomic micro-nodes grouped 14/9/9/14/19/11/8/25/15/19, branch totals
   65/44/34, and a final 143 points / 14 lines / 8 surfaces lockup.
-- Formal MP4 rendering remains intentionally user-gated by the motion workflow.
+- `KJDS-0.55.0-point-line-surface-operating-graph.mp4` — user-approved formal
+  HyperFrames 0.7.72 high-quality render; H.264 High, 1920×1080, 30 fps,
+  8.500 seconds, 255 frames, 1,810,539 bytes, progressive BT.709, SHA-256
+  `EB216B37CFFCECDCA9E563CD80A5C38970896EF68DBFAB2B445C2314908BDC16`.
+- `motion-final-frames/frame-1.png` through `frame-5.png` — decoded directly from
+  the formal MP4 at 0.5s, 2.0s, 4.0s, 6.0s, and 8.2s; all five were visually
+  inspected for the opening, branch reveal, node count-up, and final
+  `143 points / 14 lines / 8 surfaces` hold.
 
 Git tracks only source, tests, contracts, ADRs, and project documentation. Release
 screenshots and rendered media remain ignored artifacts.
