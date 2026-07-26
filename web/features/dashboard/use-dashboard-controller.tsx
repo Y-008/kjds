@@ -61,6 +61,7 @@ import type {
   CapabilityEconomicAssessment,
   OperationalIncident,
   OperationsQueueItem,
+  OperatingAnalyticsSnapshot,
   OperatingWorkbenchBriefing,
   ReadOnlyPilot,
   PilotEvaluation
@@ -85,6 +86,7 @@ export function useDashboardController() {
   const [webSession, setWebSession] = useState<WebSession | null>(null);
   const [health, setHealth] = useState<Record<string, Health>>({});
   const [operatingWorkbench, setOperatingWorkbench] = useState<OperatingWorkbenchBriefing | null>(null);
+  const [operatingAnalytics, setOperatingAnalytics] = useState<OperatingAnalyticsSnapshot | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [sourceConnectors, setSourceConnectors] = useState<SourceConnector[]>([]);
   const [logisticsRateCards, setLogisticsRateCards] = useState<LogisticsRateCard[]>([]);
@@ -186,9 +188,13 @@ export function useDashboardController() {
     setDomainStates({ core: "loading", product: "loading", finance: "loading", science: "loading", execution: "loading" });
     const request = (input: RequestInfo | URL, init: RequestInit = {}) =>
       fetchJson(input, { ...init, signal: signal ?? init.signal });
-    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, rfqPackagesResponse, rfqDispatchesResponse, quoteEvidenceResponse, marketplaceCatalogResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse, logisticsRateCardsResponse, logisticsCalculationsResponse] = await settleJsonRequests([
+    const [healthResponse, operatingWorkbenchResponse, operatingAnalyticsResponse, recommendationResponse, connectorResponse, offersResponse, rfqPackagesResponse, rfqDispatchesResponse, quoteEvidenceResponse, marketplaceCatalogResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse, logisticsRateCardsResponse, logisticsCalculationsResponse] = await settleJsonRequests([
       request("/backend/v1/integrations/health", { cache: "no-store" }),
       request("/backend/v1/operating-workbench/briefing", { cache: "no-store" }),
+      request(
+        `/backend/v1/operating-analytics/snapshot?store_ref=${encodeURIComponent(marketplaceCatalogStoreRef)}`,
+        { cache: "no-store" },
+      ),
       request("/backend/v1/recommendations", { cache: "no-store" }),
       request("/backend/v1/sourcing/connectors", { cache: "no-store" }),
       request("/backend/v1/sourcing/offers", { cache: "no-store" }),
@@ -229,7 +235,7 @@ export function useDashboardController() {
       request("/backend/v1/logistics/calculations", { cache: "no-store" }),
     ]);
     setDomainStates({
-      core: [healthResponse, operatingWorkbenchResponse].every((response) => response.ok) ? "ready" : "error",
+      core: [healthResponse, operatingWorkbenchResponse, operatingAnalyticsResponse].every((response) => response.ok) ? "ready" : "error",
       product: [connectorResponse, offersResponse, rfqPackagesResponse, rfqDispatchesResponse, quoteEvidenceResponse, marketplaceCatalogResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, logisticsRateCardsResponse, logisticsCalculationsResponse].every((response) => response.ok) ? "ready" : "error",
       finance: costAuthorityResponse.ok ? "ready" : "error",
       science: [profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse].every((response) => response.ok) ? "ready" : "error",
@@ -237,6 +243,7 @@ export function useDashboardController() {
     });
     if (healthResponse.ok) setHealth(await healthResponse.json());
     if (operatingWorkbenchResponse.ok) setOperatingWorkbench(await operatingWorkbenchResponse.json());
+    if (operatingAnalyticsResponse.ok) setOperatingAnalytics(await operatingAnalyticsResponse.json());
     if (recommendationResponse.ok) setRecommendations(await recommendationResponse.json());
     if (connectorResponse.ok) setSourceConnectors(await connectorResponse.json());
     if (offersResponse.ok) setOffers(await offersResponse.json());
@@ -2598,6 +2605,8 @@ export function useDashboardController() {
     setHealth,
     operatingWorkbench,
     setOperatingWorkbench,
+    operatingAnalytics,
+    setOperatingAnalytics,
     recommendations,
     setRecommendations,
     sourceConnectors,

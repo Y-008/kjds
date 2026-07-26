@@ -769,6 +769,110 @@ export type OperatingWorkbenchBriefing = {
     platform_write_allowed: false; third_party_fact_promotion_allowed: false;
   };
 };
+export type OperatingAnalyticsSnapshot = {
+  contract_id: "kjds-operating-flow-analytics-v1";
+  store_ref: string;
+  status: "ready_for_review" | "needs_input";
+  source_as_of: string | null;
+  snapshot_sha256: string;
+  summary: {
+    catalog_items: number;
+    bound_listings: number;
+    available_stock: number;
+    external_image_references: number;
+    external_video_references: number;
+    gate_blockers: number;
+    growth_snapshot_skus: number;
+    rfq_packages: number;
+    verified_dispatch_proofs: number;
+    formal_finance_entries: number;
+    ready_execution_plans: number;
+  };
+  recommended_playbook: {
+    id: "existing_listing_refinement" | "catalog_governance" | "guided_foundation";
+    label: string;
+    reasons: string[];
+    advisory_only: true;
+    automatic_mode_switch: false;
+  };
+  focal_listing: null | {
+    offer_id: string;
+    marketplace_sku: string | null;
+    canonical_product_id: string | null;
+    name: string;
+    currency_code: string | null;
+    price: string | null;
+    min_price: string | null;
+    old_price: string | null;
+    available_stock: number | null;
+    status: string | null;
+    status_name: string | null;
+    moderation_status: string | null;
+    observed_at: string | null;
+    source_evidence_id: string;
+    item_hash: string;
+    image_references: string[];
+    video_reference_count: number;
+    image_reference_count: number;
+    document_reference_count: number;
+    media_rights_status: "unverified_external_reference";
+    approved_media_roles: number;
+    required_media_roles: number;
+    passports_ready: boolean;
+    supplier_count: number;
+    complete_profit_scenario_count: number;
+    growth_observation: null | {
+      content_score: string;
+      rating: string;
+      review_count: number;
+      orders_14d: number;
+      conversion_rate: string | null;
+      competitor_count: number;
+      observed_at: string;
+    };
+  };
+  stages: Array<{
+    id: string;
+    step: string;
+    label: string;
+    workspace: string;
+    status: "verified" | "in_progress" | "blocked" | "no_data";
+    current: number;
+    target: number;
+    progress_percent: number;
+    next_action: string;
+    source_ids: string[];
+    facts: string[];
+  }>;
+  coverage: Array<{
+    id: string;
+    label: string;
+    current: number;
+    target: number;
+    percent: number;
+    unit: string;
+  }>;
+  pipeline: Array<{
+    id: string;
+    label: string;
+    value: number;
+    unit: string;
+  }>;
+  priority_items: OperatingWorkbenchBriefing["work_items"];
+  data_gaps: string[];
+  guardrails: {
+    advisory_only: true;
+    browser_gate_recalculation: false;
+    synthetic_business_data_allowed: false;
+    automatic_product_selection: false;
+    automatic_supplier_contact: false;
+    automatic_procurement: false;
+    automatic_pricing: false;
+    automatic_listing: false;
+    automatic_ad_spend: false;
+    platform_write_allowed: false;
+  };
+};
 export type ReadOnlyPilot = {
   id: string; platform: string; account_alias: string; allowed_operations: string[];
   max_daily_requests: number; max_targets: number; starts_at: string; ends_at: string;
