@@ -48,7 +48,8 @@
 - Write-path registry：PASS。
 - Ruff：PASS。
 - Pytest：527 passed；仅保留既有 Starlette TestClient 上游弃用警告。
-- 规范/兼容路由、OpenAPI、Atlas、Workspace 定向测试：38 passed。
+- 规范/兼容路由、OpenAPI、Operating Intelligence、Atlas、Workspace 定向测试：
+  41 passed。
 - Web：`npm ci` 0 vulnerabilities；46 tests passed；Webpack 生产构建通过。
 - 图谱生成器 `--check`：current。
 - `git diff --check`：PASS。
@@ -64,7 +65,28 @@
   只读扫描；页面无客户端阈值或扫描逻辑。
 - `/operating-intelligence` 生产页面返回 200。本补丁未修改 CSS/布局，0.57 已冻结的
   1440px 与 390px 截图继续适用；Web 回归仍验证 390px 显式边界和无演示数据。
+- Playwright 生产容器回归观测到的资源请求包含：
+  - `/backend/v1/operating-intelligence/metrics`
+  - `/backend/v1/operating-intelligence/anomaly-scans`
+- 点击“运行只读扫描”后，页面明确显示“扫描 8 项指标；未触发任何平台动作。”，
+  控制台 0 error；两条既有 CSS preload warning 归为框架资源提示。
+- 桌面证据：
+  `output/playwright/release-0.57.1/operating-intelligence-api-alias-desktop.png`
+  - 视口 `1440px`，文档 `scrollWidth=1425px`，无水平溢出
+  - SHA-256：
+    `D5C2B22564994ECF8319DAFA4C298E4C601FE6A05CBCDE18B9D935703603CE3D`
+
+### 审查结论
+
+- P0：无。
+- P1：无。
+- P2：无。
+- Info：Starlette TestClient 上游弃用警告继续 defer；浏览器 CSS preload warning
+  不影响合同、渲染或交互；Compose 首次并行重建遇到已替换旧 API 容器 ID，随后按服务
+  单独重建并恢复四服务 healthy。
 
 ### 发布审计
 
-- 独立 PR、三项必需 CI、评论检查、squash merge 与本地 `main` 同步结果在发布时追加。
+- 独立 PR：[#45](https://github.com/Y-008/kjds/pull/45)。
+- 三项必需 CI、评论检查、squash merge 与本地 `main` 同步结果由该 PR 的 GitHub
+  审计轨迹冻结。
