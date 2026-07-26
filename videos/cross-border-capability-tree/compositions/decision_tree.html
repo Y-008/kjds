@@ -1,0 +1,1020 @@
+<template id="decision-tree-template">
+  <div
+    id="kct-composition-root"
+    data-composition-id="decision-tree"
+    data-width="1920"
+    data-height="1080"
+    data-duration="8.5"
+  >
+    <div
+      id="kct-scene"
+      class="clip"
+      data-start="0"
+      data-duration="8.5"
+      data-track-index="0"
+    >
+      <div class="kct-background" aria-hidden="true">
+        <div class="kct-grid"></div>
+        <div class="kct-vignette"></div>
+        <div id="kct-tree-glow" class="kct-tree-glow"></div>
+      </div>
+
+      <div class="kct-eyebrow">
+        <span>KJDS 0.55.0</span>
+        <span class="kct-eyebrow-divider"></span>
+        <span>AI CROSS-BORDER OPERATING SYSTEM</span>
+      </div>
+
+      <div id="kct-root-halo" class="kct-halo kct-root-halo"></div>
+      <div id="kct-russia-halo" class="kct-halo kct-russia-halo"></div>
+
+      <svg
+        id="kct-connectors"
+        class="kct-connectors"
+        width="1920"
+        height="1080"
+        viewBox="0 0 1920 1080"
+        aria-hidden="true"
+      >
+        <defs>
+          <filter id="kct-connector-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
+            <feMerge>
+              <feMergeNode in="blur"></feMergeNode>
+              <feMergeNode in="SourceGraphic"></feMergeNode>
+            </feMerge>
+          </filter>
+        </defs>
+        <g id="kct-trunk-layer"></g>
+        <g id="kct-domain-edge-layer"></g>
+        <g id="kct-leaf-edge-layer"></g>
+        <g id="kct-sweep-layer"></g>
+      </svg>
+
+      <div
+        id="kct-root-node"
+        class="kct-node-anchor kct-root-node"
+        style="left: 960px; top: 112px"
+      >
+        <div class="kct-node-shell">
+          <div class="kct-root-kicker">EVIDENCE-FIRST AI OPERATING KERNEL</div>
+          <div class="kct-root-title">KJDS AI 跨境能力中枢</div>
+          <div class="kct-root-proof">
+            <span id="kct-root-domain-label">POINT · </span>
+            <span id="kct-root-counter">0</span>
+            <span>/143 原子点</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="kct-branch-layer"></div>
+      <div id="kct-domain-layer"></div>
+      <div id="kct-leaf-layer"></div>
+
+      <div id="kct-footer" class="kct-footer">
+        <div class="kct-footer-headline">
+          不是功能菜单：原子点连成价值流，价值流汇成经营控制面
+        </div>
+        <div class="kct-footer-proof">
+          <span>143 原子点</span>
+          <i></i>
+          <span>14 条价值流</span>
+          <i></i>
+          <span>8 个经营面</span>
+          <i></i>
+          <span>Evidence-first</span>
+          <i></i>
+          <span>Controlled execution</span>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      @font-face {
+        font-family: "Microsoft YaHei UI";
+        src: local("Microsoft YaHei UI");
+      }
+
+      @font-face {
+        font-family: "PingFang SC";
+        src: local("PingFang SC");
+      }
+
+      @font-face {
+        font-family: "Cascadia Mono";
+        src: local("Cascadia Mono");
+      }
+
+      #kct-composition-root {
+        position: absolute;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        color: #ecf5ef;
+        font-family: "Noto Sans JP", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+      }
+
+      #kct-composition-root #kct-scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #kct-composition-root .kct-background {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 50% 10%, rgba(184, 239, 101, 0.055), transparent 32%),
+          linear-gradient(180deg, #091813 0%, #07120f 62%, #050d0b 100%);
+      }
+
+      #kct-composition-root .kct-grid {
+        position: absolute;
+        inset: 0;
+        opacity: 0.22;
+        background-image:
+          linear-gradient(rgba(236, 245, 239, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(236, 245, 239, 0.035) 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: linear-gradient(to bottom, black 0%, rgba(0, 0, 0, 0.5) 72%, transparent 100%);
+      }
+
+      #kct-composition-root .kct-vignette {
+        position: absolute;
+        inset: 0;
+        box-shadow: inset 0 0 180px rgba(0, 0, 0, 0.54);
+      }
+
+      #kct-composition-root .kct-tree-glow {
+        position: absolute;
+        left: 42px;
+        right: 42px;
+        top: 172px;
+        height: 686px;
+        opacity: 0;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(184, 239, 101, 0.12) 0%,
+          rgba(255, 183, 96, 0.06) 40%,
+          rgba(110, 140, 255, 0.045) 68%,
+          transparent 82%
+        );
+        filter: blur(30px);
+      }
+
+      #kct-composition-root .kct-eyebrow {
+        position: absolute;
+        top: 44px;
+        left: 72px;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        color: rgba(236, 245, 239, 0.5);
+        font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+      }
+
+      #kct-composition-root .kct-eyebrow > span:first-child {
+        color: #b8ef65;
+      }
+
+      #kct-composition-root .kct-eyebrow-divider {
+        width: 32px;
+        height: 1px;
+        background: rgba(236, 245, 239, 0.22);
+      }
+
+      #kct-composition-root .kct-halo {
+        position: absolute;
+        z-index: 1;
+        pointer-events: none;
+        opacity: 0;
+        border-radius: 999px;
+      }
+
+      #kct-composition-root .kct-root-halo {
+        left: 655px;
+        top: 42px;
+        width: 610px;
+        height: 164px;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(184, 239, 101, 0.48) 0%,
+          rgba(184, 239, 101, 0.12) 48%,
+          transparent 76%
+        );
+        filter: blur(24px);
+      }
+
+      #kct-composition-root .kct-russia-halo {
+        left: 870px;
+        top: 210px;
+        width: 500px;
+        height: 650px;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(255, 183, 96, 0.34) 0%,
+          rgba(255, 183, 96, 0.07) 46%,
+          transparent 74%
+        );
+        filter: blur(34px);
+      }
+
+      #kct-composition-root .kct-connectors {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        overflow: visible;
+        pointer-events: none;
+      }
+
+      #kct-composition-root .kct-connector {
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      #kct-composition-root .kct-trunk {
+        stroke-width: 3;
+        opacity: 0.9;
+      }
+
+      #kct-composition-root .kct-domain-edge {
+        stroke-width: 2;
+        opacity: 0.68;
+      }
+
+      #kct-composition-root .kct-leaf-edge {
+        stroke-width: 1.25;
+        opacity: 0.36;
+      }
+
+      #kct-composition-root .kct-sweep {
+        fill: none;
+        stroke-width: 15;
+        stroke-linecap: round;
+        opacity: 0;
+        filter: url(#kct-connector-glow);
+      }
+
+      #kct-composition-root .kct-node-anchor {
+        position: absolute;
+        z-index: 6;
+        transform: translate(-50%, -50%);
+      }
+
+      #kct-composition-root .kct-node-shell {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        transform: scale(0.92);
+        transform-origin: center;
+        border: 1px solid rgba(236, 245, 239, 0.13);
+        background: rgba(10, 27, 21, 0.94);
+        box-shadow:
+          0 18px 44px rgba(0, 0, 0, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+
+      #kct-composition-root .kct-root-node {
+        width: 520px;
+        height: 108px;
+      }
+
+      #kct-composition-root .kct-root-node .kct-node-shell {
+        border-color: rgba(184, 239, 101, 0.58);
+        border-radius: 22px;
+        background:
+          linear-gradient(135deg, rgba(184, 239, 101, 0.13), transparent 44%),
+          rgba(9, 28, 20, 0.96);
+        box-shadow:
+          0 22px 60px rgba(0, 0, 0, 0.42),
+          0 0 0 1px rgba(184, 239, 101, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      }
+
+      #kct-composition-root .kct-root-kicker {
+        margin-bottom: 4px;
+        color: #b8ef65;
+        font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.13em;
+      }
+
+      #kct-composition-root .kct-root-title {
+        font-size: 34px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.12;
+      }
+
+      #kct-composition-root .kct-root-proof {
+        margin-top: 6px;
+        color: rgba(236, 245, 239, 0.7);
+        font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+        font-size: 14px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #kct-composition-root #kct-root-domain-label {
+        opacity: 0;
+      }
+
+      #kct-composition-root #kct-root-counter {
+        display: inline-block;
+        min-width: 2ch;
+        color: #ecf5ef;
+        font-size: 18px;
+        font-weight: 700;
+        text-align: right;
+        transform-origin: center;
+      }
+
+      #kct-composition-root .kct-branch {
+        height: 92px;
+      }
+
+      #kct-composition-root .kct-branch .kct-node-shell {
+        align-items: flex-start;
+        padding: 0 30px;
+        border-radius: 18px;
+      }
+
+      #kct-composition-root .kct-branch-accent {
+        position: absolute;
+        left: 0;
+        top: 18px;
+        bottom: 18px;
+        width: 4px;
+        border-radius: 0 4px 4px 0;
+        background: var(--branch-color);
+        box-shadow: 0 0 18px var(--branch-color);
+      }
+
+      #kct-composition-root .kct-branch-kicker {
+        margin-bottom: 7px;
+        color: rgba(236, 245, 239, 0.5);
+        font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+      }
+
+      #kct-composition-root .kct-branch-title {
+        color: #ecf5ef;
+        font-size: 25px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        line-height: 1;
+      }
+
+      #kct-composition-root .kct-branch-subtitle {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-top: 8px;
+        color: rgba(236, 245, 239, 0.58);
+        font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #kct-composition-root .kct-branch-count {
+        display: inline-block;
+        color: var(--branch-color);
+        font-size: 17px;
+        font-weight: 700;
+        transform-origin: center;
+      }
+
+      #kct-composition-root .kct-domain {
+        width: 150px;
+        height: 82px;
+      }
+
+      #kct-composition-root .kct-domain .kct-node-shell {
+        border-radius: 15px;
+        border-color: color-mix(in srgb, var(--domain-color) 32%, transparent);
+        background:
+          linear-gradient(
+            145deg,
+            color-mix(in srgb, var(--domain-color) 9%, transparent),
+            transparent 48%
+          ),
+          rgba(8, 24, 19, 0.96);
+      }
+
+      #kct-composition-root .kct-domain-topline {
+        display: flex;
+        width: 118px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+
+      #kct-composition-root .kct-domain-id {
+        color: var(--domain-color);
+        font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+      }
+
+      #kct-composition-root .kct-domain-badge {
+        display: inline-flex;
+        min-width: 30px;
+        height: 22px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid color-mix(in srgb, var(--domain-color) 38%, transparent);
+        border-radius: 999px;
+        color: var(--domain-color);
+        background: color-mix(in srgb, var(--domain-color) 7%, transparent);
+        font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+        font-size: 13px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        transform-origin: center;
+      }
+
+      #kct-composition-root .kct-domain-title {
+        width: 136px;
+        height: 25px;
+        overflow: hidden;
+        color: #ecf5ef;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 25px;
+        text-align: center;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #kct-composition-root .kct-leaf-anchor {
+        position: absolute;
+        z-index: 7;
+        width: 18px;
+        height: 18px;
+        transform: translate(-50%, -50%);
+      }
+
+      #kct-composition-root .kct-leaf-core {
+        display: block;
+        width: 12px;
+        height: 12px;
+        margin: 3px;
+        opacity: 0;
+        transform: scale(0.55);
+        transform-origin: center;
+        border: 1px solid color-mix(in srgb, var(--leaf-color) 78%, #ecf5ef);
+        border-radius: 4px 9px 4px 9px;
+        background: color-mix(in srgb, var(--leaf-color) 58%, #07120f);
+        box-shadow: 0 0 10px color-mix(in srgb, var(--leaf-color) 18%, transparent);
+      }
+
+      #kct-composition-root .kct-footer {
+        position: absolute;
+        left: 50%;
+        top: 922px;
+        z-index: 8;
+        width: 1370px;
+        opacity: 0;
+        transform: translate(-50%, 18px);
+        text-align: center;
+      }
+
+      #kct-composition-root .kct-footer-headline {
+        color: #ecf5ef;
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        line-height: 1.25;
+      }
+
+      #kct-composition-root .kct-footer-headline::after {
+        content: "";
+        display: block;
+        width: 106px;
+        height: 3px;
+        margin: 16px auto 14px;
+        border-radius: 99px;
+        background: linear-gradient(90deg, #b8ef65, #ffb760, #6e8cff);
+        box-shadow: 0 0 20px rgba(184, 239, 101, 0.22);
+      }
+
+      #kct-composition-root .kct-footer-proof {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 15px;
+        color: rgba(236, 245, 239, 0.54);
+        font-family: "JetBrains Mono", "Cascadia Mono", monospace;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      #kct-composition-root .kct-footer-proof i {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: rgba(236, 245, 239, 0.3);
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        const SVG_NS = "http://www.w3.org/2000/svg";
+        const root = { x: 960, y: 112, h: 108 };
+        const branches = [
+          {
+            id: "linkfox-parity",
+            x: 460,
+            y: 292,
+            w: 610,
+            h: 92,
+            label: "LinkFox 同功能覆盖",
+            range: "01–05",
+            count: 65,
+            color: "#B8EF65",
+            kicker: "FUNCTIONAL PARITY + GOVERNED AI",
+          },
+          {
+            id: "russia-ozon",
+            x: 1120,
+            y: 292,
+            w: 430,
+            h: 92,
+            label: "Russia / Ozon 真实运营",
+            range: "06 + 08–09",
+            count: 44,
+            color: "#FFB760",
+            kicker: "MARKET-SPECIFIC OPERATING LOOP",
+          },
+          {
+            id: "global-governance",
+            x: 1610,
+            y: 292,
+            w: 430,
+            h: 92,
+            label: "全球治理适配",
+            range: "07 + 10",
+            count: 34,
+            color: "#6E8CFF",
+            kicker: "PORTABLE CONTROL PLANE",
+          },
+        ];
+        const domains = [
+          {
+            id: "01",
+            x: 120,
+            label: "资产中枢",
+            count: 14,
+            branch: "linkfox-parity",
+            color: "#B8EF65",
+          },
+          {
+            id: "02",
+            x: 290,
+            label: "服装视觉",
+            count: 9,
+            branch: "linkfox-parity",
+            color: "#B8EF65",
+          },
+          {
+            id: "03",
+            x: 460,
+            label: "商品视觉",
+            count: 9,
+            branch: "linkfox-parity",
+            color: "#B8EF65",
+          },
+          {
+            id: "04",
+            x: 630,
+            label: "修图质控",
+            count: 14,
+            branch: "linkfox-parity",
+            color: "#B8EF65",
+          },
+          {
+            id: "05",
+            x: 800,
+            label: "视频/POD/设计",
+            count: 19,
+            branch: "linkfox-parity",
+            color: "#B8EF65",
+          },
+          {
+            id: "06",
+            x: 950,
+            label: "批量与企业",
+            count: 11,
+            branch: "russia-ozon",
+            color: "#FFB760",
+          },
+          {
+            id: "08",
+            x: 1120,
+            label: "市场/Listing",
+            count: 8,
+            branch: "russia-ozon",
+            color: "#FFB760",
+          },
+          {
+            id: "09",
+            x: 1290,
+            label: "供应链/利润/增长",
+            count: 25,
+            branch: "russia-ozon",
+            color: "#FFB760",
+          },
+          {
+            id: "07",
+            x: 1540,
+            label: "Agent/Skills",
+            count: 15,
+            branch: "global-governance",
+            color: "#6E8CFF",
+          },
+          {
+            id: "10",
+            x: 1750,
+            label: "Evidence/全球",
+            count: 19,
+            branch: "global-governance",
+            color: "#6E8CFF",
+          },
+        ];
+
+        const capabilityTotal = domains.reduce((sum, domain) => sum + domain.count, 0);
+        const branchTotal = branches.reduce((sum, branch) => sum + branch.count, 0);
+        if (domains.length !== 10 || capabilityTotal !== 143 || branchTotal !== 143) {
+          throw new Error("KJDS operating-graph contract must remain 10 domains / 143 atomic points.");
+        }
+
+        const branchLayer = document.querySelector("#kct-branch-layer");
+        const domainLayer = document.querySelector("#kct-domain-layer");
+        const leafLayer = document.querySelector("#kct-leaf-layer");
+        const trunkLayer = document.querySelector("#kct-trunk-layer");
+        const domainEdgeLayer = document.querySelector("#kct-domain-edge-layer");
+        const leafEdgeLayer = document.querySelector("#kct-leaf-edge-layer");
+        const sweepLayer = document.querySelector("#kct-sweep-layer");
+
+        const createPath = ({ id, className, d, color, parent }) => {
+          const path = document.createElementNS(SVG_NS, "path");
+          path.setAttribute("id", id);
+          path.setAttribute("class", className);
+          path.setAttribute("d", d);
+          path.setAttribute("stroke", color);
+          parent.appendChild(path);
+          return path;
+        };
+
+        branches.forEach((branch) => {
+          const anchor = document.createElement("div");
+          anchor.id = `kct-branch-${branch.id}`;
+          anchor.className = "kct-node-anchor kct-branch";
+          anchor.style.left = `${branch.x}px`;
+          anchor.style.top = `${branch.y}px`;
+          anchor.style.width = `${branch.w}px`;
+          anchor.style.setProperty("--branch-color", branch.color);
+          anchor.innerHTML = `
+            <div class="kct-node-shell">
+              <span class="kct-branch-accent"></span>
+              <div class="kct-branch-kicker">${branch.kicker}</div>
+              <div class="kct-branch-title">${branch.label}</div>
+              <div class="kct-branch-subtitle">
+                <span>${branch.range}</span>
+                <span>·</span>
+                <span id="kct-branch-count-${branch.id}" class="kct-branch-count">${branch.count}</span>
+                <span>原子点</span>
+              </div>
+            </div>`;
+          branchLayer.appendChild(anchor);
+
+          const rootBottom = root.y + root.h / 2;
+          const branchTop = branch.y - branch.h / 2;
+          const midY = rootBottom + (branchTop - rootBottom) * 0.48;
+          const d = `M ${root.x} ${rootBottom} C ${root.x} ${midY}, ${branch.x} ${midY}, ${branch.x} ${branchTop}`;
+          createPath({
+            id: `kct-trunk-${branch.id.replace("-parity", "").replace("-ozon", "").replace("-governance", "")}`,
+            className: "kct-connector kct-trunk",
+            d,
+            color: branch.color,
+            parent: trunkLayer,
+          });
+          createPath({
+            id: `kct-sweep-${branch.id}`,
+            className: "kct-sweep",
+            d,
+            color: branch.color,
+            parent: sweepLayer,
+          });
+        });
+
+        const leafNodesByDomain = {};
+        const leafEdgesByDomain = {};
+        domains.forEach((domain) => {
+          const branch = branches.find((item) => item.id === domain.branch);
+          const anchor = document.createElement("div");
+          anchor.id = `kct-domain-${domain.id}`;
+          anchor.className = "kct-node-anchor kct-domain";
+          anchor.style.left = `${domain.x}px`;
+          anchor.style.top = "508px";
+          anchor.style.setProperty("--domain-color", domain.color);
+          anchor.innerHTML = `
+            <div class="kct-node-shell">
+              <div class="kct-domain-topline">
+                <span class="kct-domain-id">DOMAIN ${domain.id}</span>
+                <span id="kct-domain-badge-${domain.id}" class="kct-domain-badge">0</span>
+              </div>
+              <div class="kct-domain-title">${domain.label}</div>
+            </div>`;
+          domainLayer.appendChild(anchor);
+
+          const branchBottom = branch.y + branch.h / 2;
+          const domainTop = 508 - 41;
+          const midY = branchBottom + (domainTop - branchBottom) * 0.54;
+          createPath({
+            id: `kct-domain-edge-${domain.id}`,
+            className: `kct-connector kct-domain-edge kct-domain-edge-${branch.id}`,
+            d: `M ${branch.x} ${branchBottom} C ${branch.x} ${midY}, ${domain.x} ${midY}, ${domain.x} ${domainTop}`,
+            color: domain.color,
+            parent: domainEdgeLayer,
+          });
+
+          leafNodesByDomain[domain.id] = [];
+          leafEdgesByDomain[domain.id] = [];
+          const columnGap = 22;
+          const rowGap = 26;
+          const columnCount = 5;
+          for (let leafIndex = 0; leafIndex < domain.count; leafIndex += 1) {
+            const column = (leafIndex % columnCount) - 2;
+            const row = Math.floor(leafIndex / columnCount);
+            const leafX = domain.x + column * columnGap;
+            const leafY = 624 + row * rowGap;
+            const leafAnchor = document.createElement("div");
+            leafAnchor.id = `kct-leaf-${domain.id}-${String(leafIndex + 1).padStart(2, "0")}`;
+            leafAnchor.className = "kct-leaf-anchor";
+            leafAnchor.style.left = `${leafX}px`;
+            leafAnchor.style.top = `${leafY}px`;
+            leafAnchor.style.setProperty("--leaf-color", domain.color);
+            leafAnchor.setAttribute(
+              "aria-label",
+              `${domain.label}能力 ${leafIndex + 1}/${domain.count}`,
+            );
+            leafAnchor.innerHTML = '<span class="kct-leaf-core"></span>';
+            leafLayer.appendChild(leafAnchor);
+            leafNodesByDomain[domain.id].push(leafAnchor.querySelector(".kct-leaf-core"));
+
+            const domainBottom = 508 + 41;
+            const elbowY = 582 + row * 4;
+            const edge = createPath({
+              id: `kct-leaf-edge-${domain.id}-${String(leafIndex + 1).padStart(2, "0")}`,
+              className: `kct-connector kct-leaf-edge kct-leaf-edge-domain-${domain.id}`,
+              d: `M ${domain.x} ${domainBottom} L ${domain.x} ${elbowY} L ${leafX} ${elbowY} L ${leafX} ${leafY - 8}`,
+              color: domain.color,
+              parent: leafEdgeLayer,
+            });
+            leafEdgesByDomain[domain.id].push(edge);
+          }
+        });
+
+        const drawPaths = (paths) => {
+          paths.forEach((path) => {
+            const length = path.getTotalLength();
+            path.style.strokeDasharray = `${length}`;
+            path.style.strokeDashoffset = `${length}`;
+          });
+        };
+        drawPaths(Array.from(document.querySelectorAll(".kct-connector, .kct-sweep")));
+
+        const timeline = gsap.timeline({ paused: true });
+        const rootShell = document.querySelector("#kct-root-node .kct-node-shell");
+        const rootHalo = document.querySelector("#kct-root-halo");
+        const russiaHalo = document.querySelector("#kct-russia-halo");
+
+        timeline.fromTo(
+          rootShell,
+          { opacity: 0, scale: 0.92 },
+          { opacity: 1, scale: 1, duration: 0.55, ease: "power3.out" },
+          0,
+        );
+        timeline.fromTo(
+          rootHalo,
+          { opacity: 0, scale: 0.92 },
+          { opacity: 0.28, scale: 1.03, duration: 0.35, ease: "power2.out" },
+          0,
+        );
+        timeline.to(rootHalo, { opacity: 0.11, scale: 1, duration: 0.4, ease: "power2.out" }, 0.35);
+
+        const trunkStarts = [0.55, 0.63, 0.71];
+        branches.forEach((branch, index) => {
+          const trunkId = branch.id.replace("-parity", "").replace("-ozon", "").replace("-governance", "");
+          timeline.to(
+            `#kct-trunk-${trunkId}`,
+            { strokeDashoffset: 0, duration: 0.48, ease: "power2.out" },
+            trunkStarts[index],
+          );
+          timeline.fromTo(
+            `#kct-branch-${branch.id} .kct-node-shell`,
+            { opacity: 0, scale: 0.92 },
+            { opacity: 1, scale: 1, duration: 0.34, ease: "power3.out" },
+            trunkStarts[index] + 0.38,
+          );
+          timeline.fromTo(
+            `#kct-branch-count-${branch.id}`,
+            { scale: 0.92 },
+            { scale: 1.04, duration: 0.16, ease: "power2.out" },
+            trunkStarts[index] + 0.45,
+          );
+          timeline.to(
+            `#kct-branch-count-${branch.id}`,
+            { scale: 1, duration: 0.2, ease: "power2.out" },
+            trunkStarts[index] + 0.61,
+          );
+        });
+
+        const domainStarts = {
+          "01": 1.35,
+          "02": 1.43,
+          "03": 1.51,
+          "04": 1.59,
+          "05": 1.67,
+          "06": 2.45,
+          "08": 2.55,
+          "09": 2.65,
+          "07": 3.05,
+          "10": 3.17,
+        };
+        domains.forEach((domain) => {
+          const start = domainStarts[domain.id];
+          timeline.to(
+            `#kct-domain-edge-${domain.id}`,
+            { strokeDashoffset: 0, duration: 0.45, ease: "power2.out" },
+            start,
+          );
+          timeline.fromTo(
+            `#kct-domain-${domain.id} .kct-node-shell`,
+            { opacity: 0, scale: 0.92 },
+            { opacity: 1, scale: 1, duration: 0.32, ease: "power3.out" },
+            start + 0.34,
+          );
+        });
+
+        const leafWaves = [
+          ["01", "02"],
+          ["03", "04"],
+          ["05", "06"],
+          ["08", "09"],
+          ["07", "10"],
+        ];
+        const domainById = Object.fromEntries(domains.map((domain) => [domain.id, domain]));
+        leafWaves.forEach((wave, waveIndex) => {
+          const waveStart = 3.55 + waveIndex * 0.36;
+          wave.forEach((domainId, domainIndex) => {
+            const localStart = waveStart + domainIndex * 0.06;
+            const badgeState = { value: 0 };
+            timeline.to(
+              leafEdgesByDomain[domainId],
+              {
+                strokeDashoffset: 0,
+                duration: 0.38,
+                ease: "none",
+                stagger: 0.02,
+              },
+              localStart,
+            );
+            timeline.fromTo(
+              leafNodesByDomain[domainId],
+              { opacity: 0, scale: 0.55 },
+              {
+                opacity: 1,
+                scale: 1,
+                duration: 0.28,
+                ease: "power3.out",
+                stagger: 0.04,
+              },
+              localStart + 0.22,
+            );
+            timeline.to(
+              badgeState,
+              {
+                value: domainById[domainId].count,
+                duration: 0.42,
+                ease: "power2.out",
+                onUpdate: function () {
+                  const badge = document.getElementById("kct-domain-badge-" + domainId);
+                  badge.textContent = String(Math.round(badgeState.value));
+                },
+              },
+              localStart + 0.2,
+            );
+            timeline.fromTo(
+              `#kct-domain-badge-${domainId}`,
+              { scale: 0.92 },
+              { scale: 1.04, duration: 0.2, ease: "power2.out" },
+              localStart + 0.34,
+            );
+            timeline.to(
+              `#kct-domain-badge-${domainId}`,
+              { scale: 1, duration: 0.18, ease: "power2.out" },
+              localStart + 0.54,
+            );
+          });
+        });
+
+        const totalState = { value: 0 };
+        timeline.to(
+          totalState,
+          {
+            value: 143,
+            duration: 0.8,
+            ease: "power2.out",
+            onUpdate: function () {
+              document.querySelector("#kct-root-counter").textContent = String(
+                Math.round(totalState.value),
+              );
+            },
+          },
+          5.55,
+        );
+        timeline.fromTo(
+          "#kct-root-counter",
+          { scale: 0.92 },
+          { scale: 1.04, duration: 0.42, ease: "power2.out" },
+          5.55,
+        );
+        timeline.to(
+          "#kct-root-counter",
+          { scale: 1, duration: 0.38, ease: "power2.out" },
+          5.97,
+        );
+        timeline.to(
+          "#kct-root-domain-label",
+          { opacity: 1, duration: 0.35, ease: "power2.out" },
+          6.05,
+        );
+        timeline.fromTo(
+          russiaHalo,
+          { opacity: 0, scale: 0.96 },
+          { opacity: 0.28, scale: 1.02, duration: 0.45, ease: "power2.out" },
+          5.9,
+        );
+        timeline.to(
+          russiaHalo,
+          { opacity: 0.11, scale: 1, duration: 0.5, ease: "power2.out" },
+          6.36,
+        );
+
+        branches.forEach((branch, index) => {
+          timeline.to(
+            `#kct-sweep-${branch.id}`,
+            {
+              opacity: 0.42,
+              strokeDashoffset: 0,
+              duration: 0.52,
+              ease: "power2.out",
+            },
+            6.55 + index * 0.12,
+          );
+          timeline.to(
+            `#kct-sweep-${branch.id}`,
+            { opacity: 0, duration: 0.28, ease: "power2.out" },
+            7.07 + index * 0.12,
+          );
+        });
+
+        timeline.to(
+          "#kct-tree-glow",
+          { opacity: 0.15, duration: 0.5, ease: "power2.out" },
+          7.15,
+        );
+        timeline.fromTo(
+          "#kct-footer",
+          { opacity: 0, y: 18 },
+          { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+          7.55,
+        );
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["decision-tree"] = timeline;
+        timeline.seek(0);
+      })();
+    </script>
+  </div>
+</template>

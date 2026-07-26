@@ -64,6 +64,54 @@ KJDS 已将 LinkFox 擅长的低门槛目标入口重新设计为独立的 `Evid
 这不构成 LinkFox 已接入 Ozon 的声明。LinkFox 继续按 C 级公开营销参考管理；研究、内容生成、
 模型成本、素材权利和导出合同只有完成提供方准入后才可进入后续集成。
 
+## 逐功能工具决策：Cross-border Capability Atlas 0.55.0
+
+2026-07-26 使用未登录公开页面逐页复核 LinkFox 首页、服装套图、商品套图、设计器、AI 视频、
+智能修图、批量生图、链接管理、Skills、Agent、Claw 与价格页。观察到的功能被拆为 10 个
+能力域、49 个宏观叶子；公开价格矩阵进一步把会话/插件、商品/服装图、设计器、视频、POD、
+修图、批处理、企业配额和 API 示例拆到原子层。KJDS 因而没有停在 49 个菜单项，而是在同一
+机器注册表中建立 143 个原子点、14 条端到端价值流和 8 个经营控制面。
+
+每个原子点都记录父能力、业务对象、操作类型、来源等级、输入输出、技术、Evidence 门、
+责任/复核、失败队列、回读、KPI、SLA、市场/平台、状态和价值流成员关系；每条线记录对象
+状态变化、入口/出口门、事件、异常、人工接管和适配器边界；每个面记录维度、真源、经营
+决策、KPI、预警和写边界。这让 LinkFox 的单点创作能力真正接入选品、供应商、CM3、商品
+Passport、内容、Listing、审批发布、广告、库存采购、订单履约、退货售后和结算对账。
+
+| 能力域 | LinkFox 公开可见重点 | KJDS 超越点 |
+|---|---|---|
+| 灵感/商品/资产 | 灵感库、图片交付、商品/链接、品牌与合规、素材库 | 来源/许可/时间/Evidence、Canonical Product、Passport、团队作用域 |
+| AI 服装视觉 | 服装套图、真人换模特、换场景、穿衣、姿势、穿戴 | 肖像授权、商品/颜色/尺寸保真、偏差评测、RU 尺码和 Ozon profile |
+| AI 商品视觉 | 商品套图、商品替换、场景裂变、翻译、手持、白底/特写 | Passport grounding、OCR/属性 QA、IP 相似性、实验 ID 与真实效果回读 |
+| AI 修图 | 智能修图、多图融合、重绘/消除、换色、裁剪、放大、扩图、抠图 | 结构化 edit plan、before/after diff、mask/色差/边缘 QA、逐项批量隔离 |
+| 视频/POD/设计 | 图转视频、口播、复刻/剪辑、POD、设计器/模板 | 镜头 JSON、时序保真、ASR/OCR、声音/音乐/人物权利、print preflight |
+| 批量与企业 | 批量项目、并发/算力/保存期、团队协作 | 幂等、预算、逐项失败、成本/质量/人工/业务价值账、职责分离 |
+| Agent/Skills/Claw | 商品库、词库、定时任务、技能市场、跨境专家、云电脑/记忆 | 目标→事实/unknown/任务合同；Skill 准入/评测；临时权限；一次许可与人工接管 |
+| 市场/Listing | 选品/市场/评论/前台搜索类 Skills、Listing 快捷入口 | Ozon 官方数据优先、测量合同/双来源、字段级来源、俄语母语与发布分离 |
+| 供应链/利润/增长 | 1688 搜索/图搜；公开创作页未形成 Ozon 财务/CM3/履约闭环 | 三家独立报价、15 项成本、库存履约、广告止损实验、结算/银行/FX 对账 |
+| 治理/全球 | 多平台链接过滤、模型名/调用量/套餐宣称 | Evidence/Lineage、L0–L4、模型/Skill 影子评测、官方合同与适配器准入 |
+
+### LinkFox 公开价格矩阵的原子拆分
+
+| 公开分组 | 页面可见原子项 | KJDS 补齐的经营合同 |
+|---|---|---|
+| Agent/会话/插件 | 作图 Agent、ZX-3.5/ZX-4 名称、个人模板、模板会话、敏感词、自由会话、智能问答、插件/页面识别、运营模板、智能分析 | 型号只保留 C 级观察；KJDS 增加 Objective、Evidence grounding、结构化 I/O、评测、预算、工具权限和人工接管 |
+| 商品图/服装图 | 套图、替换、场景、手持、翻译、白底/细节、换模特、换场景、穿衣、姿势、穿戴 | Product Passport、权利、商品/服装保真、俄语 OCR/术语、平台 profile、逐资产 QA 与 manifest |
+| 设计/视频/POD | 设计器、个人/团队模板、图转视频、口播、拼接、复刻、POD 场景、相似裂变、自由绘图、贴合、印花提取 | 可重放 Design/Timeline 合同、人物/声音/音乐/字体许可、关键帧真值 QA、print preflight 和交付清单 |
+| 修图 | 智能修图、长图、局部重绘/消除、换色/2.0、裁剪、放大、扩图、精修、色差、印花、手部、抠图、批量抠图 | mask、before/after diff、ΔE、边缘/纹理/结构 QA、逐图失败队列、不可变 lineage |
+| 企业 | 算力、账号、并发、无水印、历史、存储、优先级、企业素材、批量会话/图片、Team API 示例 | 配额/并发/存储/保留/优先级账本，团队作用域、逐项门禁、幂等与恢复；API 必须独立准入，公开示例不等于可用接入 |
+
+前沿实现不等于堆叠依赖。首版选择 Next.js 16、React 19、TypeScript 5.9、FastAPI、
+PostgreSQL 和原生 HTML/SVG；多模态生成通过 provider-neutral adapter，输出通过 JSON
+Schema、商品保真/OCR/ASR/合规 QA、champion/challenger 影子评测和人工批准。只有真实图查询、
+长事务或检索基准证明现有内核不足时，才复审图数据库、Temporal 或向量库。
+
+机器可读逐功能真源见
+[`registries/cross_border_capability_atlas.json`](registries/cross_border_capability_atlas.json)，
+架构边界见
+[`ADR-0027`](../adr/ADR-0027-cross-border-capability-atlas.md)，完整点—线—面经营合同见
+[`12_CROSS_BORDER_POINT_LINE_SURFACE_OPERATING_GRAPH.md`](12_CROSS_BORDER_POINT_LINE_SURFACE_OPERATING_GRAPH.md)。
+
 ## 2026-07-26 产品与技术架构结论
 
 ### 清晰运营流
@@ -174,7 +222,15 @@ KJDS 已将 LinkFox 擅长的低门槛目标入口重新设计为独立的 `Evid
 - 马帮 ERP：`https://www.mabangerp.com/main_productErp.htm`
 - 易仓 ERP：`https://www.eccang.com/erp.html`
 - LinkFox 一站式入口：`https://www.linkfox.com/home`
-- LinkFox Agent：`https://www.linkfox.com/agent`
+- LinkFox 服装套图：`https://www.linkfox.com/draw/clothing-image-suite`
+- LinkFox 商品套图：`https://www.linkfox.com/draw/product-image-suite`
+- LinkFox AI 视频：`https://www.linkfox.com/draw/video`
+- LinkFox 智能修图：`https://www.linkfox.com/draw/smart-repair`
+- LinkFox 批量生图：`https://www.linkfox.com/draw/batch-generate-images`
+- LinkFox 链接管理：`https://www.linkfox.com/linkManagement`
+- LinkFox Skills：`https://skill.linkfox.com/`
+- LinkFox Agent：`https://os.linkfox.com/`
+- LinkFox Claw：`https://os.linkfox.com/claw`
 - LinkFox 套餐与算力边界：`https://www.linkfox.com/price`
 
 官方或厂商公开页面只证明其公开声明/界面能力。Ozon 订阅、API、地区、账号和时间范围可能限制可用

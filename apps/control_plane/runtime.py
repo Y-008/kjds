@@ -13,6 +13,7 @@ from .causal_knowledge import CausalKnowledgeService
 from .causal_policies import CausalPolicyService
 from .content_growth import ContentGrowthService
 from .cost_evidence_review import CostEvidenceAuthorityService
+from .cross_border_capability_atlas import CrossBorderCapabilityAtlas
 from .database import create_database_engine
 from .decision_contracts import DecisionContractService
 from .decision_lifecycle import DecisionLifecycleService
@@ -83,6 +84,7 @@ class RuntimeServices:
     commerce: Any
     content: Any
     cost_evidence_authority: Any
+    cross_border_capability_atlas: Any
     decision_contracts: Any
     decision_lifecycle: Any
     demand_reports: Any
@@ -234,6 +236,7 @@ def build_runtime() -> RuntimeServices:
         fx_evidence_current_validator=evidence.require_current,
     )
     cost_evidence_authority = CostEvidenceAuthorityService(evidence=evidence)
+    cross_border_capability_atlas = CrossBorderCapabilityAtlas()
     supplier_quote_authority = SupplierQuoteAuthorityService(evidence=evidence)
     sourcing = SourcingService(
         sourcing_store,
@@ -420,6 +423,7 @@ def build_runtime() -> RuntimeServices:
         commerce=commerce,
         content=content,
         cost_evidence_authority=cost_evidence_authority,
+        cross_border_capability_atlas=cross_border_capability_atlas,
         decision_contracts=decision_contracts,
         decision_lifecycle=decision_lifecycle,
         demand_reports=demand_reports,

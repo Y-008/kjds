@@ -32,6 +32,12 @@
       "status": "implemented",
       "borrowed_from": ["linkfox", "shopify_sidekick"],
       "boundary": "one objective compiles into verified facts, explicit unknowns, ordered missions, accountable Agents, verification conditions, a control envelope, and a stable hash; goal and model text never become business fact, approval, execution authority, synthetic operating data, or platform write"
+    },
+    {
+      "id": "cross_border_capability_atlas_v1",
+      "status": "implemented",
+      "borrowed_from": ["linkfox"],
+      "boundary": "public LinkFox navigation and workflow labels remain C-tier comparison evidence only; the KJDS atlas owns its Russia-first capability, market, platform, input, output, technology, and control metadata, exposes no write authority, and never promotes marketing claims or unverified Ozon support into business fact"
     }
   ],
   "providers": [
@@ -109,13 +115,14 @@
     {
       "id": "linkfox",
       "url": "https://www.linkfox.com/home",
-      "observed_capabilities": ["agent_tool_orchestration", "multi_source_product_research", "competitor_review_analysis", "listing_draft", "product_image_and_video_generation", "scheduled_reports", "team_asset_library", "usage_based_compute_plans"],
-      "patterns_to_borrow": ["goal_to_tool_plan", "research_to_report", "product_asset_workspace", "team_asset_and_compute_governance"],
+      "observed_capabilities": ["product_and_link_management", "brand_and_compliance_assets", "general_asset_library", "apparel_product_image_suites", "agent_image_workflows", "image_repair_and_batch_generation", "image_to_video_and_spokesperson_video", "listing_and_market_research_skills", "agent_tool_orchestration", "scheduled_tasks", "team_workspace", "usage_based_compute_plans"],
+      "patterns_to_borrow": ["goal_to_tool_plan", "research_to_report", "product_asset_workspace", "content_generation_workbench", "batch_job_workspace", "team_asset_and_compute_governance"],
       "do_not_copy": ["marketing_case_as_outcome_evidence", "unsupported_ozon_integration_inference", "generated_content_as_product_fact", "unreviewed_provider_api_as_canonical_source"],
       "evidence_tier": "C",
       "integration_status": "public_marketing_workflow_reference_only_ozon_support_not_verified",
       "requires_review": true,
       "implemented_contract": "evidenceops_objective_to_evidence_plan_v1",
+      "implemented_companion_contract": "cross_border_capability_atlas_v1",
       "next_contract": "provider_admission_review_for_research_and_content_generation_only"
     }
   ],

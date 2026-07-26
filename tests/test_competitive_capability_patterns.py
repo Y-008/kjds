@@ -72,9 +72,20 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
     assert "stable hash" in evidenceops["boundary"]
     assert "platform write" in evidenceops["boundary"]
 
+    atlas = next(
+        item
+        for item in registry["shared_contracts"]
+        if item["id"] == "cross_border_capability_atlas_v1"
+    )
+    assert atlas["status"] == "implemented"
+    assert "C-tier comparison evidence only" in atlas["boundary"]
+    assert "no write authority" in atlas["boundary"]
+    assert "unverified Ozon support" in atlas["boundary"]
+
     linkfox = next(item for item in providers if item["id"] == "linkfox")
     assert linkfox["evidence_tier"] == "C"
     assert linkfox["implemented_contract"] == evidenceops["id"]
+    assert linkfox["implemented_companion_contract"] == atlas["id"]
     assert "ozon_support_not_verified" in linkfox["integration_status"]
     assert "third-party calculator values remain cross-checks" in cost_provenance["boundary"]
 

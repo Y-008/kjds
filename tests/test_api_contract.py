@@ -220,6 +220,14 @@ def test_openapi_exposes_read_only_operating_flow_analytics() -> None:
     assert schema["paths"][path]["get"]["security"] == [{"KjdsApiKey": []}]
 
 
+def test_openapi_exposes_read_only_cross_border_capability_atlas() -> None:
+    schema = app.openapi()
+
+    path = "/v1/capability-atlas/snapshot"
+    assert set(schema["paths"][path]) == {"get"}
+    assert schema["paths"][path]["get"]["security"] == [{"KjdsApiKey": []}]
+
+
 def test_openapi_exposes_evidenceops_plan_as_one_protected_post() -> None:
     schema = app.openapi()
 
