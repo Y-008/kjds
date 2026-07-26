@@ -212,6 +212,14 @@ def test_openapi_exposes_read_only_operating_workbench_briefing() -> None:
     assert set(schema["paths"]["/v1/operating-workbench/briefing"]) == {"get"}
 
 
+def test_openapi_exposes_read_only_operating_flow_analytics() -> None:
+    schema = app.openapi()
+
+    path = "/v1/operating-analytics/snapshot"
+    assert set(schema["paths"][path]) == {"get"}
+    assert schema["paths"][path]["get"]["security"] == [{"KjdsApiKey": []}]
+
+
 def test_openapi_exposes_persisted_marketplace_growth_fact_loop() -> None:
     schema = app.openapi()
 

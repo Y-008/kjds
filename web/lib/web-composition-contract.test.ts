@@ -73,6 +73,25 @@ test("marketplace growth stays recommendation-only while using governed evidence
   assert.doesNotMatch(panel, /\/commands|\/write-attempt|\/receipt/);
 });
 
+test("overview dashboard renders the server-owned operating snapshot without synthetic business data", () => {
+  const controller = read("../features/dashboard/use-dashboard-controller.tsx");
+  const panel = read("../features/dashboard/unified-overview-panel.tsx");
+  const contracts = read("../features/dashboard/contracts.ts");
+
+  assert.match(controller, /\/backend\/v1\/operating-analytics\/snapshot/);
+  assert.match(controller, /operatingAnalytics/);
+  assert.match(contracts, /contract_id: "kjds-operating-flow-analytics-v1"/);
+  assert.match(contracts, /synthetic_business_data_allowed: false/);
+  assert.match(panel, /analytics\.stages\.map/);
+  assert.match(panel, /analytics\.coverage\.map/);
+  assert.match(panel, /analytics\.pipeline\.map/);
+  assert.match(panel, /暂无可复验历史序列/);
+  assert.match(panel, /Ozon 外部引用 · 未核权/);
+  assert.match(panel, /不等于同行市场价/);
+  assert.match(panel, /AI 不能自动选品、联系供应商、采购、改价、发布或投放/);
+  assert.doesNotMatch(panel, /\/commands|\/write-attempt|\/receipt|Math\.random/);
+});
+
 test("supplier RFQ workspace freezes current listing requirements without sending", () => {
   const controller = read("../features/dashboard/use-dashboard-controller.tsx");
   const panel = read("../features/dashboard/supplier-quote-workspace.tsx");

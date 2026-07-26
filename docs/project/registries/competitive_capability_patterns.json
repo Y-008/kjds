@@ -1,6 +1,6 @@
 {
-  "registry_version": "1.6",
-  "last_reviewed": "2026-07-25",
+  "registry_version": "1.7",
+  "last_reviewed": "2026-07-26",
   "principle": "Borrow product workflow patterns, never third-party truth claims or unapproved write authority.",
   "shared_contracts": [
     {
@@ -99,6 +99,18 @@
       "requires_review": true,
       "implemented_contract": "unified_operating_workbench_agent_briefing_v1",
       "next_contract": "provider_neutral_import_adapter_after_license_and_data_contract_review"
+    },
+    {
+      "id": "linkfox",
+      "url": "https://www.linkfox.com/home",
+      "observed_capabilities": ["agent_tool_orchestration", "multi_source_product_research", "competitor_review_analysis", "listing_draft", "product_image_and_video_generation", "scheduled_reports", "team_asset_library", "usage_based_compute_plans"],
+      "patterns_to_borrow": ["goal_to_tool_plan", "research_to_report", "product_asset_workspace", "team_asset_and_compute_governance"],
+      "do_not_copy": ["marketing_case_as_outcome_evidence", "unsupported_ozon_integration_inference", "generated_content_as_product_fact", "unreviewed_provider_api_as_canonical_source"],
+      "evidence_tier": "C",
+      "integration_status": "public_marketing_workflow_reference_only_ozon_support_not_verified",
+      "requires_review": true,
+      "implemented_contract": "unified_operating_workbench_agent_briefing_v1",
+      "next_contract": "provider_admission_review_for_research_and_content_generation_only"
     }
   ],
   "unverified_candidates": [

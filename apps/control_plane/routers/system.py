@@ -98,6 +98,24 @@ def operating_workbench_briefing(
     return run(lambda: runtime.operating_workbench.snapshot(limit=limit))
 
 
+@router.get("/v1/operating-analytics/snapshot")
+def operating_analytics_snapshot(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(lambda: runtime.operating_analytics.snapshot(store_ref=store_ref))
+
+
 @router.get("/v1/system/kill-switch")
 def kill_switch_state():
     return asdict(runtime.kill_switch.current())

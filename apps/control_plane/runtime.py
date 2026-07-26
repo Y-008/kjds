@@ -38,6 +38,7 @@ from .marketplace_growth_workspace import (
     MarketplaceGrowthWorkspace,
     SqlMarketplaceGrowthStore,
 )
+from .operating_analytics import OperatingAnalyticsService
 from .operating_workbench import OperatingWorkbenchService
 from .operations_queue import OperationsQueueService
 from .outbox import OutboxService
@@ -105,6 +106,7 @@ class RuntimeServices:
     market: Any
     marketplace_catalog: Any
     marketplace_growth: Any
+    operating_analytics: Any
     operating_workbench: Any
     operations_queue: Any
     outbox: Any
@@ -364,6 +366,19 @@ def build_runtime() -> RuntimeServices:
         rfq_packages=supplier_rfq,
         evidence=evidence,
     )
+    operating_analytics = OperatingAnalyticsService(
+        readiness=readiness,
+        operating_workbench=operating_workbench,
+        marketplace_catalog=marketplace_catalog,
+        marketplace_growth=marketplace_growth,
+        supplier_rfq=supplier_rfq,
+        supplier_rfq_dispatch=supplier_rfq_dispatch,
+        procurement=procurement,
+        execution_plans=execution_plans,
+        post_execution=post_execution,
+        finance=finance,
+        product_media=product_media,
+    )
     sourcing_intake = SupplierComparisonIntakeService(
         sourcing=sourcing,
         evidence=evidence,
@@ -423,6 +438,7 @@ def build_runtime() -> RuntimeServices:
         market=market,
         marketplace_catalog=marketplace_catalog,
         marketplace_growth=marketplace_growth,
+        operating_analytics=operating_analytics,
         operating_workbench=operating_workbench,
         operations_queue=operations_queue,
         outbox=outbox,

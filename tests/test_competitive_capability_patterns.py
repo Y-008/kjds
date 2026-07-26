@@ -14,6 +14,7 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
     providers = registry["providers"]
 
     assert {item["id"] for item in providers} == {
+        "linkfox",
         "lizhi_ozon_assistant",
         "maozierp",
         "menglar_ozon_tools",
@@ -65,6 +66,11 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
     selling51 = next(item for item in providers if item["id"] == "selling51_erp")
     assert "field_level_source_badge" in selling51["patterns_to_borrow"]
     assert "explicit_unmapped_finance_queue" in selling51["patterns_to_borrow"]
+
+    linkfox = next(item for item in providers if item["id"] == "linkfox")
+    assert linkfox["evidence_tier"] == "C"
+    assert "public_marketing_workflow_reference_only" in linkfox["integration_status"]
+    assert "unsupported_ozon_integration_inference" in linkfox["do_not_copy"]
 
     unverified = {item["id"]: item for item in registry["unverified_candidates"]}
     assert set(unverified) == {"ozon_bigsell", "xiongmao_xcw", "yduanerp_client"}
