@@ -20,7 +20,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.57.0"
+APP_VERSION = "0.57.1"
 API_SCHEMA_VERSION = "v1"
 
 

@@ -19,7 +19,7 @@ test("operating intelligence reads all server-owned workspaces without demo data
   for (const path of [
     "/backend/v1/profit-ledger?",
     "/backend/v1/profit-ledger/erosion?",
-    "/backend/v1/metrics",
+    "/backend/v1/operating-intelligence/metrics",
     "/backend/v1/operating-tasks?",
     "/backend/v1/media/workbench",
   ]) {
@@ -28,6 +28,7 @@ test("operating intelligence reads all server-owned workspaces without demo data
   assert.match(component, /实际利润不可显示/);
   assert.match(component, /禁止按销售额猜分摊/);
   assert.match(component, /零平台副作用/);
+  assert.match(component, /\/backend\/v1\/operating-intelligence\/anomaly-scans/);
   assert.doesNotMatch(component, /Math\.random/);
 });
 

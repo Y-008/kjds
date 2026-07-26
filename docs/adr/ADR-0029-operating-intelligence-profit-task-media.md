@@ -29,7 +29,10 @@ Approval、OperationsQueue 和 PostgreSQL；复制事实表、队列或权限面
    冷却期、Owner 和 Evidence 条件生成稳定指纹。异常扫描只创建内部
    `OperatingTask`；任务和不可变事件保存在 PostgreSQL，并投影进既有
    `OperationsQueueService`，不建立第二队列或工作流引擎。解决/驳回必须提供理由和有效
-   Evidence。
+   Evidence。0.57.1 将认证规范入口冻结为
+   `GET /v1/operating-intelligence/metrics` 与
+   `POST /v1/operating-intelligence/anomaly-scans`；原有短路径继续作为同一 FastAPI
+   endpoint 的兼容别名，不复制服务逻辑、认证或客户端规则。
 3. `MediaWorkbenchService` 复用 ContentAsset、Evidence、Lineage、QA 与 Approval。
    图片只允许固定版本模板；ComfyUI 未准入或工作流不匹配时保持 blocked。视频首版不接
    外部生成 Provider，只接收已批准商品图、人工确认俄语脚本/字幕和有权利音频，经固定
@@ -64,5 +67,5 @@ Worker；迁移只新增表/索引，不改写既有 Evidence、Fact、Finance �
   零平台副作用；OperatingTask 出现在现有 OperationsQueue。
 - 媒体测试覆盖图片批量部分失败、权利过期、QA、幂等重试、视频租约恢复、FFmpeg 失败、
   输出哈希、字幕、画幅与 Manifest。
-- OpenAPI、迁移回放、全量后端/Web/容器/认证浏览器和匿名 401 全部通过，并形成 0.57
-  版本化 Evidence。
+- OpenAPI、迁移回放、全量后端/Web/容器/认证浏览器和匿名 401 全部通过，并形成
+  0.57/0.57.1 版本化 Evidence；规范别名与兼容短路径必须指向同一 endpoint。

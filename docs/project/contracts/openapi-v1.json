@@ -7082,7 +7082,7 @@
   },
   "info": {
     "title": "KJDS Control Plane",
-    "version": "0.57.0"
+    "version": "0.57.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -13876,6 +13876,76 @@
           }
         ],
         "summary": "Operating Analytics Snapshot"
+      }
+    },
+    "/v1/operating-intelligence/anomaly-scans": {
+      "post": {
+        "operationId": "scan_operating_anomalies_v1_operating_intelligence_anomaly_scans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnomalyScanInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Scan Operating Anomalies V1 Operating Intelligence Anomaly Scans Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Scan Operating Anomalies"
+      }
+    },
+    "/v1/operating-intelligence/metrics": {
+      "get": {
+        "operationId": "operating_metric_registry_v1_operating_intelligence_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Operating Metric Registry V1 Operating Intelligence Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Operating Metric Registry"
       }
     },
     "/v1/operating-tasks": {

@@ -13,8 +13,8 @@ def test_atlas_exposes_complete_russia_first_tree_with_truthful_boundaries():
     snapshot = runtime.cross_border_capability_atlas.snapshot()
 
     assert snapshot["contract_id"] == "kjds-cross-border-capability-atlas-v1"
-    assert snapshot["release_version"] == "0.57.0"
-    assert snapshot["registry_version"] == "0.57.0"
+    assert snapshot["release_version"] == "0.57.1"
+    assert snapshot["registry_version"] == "0.57.1"
     assert snapshot["primary_market"] == "RU"
     assert snapshot["primary_platform"] == "ozon"
     assert snapshot["counts"]["domains"] == 10

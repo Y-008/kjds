@@ -230,6 +230,7 @@ def profit_erosion(
     )
 
 
+@router.get("/v1/operating-intelligence/metrics")
 @router.get("/v1/metrics")
 def operating_metric_registry(
     principal: Annotated[Principal, Depends(current_principal)],
@@ -247,6 +248,7 @@ def operating_metric_registry(
     return runtime.operating_intelligence.metrics()
 
 
+@router.post("/v1/operating-intelligence/anomaly-scans", status_code=201)
 @router.post("/v1/anomaly-scans", status_code=201)
 def scan_operating_anomalies(
     body: AnomalyScanInput,
