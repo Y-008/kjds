@@ -31,12 +31,14 @@ class SupplierComparisonIntakeService:
         quote_authority,
         logistics=None,
         rfq_packages=None,
+        rfq_dispatches=None,
     ) -> None:
         self.sourcing = sourcing
         self.evidence = evidence
         self.quote_authority = quote_authority
         self.logistics = logistics
         self.rfq_packages = rfq_packages
+        self.rfq_dispatches = rfq_dispatches
 
     def capture_quote_source(
         self,
@@ -51,9 +53,31 @@ class SupplierComparisonIntakeService:
         effective_until: str | None,
         created_by: str,
         rfq_package_evidence_id: str | None = None,
+        rfq_dispatch_evidence_id: str | None = None,
     ):
         self._require_sourcing_handoff(product_id)
+        supplier_ref = str(offer_data.get("supplier_ref", "")).strip()
+        supplier_platform = str(offer_data.get("platform", "")).strip().lower()
         rfq_record = None
+        dispatch_record = None
+        if rfq_dispatch_evidence_id:
+            if self.rfq_dispatches is None:
+                raise ValueError(
+                    "Supplier RFQ dispatch workspace is not configured"
+                )
+            dispatch_record = self.rfq_dispatches.require_for_response(
+                rfq_dispatch_evidence_id,
+                product_id=product_id,
+                supplier_ref=supplier_ref,
+                supplier_platform=supplier_platform,
+                rfq_package_evidence_id=rfq_package_evidence_id,
+            )
+            dispatch_rfq_id = dispatch_record.metadata["dispatch"]["rfq"][
+                "evidence_id"
+            ]
+            rfq_package_evidence_id = (
+                rfq_package_evidence_id or dispatch_rfq_id
+            )
         if rfq_package_evidence_id:
             if self.rfq_packages is None:
                 raise ValueError("Supplier RFQ package workspace is not configured")
@@ -76,6 +100,11 @@ class SupplierComparisonIntakeService:
             rfq_package_evidence_id=(
                 rfq_record.id if rfq_record is not None else None
             ),
+            rfq_dispatch_evidence_id=(
+                dispatch_record.id
+                if dispatch_record is not None
+                else None
+            ),
         )
         if rfq_record is not None:
             self.evidence.link(
@@ -83,6 +112,14 @@ class SupplierComparisonIntakeService:
                 target_type="evidence",
                 target_id=record.id,
                 relationship="supplier_response_context_for",
+                created_by=created_by,
+            )
+        if dispatch_record is not None:
+            self.evidence.link(
+                evidence_id=dispatch_record.id,
+                target_type="evidence",
+                target_id=record.id,
+                relationship="supplier_response_to_dispatch",
                 created_by=created_by,
             )
         return record

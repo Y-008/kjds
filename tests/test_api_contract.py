@@ -321,6 +321,71 @@ def test_openapi_exposes_immutable_supplier_rfq_and_reply_lineage() -> None:
     assert "rfq_package_evidence_id" in multipart_schema["properties"]
 
 
+def test_openapi_exposes_supplier_rfq_dispatch_proof_and_review() -> None:
+    schema = app.openapi()
+    collection = schema["paths"]["/v1/sourcing/rfq-dispatches"]
+    item = schema["paths"][
+        "/v1/sourcing/rfq-dispatches/{evidence_id}"
+    ]
+    review = schema["paths"][
+        "/v1/sourcing/rfq-dispatches/{evidence_id}/authority-review"
+    ]
+
+    assert set(collection) == {"get", "post"}
+    assert set(item) == {"get"}
+    assert set(review) == {"post"}
+    capture_ref = collection["post"]["requestBody"]["content"][
+        "multipart/form-data"
+    ]["schema"]["$ref"]
+    capture_schema = schema["components"]["schemas"][
+        capture_ref.rsplit("/", 1)[-1]
+    ]
+    assert set(capture_schema["required"]) == {
+        "rfq_package_evidence_id",
+        "supplier_ref",
+        "supplier_platform",
+        "supplier_locator",
+        "conversation_ref",
+        "sent_at",
+        "sent_message_text",
+        "idempotency_key",
+        "confirmed",
+        "file",
+    }
+    review_schema = schema["components"]["schemas"][
+        "SupplierRfqDispatchAuthorityReviewInput"
+    ]
+    assert review_schema["additionalProperties"] is False
+    assert set(review_schema["required"]) == {
+        "accepted",
+        "authentic_platform_proof",
+        "supplier_identity_matches",
+        "frozen_message_matches",
+        "timestamp_and_conversation_match",
+        "rationale",
+    }
+    for path, method in (
+        ("/v1/sourcing/rfq-dispatches", "get"),
+        ("/v1/sourcing/rfq-dispatches", "post"),
+        ("/v1/sourcing/rfq-dispatches/{evidence_id}", "get"),
+        (
+            "/v1/sourcing/rfq-dispatches/{evidence_id}/authority-review",
+            "post",
+        ),
+    ):
+        assert schema["paths"][path][method]["security"] == [
+            {"KjdsApiKey": []}
+        ]
+
+    quote_ref = schema["paths"]["/v1/sourcing/quote-evidence"][
+        "post"
+    ]["requestBody"]["content"]["multipart/form-data"]["schema"]["$ref"]
+    quote_schema = schema["components"]["schemas"][
+        quote_ref.rsplit("/", 1)[-1]
+    ]
+    assert "rfq_dispatch_evidence_id" in quote_schema["properties"]
+
+
 def test_openapi_exposes_versioned_logistics_cost_workspace() -> None:
     schema = app.openapi()
 

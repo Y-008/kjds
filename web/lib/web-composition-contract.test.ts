@@ -98,6 +98,46 @@ test("supplier RFQ workspace freezes current listing requirements without sendin
   assert.doesNotMatch(createRfq, /1688|supplier\/contact|\/commands|\/write-attempt|\/receipt/);
 });
 
+test("supplier RFQ dispatch requires exact proof, independent review, and response lineage", () => {
+  const controller = read("../features/dashboard/use-dashboard-controller.tsx");
+  const panel = read("../features/dashboard/supplier-quote-workspace.tsx");
+  const contracts = read("../features/dashboard/contracts.ts");
+
+  assert.match(controller, /\/backend\/v1\/sourcing\/rfq-dispatches/);
+  assert.match(controller, /body\.append\("sent_message_text", rfq\.package\.message_text\)/);
+  assert.match(controller, /body\.append\("confirmed", "true"\)/);
+  assert.match(controller, /body\.append\("file", proof\)/);
+  assert.match(controller, /\/rfq-dispatches\/\$\{evidenceId\}\/authority-review/);
+  assert.match(controller, /body\.append\("rfq_dispatch_evidence_id"/);
+  for (const check of [
+    "dispatch_authentic_platform_proof",
+    "dispatch_supplier_identity_matches",
+    "dispatch_frozen_message_matches",
+    "dispatch_timestamp_and_conversation_match",
+  ]) {
+    assert.match(controller, new RegExp(check));
+    assert.match(panel, new RegExp(check));
+  }
+  assert.match(panel, /复制不等于发送，发送不等于送达或回复/);
+  assert.match(panel, /仅在你已经实际发送后上传/);
+  assert.match(panel, /本按钮不会替你联系供应商/);
+  assert.match(panel, /送达、供应商回复、有效报价、采购、付款与 Ozon 写入仍全部为 false/);
+  assert.match(panel, /对应已核验发送证明/);
+  assert.match(contracts, /contract_version: "supplier-rfq-dispatch-v1"/);
+  assert.match(contracts, /delivery_confirmed: false/);
+  assert.match(contracts, /supplier_replied: false/);
+  assert.match(contracts, /counts_as_supplier_quote: false/);
+
+  const captureDispatch = controller.slice(
+    controller.indexOf("async function captureSupplierRfqDispatch"),
+    controller.indexOf("async function reviewSupplierRfqDispatch"),
+  );
+  assert.doesNotMatch(
+    captureDispatch,
+    /supplier\/contact|\/commands|\/write-attempt|\/receipt|automatic_supplier_contact.*true/,
+  );
+});
+
 test("approved listings expose only the minimal execution-plan handoff", () => {
   const controller = read("../features/dashboard/use-dashboard-controller.tsx");
   const productPanel = read("../features/dashboard/product-content-panel.tsx");

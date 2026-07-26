@@ -664,6 +664,11 @@
             "title": "Product Id",
             "type": "string"
           },
+          "rfq_dispatch_evidence_id": {
+            "default": "",
+            "title": "Rfq Dispatch Evidence Id",
+            "type": "string"
+          },
           "rfq_package_evidence_id": {
             "default": "",
             "title": "Rfq Package Evidence Id",
@@ -679,6 +684,65 @@
           "file"
         ],
         "title": "Body_capture_supplier_quote_evidence_v1_sourcing_quote_evidence_post",
+        "type": "object"
+      },
+      "Body_capture_supplier_rfq_dispatch_v1_sourcing_rfq_dispatches_post": {
+        "properties": {
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "conversation_ref": {
+            "title": "Conversation Ref",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "rfq_package_evidence_id": {
+            "title": "Rfq Package Evidence Id",
+            "type": "string"
+          },
+          "sent_at": {
+            "title": "Sent At",
+            "type": "string"
+          },
+          "sent_message_text": {
+            "title": "Sent Message Text",
+            "type": "string"
+          },
+          "supplier_locator": {
+            "title": "Supplier Locator",
+            "type": "string"
+          },
+          "supplier_platform": {
+            "title": "Supplier Platform",
+            "type": "string"
+          },
+          "supplier_ref": {
+            "title": "Supplier Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rfq_package_evidence_id",
+          "supplier_ref",
+          "supplier_platform",
+          "supplier_locator",
+          "conversation_ref",
+          "sent_at",
+          "sent_message_text",
+          "idempotency_key",
+          "confirmed",
+          "file"
+        ],
+        "title": "Body_capture_supplier_rfq_dispatch_v1_sourcing_rfq_dispatches_post",
         "type": "object"
       },
       "Body_checkpoint_limited_execution_response_v1_limited_execution_commands__command_id__response_checkpoint_post": {
@@ -6626,6 +6690,47 @@
           "rationale"
         ],
         "title": "SupplierQuoteAuthorityReviewInput",
+        "type": "object"
+      },
+      "SupplierRfqDispatchAuthorityReviewInput": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "authentic_platform_proof": {
+            "title": "Authentic Platform Proof",
+            "type": "boolean"
+          },
+          "frozen_message_matches": {
+            "title": "Frozen Message Matches",
+            "type": "boolean"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "supplier_identity_matches": {
+            "title": "Supplier Identity Matches",
+            "type": "boolean"
+          },
+          "timestamp_and_conversation_match": {
+            "title": "Timestamp And Conversation Match",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted",
+          "authentic_platform_proof",
+          "supplier_identity_matches",
+          "frozen_message_matches",
+          "timestamp_and_conversation_match",
+          "rationale"
+        ],
+        "title": "SupplierRfqDispatchAuthorityReviewInput",
         "type": "object"
       },
       "SupplierRfqPackageInput": {
@@ -16236,6 +16341,214 @@
           }
         ],
         "summary": "Review Supplier Quote Authority"
+      }
+    },
+    "/v1/sourcing/rfq-dispatches": {
+      "get": {
+        "operationId": "list_supplier_rfq_dispatches_v1_sourcing_rfq_dispatches_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "product_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rfq_package_evidence_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rfq Package Evidence Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "List Supplier Rfq Dispatches"
+      },
+      "post": {
+        "operationId": "capture_supplier_rfq_dispatch_v1_sourcing_rfq_dispatches_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_capture_supplier_rfq_dispatch_v1_sourcing_rfq_dispatches_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Capture Supplier Rfq Dispatch"
+      }
+    },
+    "/v1/sourcing/rfq-dispatches/{evidence_id}": {
+      "get": {
+        "operationId": "get_supplier_rfq_dispatch_v1_sourcing_rfq_dispatches__evidence_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Get Supplier Rfq Dispatch"
+      }
+    },
+    "/v1/sourcing/rfq-dispatches/{evidence_id}/authority-review": {
+      "post": {
+        "operationId": "review_supplier_rfq_dispatch_v1_sourcing_rfq_dispatches__evidence_id__authority_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierRfqDispatchAuthorityReviewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Review Supplier Rfq Dispatch"
       }
     },
     "/v1/sourcing/rfq-packages": {

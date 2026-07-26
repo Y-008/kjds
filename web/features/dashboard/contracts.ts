@@ -303,6 +303,62 @@ export type SupplierRfqPackage = {
   };
   idempotent?: boolean;
 };
+export type SupplierRfqDispatch = {
+  evidence: EvidenceSummary & {
+    metadata: {
+      dispatch_hash: string;
+      evidence_role: "supplier_rfq_dispatch";
+    };
+  };
+  dispatch: {
+    contract_version: "supplier-rfq-dispatch-v1";
+    rfq: {
+      evidence_id: string;
+      evidence_sha256: string;
+      package_hash: string;
+      product_id: string;
+      product_sku: string;
+      offer_id: string;
+    };
+    supplier: {
+      supplier_ref: string;
+      supplier_platform: "1688" | "alibaba" | "manual";
+      supplier_locator: string;
+      supplier_identity_hash: string;
+    };
+    conversation_ref: string;
+    sent_at: string;
+    sent_message_sha256: string;
+    proof: {
+      sha256: string;
+      filename: string;
+      content_type: string;
+    };
+    authority: {
+      status: "pending";
+      delivery_confirmed: false;
+      supplier_replied: false;
+      counts_as_supplier_quote: false;
+      automatic_supplier_contact: false;
+      automatic_procurement: false;
+      automatic_payment: false;
+      automatic_listing: false;
+      automatic_marketplace_write: false;
+    };
+  };
+  status: "pending" | "accepted" | "rejected";
+  review_ids: string[];
+  review_count: number;
+  delivery_confirmed: false;
+  supplier_replied: false;
+  counts_as_supplier_quote: false;
+  automatic_supplier_contact: false;
+  automatic_procurement: false;
+  automatic_payment: false;
+  automatic_listing: false;
+  automatic_marketplace_write: false;
+  idempotent?: boolean;
+};
 export type SupplierQuoteEvidence = {
   evidence: EvidenceSummary & {
     effective_until: string | null;
@@ -311,6 +367,7 @@ export type SupplierQuoteEvidence = {
       supplier_ref: string;
       document_kind: "public_display_price" | "supplier_confirmed_quote" | "proforma_invoice";
       rfq_package_evidence_id: string | null;
+      rfq_dispatch_evidence_id: string | null;
       offer_data: {
         product_id: string;
         supplier_ref: string;

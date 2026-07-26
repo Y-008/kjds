@@ -49,6 +49,8 @@ async def capture_evidence(
         "ozon_finance_report_review",
         "supplier_quote_authority_review",
         "supplier_quote_source",
+        "supplier_rfq_dispatch",
+        "supplier_rfq_dispatch_review",
         "supplier_rfq_package",
     }:
         raise HTTPException(status_code=422, detail="Reserved evidence source requires its dedicated workflow")
@@ -145,7 +147,11 @@ def link_evidence(
             "rfq_package_for",
             "reviews",
             "supplier_quote_authority_review",
+            "supplier_response_to_dispatch",
             "supplier_response_context_for",
+            "supplier_rfq_dispatch_review",
+            "rfq_dispatch_context_for",
+            "supplier_outreach_for",
         }
         or (
             target_type == ResearchInboxService.TARGET_TYPE

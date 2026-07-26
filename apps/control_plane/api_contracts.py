@@ -185,6 +185,33 @@ class SupplierRfqPackageInput(BaseModel):
     confirmed: Literal[True]
 
 
+class SupplierRfqDispatchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rfq_package_evidence_id: str = Field(min_length=1, max_length=120)
+    supplier_ref: str = Field(min_length=1, max_length=240)
+    supplier_platform: Literal["1688", "alibaba", "manual"]
+    supplier_locator: str = Field(min_length=1, max_length=1000)
+    conversation_ref: str = Field(min_length=1, max_length=500)
+    sent_at: str
+    sent_message_text: str = Field(min_length=1, max_length=30_000)
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+    confirmed: Literal[True]
+
+
+class SupplierRfqDispatchAuthorityReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    accepted: bool
+    authentic_platform_proof: bool
+    supplier_identity_matches: bool
+    frozen_message_matches: bool
+    timestamp_and_conversation_match: bool
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
 class OpportunityInput(BaseModel):
     market: str
     category: str

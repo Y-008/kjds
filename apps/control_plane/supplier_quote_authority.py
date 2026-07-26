@@ -48,6 +48,7 @@ class SupplierQuoteAuthorityService:
         effective_until: str | None,
         created_by: str,
         rfq_package_evidence_id: str | None = None,
+        rfq_dispatch_evidence_id: str | None = None,
     ) -> EvidenceRecord:
         document_kind = document_kind.strip()
         if document_kind not in QUOTE_DOCUMENT_KINDS:
@@ -65,7 +66,22 @@ class SupplierQuoteAuthorityService:
         digest_source = (
             f"supplier-quote://{product_id}/{external_id}/{document_kind}"
         )
-        return self.evidence.capture(
+        metadata = {
+            "evidence_role": "supplier_quote_source",
+            "product_id": product_id,
+            "supplier_ref": supplier_ref,
+            "document_kind": document_kind,
+            "offer_data": normalized_offer,
+            "rfq_package_evidence_id": rfq_package_evidence_id,
+            "rfq_dispatch_evidence_id": rfq_dispatch_evidence_id,
+            "formal_offer_eligible": (
+                document_kind in CONFIRMABLE_QUOTE_DOCUMENT_KINDS
+            ),
+            "automatic_supplier_contact": False,
+            "automatic_procurement": False,
+            "automatic_listing": False,
+        }
+        record = self.evidence.capture(
             content=content,
             filename=filename,
             content_type=content_type,
@@ -75,21 +91,14 @@ class SupplierQuoteAuthorityService:
             effective_at=effective_at,
             effective_until=effective_until,
             created_by=created_by,
-            metadata={
-                "evidence_role": "supplier_quote_source",
-                "product_id": product_id,
-                "supplier_ref": supplier_ref,
-                "document_kind": document_kind,
-                "offer_data": normalized_offer,
-                "rfq_package_evidence_id": rfq_package_evidence_id,
-                "formal_offer_eligible": (
-                    document_kind in CONFIRMABLE_QUOTE_DOCUMENT_KINDS
-                ),
-                "automatic_supplier_contact": False,
-                "automatic_procurement": False,
-                "automatic_listing": False,
-            },
+            metadata=metadata,
         )
+        if record.metadata != metadata:
+            raise ValueError(
+                "Supplier quote source replay conflicts with its "
+                "immutable RFQ dispatch context"
+            )
+        return record
 
     def review(
         self,
