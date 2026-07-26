@@ -19,6 +19,7 @@ from .decision_lifecycle import DecisionLifecycleService
 from .demand_report_gate import DemandReportGateService
 from .evidence import EvidenceService
 from .evidence_integrity import EvidenceIntegrityMonitorService
+from .evidenceops_copilot import EvidenceOpsCopilot
 from .execution_authority import ListingExecutionAuthorityService
 from .execution_plans import ExecutionPlanService
 from .facts import FactPromotionService
@@ -88,6 +89,7 @@ class RuntimeServices:
     engine: Any
     evidence: Any
     evidence_integrity: Any
+    evidenceops_copilot: Any
     listing_execution_authority: Any
     execution_plans: Any
     facts: Any
@@ -379,6 +381,10 @@ def build_runtime() -> RuntimeServices:
         finance=finance,
         product_media=product_media,
     )
+    evidenceops_copilot = EvidenceOpsCopilot(
+        operating_analytics=operating_analytics,
+        operating_workbench=operating_workbench,
+    )
     sourcing_intake = SupplierComparisonIntakeService(
         sourcing=sourcing,
         evidence=evidence,
@@ -420,6 +426,7 @@ def build_runtime() -> RuntimeServices:
         engine=engine,
         evidence=evidence,
         evidence_integrity=evidence_integrity,
+        evidenceops_copilot=evidenceops_copilot,
         listing_execution_authority=listing_execution_authority,
         execution_plans=execution_plans,
         facts=facts,

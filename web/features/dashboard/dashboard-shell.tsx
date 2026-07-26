@@ -16,6 +16,7 @@ import {
   Waypoints,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WebSession } from "./contracts";
 import {
@@ -121,6 +122,10 @@ export function DashboardShell({
             <p>{current.description}</p>
           </div>
           <div className="topbar-actions">
+            <Link className="evidenceops-launch" href="/evidenceops">
+              <BrainCircuit size={16} />
+              EvidenceOps
+            </Link>
             <div className={ozonConnection.ready ? "live-store-chip" : "live-store-chip pending"}>
               <span className="live-dot" />
               <span>{ozonConnection.label}</span>

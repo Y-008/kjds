@@ -220,6 +220,18 @@ def test_openapi_exposes_read_only_operating_flow_analytics() -> None:
     assert schema["paths"][path]["get"]["security"] == [{"KjdsApiKey": []}]
 
 
+def test_openapi_exposes_evidenceops_plan_as_one_protected_post() -> None:
+    schema = app.openapi()
+
+    path = "/v1/evidenceops/plan"
+    assert set(schema["paths"][path]) == {"post"}
+    assert schema["paths"][path]["post"]["security"] == [{"KjdsApiKey": []}]
+    request = schema["components"]["schemas"]["EvidenceOpsPlanInput"]
+    assert request["additionalProperties"] is False
+    assert set(request["required"]) == {"objective"}
+    assert set(request["properties"]) == {"objective", "store_ref"}
+
+
 def test_openapi_exposes_persisted_marketplace_growth_fact_loop() -> None:
     schema = app.openapi()
 

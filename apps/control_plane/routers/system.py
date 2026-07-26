@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..api_contracts import (
     API_SCHEMA_VERSION,
     APP_VERSION,
+    EvidenceOpsPlanInput,
     KillSwitchInput,
     LoopValidationInput,
     RecommendationInput,
@@ -114,6 +115,29 @@ def operating_analytics_snapshot(
         "admin",
     )
     return run(lambda: runtime.operating_analytics.snapshot(store_ref=store_ref))
+
+
+@router.post("/v1/evidenceops/plan")
+def evidenceops_plan(
+    body: EvidenceOpsPlanInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(
+        lambda: runtime.evidenceops_copilot.plan(
+            objective=body.objective,
+            store_ref=body.store_ref,
+        )
+    )
 
 
 @router.get("/v1/system/kill-switch")

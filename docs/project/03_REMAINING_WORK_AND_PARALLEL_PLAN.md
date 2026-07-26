@@ -108,6 +108,7 @@
 | BAS-097 | G0–G5 | 供应商 RFQ 冻结包 | 供应链+工程 | 从已绑定且当前的 Listing 冻结目录观察、买方要求、数量阶梯、规格、包装、文件、目的地、截止时间和可复制正文；不自动联系供应商，不把复制冒充发送或报价；[工程证据](evidence/20260726_BAS_097_SUPPLIER_RFQ_PACKAGE.md) | BAS-096、BR-072 | DONE_ENGINEERING |
 | BAS-098 | G0–G5 | RFQ 人工发送证明与独立核验 | 供应链+工程+合规 | 人工发送后上传平台原件，冻结供应商、平台、定位、会话、时间和完整 RFQ 哈希；不同身份核验后只证明发送记录，送达、回复、报价、采购和平台写入仍为 false；报价回复保留 dispatch lineage；[工程证据](evidence/20260726_BAS_098_SUPPLIER_RFQ_DISPATCH_PROOF.md) | BAS-097、BR-073 | DONE_ENGINEERING |
 | BAS-099 | G0–G6 | 经营流转分析快照与可视化驾驶舱 | 产品+工程+经营 | 单一只读深模块聚合 readiness、目录、增长、RFQ、样品、受控执行和财务真源，输出带哈希的阶段、漏斗、覆盖率与焦点 Listing；Web 用真实商品引用、价格带、库存、媒体构成和可下钻图表呈现全流程，缺历史/竞品/CM3/订单/结算时明确 no-data，不造演示曲线；模式建议只作 advisory；[ADR](../adr/ADR-0025-operating-flow-analytics-projection.md)；[工程证据](evidence/20260726_BAS_099_OPERATING_ANALYTICS_RELEASE.md) | BAS-091–098、BR-074 | DONE |
+| BAS-100 | G0–G6 | EvidenceOps Copilot 独立产品入口 | 产品+工程+经营 | 一个目标输入通过服务端深模块编译为已验证事实、未知项、意图、任务合同、责任 Agent、验证条件和控制包；复用经营简报与分析快照，不复制 Gate/数据/权限；独立认证 Web 入口只呈现服务端任务排序并导航回既有工作区；不调用外部模型、不保存对话、不自动写平台；[ADR](../adr/ADR-0026-evidenceops-copilot-product-seam.md)；[工程证据](evidence/20260726_BAS_100_EVIDENCEOPS_COPILOT.md) | BAS-088、BAS-099、BR-075 | DONE |
 | BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |
 | BAS-004 | G-1 | 环境状态自动生成 | 工程负责人 | 不再依赖过时静态 PASS 文档 | BAS-003 | DONE |
 | SEC-001 | G-1 | API 身份认证 | 工程负责人 | `KJDS_API_KEY` 或正式身份层生效；未授权为 401/403 | BAS-003 | DONE |

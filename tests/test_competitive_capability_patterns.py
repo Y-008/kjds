@@ -61,6 +61,21 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
     )
     assert cost_provenance["status"] == "implemented"
     assert "Evidence reference" in cost_provenance["boundary"]
+
+    evidenceops = next(
+        item
+        for item in registry["shared_contracts"]
+        if item["id"] == "evidenceops_objective_to_evidence_plan_v1"
+    )
+    assert evidenceops["status"] == "implemented"
+    assert "explicit unknowns" in evidenceops["boundary"]
+    assert "stable hash" in evidenceops["boundary"]
+    assert "platform write" in evidenceops["boundary"]
+
+    linkfox = next(item for item in providers if item["id"] == "linkfox")
+    assert linkfox["evidence_tier"] == "C"
+    assert linkfox["implemented_contract"] == evidenceops["id"]
+    assert "ozon_support_not_verified" in linkfox["integration_status"]
     assert "third-party calculator values remain cross-checks" in cost_provenance["boundary"]
 
     selling51 = next(item for item in providers if item["id"] == "selling51_erp")
