@@ -177,6 +177,40 @@ def accepted_quote_ids(product, intake, payloads=None):
     return quote_ids
 
 
+def test_quote_source_replay_cannot_change_immutable_dispatch_context():
+    product, _, intake = make_intake()
+    payload = offers()[0]
+    values = {
+        "product_id": product.id,
+        "document_kind": "supplier_confirmed_quote",
+        "offer_data": payload.offer_data,
+        "content": payload.content,
+        "filename": payload.filename,
+        "content_type": payload.content_type,
+        "effective_at": "2026-07-16T00:00:00+08:00",
+        "effective_until": "2027-07-16T00:00:00+08:00",
+        "created_by": "operator-1",
+        "rfq_package_evidence_id": "evd_rfq_1",
+        "rfq_dispatch_evidence_id": "evd_dispatch_1",
+    }
+    first = intake.quote_authority.capture(**values)
+
+    with pytest.raises(ValueError, match="immutable RFQ dispatch context"):
+        intake.quote_authority.capture(
+            **{
+                **values,
+                "rfq_dispatch_evidence_id": "evd_dispatch_2",
+            }
+        )
+
+    assert (
+        intake.evidence.get(first.id).metadata[
+            "rfq_dispatch_evidence_id"
+        ]
+        == "evd_dispatch_1"
+    )
+
+
 def test_public_display_price_is_research_only_and_cannot_be_accepted():
     product, store, intake = make_intake()
     payload = offers()[0]
@@ -462,7 +496,49 @@ def test_supplier_response_preserves_rfq_package_lineage():
                 raise ValueError("RFQ package does not belong to the selected product")
             return rfq_record
 
+    dispatch_record = intake.evidence.capture(
+        content=b"accepted supplier dispatch proof",
+        filename="supplier-dispatch.png",
+        content_type="image/png",
+        source="supplier_rfq_dispatch",
+        source_ref=f"supplier-rfq-dispatch://{rfq_record.id}/supplier-1/dispatch-1",
+        grade=EvidenceGrade.B,
+        effective_at="2026-07-16T01:00:00+08:00",
+        effective_until=None,
+        created_by="operator-1",
+        metadata={
+            "dispatch": {
+                "rfq": {
+                    "evidence_id": rfq_record.id,
+                    "product_id": product.id,
+                }
+            }
+        },
+    )
+
+    class RfqDispatches:
+        def require_for_response(
+            self,
+            evidence_id,
+            *,
+            product_id,
+            supplier_ref,
+            supplier_platform,
+            rfq_package_evidence_id,
+        ):
+            if (
+                evidence_id != dispatch_record.id
+                or product_id != product.id
+                or supplier_ref != offers()[0].offer_data["supplier_ref"]
+                or supplier_platform != "1688"
+                or rfq_package_evidence_id
+                not in {None, rfq_record.id}
+            ):
+                raise ValueError("Supplier dispatch does not match the response")
+            return dispatch_record
+
     intake.rfq_packages = RfqPackages()
+    intake.rfq_dispatches = RfqDispatches()
     payload = offers()[0]
     quote_record = intake.capture_quote_source(
         product_id=product.id,
@@ -474,15 +550,24 @@ def test_supplier_response_preserves_rfq_package_lineage():
         effective_at="2026-07-16T00:00:00+08:00",
         effective_until="2027-07-16T00:00:00+08:00",
         created_by="operator-1",
-        rfq_package_evidence_id=rfq_record.id,
+        rfq_dispatch_evidence_id=dispatch_record.id,
     )
 
     assert quote_record.metadata["rfq_package_evidence_id"] == rfq_record.id
+    assert (
+        quote_record.metadata["rfq_dispatch_evidence_id"]
+        == dispatch_record.id
+    )
     assert intake.evidence.target_evidence_ids(
         target_type="evidence",
         target_id=quote_record.id,
         relationship="supplier_response_context_for",
     ) == [rfq_record.id]
+    assert intake.evidence.target_evidence_ids(
+        target_type="evidence",
+        target_id=quote_record.id,
+        relationship="supplier_response_to_dispatch",
+    ) == [dispatch_record.id]
     assert store.offers == {}
 
 

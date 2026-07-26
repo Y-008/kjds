@@ -26,6 +26,7 @@ import type {
   MarketplaceGrowthPlan,
   PassportReview,
   ProductIdentity,
+  SupplierRfqDispatch,
   SupplierRfqPackage,
   SupplierQuoteEvidence,
   SourcingComparison,
@@ -92,6 +93,8 @@ export function useDashboardController() {
   const [offers, setOffers] = useState<unknown[]>([]);
   const [supplierRfqPackages, setSupplierRfqPackages] = useState<SupplierRfqPackage[]>([]);
   const [supplierRfqBusy, setSupplierRfqBusy] = useState(false);
+  const [supplierRfqDispatches, setSupplierRfqDispatches] = useState<SupplierRfqDispatch[]>([]);
+  const [supplierRfqDispatchBusy, setSupplierRfqDispatchBusy] = useState<string | null>(null);
   const [supplierQuoteEvidence, setSupplierQuoteEvidence] = useState<SupplierQuoteEvidence[]>([]);
   const [products, setProducts] = useState<ProductIdentity[]>([]);
   const [comparisons, setComparisons] = useState<SourcingComparison[]>([]);
@@ -183,13 +186,14 @@ export function useDashboardController() {
     setDomainStates({ core: "loading", product: "loading", finance: "loading", science: "loading", execution: "loading" });
     const request = (input: RequestInfo | URL, init: RequestInit = {}) =>
       fetchJson(input, { ...init, signal: signal ?? init.signal });
-    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, rfqPackagesResponse, quoteEvidenceResponse, marketplaceCatalogResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse, logisticsRateCardsResponse, logisticsCalculationsResponse] = await settleJsonRequests([
+    const [healthResponse, operatingWorkbenchResponse, recommendationResponse, connectorResponse, offersResponse, rfqPackagesResponse, rfqDispatchesResponse, quoteEvidenceResponse, marketplaceCatalogResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse, policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse, costAuthorityResponse, logisticsRateCardsResponse, logisticsCalculationsResponse] = await settleJsonRequests([
       request("/backend/v1/integrations/health", { cache: "no-store" }),
       request("/backend/v1/operating-workbench/briefing", { cache: "no-store" }),
       request("/backend/v1/recommendations", { cache: "no-store" }),
       request("/backend/v1/sourcing/connectors", { cache: "no-store" }),
       request("/backend/v1/sourcing/offers", { cache: "no-store" }),
       request("/backend/v1/sourcing/rfq-packages", { cache: "no-store" }),
+      request("/backend/v1/sourcing/rfq-dispatches", { cache: "no-store" }),
       request("/backend/v1/sourcing/quote-evidence", { cache: "no-store" }),
       request(
         `/backend/v1/marketplace-catalog/items/latest?store_ref=${encodeURIComponent(marketplaceCatalogStoreRef)}&limit=100`,
@@ -226,7 +230,7 @@ export function useDashboardController() {
     ]);
     setDomainStates({
       core: [healthResponse, operatingWorkbenchResponse].every((response) => response.ok) ? "ready" : "error",
-      product: [connectorResponse, offersResponse, rfqPackagesResponse, quoteEvidenceResponse, marketplaceCatalogResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, logisticsRateCardsResponse, logisticsCalculationsResponse].every((response) => response.ok) ? "ready" : "error",
+      product: [connectorResponse, offersResponse, rfqPackagesResponse, rfqDispatchesResponse, quoteEvidenceResponse, marketplaceCatalogResponse, productsResponse, gateResponse, reviewResponse, approvalsResponse, sampleOrdersResponse, supplierPerformanceResponse, evidenceResponse, logisticsRateCardsResponse, logisticsCalculationsResponse].every((response) => response.ok) ? "ready" : "error",
       finance: costAuthorityResponse.ok ? "ready" : "error",
       science: [profileResponse, contractResponse, analysisResponse, resolutionResponse, outcomeResponse, calibrationResponse, experimentResponse, causalKnowledgeResponse, causalPolicyResponse].every((response) => response.ok) ? "ready" : "error",
       execution: [policyShadowResponse, policyHandoffResponse, executionPlanResponse, executionCommandResponse, executionObservationResponse, capabilityEconomicsResponse, operationalIncidentsResponse, operationsQueueResponse, readOnlyPilotsResponse].every((response) => response.ok) ? "ready" : "error",
@@ -237,6 +241,7 @@ export function useDashboardController() {
     if (connectorResponse.ok) setSourceConnectors(await connectorResponse.json());
     if (offersResponse.ok) setOffers(await offersResponse.json());
     if (rfqPackagesResponse.ok) setSupplierRfqPackages(await rfqPackagesResponse.json());
+    if (rfqDispatchesResponse.ok) setSupplierRfqDispatches(await rfqDispatchesResponse.json());
     if (quoteEvidenceResponse.ok) setSupplierQuoteEvidence(await quoteEvidenceResponse.json());
     if (marketplaceCatalogResponse.ok) {
       setMarketplaceCatalogItems(await marketplaceCatalogResponse.json());
@@ -1341,6 +1346,108 @@ export function useDashboardController() {
     }
   }
 
+  async function captureSupplierRfqDispatch(
+    event: FormEvent<HTMLFormElement>,
+    rfq: SupplierRfqPackage,
+  ) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const value = (name: string) =>
+      (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement).value.trim();
+    const proof = (form.elements.namedItem("dispatch_proof_file") as HTMLInputElement).files?.[0];
+    const sentAt = new Date(value("dispatch_sent_at"));
+    if (!proof) {
+      setNotice("请上传供应商平台原始截图或会话导出作为发送证明");
+      return;
+    }
+    if (Number.isNaN(sentAt.getTime())) {
+      setNotice("请选择有效的实际发送时间");
+      return;
+    }
+    const body = new FormData();
+    body.append("rfq_package_evidence_id", rfq.evidence.id);
+    body.append("supplier_ref", value("dispatch_supplier_ref"));
+    body.append("supplier_platform", value("dispatch_supplier_platform"));
+    body.append("supplier_locator", value("dispatch_supplier_locator"));
+    body.append("conversation_ref", value("dispatch_conversation_ref"));
+    body.append("sent_at", sentAt.toISOString());
+    body.append("sent_message_text", rfq.package.message_text);
+    body.append("idempotency_key", value("dispatch_idempotency_key"));
+    body.append("confirmed", "true");
+    body.append("file", proof);
+    setSupplierRfqDispatchBusy(`capture:${rfq.evidence.id}`);
+    setNotice("正在逐字复验 RFQ 并固化供应商平台发送证明…");
+    try {
+      const response = await fetchJson("/backend/v1/sourcing/rfq-dispatches", {
+        method: "POST",
+        body,
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "供应商发送证明录入失败");
+        return;
+      }
+      const captured = result as SupplierRfqDispatch;
+      setSupplierRfqDispatches((current) => [
+        captured,
+        ...current.filter((item) => item.evidence.id !== captured.evidence.id),
+      ]);
+      form.reset();
+      setNotice(
+        result.idempotent
+          ? "相同发送证明已经存在，没有重复写入"
+          : `发送证明 …${captured.evidence.id.slice(-8)} 已进入独立复核；尚不代表送达、回复或报价`,
+      );
+    } catch {
+      setNotice("无法录入供应商发送证明，请检查服务状态");
+    } finally {
+      setSupplierRfqDispatchBusy(null);
+    }
+  }
+
+  async function reviewSupplierRfqDispatch(
+    event: FormEvent<HTMLFormElement>,
+    evidenceId: string,
+  ) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const checked = (name: string) => (form.elements.namedItem(name) as HTMLInputElement).checked;
+    const value = (name: string) =>
+      (form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value.trim();
+    setSupplierRfqDispatchBusy(`review:${evidenceId}`);
+    setNotice("正在固化独立 RFQ 发送证明复核…");
+    try {
+      const response = await fetchJson(
+        `/backend/v1/sourcing/rfq-dispatches/${evidenceId}/authority-review`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accepted: value("dispatch_review_decision") === "accepted",
+            authentic_platform_proof: checked("dispatch_authentic_platform_proof"),
+            supplier_identity_matches: checked("dispatch_supplier_identity_matches"),
+            frozen_message_matches: checked("dispatch_frozen_message_matches"),
+            timestamp_and_conversation_match: checked("dispatch_timestamp_and_conversation_match"),
+            rationale: value("dispatch_review_rationale"),
+          }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.detail ?? "发送证明复核失败");
+        return;
+      }
+      setNotice(
+        `发送证明 …${evidenceId.slice(-8)} 已完成独立复核；仍不等于供应商回复或报价`,
+      );
+      await load();
+    } catch {
+      setNotice("无法完成供应商发送证明复核");
+    } finally {
+      setSupplierRfqDispatchBusy(null);
+    }
+  }
+
   async function captureSupplierQuote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1362,6 +1469,7 @@ export function useDashboardController() {
     body.append("effective_until", value("quote_effective_until") ? new Date(value("quote_effective_until")).toISOString() : "");
     body.append("offer_json", JSON.stringify(offer));
     body.append("rfq_package_evidence_id", value("quote_rfq_package_evidence_id"));
+    body.append("rfq_dispatch_evidence_id", value("quote_rfq_dispatch_evidence_id"));
     body.append("file", sourceFile);
     setSourcingUploading(true);
     setNotice("正在把供应商资料固化为 B 级线索，不会创建正式报价…");
@@ -2506,6 +2614,10 @@ export function useDashboardController() {
     setSupplierRfqPackages,
     supplierRfqBusy,
     setSupplierRfqBusy,
+    supplierRfqDispatches,
+    setSupplierRfqDispatches,
+    supplierRfqDispatchBusy,
+    setSupplierRfqDispatchBusy,
     supplierQuoteEvidence,
     setSupplierQuoteEvidence,
     products,
@@ -2703,6 +2815,8 @@ export function useDashboardController() {
     calculateLogisticsCost,
     createSupplierRfq,
     copySupplierRfqMessage,
+    captureSupplierRfqDispatch,
+    reviewSupplierRfqDispatch,
     uploadSupplierComparison,
     captureSupplierQuote,
     reviewSupplierQuote,

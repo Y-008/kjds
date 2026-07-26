@@ -17,6 +17,8 @@ from ..api_contracts import (
     SampleOrderInput,
     SupplierOfferInput,
     SupplierQuoteAuthorityReviewInput,
+    SupplierRfqDispatchAuthorityReviewInput,
+    SupplierRfqDispatchInput,
     SupplierRfqPackageInput,
     current_principal,
     ensure_role,
@@ -110,6 +112,146 @@ def get_supplier_rfq_package(
     return run(get)
 
 
+@router.post("/v1/sourcing/rfq-dispatches", status_code=201)
+async def capture_supplier_rfq_dispatch(
+    rfq_package_evidence_id: Annotated[str, Form()],
+    supplier_ref: Annotated[str, Form()],
+    supplier_platform: Annotated[str, Form()],
+    supplier_locator: Annotated[str, Form()],
+    conversation_ref: Annotated[str, Form()],
+    sent_at: Annotated[str, Form()],
+    sent_message_text: Annotated[str, Form()],
+    idempotency_key: Annotated[str, Form()],
+    confirmed: Annotated[bool, Form()],
+    file: Annotated[UploadFile, File()],
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    body = SupplierRfqDispatchInput(
+        rfq_package_evidence_id=rfq_package_evidence_id,
+        supplier_ref=supplier_ref,
+        supplier_platform=supplier_platform,
+        supplier_locator=supplier_locator,
+        conversation_ref=conversation_ref,
+        sent_at=sent_at,
+        sent_message_text=sent_message_text,
+        idempotency_key=idempotency_key,
+        confirmed=confirmed,
+    )
+    max_bytes = int(
+        os.getenv(
+            "KJDS_EVIDENCE_MAX_BYTES",
+            str(10 * 1024 * 1024),
+        )
+    )
+    content = await file.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail="Supplier RFQ dispatch proof exceeds size limit",
+        )
+
+    def capture():
+        result = runtime.supplier_rfq_dispatch.capture(
+            **body.model_dump(),
+            content=content,
+            filename=file.filename or "supplier-rfq-dispatch.bin",
+            content_type=file.content_type or "application/octet-stream",
+            created_by=principal.actor_id,
+        )
+        return {
+            **result,
+            "evidence": asdict(result["evidence"]),
+            **(
+                {"review": asdict(result["review"])}
+                if result.get("review")
+                else {}
+            ),
+        }
+
+    return run(capture)
+
+
+@router.get("/v1/sourcing/rfq-dispatches")
+def list_supplier_rfq_dispatches(
+    principal: Annotated[Principal, Depends(current_principal)],
+    product_id: str | None = None,
+    rfq_package_evidence_id: str | None = None,
+    limit: int = 100,
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "admin",
+    )
+    return run(
+        lambda: [
+            {**item, "evidence": asdict(item["evidence"])}
+            for item in runtime.supplier_rfq_dispatch.list(
+                product_id=product_id,
+                rfq_package_evidence_id=rfq_package_evidence_id,
+                limit=min(max(limit, 1), 500),
+            )
+        ]
+    )
+
+
+@router.get("/v1/sourcing/rfq-dispatches/{evidence_id}")
+def get_supplier_rfq_dispatch(
+    evidence_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "admin",
+    )
+
+    def get():
+        result = runtime.supplier_rfq_dispatch.status(evidence_id)
+        return {
+            **result,
+            "evidence": asdict(result["evidence"]),
+        }
+
+    return run(get)
+
+
+@router.post(
+    "/v1/sourcing/rfq-dispatches/{evidence_id}/authority-review",
+    status_code=201,
+)
+def review_supplier_rfq_dispatch(
+    evidence_id: str,
+    body: SupplierRfqDispatchAuthorityReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "reviewer", "compliance", "admin")
+
+    def review():
+        result = runtime.supplier_rfq_dispatch.review(
+            evidence_id=evidence_id,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+        return {
+            **result,
+            "evidence": asdict(result["evidence"]),
+            "review": asdict(result["review"]),
+            **(
+                {"lineage": asdict(result["lineage"])}
+                if result.get("lineage")
+                else {}
+            ),
+        }
+
+    return run(review)
+
+
 @router.post("/v1/sourcing/quote-evidence", status_code=201)
 async def capture_supplier_quote_evidence(
     product_id: Annotated[str, Form()],
@@ -120,6 +262,7 @@ async def capture_supplier_quote_evidence(
     file: Annotated[UploadFile, File()],
     principal: Annotated[Principal, Depends(current_principal)],
     rfq_package_evidence_id: Annotated[str, Form()] = "",
+    rfq_dispatch_evidence_id: Annotated[str, Form()] = "",
 ):
     ensure_role(principal, "operator", "reviewer", "admin")
     try:
@@ -150,6 +293,9 @@ async def capture_supplier_quote_evidence(
             effective_until=effective_until.strip() or None,
             created_by=principal.actor_id,
             rfq_package_evidence_id=rfq_package_evidence_id.strip() or None,
+            rfq_dispatch_evidence_id=(
+                rfq_dispatch_evidence_id.strip() or None
+            ),
         )
     )
 

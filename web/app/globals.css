@@ -1082,6 +1082,29 @@ body {
 .rfq-package-card pre { max-height: 360px; margin: 0; padding: 12px; overflow: auto; border-top: 1px solid #e5e9f1; color: #414d62; font-family: inherit; font-size: 8px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .rfq-package-card code { color: #788397; font-size: 7px; overflow-wrap: anywhere; }
 .rfq-package-card > p { margin: 0; padding: 8px 10px; border-radius: 8px; background: #fff7e8; color: #8b6420; font-size: 8px; line-height: 1.5; }
+.rfq-dispatch-form { display: grid; gap: 11px; padding: 13px; border: 1px solid #dce4ff; border-radius: 10px; background: #f8f9ff; }
+.rfq-dispatch-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rfq-dispatch-heading strong { color: #4558b7; font-size: 9px; }
+.rfq-dispatch-heading span { color: #7c87a1; font-size: 7px; }
+.rfq-dispatch-form .sourcing-common { grid-template-columns: 1fr 1fr; gap: 8px; }
+.rfq-dispatch-form .sourcing-common label { font-size: 8px; }
+.rfq-dispatch-form button { min-height: 34px; background: #536dfe; font-size: 8px; }
+.rfq-dispatch-list { display: grid; gap: 9px; }
+.rfq-dispatch-card { display: grid; gap: 9px; padding: 11px; border: 1px solid #e0e5ef; border-radius: 9px; background: #fbfcfe; }
+.rfq-dispatch-card.accepted { border-color: #bfe5d6; background: #f3fbf7; }
+.rfq-dispatch-card.rejected { border-color: #efd4cf; background: #fff8f7; }
+.rfq-dispatch-card-heading { display: grid; gap: 4px; }
+.rfq-dispatch-card-heading strong { color: #465166; font-size: 9px; }
+.rfq-dispatch-card-heading small,
+.rfq-dispatch-card-heading code { color: #798498; font-size: 7px; overflow-wrap: anywhere; }
+.rfq-dispatch-truth { padding: 7px 8px; border-radius: 7px; background: #fff7e8; color: #88621f; font-size: 7px; line-height: 1.5; }
+.rfq-dispatch-review { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding-top: 9px; border-top: 1px solid #e4e8ef; }
+.rfq-dispatch-review label { display: flex; align-items: center; gap: 5px; color: #5f6b7e; font-size: 7px; }
+.rfq-dispatch-review input[type="checkbox"] { width: 13px; height: 13px; }
+.rfq-dispatch-review select,
+.rfq-dispatch-review textarea,
+.rfq-dispatch-review button { grid-column: 1 / -1; }
+.rfq-dispatch-review textarea { min-height: 60px; }
 .quote-stage-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr); gap: 16px; align-items: start; }
 .quote-source-form,
 .quote-review-queue,
@@ -1197,4 +1220,6 @@ body {
   .login-story-copy > p { font-size: 11px; }
   .login-card { padding: 25px 20px; }
   .quote-review-card form { grid-template-columns: 1fr; }
+  .rfq-dispatch-form .sourcing-common,
+  .rfq-dispatch-review { grid-template-columns: 1fr; }
 }

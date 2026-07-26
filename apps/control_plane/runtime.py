@@ -64,6 +64,7 @@ from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 from .supplier_quote_authority import SupplierQuoteAuthorityService
 from .supplier_rfq import SupplierRfqWorkspace
+from .supplier_rfq_dispatch import SupplierRfqDispatchWorkspace
 
 
 @dataclass(slots=True)
@@ -125,6 +126,7 @@ class RuntimeServices:
     sourcing_store: Any
     supplier_quote_authority: Any
     supplier_rfq: Any
+    supplier_rfq_dispatch: Any
 
 
 def build_repository():
@@ -358,12 +360,17 @@ def build_runtime() -> RuntimeServices:
         marketplace_catalog=marketplace_catalog,
         evidence=evidence,
     )
+    supplier_rfq_dispatch = SupplierRfqDispatchWorkspace(
+        rfq_packages=supplier_rfq,
+        evidence=evidence,
+    )
     sourcing_intake = SupplierComparisonIntakeService(
         sourcing=sourcing,
         evidence=evidence,
         quote_authority=supplier_quote_authority,
         logistics=logistics,
         rfq_packages=supplier_rfq,
+        rfq_dispatches=supplier_rfq_dispatch,
     )
     providers = {"comfyui": ComfyUIProvider(os.getenv("KJDS_COMFYUI_URL", "http://127.0.0.1:8189"))}
     if url := os.getenv("KJDS_OLLAMA_URL", "").strip():
@@ -437,6 +444,7 @@ def build_runtime() -> RuntimeServices:
         sourcing_store=sourcing_store,
         supplier_quote_authority=supplier_quote_authority,
         supplier_rfq=supplier_rfq,
+        supplier_rfq_dispatch=supplier_rfq_dispatch,
     )
 
 

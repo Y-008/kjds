@@ -37,6 +37,8 @@ def operator():
         "ozon_finance_report_review",
         "supplier_quote_authority_review",
         "supplier_quote_source",
+        "supplier_rfq_dispatch",
+        "supplier_rfq_dispatch_review",
         "supplier_rfq_package",
     ],
 )
@@ -142,6 +144,26 @@ def test_generic_lineage_cannot_forge_gate_or_review_relationships():
             "evidence",
             "evd_supplier_quote",
             "supplier_response_context_for",
+        ),
+        (
+            "evidence",
+            "evd_supplier_dispatch",
+            "rfq_dispatch_context_for",
+        ),
+        (
+            "product",
+            "prd_supplier_rfq",
+            "supplier_outreach_for",
+        ),
+        (
+            "evidence",
+            "evd_supplier_dispatch",
+            "supplier_rfq_dispatch_review",
+        ),
+        (
+            "evidence",
+            "evd_supplier_quote",
+            "supplier_response_to_dispatch",
         ),
     ):
         with pytest.raises(HTTPException) as execution_authority_exc:
