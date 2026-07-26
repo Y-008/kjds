@@ -45,6 +45,7 @@ class RetentionClass(StrEnum):
 
 
 UNIQUE_SOURCE_REF_SOURCES = {
+    "marketplace-observation",
     "ozon-isolated-execution-worker",
     "supplier_rfq_dispatch",
     "supplier_rfq_package",

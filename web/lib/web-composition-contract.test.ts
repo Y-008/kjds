@@ -24,6 +24,7 @@ test("task navigation exposes every unified operating workspace", () => {
   assert.deepEqual(targets, [
     "overview",
     "growth",
+    "pilot",
     "finance",
     "data",
     "research",
@@ -44,6 +45,24 @@ test("task navigation exposes every unified operating workspace", () => {
   assert.match(view, /history\.pushState/);
   assert.match(view, /addEventListener\("popstate"/);
   assert.doesNotMatch(view, /history\.replaceState/);
+});
+
+test("portfolio pilot renders only server-owned screening economics", () => {
+  const panel = read("../features/dashboard/portfolio-pilot-panel.tsx");
+  const workspaces = read("../features/dashboard/dashboard-workspaces.ts");
+
+  assert.match(workspaces, /id: "pilot"/);
+  assert.match(panel, /\/backend\/v1\/marketplace-observations\?marketplace=1688/);
+  assert.match(panel, /\/backend\/v1\/portfolio-pilot\/prepare/);
+  assert.match(panel, /target_specification: targetSpecification/);
+  assert.match(panel, /policy_id: "ozon-cny-research-screening-v1"/);
+  assert.match(panel, /max_loss_cny: "500\.00"/);
+  assert.match(panel, /公开展示价 · observed · 非 Offer · 非实际成本/);
+  assert.match(panel, /实际利润可用：否/);
+  assert.match(panel, /自动联系供应商：否/);
+  assert.match(panel, /自动上架：否/);
+  assert.doesNotMatch(panel, /Math\.random|\/commands|\/write-attempt|\/receipt/);
+  assert.doesNotMatch(panel, /listing_price\s*[-+*/]|displayed_price\s*[-+*/]/);
 });
 
 test("marketplace growth stays recommendation-only while using governed evidence", () => {

@@ -132,6 +132,32 @@ def test_operating_intelligence_named_aliases_share_endpoints_and_require_authen
     )
 
 
+def test_marketplace_observation_and_portfolio_pilot_contracts_are_protected() -> None:
+    schema = app.openapi()
+    for path, methods in (
+        ("/v1/marketplace-observations", {"get", "post"}),
+        ("/v1/portfolio-pilot/prepare", {"post"}),
+    ):
+        assert set(schema["paths"][path]) == methods
+        for method in methods:
+            assert schema["paths"][path][method]["security"] == [
+                {"KjdsApiKey": []}
+            ]
+    capture = schema["components"]["schemas"][
+        "MarketplaceObservationCaptureInput"
+    ]
+    item = schema["components"]["schemas"][
+        "MarketplaceObservationItemInput"
+    ]
+    pilot = schema["components"]["schemas"]["PortfolioPilotPrepareInput"]
+    assert capture["additionalProperties"] is False
+    assert item["additionalProperties"] is False
+    assert pilot["additionalProperties"] is False
+    assert "confirmed" in capture["required"]
+    assert "displayed_price" in item["required"]
+    assert "target_specification" in pilot["required"]
+
+
 def test_execution_checkpoint_contract_is_closed_and_protected() -> None:
     operation = app.openapi()["paths"][
         "/v1/limited-execution-commands/{command_id}/response-checkpoint"

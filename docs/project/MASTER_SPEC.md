@@ -4,7 +4,7 @@
 |---|---|
 | doc_id | KJDS-MASTER-SPEC-001 |
 | status | Active |
-| version | 8.3 |
+| version | 8.4 |
 | last_reviewed | 2026-07-26 |
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
@@ -174,6 +174,7 @@ KJDS 是“确定性经营内核 + 证据优先数据层 + 受控 Agent 外层�
 | BR-078 | SKU/订单/日期实际利润账 | 服务端必须只读组合正式 FactRecord、Finance Entry、FX、Evidence、逐项成本权威证明及 Supplier Offer/Profit Scenario/Listing/Product 绑定，以 `store_ref + product/SKU + order + accounting_date + currency` 输出可复算利润账。只允许明确自然键、source fact 或人工绑定归集；无法映射进入 `unallocated/blocked`，禁止按销售额、数量或比例猜分摊。场景 CM3、应计贡献、结算贡献、到账贡献必须分别报告；证据不完整时不得显示实际利润。侵蚀桥覆盖采购、物流、仓储/库龄、佣金、广告、退货退款、折扣、税费、FX、损耗和未分摊，使用 Decimal、显式币种和 FX 日期并严格守恒。 | P0 |
 | BR-079 | 数据异常到统一运营任务 | 服务端版本化指标注册表首批覆盖利润覆盖率、负 CM3、退货率突增、库龄/仓储侵蚀、广告上限、结算差异、内容 QA 失败和媒体执行失败，并固定基线、最小样本、严重度、冷却期、Owner 与 Evidence 条件。认证规范入口为 `GET /v1/operating-intelligence/metrics` 与 `POST /v1/operating-intelligence/anomaly-scans`；既有 `/v1/metrics` 与 `POST /v1/anomaly-scans` 作为同一服务端 endpoint 的兼容别名保留，客户端不得重算指标或扫描结果。异常以稳定指纹去重，只创建内部 OperatingTask 和不可变事件，投影进入既有 OperationsQueue，不建立第二队列或工作流引擎。状态为 `open → acknowledged → in_progress → resolved|dismissed`；解决/驳回必须理由与有效 Evidence。扫描不得触发任何平台、供应商、广告、采购、付款或媒体副作用。 | P0 |
 | BR-080 | 证据化图片与视频运营工作台 | 复用 ContentAsset、Evidence、Lineage、QA 与 Approval 提供受控模板、批量任务、变体、成本、延迟、部分失败、幂等重试与 Delivery Manifest。ComfyUI 只运行固定准入工作流，未准入保持 blocked。视频首版不接外部生成 Provider，只使用已批准商品图、人工确认俄语脚本/字幕和有权利音频，经固定 FFmpeg 链生成 9:16/1:1/16:9 MP4、封面、字幕、关键帧、编码报告与 Manifest；PostgreSQL 租约和独立媒体 Worker 支持恢复，不引入 Redis/Kafka/Temporal。所有产物进入 Blob/Evidence 并记录输入哈希、模板/编码器版本、耗时和成本；只有 QA 全过后才可被 Listing 草稿引用。 | P0 |
+| BR-081 | Marketplace Observation 与组合 Pilot | Ozon/1688 页面、卖家工具和插件导出必须通过来源专用只读 Adapter，以不可变 C 级 Evidence、稳定自然键、URL、观察时间、操作者、币种、价格语义、变体、规格与 SHA-256 进入统一 Marketplace Observation 读模型；不得复制 Cookie/localStorage/CSP 绕过、宽域权限或未经准入的内部端点。公开展示价、新人价、区间最低价和工具估价只可计算可解释 `observed_spread` 与版本化悲观/基准 `screening_contribution`，不得创建 Supplier Offer、十五项 CM3 或实际利润。服务端 `PortfolioPilotWorkspace.prepare()` 必须组合当前 Ozon Catalog、目标规格、最新观察、既有报价/利润/Listing readiness 和 OperatingTask，按规格匹配、悲观筛选贡献、来源质量、Evidence 覆盖、风险和稳定 fingerprint 排序；缺平台费、物流、退货、税费、FX、内容权利或精确规格时保持 `partial/blocked`，客户端不得重算或把候选冒充可发布。外部验证码/登录/联系人阻断只进入既有 OperatingTask/OperationsQueue；所有真实发布继续使用既有冻结计划、批次批准、一次性 Permit、Readback 与止损。 | P0 |
 
 ### 2.2 功能需求
 
@@ -976,6 +977,17 @@ Evidence、缺口和下一动作来自现有服务端投影，所有继续操作
 不得用图谱的 `implemented/ready` 推断业务已完成，也不得从浏览器重新计算线或面关系。
 边界和 `best_solution` 选择见
 `docs/adr/ADR-0028-operating-workspace-drillthrough.md`。
+
+`BR-081/BAS-103` 把页面与卖家工具线索放进证据化
+`MarketplaceObservationWorkspace`，而不是复制旧插件的身份和执行模式。外部 Interface
+只提供 `capture()` 与 `latest()`；Implementation 负责原始 JSON Evidence、来源/价格
+语义、Decimal、自然键、幂等、快照哈希和正式事实隔离。默认经营调用方只使用
+`PortfolioPilotWorkspace.prepare()`，由服务端组合当前 Ozon Catalog、目标规格、观察
+候选、既有报价/利润/Listing readiness 和 OperatingTask，输出价差、悲观/基准筛选贡献、
+规格差距、状态、阻断、下一动作与稳定排序。页面展示价不生成 Supplier Offer 或 actual，
+验证码不绕过，真实写入继续消费既有批次批准与一次性执行合同。边界和
+`best_solution` 选择见
+`docs/adr/ADR-0030-marketplace-observation-portfolio-pilot.md`。
 
 ### 17.2 P1：G2/G4/G5 前补齐
 

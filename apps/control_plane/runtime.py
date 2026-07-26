@@ -40,6 +40,10 @@ from .marketplace_growth_workspace import (
     MarketplaceGrowthWorkspace,
     SqlMarketplaceGrowthStore,
 )
+from .marketplace_observation import (
+    MarketplaceObservationWorkspace,
+    PortfolioPilotWorkspace,
+)
 from .media_workbench import MediaWorkbenchService
 from .operating_analytics import OperatingAnalyticsService
 from .operating_intelligence import OperatingIntelligenceService
@@ -114,6 +118,7 @@ class RuntimeServices:
     market: Any
     marketplace_catalog: Any
     marketplace_growth: Any
+    marketplace_observation: Any
     media_workbench: Any
     operating_analytics: Any
     operating_intelligence: Any
@@ -127,6 +132,7 @@ class RuntimeServices:
     pilot_runs: Any
     policy_shadow: Any
     post_execution: Any
+    portfolio_pilot: Any
     procurement: Any
     profit_ledger: Any
     product_media: Any
@@ -381,6 +387,17 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
         repository=repo,
     )
+    marketplace_observation = MarketplaceObservationWorkspace(
+        engine=engine,
+        evidence=evidence,
+    )
+    portfolio_pilot = PortfolioPilotWorkspace(
+        observations=marketplace_observation,
+        marketplace_catalog=marketplace_catalog,
+        sourcing=sourcing,
+        repository=repo,
+        operating_tasks=operating_intelligence,
+    )
     supplier_rfq = SupplierRfqWorkspace(
         marketplace_catalog=marketplace_catalog,
         evidence=evidence,
@@ -477,6 +494,7 @@ def build_runtime() -> RuntimeServices:
         market=market,
         marketplace_catalog=marketplace_catalog,
         marketplace_growth=marketplace_growth,
+        marketplace_observation=marketplace_observation,
         media_workbench=media_workbench,
         operating_analytics=operating_analytics,
         operating_intelligence=operating_intelligence,
@@ -490,6 +508,7 @@ def build_runtime() -> RuntimeServices:
         pilot_runs=pilot_runs,
         policy_shadow=policy_shadow,
         post_execution=post_execution,
+        portfolio_pilot=portfolio_pilot,
         procurement=procurement,
         profit_ledger=profit_ledger,
         product_media=product_media,

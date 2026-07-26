@@ -4726,6 +4726,225 @@
         "title": "MarketplaceLatestGrowthPlanInput",
         "type": "object"
       },
+      "MarketplaceObservationCaptureInput": {
+        "additionalProperties": false,
+        "properties": {
+          "capture_note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capture Note"
+          },
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "idempotency_key": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceObservationItemInput"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "marketplace": {
+            "enum": [
+              "1688",
+              "ozon"
+            ],
+            "title": "Marketplace",
+            "type": "string"
+          },
+          "observed_at": {
+            "title": "Observed At",
+            "type": "string"
+          },
+          "source_profile": {
+            "enum": [
+              "browser_observation",
+              "seller_tool_export",
+              "manual_verified_public_page"
+            ],
+            "title": "Source Profile",
+            "type": "string"
+          },
+          "source_url": {
+            "maxLength": 2000,
+            "minLength": 8,
+            "title": "Source Url",
+            "type": "string"
+          },
+          "store_ref": {
+            "default": "external",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_profile",
+          "marketplace",
+          "source_url",
+          "observed_at",
+          "idempotency_key",
+          "items",
+          "confirmed"
+        ],
+        "title": "MarketplaceObservationCaptureInput",
+        "type": "object"
+      },
+      "MarketplaceObservationItemInput": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "default": "unknown",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Availability",
+            "type": "string"
+          },
+          "currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "pattern": "^[A-Za-z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "displayed_price": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Displayed Price"
+          },
+          "external_item_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "External Item Id",
+            "type": "string"
+          },
+          "min_order_quantity": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Order Quantity"
+          },
+          "price_kind": {
+            "enum": [
+              "public_display_price",
+              "new_customer_price",
+              "member_price",
+              "range_minimum",
+              "marketplace_listing_price"
+            ],
+            "title": "Price Kind",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "specifications": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Specifications",
+            "type": "object"
+          },
+          "supplier_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Supplier Ref",
+            "type": "string"
+          },
+          "target_offer_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Offer Id"
+          },
+          "target_product_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Product Id"
+          },
+          "title": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "variant_key": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Variant Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "external_item_id",
+          "supplier_ref",
+          "title",
+          "variant_key",
+          "currency",
+          "displayed_price",
+          "price_kind"
+        ],
+        "title": "MarketplaceObservationItemInput",
+        "type": "object"
+      },
       "MarketplacePortfolioGrowthPlanInput": {
         "additionalProperties": false,
         "properties": {
@@ -6024,6 +6243,97 @@
         "title": "PolicyShadowBatchInput",
         "type": "object"
       },
+      "PortfolioPilotPrepareInput": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "candidate_target": {
+            "default": 100,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Candidate Target",
+            "type": "integer"
+          },
+          "cm3_floor_cny": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Cm3 Floor Cny"
+          },
+          "max_loss_cny": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "500",
+            "title": "Max Loss Cny"
+          },
+          "pilot_limit": {
+            "default": 10,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Pilot Limit",
+            "type": "integer"
+          },
+          "policy_id": {
+            "const": "ozon-cny-research-screening-v1",
+            "default": "ozon-cny-research-screening-v1",
+            "title": "Policy Id",
+            "type": "string"
+          },
+          "product_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          },
+          "target_specification": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 80,
+            "minProperties": 1,
+            "title": "Target Specification",
+            "type": "object"
+          }
+        },
+        "required": [
+          "product_id",
+          "target_specification"
+        ],
+        "title": "PortfolioPilotPrepareInput",
+        "type": "object"
+      },
       "ProcurementCandidateInput": {
         "additionalProperties": false,
         "properties": {
@@ -7082,7 +7392,7 @@
   },
   "info": {
     "title": "KJDS Control Plane",
-    "version": "0.57.1"
+    "version": "0.58.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -13674,6 +13984,138 @@
         "summary": "Capture Marketplace Growth Snapshot"
       }
     },
+    "/v1/marketplace-observations": {
+      "get": {
+        "operationId": "list_marketplace_observations_v1_marketplace_observations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "marketplace",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Marketplace"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Profile"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_product_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Product Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "List Marketplace Observations"
+      },
+      "post": {
+        "operationId": "capture_marketplace_observation_v1_marketplace_observations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceObservationCaptureInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Capture Marketplace Observation"
+      }
+    },
     "/v1/media/executions/batch": {
       "post": {
         "operationId": "execute_content_asset_batch_v1_media_executions_batch_post",
@@ -14996,6 +15438,47 @@
           }
         ],
         "summary": "Passport Review Queue"
+      }
+    },
+    "/v1/portfolio-pilot/prepare": {
+      "post": {
+        "operationId": "prepare_portfolio_pilot_v1_portfolio_pilot_prepare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortfolioPilotPrepareInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Prepare Portfolio Pilot"
       }
     },
     "/v1/procurement/sample-orders": {

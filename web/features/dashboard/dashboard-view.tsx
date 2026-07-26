@@ -12,6 +12,7 @@ import { ResearchGatePanel } from "./research-gate-panel";
 import { ProductContentPanel } from "./product-content-panel";
 import { SourcingPanel } from "./sourcing-panel";
 import { OperationsSummaryPanel } from "./operations-summary-panel";
+import { PortfolioPilotPanel } from "./portfolio-pilot-panel";
 import { UnifiedOverviewPanel } from "./unified-overview-panel";
 import {
   workspaceDefinitions,
@@ -37,7 +38,7 @@ export function DashboardView({ model }: { model: DashboardModel }) {
       ? "science"
       : ["governance", "system"].includes(activeWorkspace)
         ? "execution"
-        : ["data", "research", "products", "sourcing", "growth"].includes(activeWorkspace)
+        : ["data", "research", "products", "pilot", "sourcing", "growth"].includes(activeWorkspace)
           ? "product"
           : "core";
   const workspaceState = model.domainStates[domainKey];
@@ -83,6 +84,8 @@ export function DashboardView({ model }: { model: DashboardModel }) {
         return <div className="workspace-page legacy-workspace"><ResearchGatePanel model={model} /></div>;
       case "products":
         return <div className="workspace-page legacy-workspace"><ProductContentPanel model={model} /></div>;
+      case "pilot":
+        return <PortfolioPilotPanel />;
       case "sourcing":
         return <div className="workspace-page legacy-workspace"><SourcingPanel model={model} /></div>;
       case "growth":
