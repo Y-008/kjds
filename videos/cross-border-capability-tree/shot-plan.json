@@ -1,0 +1,504 @@
+{
+  "category": "charts",
+  "duration_s": 8.5,
+  "fps": 30,
+  "canvas": {
+    "w": 1920,
+    "h": 1080,
+    "aspect": "16:9"
+  },
+  "style": "深常青企业级 AI 操作系统界面；真实层级树而非放射星座。细线连接、克制光晕、精确计数、平滑长尾落位。信息密度高但节点分区清楚，Russia/Ozon 主枝在中段成为视觉焦点，末帧完整展示全树。",
+  "palette": [
+    "#07120F",
+    "#ECF5EF",
+    "#B8EF65",
+    "#FFB760",
+    "#6E8CFF"
+  ],
+  "font": "Noto Sans JP",
+  "beats": [
+    5,
+    16,
+    38,
+    66,
+    104,
+    139,
+    173,
+    204,
+    228
+  ],
+  "export": "mp4",
+  "asset_needs": [],
+  "block": "flowchart",
+  "customize": {
+    "source_of_truth": "../../docs/project/registries/cross_border_capability_atlas.json",
+    "reuse": {
+      "primary": "HyperFrames flowchart catalog block",
+      "local_reference": "compositions/decision_tree.html",
+      "borrow": [
+        "inline SVG connectors",
+        "measured stroke-dasharray and stroke-dashoffset",
+        "stable node ids",
+        "paused deterministic GSAP timeline"
+      ],
+      "do_not_borrow": [
+        "white sticky-note styling",
+        "cursor interaction story",
+        "emoji",
+        "random or orbital constellation layout",
+        "sample wording"
+      ]
+    },
+    "layout": {
+      "safe_area": {
+        "left": 72,
+        "right": 1848,
+        "top": 48,
+        "bottom": 1032
+      },
+      "root": {
+        "id": "kjds-root",
+        "x": 960,
+        "y": 112,
+        "w": 520,
+        "h": 108,
+        "label": "KJDS AI 跨境能力中枢",
+        "sub_label": "143 原子点 · 14 条价值流 · 8 个经营面"
+      },
+      "branches": [
+        {
+          "id": "linkfox-parity",
+          "x": 460,
+          "y": 292,
+          "w": 610,
+          "h": 92,
+          "label": "LinkFox 同功能覆盖",
+          "sub_label": "01–05 · 65 原子点",
+          "color": "#B8EF65"
+        },
+        {
+          "id": "russia-ozon",
+          "x": 1120,
+          "y": 292,
+          "w": 430,
+          "h": 92,
+          "label": "Russia / Ozon 真实运营",
+          "sub_label": "06 + 08–09 · 44 原子点",
+          "color": "#FFB760"
+        },
+        {
+          "id": "global-governance",
+          "x": 1610,
+          "y": 292,
+          "w": 430,
+          "h": 92,
+          "label": "全球治理适配",
+          "sub_label": "07 + 10 · 34 原子点",
+          "color": "#6E8CFF"
+        }
+      ],
+      "domain_row_y": 508,
+      "domain_node_size": {
+        "w": 150,
+        "h": 82
+      },
+      "domain_x": {
+        "01": 120,
+        "02": 290,
+        "03": 460,
+        "04": 630,
+        "05": 800,
+        "06": 950,
+        "08": 1120,
+        "09": 1290,
+        "07": 1540,
+        "10": 1750
+      },
+      "leaf_band": {
+        "top": 616,
+        "bottom": 846,
+        "node_diameter": 12,
+        "max_columns_per_domain": 2,
+        "row_gap": 28
+      },
+      "footer": {
+        "x": 960,
+        "y": 966,
+        "headline": "不是功能菜单：原子点连成价值流，价值流汇成经营控制面",
+        "proof_line": "143 原子点  ·  14 条价值流  ·  8 个经营面  ·  Evidence-first"
+      }
+    },
+    "hierarchy": {
+      "root": "kjds-root",
+      "branch_edges": [
+        [
+          "kjds-root",
+          "linkfox-parity"
+        ],
+        [
+          "kjds-root",
+          "russia-ozon"
+        ],
+        [
+          "kjds-root",
+          "global-governance"
+        ]
+      ],
+      "domain_edges": [
+        [
+          "linkfox-parity",
+          "01"
+        ],
+        [
+          "linkfox-parity",
+          "02"
+        ],
+        [
+          "linkfox-parity",
+          "03"
+        ],
+        [
+          "linkfox-parity",
+          "04"
+        ],
+        [
+          "linkfox-parity",
+          "05"
+        ],
+        [
+          "russia-ozon",
+          "06"
+        ],
+        [
+          "russia-ozon",
+          "08"
+        ],
+        [
+          "russia-ozon",
+          "09"
+        ],
+        [
+          "global-governance",
+          "07"
+        ],
+        [
+          "global-governance",
+          "10"
+        ]
+      ],
+      "leaf_rule": "每个域节点向下连接与 atomic_point_count 完全一致的微型节点；共 143 个，按 registry 原始顺序稳定编号，不随机排列。"
+    },
+    "domains": [
+      {
+        "id": "01",
+        "registry_id": "command_and_assets",
+        "label": "资产中枢",
+        "full_label": "灵感、商品与资产中枢",
+        "capability_count": 14,
+        "branch": "linkfox-parity",
+        "color": "#B8EF65"
+      },
+      {
+        "id": "02",
+        "registry_id": "apparel_visual",
+        "label": "服装视觉",
+        "full_label": "AI 服装视觉",
+        "capability_count": 9,
+        "branch": "linkfox-parity",
+        "color": "#B8EF65"
+      },
+      {
+        "id": "03",
+        "registry_id": "product_visual",
+        "label": "商品视觉",
+        "full_label": "AI 商品视觉",
+        "capability_count": 9,
+        "branch": "linkfox-parity",
+        "color": "#B8EF65"
+      },
+      {
+        "id": "04",
+        "registry_id": "image_editing",
+        "label": "修图质控",
+        "full_label": "AI 修图与质量提升",
+        "capability_count": 14,
+        "branch": "linkfox-parity",
+        "color": "#B8EF65"
+      },
+      {
+        "id": "05",
+        "registry_id": "video_and_pod",
+        "label": "视频/POD/设计",
+        "full_label": "AI 视频、POD 与设计",
+        "capability_count": 19,
+        "branch": "linkfox-parity",
+        "color": "#B8EF65"
+      },
+      {
+        "id": "06",
+        "registry_id": "batch_enterprise",
+        "label": "批量与企业",
+        "full_label": "批量生产与企业治理",
+        "capability_count": 11,
+        "branch": "russia-ozon",
+        "color": "#FFB760"
+      },
+      {
+        "id": "08",
+        "registry_id": "market_and_listing",
+        "label": "市场/Listing",
+        "full_label": "选品、市场与 Listing",
+        "capability_count": 8,
+        "branch": "russia-ozon",
+        "color": "#FFB760"
+      },
+      {
+        "id": "09",
+        "registry_id": "supply_profit_growth",
+        "label": "供应链/利润/增长",
+        "full_label": "供应链、利润与增长闭环",
+        "capability_count": 25,
+        "branch": "russia-ozon",
+        "color": "#FFB760"
+      },
+      {
+        "id": "07",
+        "registry_id": "agent_os",
+        "label": "Agent/Skills",
+        "full_label": "Agent、Skills 与 24×7 协作",
+        "capability_count": 15,
+        "branch": "global-governance",
+        "color": "#6E8CFF"
+      },
+      {
+        "id": "10",
+        "registry_id": "governance_and_global",
+        "label": "Evidence/全球",
+        "full_label": "Evidence、受控执行与全球扩展",
+        "capability_count": 19,
+        "branch": "global-governance",
+        "color": "#6E8CFF"
+      }
+    ],
+    "motion_rules": {
+      "svg-path-draw": {
+        "use_for": [
+          "root-to-branch trunks",
+          "branch-to-domain elbows",
+          "domain-to-capability stems"
+        ],
+        "implementation": "通过 getTotalLength() 设置每条 path 的 strokeDasharray/strokeDashoffset；主干使用 power2.out，叶脉使用 none；不猜测长度，不使用弹性 ease。",
+        "timing": "主干 0.48s 同时绘制；域级路径按三主枝错开 0.08s；叶脉按域波次绘制，每波不超过 0.50s。"
+      },
+      "spring-pop-entrance": {
+        "use_for": [
+          "root node",
+          "three branch nodes",
+          "ten domain nodes",
+          "capability micro-leaves"
+        ],
+        "implementation": "fromTo 明确 scale/opacity 起态；企业级默认 power3.out 长尾落位，无 back.out、无 elastic、无 bounce。微节点 scale 0.55→1，避免 143 个节点同时从零产生闪烁。",
+        "timing": "节点必须在对应路径抵达端点后 0.04–0.10s 内出现；每组总 stagger 窗口不超过 0.50s。"
+      },
+      "counting-dynamic-scale": {
+        "use_for": [
+          "root total counter 0→143",
+          "domain count badges",
+          "branch subtotals 65/44/34"
+        ],
+        "implementation": "DOM 文本通过 seek-safe onUpdate 更新；数字使用 tabular-nums；值增加时最多 scale 0.92→1.04→1，末值严格落在 143。",
+        "timing": "域徽标随本域原子点完成即锁定；总计数 5.55–6.35s 从 0 加速到 143，6.35s 后保持。"
+      },
+      "ambient-glow-bloom": {
+        "use_for": [
+          "root power-on",
+          "Russia/Ozon branch focus",
+          "final resolved tree"
+        ],
+        "implementation": "专用 halo 层置于节点后方；peak opacity 不超过 0.28；一次 bloom + 有界 hold，不使用 repeat/yoyo/CSS transition。",
+        "timing": "根节点 0.00–0.75s；Russia/Ozon 5.90–6.85s；全树 7.15–8.50s。"
+      }
+    },
+    "timeline": [
+      {
+        "id": "hook-root",
+        "start_s": 0.0,
+        "end_s": 0.55,
+        "action": "深常青背景与极淡网格已在 t=0 就位。KJDS 根节点从 0.92 scale / 0 opacity 平滑落位，背后 lime halo 同步 bloom；副标只显示 0/143。",
+        "rules": [
+          "spring-pop-entrance",
+          "ambient-glow-bloom",
+          "counting-dynamic-scale"
+        ]
+      },
+      {
+        "id": "three-trunks",
+        "start_s": 0.55,
+        "end_s": 1.35,
+        "action": "三条根主干同时从中枢向下绘制，先 lime、后 amber、再 cobalt 以 0.08s 轻微错峰；三个主枝卡在路径端点平滑落位并显示 65/44/34 个原子点。",
+        "rules": [
+          "svg-path-draw",
+          "spring-pop-entrance"
+        ]
+      },
+      {
+        "id": "domain-wave-linkfox",
+        "start_s": 1.35,
+        "end_s": 2.55,
+        "action": "LinkFox 覆盖枝展开域 01–05：路径由中心向两侧连续绘制，五个域节点按 0.07s 错峰落位。域编号、短标签与 6/6/6/6/5 徽标保持清晰。",
+        "rules": [
+          "svg-path-draw",
+          "spring-pop-entrance"
+        ]
+      },
+      {
+        "id": "domain-wave-russia",
+        "start_s": 2.35,
+        "end_s": 3.15,
+        "action": "Russia/Ozon 枝展开域 06、08、09。amber 路径先行，三张域卡落位后产生一次克制的亮度确认；不推镜，保持整棵树空间关系。",
+        "rules": [
+          "svg-path-draw",
+          "spring-pop-entrance",
+          "ambient-glow-bloom"
+        ]
+      },
+      {
+        "id": "domain-wave-global",
+        "start_s": 2.95,
+        "end_s": 3.75,
+        "action": "全球治理枝展开域 07、10，cobalt 路径与节点完成。此时 10 个域都可读，画面只改变层级完成度，不切场。",
+        "rules": [
+          "svg-path-draw",
+          "spring-pop-entrance"
+        ]
+      },
+      {
+        "id": "one-hundred-forty-three-points",
+        "start_s": 3.55,
+        "end_s": 5.55,
+        "action": "10 个域的叶脉从左到右分五个波次向下生长；143 个原子节点严格按 14/9/9/14/19/11/8/25/15/19 出现。每个微节点都连接父域，禁止自由漂浮或装饰性散点。",
+        "rules": [
+          "svg-path-draw",
+          "spring-pop-entrance",
+          "counting-dynamic-scale"
+        ]
+      },
+      {
+        "id": "proof-count",
+        "start_s": 5.55,
+        "end_s": 6.55,
+        "action": "根节点计数从当前累计值收束到 143；三主枝小计同时稳定在 65、44、34。数字放大不超过 1.04，Russia/Ozon amber halo 在总数落定时达到峰值。",
+        "rules": [
+          "counting-dynamic-scale",
+          "ambient-glow-bloom"
+        ]
+      },
+      {
+        "id": "surpass-sweep",
+        "start_s": 6.55,
+        "end_s": 7.55,
+        "action": "一条低透明度的单次光带沿三条主枝从 lime 经 amber 到 cobalt 扫过，语义是从同功能覆盖到俄罗斯经营再到全球扩展；光带被树的路径范围裁切，不在背景全屏扫动。",
+        "rules": [
+          "ambient-glow-bloom"
+        ]
+      },
+      {
+        "id": "final-lockup",
+        "start_s": 7.55,
+        "end_s": 8.5,
+        "action": "底部核心信息与 proof line 淡入，完整图谱保持静止可读。根节点显示 143 原子点，proof line 锁定 14 条价值流与 8 个经营面；Russia/Ozon 分支保留极轻 amber presence，全片不淡出。",
+        "rules": [
+          "spring-pop-entrance",
+          "ambient-glow-bloom"
+        ]
+      }
+    ],
+    "typography": {
+      "family": "Noto Sans JP",
+      "data_family": "JetBrains Mono",
+      "root_label_px": 44,
+      "branch_label_px": 28,
+      "domain_label_px": 20,
+      "count_badge_px": 18,
+      "footer_headline_px": 34,
+      "proof_line_px": 18,
+      "weights": {
+        "display": 700,
+        "body": 400,
+        "data": 700
+      },
+      "numeric_style": "font-variant-numeric: tabular-nums"
+    },
+    "render_constraints": [
+      "所有 10 个域节点必须在 1920×1080 safe area 内完整可见。",
+      "143 个原子微节点必须可数且与父域有实际 SVG edge；不能用粒子数量近似。",
+      "DOM 顺序、节点位置、stagger 和颜色全部由固定数组生成；禁止 Math.random、Date.now、网络 fetch。",
+      "所有时间动画进入一个 paused GSAP timeline，并注册到 window.__timelines 的 composition id。",
+      "不使用 CSS transition、无限 repeat、yoyo 或任何依赖墙钟的呼吸动画。",
+      "暖白正文在深常青背景上保持可读对比；accent 只作结构与状态，不承载小字号长文。",
+      "末帧 7.55–8.50s 不移动树结构，作为清晰证明帧。"
+    ],
+    "proof_times_s": [
+      0.4,
+      1.25,
+      3.7,
+      5.45,
+      6.45,
+      8.05
+    ]
+  },
+  "content": {
+    "type": "pct",
+    "data": [
+      10,
+      143,
+      14,
+      8
+    ],
+    "labels": [
+      "能力域",
+      "原子点",
+      "价值流",
+      "经营面"
+    ],
+    "headline": "KJDS AI 跨境能力树",
+    "axes": false,
+    "hierarchy_summary": {
+      "root": "KJDS AI 跨境能力中枢",
+      "branches": [
+        {
+          "label": "LinkFox 同功能覆盖",
+          "domain_ids": [
+            "01",
+            "02",
+            "03",
+            "04",
+            "05"
+          ],
+          "capability_count": 65
+        },
+        {
+          "label": "Russia / Ozon 真实运营",
+          "domain_ids": [
+            "06",
+            "08",
+            "09"
+          ],
+          "capability_count": 44
+        },
+        {
+          "label": "全球治理适配",
+          "domain_ids": [
+            "07",
+            "10"
+          ],
+          "capability_count": 34
+        }
+      ],
+      "domain_count": 10,
+      "capability_count": 143,
+      "value_stream_count": 14,
+      "operating_surface_count": 8
+    }
+  }
+}

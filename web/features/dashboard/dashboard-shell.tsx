@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LockKeyhole,
   LogOut,
+  Network,
   PackageSearch,
   RefreshCw,
   ScanSearch,
@@ -122,6 +123,10 @@ export function DashboardShell({
             <p>{current.description}</p>
           </div>
           <div className="topbar-actions">
+            <Link className="evidenceops-launch atlas-launch" href="/capability-atlas">
+              <Network size={16} />
+              AI 能力树
+            </Link>
             <Link className="evidenceops-launch" href="/evidenceops">
               <BrainCircuit size={16} />
               EvidenceOps

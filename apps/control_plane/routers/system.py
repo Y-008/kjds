@@ -117,6 +117,23 @@ def operating_analytics_snapshot(
     return run(lambda: runtime.operating_analytics.snapshot(store_ref=store_ref))
 
 
+@router.get("/v1/capability-atlas/snapshot")
+def capability_atlas_snapshot(
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(runtime.cross_border_capability_atlas.snapshot)
+
+
 @router.post("/v1/evidenceops/plan")
 def evidenceops_plan(
     body: EvidenceOpsPlanInput,
