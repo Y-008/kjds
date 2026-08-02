@@ -18,6 +18,7 @@ def test_write_path_registry_covers_policy_and_source_boundaries():
 
     assert registry.get("candidate_promote")["availability"] == "enabled"
     assert registry.get("listing_publish")["single_use_permit"] is True
+    assert registry.get("customer_service_reply_send")["availability"] == "policy_only"
     assert registry.get("sample_pay")["availability"] == "policy_only"
     validate_repository_write_paths(ROOT)
 
@@ -121,6 +122,8 @@ def _copy_validation_sources(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     for relative in (
         Path("apps/control_plane/action_policies.py"),
+        Path("apps/control_plane/ai_listing.py"),
+        Path("apps/control_plane/channel_account_governance.py"),
         Path("apps/control_plane/execution_plans.py"),
         Path("apps/control_plane/image_execution.py"),
         Path("apps/control_plane/intelligence.py"),
@@ -128,10 +131,14 @@ def _copy_validation_sources(tmp_path: Path) -> Path:
         Path("apps/control_plane/ozon_read_worker.py"),
         Path("apps/control_plane/ozon_worker.py"),
         Path("apps/control_plane/providers.py"),
+        Path("apps/control_plane/profit_erp_sync.py"),
         Path("apps/control_plane/repository.py"),
         Path("apps/control_plane/routers/execution_operations.py"),
+        Path("apps/control_plane/routers/ai_listing.py"),
+        Path("apps/control_plane/routers/channel_accounts.py"),
         Path("apps/control_plane/routers/ozon_platform.py"),
         Path("apps/control_plane/routers/product_content.py"),
+        Path("apps/control_plane/routers/erp_integration.py"),
         Path("apps/control_plane/sourcing.py"),
         Path("apps/control_plane/sourcing_store.py"),
         Path("docs/project/registries/action_policy_registry.json"),

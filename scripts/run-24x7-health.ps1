@@ -79,13 +79,13 @@ function Test-MonitorIdentityConfiguration {
         [string[]]$DisallowedKeys = @()
     )
     if (-not $ApiKey) {
-        return [ordered]@{ ok = $false; error = "KJDS_MONITOR_API_KEY is not configured" }
+        return [ordered]@{ ok = $false; actor = $null; error = "KJDS_MONITOR_API_KEY is not configured" }
     }
     if ($DisallowedKeys | Where-Object { $_ -and $_ -ceq $ApiKey }) {
-        return [ordered]@{ ok = $false; error = "Monitor credential must not reuse another runtime credential" }
+        return [ordered]@{ ok = $false; actor = $null; error = "Monitor credential must not reuse another runtime credential" }
     }
     if (-not $CredentialJson) {
-        return [ordered]@{ ok = $false; error = "KJDS_API_KEYS_JSON is required for monitor identity validation" }
+        return [ordered]@{ ok = $false; actor = $null; error = "KJDS_API_KEYS_JSON is required for monitor identity validation" }
     }
     try {
         $mapping = $CredentialJson | ConvertFrom-Json
@@ -95,12 +95,12 @@ function Test-MonitorIdentityConfiguration {
         }
         $roles = @($property.Value.roles)
         if (-not $property.Value.actor -or $roles.Count -ne 1 -or $roles[0] -cne "monitor") {
-            return [ordered]@{ ok = $false; error = "Monitor credential must map to exactly the monitor role" }
+            return [ordered]@{ ok = $false; actor = $null; error = "Monitor credential must map to exactly the monitor role" }
         }
-        return [ordered]@{ ok = $true; error = $null }
+        return [ordered]@{ ok = $true; actor = [string]$property.Value.actor; error = $null }
     }
     catch {
-        return [ordered]@{ ok = $false; error = "KJDS_API_KEYS_JSON is not valid JSON" }
+        return [ordered]@{ ok = $false; actor = $null; error = "KJDS_API_KEYS_JSON is not valid JSON" }
     }
 }
 
@@ -219,6 +219,99 @@ function Invoke-EvidenceIntegritySweep {
     }
 }
 
+function Invoke-AgentGateObservation {
+    param(
+        [Parameter(Mandatory = $true)][string]$BaseUrl,
+        [string]$ApiKey,
+        [string]$MonitorActorId
+    )
+    if (-not $ApiKey) {
+        return [ordered]@{
+            ok = $false
+            skipped = $true
+            error = "skipped: KJDS_MONITOR_API_KEY is not configured"
+            project_id = "kjds-059-bas123"
+            database_revision = $null
+            observation_bucket = $null
+            operating_subject_actor_id = $null
+            subject_binding_sha256 = $null
+            result_sha256 = $null
+            states = $null
+            counts = $null
+        }
+    }
+    $uri = (
+        "$BaseUrl/v1/agent-control/projects/" +
+        "kjds-059-bas123/observe?store_ref=ozon-primary"
+    )
+    $call = Invoke-JsonEndpoint -Uri $uri -Method POST -Headers @{
+        "X-KJDS-API-Key" = $ApiKey
+    }
+    if (-not $call.ok) {
+        return [ordered]@{
+            ok = $false
+            skipped = $false
+            error = $call.error
+            project_id = "kjds-059-bas123"
+            database_revision = $null
+            observation_bucket = $null
+            operating_subject_actor_id = $null
+            subject_binding_sha256 = $null
+            result_sha256 = $null
+            states = $null
+            counts = $null
+        }
+    }
+    $data = $call.data
+    $stateValues = @(
+        $data.states.operating_subject,
+        $data.states.scope_authority,
+        $data.states.m0,
+        $data.states.m1,
+        $data.states.m2,
+        $data.states.m3,
+        $data.states.m4
+    )
+    $allowedStates = @("passed", "blocked", "no_data")
+    $revisionMatch = [regex]::Match(
+        [string]$data.database_revision,
+        "^\d{8}_(\d{4})$"
+    )
+    $revisionValid = (
+        $revisionMatch.Success -and
+        [int]$revisionMatch.Groups[1].Value -ge 70
+    )
+    $valid =
+        $data.contract_id -eq "kjds-operating-gate-observer-v1" -and
+        $data.project_id -eq "kjds-059-bas123" -and
+        $revisionValid -and
+        $data.observation_bucket -and
+        $data.operating_subject_actor_id -and
+        $data.operating_subject_actor_id -cne $MonitorActorId -and
+        $data.subject_binding_sha256 -match "^[0-9a-f]{64}$" -and
+        $data.result_sha256 -match "^[0-9a-f]{64}$" -and
+        $data.external_write_allowed -eq $false -and
+        $data.model_self_certification_allowed -eq $false -and
+        $data.counts.tasks -ge 6 -and
+        $data.counts.observations -ge 6 -and
+        $data.counts.nodes -ge 6 -and
+        $stateValues.Count -eq 7 -and
+        -not ($stateValues | Where-Object { $_ -notin $allowedStates })
+    return [ordered]@{
+        ok = $valid
+        skipped = $false
+        error = $(if ($valid) { $null } else { "Agent Gate observation contract failed closed" })
+        project_id = $data.project_id
+        database_revision = $data.database_revision
+        observation_bucket = $data.observation_bucket
+        operating_subject_actor_id = $data.operating_subject_actor_id
+        subject_binding_sha256 = $data.subject_binding_sha256
+        result_sha256 = $data.result_sha256
+        states = $data.states
+        counts = $data.counts
+    }
+}
+
 $snapshotScript = "D:\AI\Apps\OpenClaw\workspace-chief\scripts\save-openclaw-health-snapshot.ps1"
 $radarHealth = "D:\KJDS\kjds\.runtime\authority-radar\authority-radar-health.json"
 $collectorTask = "KJDS-Authority-Radar"
@@ -304,6 +397,26 @@ $integrity = if (-not $monitorIdentity.ok) {
         -PageSize $integrityPageSizeSetting.value `
         -MaxPages $integrityMaxPagesSetting.value
 }
+$agentGateObservation = if (-not $monitorIdentity.ok) {
+    [ordered]@{
+        ok = $false
+        skipped = $true
+        error = $monitorIdentity.error
+        project_id = "kjds-059-bas123"
+        database_revision = $null
+        observation_bucket = $null
+        operating_subject_actor_id = $null
+        subject_binding_sha256 = $null
+        result_sha256 = $null
+        states = $null
+        counts = $null
+    }
+} else {
+    Invoke-AgentGateObservation `
+        -BaseUrl $controlPlaneUrl `
+        -ApiKey $monitorApiKey `
+        -MonitorActorId $monitorIdentity.actor
+}
 
 $skippedDependency = [ordered]@{ ok = $true; status = $null; error = $null; skipped = $true }
 
@@ -316,6 +429,7 @@ $result = [ordered]@{
     control_plane = $controlPlane
     operations_readiness = $readiness
     evidence_integrity = $integrity
+    agent_gate_observation = $agentGateObservation
     authority_radar = [ordered]@{
         health_file = $radarHealth
         age_minutes = $radarAgeMinutes
@@ -332,7 +446,8 @@ $failed =
     ($requiredControlPlane -and (
         -not $result.control_plane.ok -or
         -not $result.operations_readiness.ok -or
-        -not $result.evidence_integrity.ok
+        -not $result.evidence_integrity.ok -or
+        -not $result.agent_gate_observation.ok
     ))
 if ($failed) { exit 2 }
 exit 0

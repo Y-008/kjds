@@ -1,10 +1,14 @@
 import base64
 import hashlib
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 
+from apps.control_plane.intelligence_ingestion import (
+    IntelligenceSourceAdapterRegistry,
+)
 from apps.control_plane.marketplace_catalog import (
     EXTERNAL_MEDIA_RIGHTS_STATUS,
     InMemoryMarketplaceCatalogStore,
@@ -12,6 +16,7 @@ from apps.control_plane.marketplace_catalog import (
     parse_ozon_product_bundle,
 )
 from apps.control_plane.repository import InMemoryRepository
+from apps.control_plane.security import Principal
 
 
 def response(path, body):
@@ -120,6 +125,44 @@ def workspace(*, bundles):
     )
 
 
+def native_authorities(
+    *,
+    tenant_ref: str = "tenant-a",
+    entity_ref: str = "entity-a",
+    grant_hash: str = "a" * 64,
+    evidence_hash: str = "b" * 64,
+) -> tuple[dict, dict]:
+    cutoff = datetime(2026, 7, 28, 5, tzinfo=UTC)
+    principal = Principal(
+        actor_id="operator-a",
+        roles=frozenset({"operator"}),
+        tenant_ref=tenant_ref,
+        store_refs=frozenset({"store-main"}),
+    )
+    entity_scope = {
+        "status": "ready",
+        "entity_ref": entity_ref,
+        "authority_sha256": grant_hash,
+    }
+    contract = IntelligenceSourceAdapterRegistry().catalog_contract(
+        principal=principal,
+        entity_scope=entity_scope,
+        store_ref="store-main",
+        as_of=cutoff,
+    )
+    return (
+        {
+            "tenant_ref": tenant_ref,
+            "entity_ref": entity_ref,
+            "store_ref": "store-main",
+            "scope_grant_authority_sha256": grant_hash,
+            "scope_evidence_authority_sha256": evidence_hash,
+            "scope_as_of": cutoff.isoformat(),
+        },
+        contract,
+    )
+
+
 def test_verified_ozon_bundle_normalizes_catalog_and_media_references():
     item = parse_ozon_product_bundle(
         product_bundle(),
@@ -195,6 +238,112 @@ def test_catalog_workspace_rejects_idempotency_conflict():
             idempotency_key="same-key",
             imported_by="operator-1",
         )
+
+
+def test_native_catalog_import_freezes_scope_adapter_and_scoped_replay():
+    catalog, _ = workspace(
+        bundles={
+            "evd-1": product_bundle(price="1299.00"),
+            "evd-2": product_bundle(price="1199.00"),
+        }
+    )
+    scope_a, contract_a = native_authorities()
+    scope_b, contract_b = native_authorities(
+        tenant_ref="tenant-b",
+        entity_ref="entity-b",
+        grant_hash="c" * 64,
+        evidence_hash="d" * 64,
+    )
+
+    created = catalog.import_ozon_evidence(
+        evidence_ids=["evd-1"],
+        store_ref="store-main",
+        idempotency_key="native-key",
+        imported_by="operator-a",
+        scope_authority=scope_a,
+        source_contract=contract_a,
+    )
+    replay = catalog.import_ozon_evidence(
+        evidence_ids=["evd-1"],
+        store_ref="store-main",
+        idempotency_key="native-key",
+        imported_by="operator-a",
+        scope_authority=scope_a,
+        source_contract=contract_a,
+    )
+    other_scope = catalog.import_ozon_evidence(
+        evidence_ids=["evd-2"],
+        store_ref="store-main",
+        idempotency_key="native-key",
+        imported_by="operator-b",
+        scope_authority=scope_b,
+        source_contract=contract_b,
+    )
+
+    assert replay["id"] == created["id"]
+    assert other_scope["id"] != created["id"]
+    assert created["scope"]["status"] == "frozen"
+    assert created["scope"]["tenant_ref"] == "tenant-a"
+    assert created["scope"]["entity_ref"] == "entity-a"
+    assert created["source_adapter"]["adapter_id"] == (
+        "ozon-seller-api-product-read-v1"
+    )
+    assert created["source_adapter"]["source_grade"] == "A"
+    assert created["source_adapter"]["semantic_authority"] == (
+        "own_listing_catalog_fact"
+    )
+    assert created["external_write_allowed"] is False
+    tenant_a_items = catalog.latest_items(
+        store_ref="store-main",
+        tenant_ref="tenant-a",
+        entity_ref="entity-a",
+    )
+    assert tenant_a_items[0]["prices"]["price"] == "1299.00"
+    assert tenant_a_items[0]["tenant_ref"] == "tenant-a"
+    assert tenant_a_items[0]["snapshot_evidence_ids"] == ["evd-1"]
+
+    with pytest.raises(ValueError, match="idempotency conflict"):
+        catalog.import_ozon_evidence(
+            evidence_ids=["evd-2"],
+            store_ref="store-main",
+            idempotency_key="native-key",
+            imported_by="operator-a",
+            scope_authority=scope_a,
+            source_contract=contract_a,
+        )
+
+
+def test_native_catalog_import_rejects_scope_or_adapter_drift_before_write():
+    catalog, _ = workspace(bundles={"evd-1": product_bundle()})
+    scope, contract = native_authorities()
+    changed_scope = {**scope, "scope_evidence_authority_sha256": "0" * 63}
+
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        catalog.import_ozon_evidence(
+            evidence_ids=["evd-1"],
+            store_ref="store-main",
+            idempotency_key="bad-scope",
+            imported_by="operator-a",
+            scope_authority=changed_scope,
+            source_contract=contract,
+        )
+    changed_contract = {
+        **contract,
+        "adapter": {
+            **contract["adapter"],
+            "semantic_authority": "supplier_offer",
+        },
+    }
+    with pytest.raises(ValueError, match="not admitted"):
+        catalog.import_ozon_evidence(
+            evidence_ids=["evd-1"],
+            store_ref="store-main",
+            idempotency_key="bad-adapter",
+            imported_by="operator-a",
+            scope_authority=scope,
+            source_contract=changed_contract,
+        )
+    assert catalog.store.snapshots == {}
 
 
 def test_existing_listing_binding_creates_active_product_without_candidate_promotion():

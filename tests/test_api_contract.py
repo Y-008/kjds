@@ -24,6 +24,9 @@ from apps.control_plane.domain import ChargeType
 from apps.control_plane.finance import FeeSignRule
 from apps.control_plane.imports import ImportPreview
 from apps.control_plane.routers.evidence_governance import capture_evidence
+from apps.control_plane.routers.seller_erp_bridge import (
+    submit_seller_erp_bridge_source,
+)
 from apps.control_plane.security import Principal
 
 
@@ -70,6 +73,75 @@ def test_generic_evidence_upload_rejects_reserved_execution_source() -> None:
         )
     assert error.value.status_code == 422
     assert "dedicated workflow" in str(error.value.detail)
+
+
+def test_generic_evidence_upload_rejects_reserved_seller_erp_source() -> None:
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            capture_evidence(
+                file=UploadFile(
+                    file=io.BytesIO(b"untrusted"),
+                    filename="seller-export.csv",
+                ),
+                source="seller_erp_bridge_source",
+                source_ref="forged://source",
+                grade=api_module.EvidenceGrade.A,
+                effective_at="2026-07-29T00:00:00Z",
+                principal=Principal(
+                    "operator-1", frozenset({"operator"})
+                ),
+            )
+        )
+    assert error.value.status_code == 422
+    assert "dedicated workflow" in str(error.value.detail)
+
+
+def test_seller_erp_upload_checks_entity_before_reading_file(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    class NeverReadUpload:
+        filename = "seller-export.csv"
+        content_type = "text/csv"
+
+        async def read(self, _size):
+            raise AssertionError("file must not be read without entity scope")
+
+    principal = Principal(
+        actor_id="bridge-upload-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            submit_seller_erp_bridge_source(
+                file=NeverReadUpload(),
+                provider="dianxiaomi",
+                source_kind="seller_erp_formal_export",
+                domain="catalog",
+                schema_version="seller-erp-bridge-catalog-v1",
+                column_map_json="{}",
+                exported_at="2026-07-29T00:00:00Z",
+                authorization_mode="account_owner_export",
+                idempotency_key="never-read",
+                principal=principal,
+                store_ref="store-cn-1",
+            )
+        )
+    assert error.value.status_code == 422
+    assert "before reading" in str(error.value.detail)
 
 
 def test_openapi_declares_api_key_security_for_protected_operations() -> None:
@@ -132,11 +204,410 @@ def test_operating_intelligence_named_aliases_share_endpoints_and_require_authen
     )
 
 
-def test_marketplace_observation_and_portfolio_pilot_contracts_are_protected() -> None:
+def test_operating_tasks_and_queue_require_exact_authenticated_store_scope(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="operator-scope-test",
+        roles=frozenset({"operator", "monitor"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+    headers = {"X-KJDS-API-Key": "test-key"}
+
+    tasks = client.get(
+        "/v1/operating-tasks?store_ref=store-cn-1",
+        headers=headers,
+    )
+    queue = client.get(
+        "/v1/operations-control/queue?store_ref=store-cn-1",
+        headers=headers,
+    )
+    task_forbidden = client.get(
+        "/v1/operating-tasks?store_ref=other-store",
+        headers=headers,
+    )
+    queue_forbidden = client.get(
+        "/v1/operations-control/queue?store_ref=other-store",
+        headers=headers,
+    )
+
+    assert tasks.status_code == 200
+    assert tasks.json() == []
+    assert queue.status_code == 200
+    assert queue.json()["status"] == "no_data"
+    assert queue.json()["items"] == []
+    assert queue.json()["external_write_allowed"] is False
+    assert task_forbidden.status_code == 403
+    assert queue_forbidden.status_code == 403
+
+
+def test_operations_queue_endpoints_require_authentication(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+    from apps.control_plane.security import AuthenticationFailure
+
+    def reject_missing_key(_key):
+        raise AuthenticationFailure("X-KJDS-API-Key is required", 401)
+
+    monkeypatch.setattr(runtime.authenticator, "authenticate", reject_missing_key)
+    client = TestClient(app)
+
+    assert client.get("/v1/operations-control/queue").status_code == 401
+    assert (
+        client.post(
+            "/v1/operations-control/escalation-scan",
+            json={"store_ref": "ozon-primary"},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.get("/v1/operations-control/escalations").status_code
+        == 401
+    )
+
+
+def test_missing_entity_read_workspaces_do_not_call_legacy_global_sources(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="operator-scope-test",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+
+    def fail_legacy_read(*_args, **_kwargs):
+        raise AssertionError("legacy global source must not be read")
+
+    monkeypatch.setattr(
+        runtime.operating_workbench.readiness,
+        "report",
+        fail_legacy_read,
+    )
+    monkeypatch.setattr(
+        runtime.operating_workbench.automation,
+        "list_recommendations",
+        fail_legacy_read,
+    )
+    monkeypatch.setattr(
+        runtime.operating_analytics.marketplace_catalog,
+        "latest_items",
+        fail_legacy_read,
+    )
+    monkeypatch.setattr(
+        runtime.operating_analytics.finance,
+        "list_entries",
+        fail_legacy_read,
+    )
+    monkeypatch.setattr(
+        runtime.batch_opportunity,
+        "latest",
+        fail_legacy_read,
+    )
+    monkeypatch.setattr(
+        runtime.profit_erp_sync,
+        "workspace",
+        fail_legacy_read,
+    )
+    monkeypatch.setattr(
+        runtime.media_workbench,
+        "snapshot",
+        fail_legacy_read,
+    )
+    client = TestClient(app)
+    headers = {"X-KJDS-API-Key": "test-key"}
+
+    workbench = client.get(
+        "/v1/operating-workbench/briefing?store_ref=store-cn-1"
+        "&as_of=2026-07-28T01%3A00%3A00Z",
+        headers=headers,
+    )
+    analytics = client.get(
+        "/v1/operating-analytics/snapshot?store_ref=store-cn-1"
+        "&as_of=2026-07-28T01%3A00%3A00Z",
+        headers=headers,
+    )
+    workspace = client.get(
+        "/v1/operating-workspaces/points/market_signal_inbox"
+        "?store_ref=store-cn-1"
+        "&as_of=2026-07-28T01%3A00%3A00Z",
+        headers=headers,
+    )
+    evidenceops = client.post(
+        "/v1/evidenceops/plan",
+        headers=headers,
+        json={
+            "objective": "分析利润证据缺口",
+            "store_ref": "store-cn-1",
+        },
+    )
+    commerce = client.get(
+        "/v1/commerce-os/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-28T01%3A00%3A00Z",
+        headers=headers,
+    )
+
+    assert workbench.status_code == 200
+    assert workbench.json()["status"] == "no_data"
+    assert analytics.status_code == 200
+    assert analytics.json()["status"] == "no_data"
+    assert analytics.json()["summary"]["catalog_items"] == 0
+    assert workspace.status_code == 200
+    assert workspace.json()["control_envelope"][
+        "external_write_allowed"
+    ] is False
+    assert evidenceops.status_code == 200
+    assert evidenceops.json()["control_envelope"][
+        "external_write_allowed"
+    ] is False
+    assert commerce.status_code == 200
+    assert commerce.json()["status"] == "no_data"
+    assert commerce.json()["outcome"]["observed_listings"] == 0
+
+
+def test_anomaly_scan_uses_current_grant_not_historical_cutoff(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="operator-scope-test",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    scope_calls = []
+
+    def scope_at(**values):
+        scope_calls.append(values["as_of"])
+        is_historical = (
+            values["as_of"].isoformat()
+            == "2026-01-01T00:00:00+00:00"
+        )
+        return {
+            "status": "ready" if not is_historical else "no_data",
+            "entity_ref": None if is_historical else "entity-cn-1",
+            "authority": None,
+            "authority_sha256": None if is_historical else "a" * 64,
+            "reason": (
+                "entity_scope_authority_missing"
+                if is_historical
+                else "entity_scope_ready"
+            ),
+        }
+
+    captured = {}
+
+    def scan(**values):
+        captured.update(values)
+        return {
+            "id": None,
+            "status": "no_data",
+            "persisted": False,
+            "external_write_allowed": False,
+        }
+
+    monkeypatch.setattr(runtime.scope_grants, "current", scope_at)
+    monkeypatch.setattr(runtime.operating_intelligence, "scan", scan)
+    response = TestClient(app).post(
+        "/v1/operating-intelligence/anomaly-scans",
+        headers={"X-KJDS-API-Key": "test-key"},
+        json={
+            "store_ref": "store-cn-1",
+            "as_of": "2026-01-01T00:00:00Z",
+        },
+    )
+
+    assert response.status_code == 201
+    assert len(scope_calls) == 2
+    assert captured["as_of"] == "2026-01-01T00:00:00+00:00"
+    assert captured["entity_scope"]["status"] == "ready"
+    assert captured["entity_scope"]["entity_ref"] == "entity-cn-1"
+
+
+def test_profit_ledger_requires_store_scope_and_does_not_read_raw_without_entity(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+    from apps.control_plane.security import AuthenticationFailure
+
+    principal = Principal(
+        actor_id="operator-scope-test",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    def authenticate(key):
+        if not key:
+            raise AuthenticationFailure(
+                "X-KJDS-API-Key is required",
+                401,
+            )
+        return principal
+
+    monkeypatch.setattr(runtime.authenticator, "authenticate", authenticate)
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+
+    def fail_raw_read(**_values):
+        raise AssertionError("raw ledger must not be read without entity scope")
+
+    monkeypatch.setattr(
+        runtime.profit_ledger.finance,
+        "read_scoped_sources",
+        fail_raw_read,
+    )
+    monkeypatch.setattr(
+        runtime.profit_ledger.finance,
+        "read_scoped_profit_authorities",
+        fail_raw_read,
+    )
+    monkeypatch.setattr(
+        runtime.profit_ledger,
+        "_read_products",
+        fail_raw_read,
+    )
+    client = TestClient(app)
+
+    anonymous = client.get(
+        "/v1/profit-ledger?store_ref=store-cn-1"
+    )
+    response = client.get(
+        "/v1/profit-ledger?store_ref=store-cn-1"
+        "&as_of=2026-07-27T02%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/profit-ledger?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert anonymous.status_code == 401
+    assert response.status_code == 200
+    assert response.json()["status"] == "no_data"
+    assert response.json()["rows"] == []
+    assert response.json()["source_snapshot_sha256"] is None
+    assert (
+        response.json()["control_envelope"]["scoped_input_read"]
+        is False
+    )
+    assert forbidden.status_code == 403
+    parameters = {
+        item["name"]
+        for item in app.openapi()["paths"]["/v1/profit-ledger"]["get"][
+            "parameters"
+        ]
+    }
+    assert {
+        "as_of",
+        "query",
+        "page_size",
+        "cursor",
+    } <= parameters
+    assert app.openapi()["paths"]["/v1/profit-ledger"]["get"][
+        "security"
+    ] == [{"KjdsApiKey": []}]
+
+
+def test_marketplace_observation_and_portfolio_pilot_contracts_are_protected(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+    from apps.control_plane.security import AuthenticationFailure
+
     schema = app.openapi()
     for path, methods in (
         ("/v1/marketplace-observations", {"get", "post"}),
         ("/v1/portfolio-pilot/prepare", {"post"}),
+        ("/v1/batch-market-scans", {"post"}),
+        ("/v1/batch-opportunities/latest", {"get"}),
+        ("/v1/ozon-global-rules", {"get"}),
+        ("/v1/ozon-global-rules/evaluate", {"post"}),
+        ("/v1/seller-os/strategy-packs", {"get"}),
+        ("/v1/seller-os/evaluate", {"post"}),
+        ("/v1/erp/profit-items", {"get"}),
+        ("/v1/erp/profit-items/syncs", {"post"}),
+        ("/v1/erp/profit-items/syncs/{sync_id}/dispatch", {"post"}),
+        ("/v1/oms/workspace", {"get"}),
+        ("/v1/inventory/workspace", {"get"}),
+        ("/v1/pim/workspace", {"get"}),
+        ("/v1/listing-lifecycle/workspace", {"get"}),
+        ("/v1/media-factory/workspace", {"get"}),
+        ("/v1/media/workbench", {"get"}),
+        ("/v1/finance-control/workspace", {"get"}),
+        ("/v1/procurement/workspace", {"get"}),
+        ("/v1/accounts-payable/workspace", {"get"}),
+        ("/v1/returns/workspace", {"get"}),
+        ("/v1/customer-service/workspace", {"get"}),
+        ("/v1/customer-service/cases", {"post"}),
+        (
+            "/v1/customer-service/cases/{case_id}/events",
+            {"post"},
+        ),
+        ("/v1/accounts-payable/invoices", {"post"}),
+        (
+            "/v1/accounts-payable/invoices/{invoice_id}/authority-review",
+            {"post"},
+        ),
+        ("/v1/sourcing-intelligence/workspace", {"get"}),
+        ("/v1/seller-erp-bridge/sources", {"post"}),
+        ("/v1/seller-erp-bridge/reviews", {"post"}),
+        ("/v1/seller-erp-bridge/bindings", {"post"}),
+        ("/v1/seller-erp-bridge/revocations", {"post"}),
+        ("/v1/seller-erp-bridge/reconcile", {"get"}),
     ):
         assert set(schema["paths"][path]) == methods
         for method in methods:
@@ -150,12 +621,747 @@ def test_marketplace_observation_and_portfolio_pilot_contracts_are_protected() -
         "MarketplaceObservationItemInput"
     ]
     pilot = schema["components"]["schemas"]["PortfolioPilotPrepareInput"]
+    batch = schema["components"]["schemas"]["BatchOpportunityPrepareInput"]
+    ozon_rules = schema["components"]["schemas"][
+        "OzonGlobalRuleEvaluationInput"
+    ]
+    seller_os = schema["components"]["schemas"][
+        "SellerOperatingSystemInput"
+    ]
     assert capture["additionalProperties"] is False
     assert item["additionalProperties"] is False
     assert pilot["additionalProperties"] is False
+    assert batch["additionalProperties"] is False
+    assert ozon_rules["additionalProperties"] is False
+    assert seller_os["additionalProperties"] is False
+    assert "observed_checkout_price" in item["properties"]["price_kind"][
+        "enum"
+    ]
+    assert "public_search_index_observation" in capture["properties"][
+        "source_profile"
+    ]["enum"]
+    assert set(batch["required"]) == {"idempotency_key"}
     assert "confirmed" in capture["required"]
     assert "displayed_price" in item["required"]
     assert "target_specification" in pilot["required"]
+
+    def reject_missing_key(_key):
+        raise AuthenticationFailure("X-KJDS-API-Key is required", 401)
+
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        reject_missing_key,
+    )
+    client = TestClient(app)
+    assert (
+        client.get(
+            "/v1/batch-opportunities/latest?store_ref=ozon-primary"
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/v1/batch-market-scans",
+            json={"idempotency_key": "anonymous-batch"},
+        ).status_code
+        == 401
+    )
+    assert client.get("/v1/ozon-global-rules").status_code == 401
+    assert (
+        client.post(
+            "/v1/ozon-global-rules/evaluate",
+            json={"sku_ref": "anonymous"},
+        ).status_code
+        == 401
+    )
+    assert client.get("/v1/seller-os/strategy-packs").status_code == 401
+    assert client.get("/v1/erp/profit-items").status_code == 401
+    assert client.get("/v1/oms/workspace").status_code == 401
+    assert client.get("/v1/inventory/workspace").status_code == 401
+    assert client.get("/v1/pim/workspace").status_code == 401
+    assert client.get("/v1/listing-lifecycle/workspace").status_code == 401
+    assert client.get("/v1/media-factory/workspace").status_code == 401
+    assert client.get("/v1/media/workbench").status_code == 401
+    assert client.get("/v1/finance-control/workspace").status_code == 401
+    assert client.get("/v1/procurement/workspace").status_code == 401
+    assert client.get("/v1/accounts-payable/workspace").status_code == 401
+    assert client.get("/v1/returns/workspace").status_code == 401
+    assert client.get("/v1/customer-service/workspace").status_code == 401
+    assert client.post("/v1/customer-service/cases", json={}).status_code == 401
+    assert (
+        client.get("/v1/sourcing-intelligence/workspace").status_code
+        == 401
+    )
+    assert client.get("/v1/seller-erp-bridge/reconcile").status_code == 401
+    assert (
+        client.post(
+            "/v1/seller-erp-bridge/reviews",
+            json={},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/v1/seller-os/evaluate",
+            json={"seller_facts": {"shops": 1}},
+        ).status_code
+        == 401
+    )
+
+
+def test_oms_workspace_enforces_store_scope_and_keeps_missing_entity_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="oms-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/oms/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/oms/workspace?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "no_data"
+    assert response.json()["scope"]["entity_ref"] is None
+    assert response.json()["control_envelope"]["scoped_input_read"] is False
+    assert response.json()["control_envelope"]["external_write_allowed"] is False
+    assert forbidden.status_code == 403
+
+
+def test_inventory_workspace_enforces_scope_and_reports_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="inventory-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/inventory/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/inventory/workspace?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["legacy_inventory_rows_read"] == 0
+    assert payload["counts"]["marketplace_observations_inferred"] == 0
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert forbidden.status_code == 403
+
+
+def test_finance_control_enforces_scope_and_reports_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="finance-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/finance-control/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/finance-control/workspace?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total_cycles"] == 0
+    assert payload["cycles"] == []
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["control_envelope"]["finance_entry_created"] is False
+    assert payload["control_envelope"]["reconciliation_created"] is False
+    assert payload["control_envelope"]["payment_initiated"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert (
+        payload["agent_artifact"]["self_approval_allowed"] is False
+    )
+    assert (
+        payload["agent_artifact"]["permit_issue_allowed"] is False
+    )
+    assert forbidden.status_code == 403
+
+
+def test_procurement_workspace_enforces_scope_and_reports_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="procurement-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/procurement/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/procurement/workspace?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total"] == 0
+    assert payload["orders"] == []
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["control_envelope"]["purchase_order_created"] is False
+    assert payload["control_envelope"]["receipt_confirmed"] is False
+    assert payload["control_envelope"]["payment_initiated"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert (
+        payload["agent_artifact"]["self_approval_allowed"] is False
+    )
+    assert (
+        payload["agent_artifact"]["permit_issue_allowed"] is False
+    )
+    assert forbidden.status_code == 403
+
+
+def test_accounts_payable_workspace_enforces_scope_and_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="accounts-payable-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+    headers = {"X-KJDS-API-Key": "test-key"}
+
+    response = client.get(
+        "/v1/accounts-payable/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers=headers,
+    )
+    forbidden = client.get(
+        "/v1/accounts-payable/workspace?store_ref=other-store",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total"] == 0
+    assert payload["invoices"] == []
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["control_envelope"]["invoice_created"] is False
+    assert payload["control_envelope"]["payment_initiated"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert payload["control_envelope"]["private_erp_interface_allowed"] is False
+    assert payload["agent_artifact"]["self_approval_allowed"] is False
+    assert payload["agent_artifact"]["permit_issue_allowed"] is False
+    assert forbidden.status_code == 403
+
+
+def test_returns_workspace_enforces_scope_and_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="returns-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+    headers = {"X-KJDS-API-Key": "test-key"}
+
+    response = client.get(
+        "/v1/returns/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers=headers,
+    )
+    forbidden = client.get(
+        "/v1/returns/workspace?store_ref=other-store",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total_returns"] == 0
+    assert payload["returns"] == []
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["control_envelope"]["return_fact_created"] is False
+    assert payload["control_envelope"]["refund_created"] is False
+    assert payload["control_envelope"]["customer_message_sent"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert (
+        payload["control_envelope"]["private_erp_interface_allowed"]
+        is False
+    )
+    assert payload["agent_artifact"]["self_approval_allowed"] is False
+    assert payload["agent_artifact"]["permit_issue_allowed"] is False
+    assert forbidden.status_code == 403
+
+
+def test_customer_service_workspace_enforces_scope_privacy_and_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="customer-service-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+    headers = {"X-KJDS-API-Key": "test-key"}
+
+    response = client.get(
+        "/v1/customer-service/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers=headers,
+    )
+    forbidden = client.get(
+        "/v1/customer-service/workspace?store_ref=other-store",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total_cases"] == 0
+    assert payload["cases"] == []
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["privacy_envelope"]["raw_message_body_exposed"] is False
+    assert payload["privacy_envelope"]["customer_email_exposed"] is False
+    assert payload["control_envelope"]["message_marked_sent"] is False
+    assert payload["control_envelope"]["message_adapter_enabled"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert (
+        payload["control_envelope"]["private_erp_interface_allowed"]
+        is False
+    )
+    assert payload["agent_artifact"]["raw_pii_read_allowed"] is False
+    assert payload["agent_artifact"]["self_approval_allowed"] is False
+    assert payload["agent_artifact"]["permit_issue_allowed"] is False
+    assert forbidden.status_code == 403
+    schema = app.openapi()["components"]["schemas"]
+    for name in ("CustomerServiceCaseInput", "CustomerServiceEventInput"):
+        properties = schema[name]["properties"]
+        for forbidden_field in (
+            "raw_message_body",
+            "customer_name",
+            "customer_address",
+            "customer_phone",
+            "customer_email",
+            "platform_handle",
+            "cookie",
+            "token",
+        ):
+            assert forbidden_field not in properties
+
+
+def test_pim_workspace_enforces_scope_and_reports_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="pim-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/pim/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/pim/workspace?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total_product_groups"] == 0
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert forbidden.status_code == 403
+
+
+def test_listing_lifecycle_enforces_scope_and_reports_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="listing-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/listing-lifecycle/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/listing-lifecycle/workspace?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total"] == 0
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["control_envelope"]["permit_created"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert forbidden.status_code == 403
+
+
+def test_media_factory_enforces_scope_and_reports_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="media-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/media-factory/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    legacy = client.get(
+        "/v1/media/workbench?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/media-factory/workspace?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == legacy.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total_product_groups"] == 0
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["control_envelope"]["asset_created"] is False
+    assert payload["control_envelope"]["job_created"] is False
+    assert payload["control_envelope"]["manifest_created"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert forbidden.status_code == 403
+
+
+def test_sourcing_intelligence_enforces_scope_and_reports_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="sourcing-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/sourcing-intelligence/workspace?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/sourcing-intelligence/workspace?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total_work_items"] == 0
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["control_envelope"]["supplier_contacted"] is False
+    assert payload["control_envelope"]["rfq_dispatched"] is False
+    assert payload["control_envelope"]["purchase_order_created"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert forbidden.status_code == 403
+
+
+def test_seller_erp_bridge_enforces_scope_and_reports_true_no_data(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="bridge-operator",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-cn-1",
+        store_refs=frozenset({"store-cn-1"}),
+    )
+    monkeypatch.setattr(
+        runtime.authenticator,
+        "authenticate",
+        lambda _key: principal,
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+            "reason": "entity_scope_authority_missing",
+        },
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/v1/seller-erp-bridge/reconcile?store_ref=store-cn-1"
+        "&as_of=2026-07-29T01%3A00%3A00Z",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+    forbidden = client.get(
+        "/v1/seller-erp-bridge/reconcile?store_ref=other-store",
+        headers={"X-KJDS-API-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "no_data"
+    assert payload["scope"]["entity_ref"] is None
+    assert payload["counts"]["total_diff_items"] == 0
+    assert payload["control_envelope"]["scoped_input_read"] is False
+    assert payload["control_envelope"]["formal_fact_promoted"] is False
+    assert payload["control_envelope"]["private_interface_used"] is False
+    assert payload["control_envelope"]["external_write_allowed"] is False
+    assert forbidden.status_code == 403
 
 
 def test_execution_checkpoint_contract_is_closed_and_protected() -> None:
@@ -187,6 +1393,20 @@ def test_approved_listing_execution_plan_contract_is_narrow_and_uses_principal(m
         api_module.app.state.runtime,
         "execution_plans",
         SimpleNamespace(create_from_approved_listing=create),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime.scope_grants,
+        "current",
+        lambda **_: {
+            "status": "ready",
+            "entity_ref": "entity-a",
+            "authority_sha256": "b" * 64,
+        },
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime.sourcing_store,
+        "get_listing_draft_scoped",
+        lambda **_: SimpleNamespace(id="draft-1"),
     )
     body = api_module.ApprovedListingExecutionPlanInput(
         idempotency_key="listing-plan-1",
@@ -311,10 +1531,30 @@ def test_openapi_exposes_read_only_operating_workspace_drillthrough() -> None:
     parameters = {
         item["name"]: item for item in schema["paths"][path]["get"]["parameters"]
     }
-    assert set(parameters) == {"kind", "item_id", "store_ref"}
+    assert set(parameters) == {
+        "kind",
+        "item_id",
+        "store_ref",
+        "as_of",
+    }
     assert parameters["kind"]["in"] == "path"
     assert parameters["item_id"]["in"] == "path"
     assert parameters["store_ref"]["in"] == "query"
+
+
+def test_openapi_exposes_read_only_commerce_operating_system() -> None:
+    schema = app.openapi()
+
+    path = "/v1/commerce-os/workspace"
+    assert set(schema["paths"][path]) == {"get"}
+    assert schema["paths"][path]["get"]["security"] == [
+        {"KjdsApiKey": []}
+    ]
+    parameters = {
+        item["name"]: item
+        for item in schema["paths"][path]["get"]["parameters"]
+    }
+    assert set(parameters) == {"store_ref", "as_of"}
 
 
 def test_openapi_exposes_evidenceops_plan_as_one_protected_post() -> None:
@@ -595,7 +1835,26 @@ def test_ozon_import_period_is_required_and_duplicate_conflicts_fail_closed(monk
                 missing_columns=[],
                 ready=True,
             ),
-            find_by_content=lambda _: SimpleNamespace(evidence_id="evd-existing"),
+        ),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scope_grants",
+        SimpleNamespace(
+            current=lambda **_: {
+                "status": "ready",
+                "entity_ref": "entity-a",
+                "authority_sha256": "a" * 64,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scoped_imports",
+        SimpleNamespace(
+            find_by_content=lambda *_args, **_kwargs: {
+                "evidence_id": "evd-existing"
+            }
         ),
     )
     monkeypatch.setattr(
@@ -636,7 +1895,26 @@ def test_ozon_import_preflight_serializes_and_formal_import_fails_before_persist
         "imports",
         SimpleNamespace(
             preview_file=lambda **_: preview,
-            find_by_content=lambda _: import_calls.append("find") or None,
+        ),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scope_grants",
+        SimpleNamespace(
+            current=lambda **_: {
+                "status": "ready",
+                "entity_ref": "entity-a",
+                "authority_sha256": "a" * 64,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scoped_imports",
+        SimpleNamespace(
+            find_by_content=lambda *_args, **_kwargs: (
+                import_calls.append("find") or None
+            )
         ),
     )
 
@@ -652,6 +1930,8 @@ def test_ozon_import_preflight_serializes_and_formal_import_fails_before_persist
     assert preflight["missing_columns"] == ["amount"]
     assert preflight["ready"] is False
     assert preflight["report_period_start"] == "2025-10-01"
+    assert preflight["scope"]["entity_ref"] == "entity-a"
+    assert preflight["formal_fact_promotion_allowed"] is False
 
     with pytest.raises(HTTPException, match="preflight failed") as error:
         asyncio.run(
@@ -681,3 +1961,14 @@ def test_generic_fee_mapping_endpoint_rejects_ozon_bypass() -> None:
 
     assert error.value.status_code == 422
     assert "accepted Ozon import" in str(error.value.detail)
+
+
+def test_profit_growth_and_agent_runtime_read_contracts_are_exposed() -> None:
+    paths = app.openapi()["paths"]
+    for path in (
+        "/v1/profit-command/remediation",
+        "/v1/seller-os/store-profile-proposal",
+        "/v1/growth-channels/capabilities",
+        "/v1/agent-control/runtime",
+    ):
+        assert set(paths[path]) == {"get"}

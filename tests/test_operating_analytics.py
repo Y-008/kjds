@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from apps.control_plane.operating_analytics import OperatingAnalyticsService
+from apps.control_plane.security import Principal
 
 
 class FakeReadiness:
@@ -298,3 +299,159 @@ def test_store_scope_is_required_and_bounded():
 
     with pytest.raises(ValueError, match="1 to 160"):
         build_service().snapshot(store_ref="x" * 161)
+
+
+def test_scoped_snapshot_does_not_read_legacy_global_sources():
+    class MustNotRead:
+        def __getattr__(self, name):
+            raise AssertionError(
+                f"legacy source must not be read: {name}"
+            )
+
+    class ScopedWorkbench:
+        def snapshot(self, **values):
+            assert values["store_ref"] == "store-a"
+            return {
+                "status": "no_data",
+                "scope": {
+                    "tenant_ref": "tenant-a",
+                    "entity_ref": None,
+                    "store_ref": "store-a",
+                    "scope_authority_sha256": None,
+                },
+                "as_of": "2026-07-28T01:00:00+00:00",
+                "work_items": [],
+                "source_gaps": ["entity_scope_authority_missing"],
+            }
+
+    blocked = MustNotRead()
+    service = OperatingAnalyticsService(
+        readiness=blocked,
+        operating_workbench=ScopedWorkbench(),
+        marketplace_catalog=blocked,
+        marketplace_growth=blocked,
+        supplier_rfq=blocked,
+        supplier_rfq_dispatch=blocked,
+        procurement=blocked,
+        execution_plans=blocked,
+        post_execution=blocked,
+        finance=blocked,
+        product_media=blocked,
+    )
+    result = service.snapshot(
+        store_ref="store-a",
+        principal=Principal(
+            actor_id="operator-a",
+            roles=frozenset({"operator"}),
+            tenant_ref="tenant-a",
+            store_refs=frozenset({"store-a"}),
+        ),
+        entity_scope={
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+        },
+        as_of="2026-07-28T01:00:00+00:00",
+    )
+
+    assert result["status"] == "no_data"
+    assert result["summary"]["catalog_items"] == 0
+    assert result["priority_items"] == []
+    assert len(result["stages"]) == 10
+    assert all(item["status"] == "no_data" for item in result["stages"])
+    assert "legacy_global_finance" in result["excluded_sources"]
+    assert result["guardrails"]["platform_write_allowed"] is False
+
+
+def test_scoped_snapshot_projects_only_scoped_catalog_authority():
+    class MustNotRead:
+        def __getattr__(self, name):
+            raise AssertionError(
+                f"legacy source must not be read: {name}"
+            )
+
+    class ScopedWorkbench:
+        @staticmethod
+        def snapshot(**_):
+            return {
+                "status": "no_data",
+                "as_of": "2026-07-28T02:00:00+00:00",
+                "work_items": [],
+                "source_gaps": [],
+            }
+
+    class ScopedCatalog:
+        @staticmethod
+        def latest(**values):
+            assert values["store_ref"] == "store-a"
+            assert values["limit"] == 100
+            return {
+                "status": "ready",
+                "as_of": "2026-07-28T02:00:00+00:00",
+                "items": [
+                    {
+                        "offer_id": "offer-scoped",
+                        "marketplace_sku": "sku-scoped",
+                        "canonical_product_id": "prd-scoped",
+                        "name": "Scoped catalog item",
+                        "currency_code": "RUB",
+                        "prices": {"price": "1099.00"},
+                        "available_stock": 3,
+                        "statuses": {},
+                        "observed_at": "2026-07-28T01:00:00+00:00",
+                        "source_evidence_id": "evd-scoped",
+                        "item_hash": "a" * 64,
+                        "image_references": [],
+                        "video_references": [],
+                        "document_references": [],
+                        "media_rights_status": (
+                            "unverified_external_reference"
+                        ),
+                    }
+                ],
+                "source_gaps": [],
+                "blockers": [],
+            }
+
+    blocked = MustNotRead()
+    service = OperatingAnalyticsService(
+        readiness=blocked,
+        operating_workbench=ScopedWorkbench(),
+        marketplace_catalog=blocked,
+        scoped_marketplace_catalog=ScopedCatalog(),
+        marketplace_growth=blocked,
+        supplier_rfq=blocked,
+        supplier_rfq_dispatch=blocked,
+        procurement=blocked,
+        execution_plans=blocked,
+        post_execution=blocked,
+        finance=blocked,
+        product_media=blocked,
+    )
+
+    result = service.snapshot(
+        store_ref="store-a",
+        principal=Principal(
+            actor_id="operator-a",
+            roles=frozenset({"operator"}),
+            tenant_ref="tenant-a",
+            store_refs=frozenset({"store-a"}),
+        ),
+        entity_scope={
+            "status": "ready",
+            "entity_ref": "entity-a",
+            "authority_sha256": "a" * 64,
+        },
+        as_of="2026-07-28T02:00:00+00:00",
+    )
+
+    assert result["summary"]["catalog_items"] == 1
+    assert result["summary"]["bound_listings"] == 1
+    assert result["summary"]["available_stock"] == 3
+    assert result["stages"][0]["status"] == "verified"
+    assert result["coverage"][0]["percent"] == 100
+    assert result["pipeline"][0]["value"] == 1
+    assert result["pipeline"][1]["value"] == 1
+    assert result["focal_listing"]["offer_id"] == "offer-scoped"
+    assert "legacy_global_catalog" in result["excluded_sources"]
+    assert "scoped_catalog_authority_missing" not in result["source_gaps"]
