@@ -766,6 +766,7 @@ class SupplierOfferInput(BaseModel):
 class ProfitScenarioInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     offer_id: str
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     sale_price_rub: Decimal
     rub_per_cny: Decimal
     international_freight_cny_per_kg: Decimal
@@ -791,6 +792,7 @@ class ProfitScenarioInput(BaseModel):
 
 class LogisticsRateCardInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     provider: str = Field(min_length=1, max_length=160)
     route_code: str = Field(min_length=1, max_length=160)
     service_name: str = Field(min_length=1, max_length=300)
@@ -821,6 +823,7 @@ class LogisticsRateCardInput(BaseModel):
 
 class LogisticsCalculationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     rate_card_id: str = Field(min_length=1)
     physical_weight_kg: Decimal
     length_cm: Decimal = Decimal("0")

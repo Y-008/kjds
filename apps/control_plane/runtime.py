@@ -505,6 +505,7 @@ def build_runtime() -> RuntimeServices:
         evidence_linker=evidence.link,
         evidence_resolver=evidence.get,
         fx_evidence_current_validator=evidence.require_current,
+        scoped_evidence=scoped_evidence,
     )
     cost_evidence_authority = CostEvidenceAuthorityService(evidence=evidence)
     cross_border_capability_atlas = CrossBorderCapabilityAtlas()

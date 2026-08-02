@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -12,6 +13,7 @@ from apps.control_plane.logistics import (
     LogisticsRateCard,
 )
 from apps.control_plane.repository import InMemoryRepository
+from apps.control_plane.security import Principal
 from apps.control_plane.services import CommerceService
 from apps.control_plane.sourcing import (
     REQUIRED_COST_EVIDENCE_KEYS,
@@ -23,6 +25,20 @@ from apps.control_plane.sourcing import (
 from apps.control_plane.sourcing_intake import OfferEvidencePayload, SupplierComparisonIntakeService
 from apps.control_plane.sql_repository import Base
 from apps.control_plane.supplier_quote_authority import SupplierQuoteAuthorityService
+
+
+class ReadyScopedEvidence:
+    def project_targets(self, *, evidence_ids, **_values):
+        return {
+            "status": "ready",
+            "records": [
+                {
+                    "evidence_id": evidence_id,
+                    "scope_binding": {"status": "ready"},
+                }
+                for evidence_id in evidence_ids
+            ],
+        }
 
 
 class MemorySourcingStore:
@@ -330,8 +346,27 @@ def test_three_supplier_comparison_uses_one_versioned_logistics_tier_per_offer()
         evidence_validator=intake.evidence.require_valid,
         evidence_resolver=intake.evidence.get,
         fx_evidence_current_validator=intake.evidence.require_current,
+        scoped_evidence=ReadyScopedEvidence(),
+    )
+    logistics_context = logistics.context(
+        principal=Principal(
+            actor_id="operator-1",
+            roles=frozenset({"operator"}),
+            tenant_ref="tenant-a",
+            store_refs=frozenset({"store-a"}),
+        ),
+        entity_scope={
+            "status": "ready",
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "authority_sha256": "a" * 64,
+        },
+        store_ref="store-a",
+        as_of=datetime(2026, 7, 16, 0, 0, tzinfo=UTC),
     )
     card = logistics.capture_rate_card(
+        logistics_context,
         LogisticsRateCard(
             provider="Carrier A",
             route_code="OZON-RFBS-ALL",
@@ -369,10 +404,11 @@ def test_three_supplier_comparison_uses_one_versioned_logistics_tier_per_offer()
         international_freight_cny_per_kg=Decimal("0"),
     )
 
+    quote_ids = accepted_quote_ids(product, intake)
     result = intake.finalize(
         product_id=product.id,
         effective_at="2026-07-16T00:00:00+08:00",
-        quote_evidence_ids=accepted_quote_ids(product, intake),
+        quote_evidence_ids=quote_ids,
         profit_inputs=inputs,
         assumption_content=b"approved non-logistics fee assumptions",
         assumption_filename="assumptions.txt",
@@ -380,6 +416,7 @@ def test_three_supplier_comparison_uses_one_versioned_logistics_tier_per_offer()
         created_by="operator-1",
         logistics_rate_card_id=card.id,
         logistics_currency_to_cny_rate=Decimal("1"),
+        logistics_context=logistics_context,
     )
 
     assert len(logistics_store.calculations) == 3
@@ -393,6 +430,47 @@ def test_three_supplier_comparison_uses_one_versioned_logistics_tier_per_offer()
         item.cost_evidence["international_logistics"] == rate_evidence.id
         for item in result["scenarios"]
     )
+    with pytest.raises(ValueError, match="exact scope context"):
+        intake.finalize(
+            product_id=product.id,
+            effective_at="2026-07-16T00:00:00+08:00",
+            quote_evidence_ids=quote_ids,
+            profit_inputs=inputs,
+            assumption_content=b"must fail before capture",
+            assumption_filename="assumptions.txt",
+            assumption_content_type="text/plain",
+            created_by="operator-1",
+            logistics_rate_card_id=card.id,
+            logistics_currency_to_cny_rate=Decimal("1"),
+        )
+    drifted_context = logistics.context(
+        principal=logistics_context.principal,
+        entity_scope={
+            "status": "ready",
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "authority_sha256": "b" * 64,
+        },
+        store_ref="store-a",
+        as_of=datetime(2026, 7, 16, 0, 0, tzinfo=UTC),
+    )
+    with pytest.raises(KeyError, match="Unknown logistics rate card"):
+        intake.finalize(
+            product_id=product.id,
+            effective_at="2026-07-16T00:00:00+08:00",
+            quote_evidence_ids=quote_ids,
+            profit_inputs=inputs,
+            assumption_content=b"must fail before capture",
+            assumption_filename="assumptions.txt",
+            assumption_content_type="text/plain",
+            created_by="operator-1",
+            logistics_rate_card_id=card.id,
+            logistics_currency_to_cny_rate=Decimal("1"),
+            logistics_context=drifted_context,
+        )
+    assert len(logistics_store.calculations) == 3
+    assert len(store.scenarios) == 3
 
 
 def test_supplier_comparison_rejects_duplicate_supplier_identity():

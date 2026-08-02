@@ -1759,6 +1759,7 @@ def test_openapi_exposes_versioned_logistics_cost_workspace() -> None:
             assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
     rate_card = schema["components"]["schemas"]["LogisticsRateCardInput"]
     calculation = schema["components"]["schemas"]["LogisticsCalculationInput"]
+    profit_scenario = schema["components"]["schemas"]["ProfitScenarioInput"]
     assert rate_card["additionalProperties"] is False
     assert calculation["additionalProperties"] is False
     assert {
@@ -1771,6 +1772,29 @@ def test_openapi_exposes_versioned_logistics_cost_workspace() -> None:
     assert "logistics_calculation_id" in schema["components"]["schemas"][
         "ProfitScenarioInput"
     ]["properties"]
+    internal_scope_fields = {
+        "tenant_ref",
+        "entity_ref",
+        "scope_grant_authority_sha256",
+        "authority_sha256",
+    }
+    for request_schema in (rate_card, calculation, profit_scenario):
+        assert "store_ref" in request_schema["properties"]
+        assert internal_scope_fields.isdisjoint(request_schema["properties"])
+    for path, method in (
+        ("/v1/logistics/rate-cards", "get"),
+        ("/v1/logistics/calculations", "get"),
+        (
+            "/v1/logistics/calculations/{calculation_id}/decision-support",
+            "get",
+        ),
+    ):
+        parameters = {
+            item["name"]
+            for item in schema["paths"][path][method].get("parameters", [])
+        }
+        assert "store_ref" in parameters
+        assert internal_scope_fields.isdisjoint(parameters)
 
 
 def test_cost_authority_catalog_is_read_only_and_complete() -> None:
