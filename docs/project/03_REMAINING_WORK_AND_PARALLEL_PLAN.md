@@ -6,10 +6,10 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 9.59 |
-| last_reviewed | 2026-08-02 |
-| next_review | 2026-08-03 |
-| gate | G-1–G1 |
+| version | 9.60 |
+| last_reviewed | 2026-08-03 |
+| next_review | 2026-08-10 |
+| gate | G-1–G8 |
 
 任务工作簿中 109 项任务、58 项 P0 继续作为候选库存；当前执行 P0 收敛为下表。没有进入本表的任务不得占用当前开发窗口。
 
@@ -173,6 +173,14 @@
 | BAS-168 | G1–G3 | Ozon finance operation allocation proposal | Marketplace Finance+Identity+Evidence | 114 条 operation 全量保留；exact SKU、单 SKU posting 继承、itemless/multi-SKU/缺时区/缺币种隔离、数量与金额守恒；零 FinanceEntry 写入、零比例分摊。 | BAS-160、BAS-167 | DONE_ENGINEERING |
 | BAS-169 | G1–G4 | 变体身份与十五项成本 Evidence Gate | Catalog+Profit+Finance | 99 个身份来源投影为 93 accepted/6 unresolved/21 exact groups；18 SKU 逐项输出十五成本、数量、FX 和四账补证队列，360 项请求；Pilot 继续 blocked。 | BAS-167、BAS-168 | DONE_ENGINEERING |
 | BAS-170 | G1–G4 | Profit Truth Readiness API 与全链路大屏 | Profit Command+Web+Evidence | 374/374 源记录从 raw→Observation→Fact→Decision→四账全链路投影；桌面/390 无横向 viewport overflow；页头使用 truth 自身 blocked/as-of/hash，现金利润 no_data，外写 false。 | BAS-167–169 | DONE_ENGINEERING |
+| BAS-171 | G-1–C0 | 一人主责、多人制衡的双引擎经营合同与前沿技术采用雷达 | 经营+产品+架构+工程+风险 | 18 张思维截图仅以 Observation 摄入；冻结前中后台、逆漏斗、付费 MVP、案例模块化、俄罗斯经营→软件产品化飞轮；机器注册表把 15 项前沿能力分为 adopt_now/pilot/watch/reject_now，并校验一手来源、Owner、双 Gate、复核日期和外写/Fact 全 false；A-E 泳道执行租约另有机器真源。 | ADR-0089、BAS-166 | DONE_ENGINEERING |
+| BAS-172 | G-1–G5 | 持久化 AgentRun/Trace/Eval Evidence 合同 | Agent Platform+Evidence+Security | 加深现有 `GovernedAgentRuntime`：provider-neutral append-only envelope 绑定 model/prompt-template/tool/Evidence/authority/eval/cost/latency/outcome 版本；正文默认不落库，跨 scope/脱敏/重放/漂移失败关闭；无 Fact/FinanceEntry/Approval/Permit/外写。 | BAS-166、BAS-171 | NEXT_READY |
+| BAS-173 | G0–G5 | 因果与时序检索金标基准 | Knowledge Graph+Evidence+Profit | 用真实失败问题比较 SQL/全文/规范图/因果时序检索，逐题核对引用、scope、有效期、成本和延迟；胜出前不安装 pgvector/GraphRAG 平台，生成边仅为 Observation。 | BAS-172 | QUEUED |
+| BAS-174 | G-1–G5 | Durable workflow adapter 触发式基准 | Reliability+Operations | 只有真实跨小时/跨人工等待流程未达恢复或重放 SLO 才启动；与现有 state machine/outbox 对照 crash/retry/cancel/resume/重复副作用和运维成本；KJDS 保持业务状态 Owner。 | BAS-172、真实 SLO 缺口 | BLOCKED_TRIGGER |
+| BAS-175 | G-1 | 发布 provenance 与 SBOM/AI-BOM | Platform Security+Release | 选择一个 API/Web 镜像，把 G1 commit、migration head、image digest、依赖、模型/adapter/eval 版本绑定可验证 provenance；SBOM/AI-BOM 无 secret，验证失败关闭，且不替代经营 Gate。 | BAS-171 | NEXT_READY |
+| BAS-176 | G-1 | PostgreSQL 18 隔离验证线 | Data+Release+Recovery | 仅在 disposable lane 完成全迁移回放、扩展兼容、查询基准、备份恢复、回滚和锁/延迟观测；exit Gate 未通过前不修改 PostgreSQL 17 生产/验证基线。 | BAS-171、BAS-175 非阻塞 | PILOT_QUEUED |
+| BAS-177 | G0–G5 | Governed TeamAgent 自学习进化 Loop | Agent Platform+Graph+Evidence+Risk | 复用 Loop Engineering 与 canonical Graph，把 correction/failure/outcome 形成 SkillCandidate→Eval→Shadow→独立 Review→Promotion/Rollback；AgentRole/Skill/EvalSet/Model/Tool/Policy/Evidence/Outcome 全版本化，跨租户学习仅用获许可脱敏模式；运行时不得自改代码/权限/Fact/Approval/Permit/外写。 | BAS-172、BAS-173 | QUEUED |
+| COM-001 | C0 | 逆漏斗最小销售包 | 经营+销售+产品+法务 | 形成客户资格/拒绝表、只读诊断交付物、Evidence-backed 案例模板、SOW、价格实验、合同/DPA/SLA 清单和成交页真实文案；C0 通过前仅准备，不报价成交、不收款、不形成应收。 | BAS-171、C0 缺口清单 | IN_PROGRESS_PREP_ONLY |
 | DAY0-TRUTH-20260802 | G0–G4 | Ozon 真实经营真源校正 | 工程+经营+财务 | BAS-160 中 `channel-accounts workspace=ready` 只代表渠道账户授权控制面；真实商品只读与真实财务只读已通过，真实订单、平台结算、银行到账和任何 provider 外写仍未通过。因此 BAS-160 整项保持 `IN_PROGRESS`，不得解释为 ready；利润计算与扩量继续失败关闭。 | BAS-160、BAS-161 | PARTIAL_BLOCKED |
 | FIN-THRESHOLDS-20260802 | G1–G5 | 利润增长阈值签署 | 经营负责人+财务负责人 | downside CM3、退款率、CAC/ACOS、履约时效和现金占用阈值全部保持 `UNKNOWN`；必须由真实经营/财务 Evidence、口径、有效期和双负责人签署后才能成为 Gate 输入，系统与 Agent 不得猜数。 | DAY0-TRUTH-20260802、FIN-001 | BLOCKED_INPUT |
 | BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |

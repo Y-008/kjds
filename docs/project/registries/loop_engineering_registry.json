@@ -1,8 +1,8 @@
 {
   "registry_id": "KJDS-LOOP-001",
-  "version": "1.0",
+  "version": "2.0",
   "status": "active",
-  "updated_at": "2026-07-17",
+  "updated_at": "2026-08-03",
   "principle": "automation must produce evidence, skills must be versioned, integrations must be least-privilege, subagents must be bounded, worktrees must be isolated, and memory must preserve provenance",
   "modules": [
     {
@@ -63,5 +63,151 @@
     "Promote only after Gate",
     "Record failure and expiry conditions",
     "Re-evaluate before reuse"
-  ]
+  ],
+  "team_agent_contract": {
+    "architecture": "coordinator_plus_bounded_specialists_plus_independent_verifier",
+    "roles": [
+      "coordinator",
+      "research",
+      "evidence",
+      "product",
+      "finance",
+      "risk",
+      "execution",
+      "independent_verifier"
+    ],
+    "required_per_role": [
+      "agent_identity",
+      "exact_scope",
+      "tool_allowlist",
+      "data_allowlist",
+      "cost_budget",
+      "time_budget",
+      "handoff_contract",
+      "trace_id",
+      "eval_policy_version"
+    ],
+    "separation_of_duties": {
+      "proposal_author_may_verify": false,
+      "proposal_author_may_approve": false,
+      "coordinator_may_issue_permit": false,
+      "agent_may_expand_own_scope": false,
+      "agent_may_reveal_credentials": false,
+      "agent_may_perform_external_write": false
+    }
+  },
+  "evolution_loop": {
+    "contract_id": "kjds-governed-team-agent-evolution-v1",
+    "states": [
+      "observation",
+      "skill_candidate",
+      "evaluation",
+      "shadow",
+      "independent_review",
+      "promoted",
+      "active",
+      "rolled_back",
+      "retired"
+    ],
+    "learning_inputs": [
+      "human_correction",
+      "verified_failure",
+      "evidence_backed_outcome",
+      "policy_violation",
+      "cost_or_latency_regression",
+      "official_source_change"
+    ],
+    "promotion_requirements": [
+      "versioned_candidate",
+      "frozen_eval_set",
+      "baseline_comparison",
+      "negative_and_scope_tests",
+      "shadow_result",
+      "independent_review",
+      "rollback_artifact",
+      "owner_and_expiry"
+    ],
+    "allowed_transitions": [
+      "observation->skill_candidate",
+      "skill_candidate->evaluation",
+      "evaluation->shadow",
+      "evaluation->rolled_back",
+      "shadow->independent_review",
+      "shadow->rolled_back",
+      "independent_review->promoted",
+      "independent_review->rolled_back",
+      "promoted->active",
+      "promoted->rolled_back",
+      "active->rolled_back",
+      "active->retired",
+      "rolled_back->skill_candidate",
+      "rolled_back->retired"
+    ],
+    "transition_controls": {
+      "append_only_audit_required": true,
+      "atomic_transition_required": true,
+      "idempotency_key_required": true,
+      "expected_previous_state_required": true,
+      "evidence_reference_required": true,
+      "candidate_author_may_review": false,
+      "candidate_author_may_promote": false,
+      "reviewer_must_differ_from_candidate_author": true,
+      "active_requires_human_owner_and_risk_authority": true
+    },
+    "automatic_promotion_allowed": false,
+    "runtime_code_self_modification_allowed": false,
+    "runtime_permission_self_modification_allowed": false,
+    "formal_fact_self_promotion_allowed": false,
+    "external_write_self_enable_allowed": false
+  },
+  "graph_learning_contract": {
+    "canonical_graph_remains_authority": true,
+    "versioned_node_types": [
+      "AgentRole",
+      "SkillVersion",
+      "EvalSetVersion",
+      "ModelProfileVersion",
+      "ToolContractVersion",
+      "PolicyVersion",
+      "Evidence",
+      "Outcome",
+      "FailurePattern"
+    ],
+    "allowed_learning_edges": [
+      "derived_from",
+      "evaluated_by",
+      "shadowed_against",
+      "reviewed_by",
+      "supersedes",
+      "rolled_back_to",
+      "supported_by",
+      "invalidated_by"
+    ],
+    "generated_node_or_edge_status": "observation_until_independent_promotion",
+    "raw_cross_tenant_learning_allowed": false,
+    "deidentified_pattern_requires_license_and_revocation": true,
+    "temporal_validity_and_source_hash_required": true
+  },
+  "continuous_update_contract": {
+    "source_priority": [
+      "official_specification",
+      "official_release_note",
+      "primary_research",
+      "maintainer_repository",
+      "measured_kjds_outcome"
+    ],
+    "default_review_cadence": "weekly",
+    "material_change_triggers": [
+      "security_advisory",
+      "breaking_spec_change",
+      "stable_release",
+      "deprecation",
+      "measured_quality_or_cost_regression",
+      "new_kjds_business_need"
+    ],
+    "source_change_creates": "observation_or_skill_candidate",
+    "source_change_auto_installs_dependency": false,
+    "source_change_auto_changes_adoption_decision": false,
+    "source_change_auto_changes_business_gate": false
+  }
 }
