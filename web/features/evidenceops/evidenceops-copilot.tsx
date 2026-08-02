@@ -19,6 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchJson } from "../../lib/fetch-json";
 import type { WebSession } from "../dashboard/contracts";

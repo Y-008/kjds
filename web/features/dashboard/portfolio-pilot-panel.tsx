@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Boxes,
   CircleDollarSign,
@@ -33,6 +34,30 @@ type Observation = {
   formal_fact_promoted: false;
   supplier_offer_created: false;
   actual_cost_created: false;
+};
+
+type ObservationEnvelope = {
+  contract_id: "kjds-scoped-marketplace-observation-v1";
+  status: "ready" | "partial" | "no_data" | "blocked";
+  scope: {
+    tenant_ref: string;
+    entity_ref: string | null;
+    store_ref: string;
+    scope_grant_authority_sha256: string | null;
+  };
+  items: Observation[];
+  counts: {
+    queried_in_exact_store_scope: number;
+    included: number;
+    excluded: number;
+  };
+  source_gaps: string[];
+  control_envelope: {
+    observation_input_ready: boolean;
+    candidate_scoring_allowed: boolean;
+    pilot_approval_allowed: false;
+    external_write_allowed: false;
+  };
 };
 
 type SpecificationMatch = {
@@ -129,7 +154,10 @@ function money(value: string | null, currency = "CNY") {
 }
 
 export function PortfolioPilotPanel() {
+  const searchParams = useSearchParams();
+  const storeRef = searchParams.get("store_ref")?.trim() || "ozon-primary";
   const [observations, setObservations] = useState<Observation[]>([]);
+  const [candidateScoringAllowed, setCandidateScoringAllowed] = useState(false);
   const [pilot, setPilot] = useState<PilotView | null>(null);
   const [busy, setBusy] = useState(true);
   const [notice, setNotice] = useState("正在读取受控市场观察…");
@@ -141,23 +169,38 @@ export function PortfolioPilotPanel() {
 
   const loadObservations = useCallback(async () => {
     setBusy(true);
-    const response = await fetchJson<Observation[]>(
-      "/backend/v1/marketplace-observations?marketplace=1688&limit=100",
+    const query = new URLSearchParams({
+      marketplace: "1688",
+      limit: "100",
+      store_ref: storeRef,
+    });
+    const response = await fetchJson<ObservationEnvelope>(
+      `/backend/v1/marketplace-observations?${query.toString()}`,
     );
     const payload = await response.json();
-    if (!response.ok || !Array.isArray(payload)) {
+    if (
+      !response.ok
+      || !payload
+      || typeof payload !== "object"
+      || !("items" in payload)
+      || !Array.isArray(payload.items)
+    ) {
       setNotice(`观察数据读取失败（HTTP ${response.status || "offline"}）`);
+      setCandidateScoringAllowed(false);
       setBusy(false);
       return;
     }
-    setObservations(payload);
+    setObservations(payload.items);
+    setCandidateScoringAllowed(payload.control_envelope.candidate_scoring_allowed);
     setNotice(
-      payload.length
-        ? `已读取 ${payload.length} 条 Evidence 绑定观察；尚未晋级为报价或实际成本。`
-        : "暂无 1688 市场观察，不能生成候选利润排序。",
+      payload.items.length
+        ? `店铺 ${payload.scope.store_ref} 已读取 ${payload.items.length} 条作用域 Evidence 观察；下游 Catalog/成本仍待作用域化，候选排序保持锁定。`
+        : payload.status === "blocked"
+          ? `观察数据被作用域门禁阻断：${payload.source_gaps.join("、")}`
+          : `店铺 ${payload.scope.store_ref} 暂无通过作用域 Evidence 的 1688 观察，不能生成候选排序。`,
     );
     setBusy(false);
-  }, []);
+  }, [storeRef]);
 
   useEffect(() => {
     void loadObservations();
@@ -174,7 +217,7 @@ export function PortfolioPilotPanel() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        store_ref: "ozon-primary",
+        store_ref: storeRef,
         product_id: productId,
         target_specification: targetSpecification,
         policy_id: "ozon-cny-research-screening-v1",
@@ -193,7 +236,7 @@ export function PortfolioPilotPanel() {
     setPilot(payload);
     setNotice(
       payload.counts.pilot_ready
-        ? `服务端确认 ${payload.counts.pilot_ready} 个候选可以进入限额 Pilot。`
+        ? `服务端确认 ${payload.counts.pilot_ready} 个候选穿过旧版研究门禁；仍需冻结计划、独立批准与一次性 Permit。`
         : "当前没有候选穿过全部门禁；已投影为内部运营任务。",
     );
     setBusy(false);
@@ -204,7 +247,7 @@ export function PortfolioPilotPanel() {
       <section className="pilot-hero">
         <div>
           <span><Target size={15} /> OBSERVE · SCREEN · PILOT</span>
-          <h2>先用真实页面数据筛 100 个，再让全成本决定上哪 10 个。</h2>
+          <h2>先把真实观察绑定成可追溯事实，再由全成本筛出审批候选。</h2>
           <p>
             公开价格可用于找机会，但不是供应商报价或实际采购成本。服务端统一做规格差距、
             基准/下行贡献、损失预算和十五项全成本门禁；浏览器不重算利润。
@@ -214,7 +257,7 @@ export function PortfolioPilotPanel() {
           <ShieldCheck size={22} />
           <div>
             <strong>本轮经营边界</strong>
-            <p>候选目标 100 · 首批 Pilot ≤ 10 · 单批最大损失 500 CNY</p>
+            <p>候选目标 100 · 审批分配 ≤ 10 · 初始 Pilot 每 SKU ≤ 3 件 · 单批最大损失 500 CNY</p>
           </div>
           <small>供应商联系：关闭 · 自动上架：关闭 · Ozon 写入：关闭</small>
         </div>
@@ -223,14 +266,18 @@ export function PortfolioPilotPanel() {
       <section className="pilot-toolbar">
         <div>
           <span>REAL MARKET OBSERVATIONS</span>
-          <h3>三家 1688 候选与一个 Ozon 在售 SKU</h3>
+          <h3>Evidence 绑定的 1688 候选观察</h3>
           <p>{notice}</p>
         </div>
         <div>
           <button type="button" className="secondary" onClick={() => void loadObservations()} disabled={busy}>
             <RefreshCw size={14} /> 刷新观察
           </button>
-          <button type="button" onClick={() => void preparePilot()} disabled={busy || !productId}>
+          <button
+            type="button"
+            onClick={() => void preparePilot()}
+            disabled={busy || !productId || !candidateScoringAllowed}
+          >
             <SearchCheck size={14} /> {busy ? "正在处理…" : "生成服务端排序"}
           </button>
         </div>
@@ -252,7 +299,7 @@ export function PortfolioPilotPanel() {
             <article><CircleDollarSign size={18} /><span>全成本草稿就绪</span><strong>{pilot.counts.draft_ready}</strong></article>
             <article className={pilot.counts.pilot_ready ? "ready" : "blocked"}>
               {pilot.counts.pilot_ready ? <ShieldCheck size={18} /> : <ShieldAlert size={18} />}
-              <span>Pilot 可执行</span><strong>{pilot.counts.pilot_ready}</strong>
+              <span>旧版研究门禁通过</span><strong>{pilot.counts.pilot_ready}</strong>
             </article>
           </section>
 

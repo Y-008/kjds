@@ -4,10 +4,19 @@ import hashlib
 import json
 import os
 from dataclasses import asdict
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 
 from ..api_contracts import (
     LogisticsCalculationInput,
@@ -22,6 +31,7 @@ from ..api_contracts import (
     SupplierRfqPackageInput,
     current_principal,
     ensure_role,
+    ensure_store_scope,
     run,
 )
 from ..evidence import EvidenceGrade
@@ -31,6 +41,71 @@ from ..security import Principal
 from ..sourcing import ProfitInputs, SupplierOffer, profit_template_contract
 
 router = APIRouter()
+
+
+def _cutoff(value: str | None) -> datetime:
+    if value is None:
+        return datetime.now(UTC)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="as_of must be an ISO-8601 timestamp",
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise HTTPException(
+            status_code=422,
+            detail="as_of must include a timezone",
+        )
+    parsed = parsed.astimezone(UTC)
+    if parsed > datetime.now(UTC):
+        raise HTTPException(
+            status_code=422,
+            detail="as_of cannot be in the future",
+        )
+    return parsed
+
+
+@router.get("/v1/procurement/workspace")
+def procurement_workspace(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+    query: str | None = None,
+    stage: str | None = None,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+    cursor: str | None = None,
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    ensure_store_scope(principal, store_ref)
+    cutoff = _cutoff(as_of)
+    entity_scope = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=cutoff,
+    )
+    return run(
+        lambda: runtime.scoped_procurement_receiving.project(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+            as_of=cutoff.isoformat(),
+            query=query,
+            stage=stage,
+            page_size=page_size,
+            cursor=cursor,
+        )
+    )
 
 
 @router.post("/v1/sourcing/offers", status_code=201)
@@ -63,8 +138,23 @@ def create_supplier_rfq_package(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "admin")
+    ensure_store_scope(principal, body.store_ref)
+    cutoff = datetime.now(UTC)
+    entity_scope = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=body.store_ref,
+        as_of=cutoff,
+    )
 
     def create():
+        runtime.scoped_marketplace_catalog.require_current_item(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=body.store_ref,
+            as_of=cutoff,
+            offer_id=body.offer_id,
+            expected_item_hash=body.expected_item_hash,
+        )
         result = runtime.supplier_rfq.create(
             **body.model_dump(),
             created_by=principal.actor_id,

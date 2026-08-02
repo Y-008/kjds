@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "KJDS 跨境数据采集器",
+  "version": "0.1.0",
+  "description": "只读采集你当前浏览的 1688 / Ozon 页面真实数据，发送到你本地的采集服务（127.0.0.1:8123）。不提交表单、不改动页面、不上传任何外部服务器。",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": [
+    "https://*.1688.com/*",
+    "https://*.ozon.ru/*",
+    "https://seller.ozon.ru/*",
+    "http://127.0.0.1:8123/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.1688.com/*",
+        "https://*.ozon.ru/*",
+        "https://seller.ozon.ru/*"
+      ],
+      "js": ["extract.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.ozon.ru/*",
+        "https://seller.ozon.ru/*"
+      ],
+      "js": ["inject.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "KJDS 采集器"
+  }
+}

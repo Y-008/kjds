@@ -7,7 +7,7 @@ import json
 import os
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from contextlib import ExitStack, nullcontext
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -15,6 +15,15 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from .channel_account_runtime_identity import (
+    ManagedCredentialLeaseHandle,
+    ResolvedChannelCredentialMaterial,
+    SignedManagedCredentialLeaseResolver,
+    SignedWorkerCredentialGrant,
+    _is_server_bound_worker_resolver,
+    require_managed_channel_credential_resolution,
+)
+from .channel_worker_runtime import build_channel_worker_runtime
 from .correlation import correlation_id
 from .pilot_readiness import (
     OZON_FINANCE_READ_CONTRACT_VERSION,
@@ -37,9 +46,7 @@ def offline_execution_preflight(
     env = os.environ if environment is None else environment
     command = _bounded_required(command_id, "Command id", 300)
     offer = _bounded_required(offer_id, "Offer id", 200)
-    evidence = sorted(
-        {_bounded_required(value, "Evidence id", 300) for value in evidence_ids}
-    )
+    evidence = sorted({_bounded_required(value, "Evidence id", 300) for value in evidence_ids})
     if not evidence:
         raise ValueError("At least one Evidence id is required")
     environment_checks = validate_execution_environment(env)
@@ -70,9 +77,7 @@ def validate_execution_environment(
     )
     if ozon_url != OFFICIAL_OZON_ORIGIN:
         raise ValueError("Ozon execution must use the official Seller API origin")
-    attributes_path = str(
-        env.get("OZON_PRODUCT_ATTRIBUTES_PATH", PRODUCT_ATTRIBUTES_PATH)
-    ).strip()
+    attributes_path = str(env.get("OZON_PRODUCT_ATTRIBUTES_PATH", PRODUCT_ATTRIBUTES_PATH)).strip()
     if attributes_path != PRODUCT_ATTRIBUTES_PATH:
         raise ValueError("Ozon execution must use the fixed v4 product attributes path")
     _safe_url(
@@ -82,20 +87,6 @@ def validate_execution_environment(
         require_https=False,
         allow_http_hosts={"127.0.0.1", "localhost", "::1", "api"},
     )
-    required_names = ("KJDS_EXECUTOR_API_KEY", "OZON_CLIENT_ID", "OZON_API_KEY")
-    values = {name: _configured_value(env, name) for name in required_names}
-    secrets = {
-        "executor": values["KJDS_EXECUTOR_API_KEY"],
-        "ozon_api": values["OZON_API_KEY"],
-    }
-    for name in ("KJDS_API_KEY", "KJDS_PILOT_READER_API_KEY"):
-        value = str(env.get(name, "")).strip()
-        if value and value.lower() not in PLACEHOLDER_VALUES:
-            secrets[name] = value
-    if len(set(secrets.values())) != len(secrets):
-        raise ValueError(
-            "Executor, Ozon, generic API, and Pilot reader credentials must be distinct"
-        )
     expected_identity = _bounded_required(
         str(env.get("KJDS_OZON_EXECUTION_IDENTITY_REF", "")),
         "Ozon execution identity reference",
@@ -104,8 +95,9 @@ def validate_execution_environment(
     return {
         "ozon_origin_verified": True,
         "attributes_path_verified": True,
-        "required_credentials_present": len(values),
-        "credential_values_distinct": True,
+        "required_credentials_present": 0,
+        "credential_values_read": False,
+        "provider_credentials_from_environment": False,
         "execution_identity_sha256": hashlib.sha256(expected_identity.encode()).hexdigest(),
     }
 
@@ -146,16 +138,10 @@ def _safe_url(
         or parsed.fragment
         or parsed.path not in ("", "/")
     ):
-        raise ValueError(
-            f"{name} must be a safe origin without credentials, path, query, or fragment"
-        )
+        raise ValueError(f"{name} must be a safe origin without credentials, path, query, or fragment")
     if allowed_hosts is not None and parsed.hostname.lower() not in allowed_hosts:
         raise ValueError(f"{name} host is not allowed")
-    if (
-        parsed.scheme == "http"
-        and allow_http_hosts is not None
-        and parsed.hostname.lower() not in allow_http_hosts
-    ):
+    if parsed.scheme == "http" and allow_http_hosts is not None and parsed.hostname.lower() not in allow_http_hosts:
         raise ValueError(f"{name} requires HTTPS outside local or Compose networking")
     return raw
 
@@ -204,11 +190,7 @@ class OzonCircuitBreaker:
         if self.state == "closed":
             return
         now = self.clock()
-        if (
-            self.state == "open"
-            and self.opened_at is not None
-            and now - self.opened_at >= self.cooldown_seconds
-        ):
+        if self.state == "open" and self.opened_at is not None and now - self.opened_at >= self.cooldown_seconds:
             self.state = "half_open"
             return
         raise OzonApiError(
@@ -237,18 +219,223 @@ class OzonCircuitBreaker:
         }
 
 
-@dataclass(frozen=True, repr=False)
+class ChannelCredentialAuthorizationError(PermissionError):
+    """A controlled fail-closed error at the worker credential boundary."""
+
+
 class OzonCredentials:
-    client_id: str
-    api_key: str
+    """Opaque value; production credentials only come from the resolver."""
+
+    __slots__ = (
+        "_client_id",
+        "_api_key",
+        "_resolver",
+        "_resolved_material",
+        "_readback_probe",
+        "_sealed",
+    )
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        raise ChannelCredentialAuthorizationError(
+            "OzonCredentials cannot be constructed directly; use an exact-scope managed lease"
+        )
+
+    def __setattr__(self, name, value) -> None:
+        if getattr(self, "_sealed", False):
+            raise ChannelCredentialAuthorizationError("Ozon credential objects are immutable")
+        object.__setattr__(self, name, value)
+
+    @property
+    def client_id(self) -> str:
+        return self._client_id
+
+    @property
+    def api_key(self) -> str:
+        return self._api_key
+
+    @classmethod
+    def for_test_fixture(
+        cls,
+        *,
+        client_id: str,
+        api_key: str,
+    ) -> OzonCredentials:
+        """Untrusted fixture accepted only with an injected transport."""
+        instance = object.__new__(cls)
+        instance._client_id = client_id
+        instance._api_key = api_key
+        instance._resolver = None
+        instance._resolved_material = None
+        instance._readback_probe = False
+        instance._sealed = True
+        return instance
+
+    @classmethod
+    def for_readback_probe(
+        cls,
+        *,
+        client_id: str,
+        api_key: str,
+    ) -> OzonCredentials:
+        """Explicit one-shot provisioning credential for a bounded official
+        readback probe.  It is deliberately NOT runtime-attested, so it can
+        never open a provider client through the managed worker factory; the
+        only admission is ``OzonSellerClient(readback_probe_allowed=True)``
+        for a single read-only identity verification."""
+        instance = object.__new__(cls)
+        instance._client_id = str(client_id or "").strip()
+        instance._api_key = str(api_key or "").strip()
+        instance._resolver = None
+        instance._resolved_material = None
+        instance._readback_probe = True
+        instance._sealed = True
+        if not instance._client_id or not instance._api_key:
+            raise ChannelCredentialAuthorizationError(
+                "Readback probe credentials are required"
+            )
+        return instance
 
     @classmethod
     def from_environment(cls) -> OzonCredentials:
-        client_id = os.getenv("OZON_CLIENT_ID", "").strip()
-        api_key = os.getenv("OZON_API_KEY", "").strip()
-        if not client_id or not api_key:
-            raise ValueError("OZON_CLIENT_ID and OZON_API_KEY are required by the isolated worker")
-        return cls(client_id=client_id, api_key=api_key)
+        raise RuntimeError(
+            "Environment-only Ozon credentials cannot authorize a "
+            "multi-store worker; an exact-scope managed lease is required"
+        )
+
+    @classmethod
+    def from_resolved_lease(
+        cls,
+        *,
+        resolver: SignedManagedCredentialLeaseResolver,
+        handle: ManagedCredentialLeaseHandle,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        account_ref: str,
+        adapter_id: str,
+        adapter_version: str,
+        required_capability: str,
+        secret_reference_sha256: str,
+        credential_fingerprint_sha256: str,
+        as_of: datetime,
+    ) -> OzonCredentials:
+        if not _is_server_bound_worker_resolver(resolver):
+            raise ChannelCredentialAuthorizationError(
+                "Ozon production admission requires a composition-root "
+                "server-bound managed credential resolver"
+            )
+        material = resolver.resolve(
+            handle=handle,
+            scope={
+                "tenant_ref": tenant_ref,
+                "entity_ref": entity_ref,
+                "store_ref": store_ref,
+            },
+            platform="ozon",
+            account_ref=account_ref,
+            adapter_id=adapter_id,
+            adapter_version=adapter_version,
+            required_capability=required_capability,
+            secret_reference_sha256=secret_reference_sha256,
+            credential_fingerprint_sha256=(credential_fingerprint_sha256),
+            as_of=as_of,
+        )
+        if not resolver.accepts(material):
+            raise ChannelCredentialAuthorizationError("Ozon credential material lacks resolver attestation")
+        instance = object.__new__(cls)
+        instance._client_id = material.client_id
+        instance._api_key = material.api_key
+        instance._resolver = resolver
+        instance._resolved_material = material
+        instance._readback_probe = False
+        instance._sealed = True
+        return instance
+
+    @classmethod
+    def from_resolved_material(
+        cls,
+        *,
+        resolver: SignedManagedCredentialLeaseResolver,
+        material: ResolvedChannelCredentialMaterial,
+    ) -> OzonCredentials:
+        """Build runtime-attested credentials from one already-resolved lease."""
+        if not _is_server_bound_worker_resolver(resolver):
+            raise ChannelCredentialAuthorizationError(
+                "Ozon production admission requires a composition-root "
+                "server-bound managed credential resolver"
+            )
+        if not resolver.accepts(material):
+            raise ChannelCredentialAuthorizationError(
+                "Ozon credential material lacks resolver attestation"
+            )
+        instance = object.__new__(cls)
+        instance._client_id = material.client_id
+        instance._api_key = material.api_key
+        instance._resolver = resolver
+        instance._resolved_material = material
+        instance._readback_probe = False
+        instance._sealed = True
+        return instance
+
+    def is_runtime_attested(self) -> bool:
+        return (
+            _is_server_bound_worker_resolver(self._resolver)
+            and self._resolved_material is not None
+            and self._resolver.accepts(self._resolved_material)
+            and self._client_id == self._resolved_material.client_id
+            and self._api_key == self._resolved_material.api_key
+        )
+
+    def is_test_fixture(self) -> bool:
+        return (
+            self._resolver is None
+            and self._resolved_material is None
+            and self._readback_probe is False
+        )
+
+    def is_readback_probe(self) -> bool:
+        return (
+            self._readback_probe is True
+            and self._resolver is None
+            and self._resolved_material is None
+        )
+
+
+def resolve_ozon_worker_credentials(
+    *,
+    required_capability: str,
+    environment: Mapping[str, str] | None = None,
+    as_of: datetime | None = None,
+) -> OzonCredentials:
+    """Admit lease before reading caller-controlled identity expectations."""
+
+    env = os.environ if environment is None else environment
+    resolver, handle = require_managed_channel_credential_resolution()
+    if not _is_server_bound_worker_resolver(resolver):
+        raise ChannelCredentialAuthorizationError(
+            "Ozon production admission requires a composition-root "
+            "server-bound managed credential resolver"
+        )
+    cutoff = as_of or datetime.now(UTC)
+    resolver.require_current_handle(handle=handle, as_of=cutoff)
+    return OzonCredentials.from_resolved_lease(
+        resolver=resolver,
+        handle=handle,
+        tenant_ref=str(env.get("KJDS_CHANNEL_TENANT_REF", "")),
+        entity_ref=str(env.get("KJDS_CHANNEL_ENTITY_REF", "")),
+        store_ref=str(env.get("KJDS_CHANNEL_STORE_REF", "")),
+        account_ref=str(env.get("KJDS_CHANNEL_ACCOUNT_REF", "")),
+        adapter_id=str(env.get("KJDS_CHANNEL_ADAPTER_ID", "")),
+        adapter_version=str(env.get("KJDS_CHANNEL_ADAPTER_VERSION", "")),
+        required_capability=required_capability,
+        secret_reference_sha256=str(
+            env.get("KJDS_CHANNEL_SECRET_REFERENCE_SHA256", "")
+        ),
+        credential_fingerprint_sha256=str(
+            env.get("KJDS_CHANNEL_CREDENTIAL_FINGERPRINT_SHA256", "")
+        ),
+        as_of=cutoff,
+    )
 
 
 class OzonSellerClient:
@@ -267,9 +454,16 @@ class OzonSellerClient:
         attributes_path: str = "/v4/product/info/attributes",
         circuit_failure_threshold: int = 3,
         circuit_cooldown_seconds: float = 30,
+        readback_probe_allowed: bool = False,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         normalized = base_url.rstrip("/")
+        test_transport = credentials.is_test_fixture() and isinstance(transport, httpx.MockTransport)
+        probe_admitted = credentials.is_readback_probe() and readback_probe_allowed
+        if not credentials.is_runtime_attested() and not test_transport and not probe_admitted:
+            raise ChannelCredentialAuthorizationError(
+                "Ozon production client requires a resolver-attested exact-scope credential lease"
+            )
         if not allow_insecure_http and not normalized.startswith("https://"):
             raise ValueError("Ozon worker requires HTTPS for Seller API credentials")
         self._client = httpx.Client(
@@ -284,6 +478,9 @@ class OzonSellerClient:
             timeout=timeout_seconds,
             transport=transport,
         )
+        self._credentials = credentials
+        self._test_transport = test_transport
+        self._readback_probe_allowed = probe_admitted
         self._attributes_path = attributes_path
         self._breaker = OzonCircuitBreaker(
             failure_threshold=circuit_failure_threshold,
@@ -312,15 +509,11 @@ class OzonSellerClient:
             "sort_dir": "ASC",
         }
         try:
-            attributes, attributes_capture = self._read_with_capture(
-                self._attributes_path, attributes_body
-            )
+            attributes, attributes_capture = self._read_with_capture(self._attributes_path, attributes_body)
         except OzonApiError as exc:
             if exc.status_code != 404 or self._attributes_path == "/v3/products/info/attributes":
                 raise
-            attributes, attributes_capture = self._read_with_capture(
-                "/v3/products/info/attributes", attributes_body
-            )
+            attributes, attributes_capture = self._read_with_capture("/v3/products/info/attributes", attributes_body)
         self._require_single_offer(
             attributes,
             keys=("result", "items"),
@@ -402,11 +595,7 @@ class OzonSellerClient:
             raise ValueError("Ozon finance query window cannot exceed 31 days")
         if isinstance(page, bool) or not isinstance(page, int) or page < 1:
             raise ValueError("Ozon finance page must be a positive integer")
-        if (
-            isinstance(page_size, bool)
-            or not isinstance(page_size, int)
-            or not 1 <= page_size <= 1000
-        ):
+        if isinstance(page_size, bool) or not isinstance(page_size, int) or not 1 <= page_size <= 1000:
             raise ValueError("Ozon finance page_size must be between 1 and 1000")
         return {
             "filter": {
@@ -507,9 +696,11 @@ class OzonSellerClient:
         error_contract_version: str | None = None,
         error_request_context: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        self._require_current_runtime_admission()
         self._breaker.before_call()
         delay = 0.25
         for attempt in range(3):
+            self._require_current_runtime_admission()
             try:
                 response = self._client.post(path, json=payload)
             except httpx.TransportError as exc:
@@ -563,6 +754,7 @@ class OzonSellerClient:
         path: str,
         payload: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        self._require_current_runtime_admission()
         self._breaker.before_call()
         try:
             response = self._client.post(path, json=payload)
@@ -592,6 +784,16 @@ class OzonSellerClient:
                 ),
             ) from exc
         return value, capture
+
+    def _require_current_runtime_admission(self) -> None:
+        if self._test_transport:
+            return
+        if self._credentials.is_readback_probe() and self._readback_probe_allowed:
+            return
+        if not self._credentials.is_runtime_attested():
+            raise ChannelCredentialAuthorizationError(
+                "Ozon managed credential lease is no longer current"
+            )
 
     def _json_or_error(self, response: httpx.Response) -> dict[str, Any]:
         if not response.is_success:
@@ -662,9 +864,7 @@ class OzonSellerClient:
         )
         if items is None:
             joined = " or ".join(keys)
-            raise self._schema_error(
-                f"Ozon response schema drift at {path}: missing {joined} list"
-            )
+            raise self._schema_error(f"Ozon response schema drift at {path}: missing {joined} list")
         if not items:
             raise OzonApiError(
                 "Ozon product read did not return the requested target",
@@ -677,9 +877,7 @@ class OzonSellerClient:
             )
         item = items[0]
         if not isinstance(item, dict) or not str(item.get("offer_id", "")).strip():
-            raise self._schema_error(
-                f"Ozon response schema drift at {path}: item is missing offer_id"
-            )
+            raise self._schema_error(f"Ozon response schema drift at {path}: item is missing offer_id")
         if str(item["offer_id"]).strip() != offer_id:
             raise OzonApiError(
                 "Ozon product read returned a different target",
@@ -886,21 +1084,26 @@ class ControlPlaneExecutorClient:
             if response.is_success:
                 return response
             if response.status_code < 500 or attempt == 2:
-                raise RuntimeError(
-                    f"Control plane {description} returned HTTP {response.status_code}"
-                )
-        raise RuntimeError(
-            f"Control plane {description} failed after bounded retries"
-        ) from last_error
+                raise RuntimeError(f"Control plane {description} returned HTTP {response.status_code}")
+        raise RuntimeError(f"Control plane {description} failed after bounded retries") from last_error
 
 
 class OzonExecutionWorker:
     ADAPTER_ID = "ozon.product.import.v3"
     ACTION_ID = "listing_publish"
 
-    def __init__(self, *, control_plane: ControlPlaneExecutorClient, ozon: OzonSellerClient) -> None:
+    def __init__(
+        self,
+        *,
+        control_plane: ControlPlaneExecutorClient,
+        ozon: OzonSellerClient | None = None,
+        ozon_client_factory: Any = None,
+    ) -> None:
+        if (ozon is None) == (ozon_client_factory is None):
+            raise ValueError("Exactly one Ozon client or exact-scope client factory is required")
         self.control_plane = control_plane
         self.ozon = ozon
+        self.ozon_client_factory = ozon_client_factory
 
     def process(
         self,
@@ -919,10 +1122,17 @@ class OzonExecutionWorker:
         item = command.get("patch", {}).get("item")
         if not offer_id or not isinstance(item, dict) or item.get("offer_id") != offer_id:
             raise ValueError("Command target and full Ozon import item do not match")
-        before = self.ozon.offer_state(offer_id)
-        claimed = self.control_plane.claim(
-            command["id"], before["state_hash"], trace_id=trace_id
+        read_grant = command.get("credential_grant")
+        if self.ozon_client_factory is not None:
+            self._require_credential_grant(read_grant, "catalog.read")
+        read_lease = (
+            self.ozon_client_factory.open(grant=read_grant, as_of=datetime.now(UTC))
+            if self.ozon_client_factory is not None
+            else nullcontext(self.ozon)
         )
+        with read_lease as read_client:
+            before = read_client.offer_state(offer_id)
+        claimed = self.control_plane.claim(command["id"], before["state_hash"], trace_id=trace_id)
         self._validate_claimed_command(claimed)
         execution_evidence_ids = list(evidence_ids)
         before_checkpoint = self.control_plane.checkpoint_response(
@@ -943,6 +1153,9 @@ class OzonExecutionWorker:
             trace_id=trace_id,
         )
         self._validate_write_started_command(write_attempt)
+        write_grant = write_attempt.get("credential_grant")
+        if self.ozon_client_factory is not None:
+            self._require_credential_grant(write_grant, "catalog.write")
         if (
             write_attempt.get("id") != claimed.get("id")
             or write_attempt.get("target") != claimed.get("target")
@@ -951,9 +1164,16 @@ class OzonExecutionWorker:
         ):
             raise ValueError("Write attempt does not match the claimed command")
         task_id = None
+        write_stack = ExitStack()
         try:
+            write_lease = (
+                self.ozon_client_factory.open(grant=write_grant, as_of=datetime.now(UTC))
+                if self.ozon_client_factory is not None
+                else nullcontext(self.ozon)
+            )
             try:
-                import_response = self.ozon.import_product(item)
+                ozon = write_stack.enter_context(write_lease)
+                import_response = ozon.import_product(item)
                 task_id = import_response["task_id"]
                 import_checkpoint = self.control_plane.checkpoint_response(
                     command["id"],
@@ -963,6 +1183,7 @@ class OzonExecutionWorker:
                     trace_id=trace_id,
                 )
                 execution_evidence_ids.append(import_checkpoint["evidence_id"])
+
                 def checkpoint_status(content: bytes, sequence_number: int) -> None:
                     checkpoint = self.control_plane.checkpoint_response(
                         command["id"],
@@ -973,7 +1194,7 @@ class OzonExecutionWorker:
                     )
                     execution_evidence_ids.append(checkpoint["evidence_id"])
 
-                import_result = self.ozon.wait_for_import(
+                import_result = ozon.wait_for_import(
                     task_id,
                     on_response=checkpoint_status,
                 )
@@ -1002,7 +1223,7 @@ class OzonExecutionWorker:
                 )
             if import_result["status"] == "succeeded":
                 try:
-                    after = self.ozon.offer_state(offer_id)
+                    after = ozon.offer_state(offer_id)
                 except OzonApiError as exc:
                     return self.control_plane.receipt(
                         command["id"],
@@ -1035,9 +1256,7 @@ class OzonExecutionWorker:
                         "mutation_applied": True,
                         "error_code": None if readback_matches else "OZON_READBACK_DIVERGENT",
                         "error_detail": (
-                            None
-                            if readback_matches
-                            else "Authoritative Ozon readback differs from the approved item"
+                            None if readback_matches else "Authoritative Ozon readback differs from the approved item"
                         ),
                         "evidence_ids": execution_evidence_ids,
                     },
@@ -1070,6 +1289,8 @@ class OzonExecutionWorker:
                 },
                 trace_id=trace_id,
             )
+        finally:
+            write_stack.close()
 
     def run_once(
         self,
@@ -1099,11 +1320,21 @@ class OzonExecutionWorker:
             return False
         observed = items[0]
         for key, expected in intended_item.items():
-            if key not in observed or cls._canonical_value(observed[key]) != cls._canonical_value(
-                expected
-            ):
+            if key not in observed or cls._canonical_value(observed[key]) != cls._canonical_value(expected):
                 return False
         return True
+
+    @staticmethod
+    def _require_credential_grant(grant: Any, capability: str) -> None:
+        observed = (
+            grant.required_capability
+            if type(grant) is SignedWorkerCredentialGrant
+            else grant.get("required_capability")
+            if isinstance(grant, dict)
+            else None
+        )
+        if observed != capability:
+            raise PermissionError(f"Server-owned {capability} credential grant is required")
 
     @staticmethod
     def _canonical_value(value: Any) -> Any:
@@ -1118,9 +1349,7 @@ class OzonExecutionWorker:
 
     @classmethod
     def _validate_write_started_command(cls, command: dict[str, Any]) -> None:
-        if command.get("status") != "write_started" or command.get(
-            "write_attempt_consumed"
-        ) is not True:
+        if command.get("status") != "write_started" or command.get("write_attempt_consumed") is not True:
             raise ValueError("Control plane did not consume the single-use write attempt")
         cls._validate_authorized_command(command)
 
@@ -1210,6 +1439,34 @@ class OzonExecutionWorker:
         return parsed.astimezone(UTC)
 
 
+class _OzonClientLease:
+    """Context-managed Ozon client bound to one resolved credential lease."""
+
+    def __init__(self, client: OzonSellerClient) -> None:
+        self._client = client
+        self._closed = False
+
+    def __enter__(self) -> OzonSellerClient:
+        return self._client
+
+    def __exit__(self, *_exc: object) -> None:
+        if not self._closed:
+            self._client.close()
+            self._closed = True
+
+
+def ozon_client_builder(
+    material: ResolvedChannelCredentialMaterial,
+    resolver: SignedManagedCredentialLeaseResolver,
+) -> _OzonClientLease:
+    """Composition hook: build the Ozon client from one resolved lease."""
+    credentials = OzonCredentials.from_resolved_material(
+        resolver=resolver,
+        material=material,
+    )
+    return _OzonClientLease(OzonSellerClient(credentials=credentials))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Isolated KJDS Ozon limited-execution worker")
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -1234,32 +1491,35 @@ def main() -> None:
     parser.add_argument("--evidence-id", action="append")
     args = parser.parse_args()
     evidence_ids = args.evidence_id or [
-        item.strip()
-        for item in os.getenv("KJDS_EXECUTION_EVIDENCE_IDS", "").split(",")
-        if item.strip()
+        item.strip() for item in os.getenv("KJDS_EXECUTION_EVIDENCE_IDS", "").split(",") if item.strip()
     ]
+    if args.preflight:
+        report = offline_execution_preflight(
+            command_id=args.command_id,
+            offer_id=args.offer_id,
+            evidence_ids=evidence_ids,
+        )
+        print(json.dumps(report, ensure_ascii=False))
+        return
+
+    runtime = build_channel_worker_runtime(
+        os.environ,
+        client_builder=ozon_client_builder,
+    )
+    runtime.require_execution_ready()
     report = offline_execution_preflight(
         command_id=args.command_id,
         offer_id=args.offer_id,
         evidence_ids=evidence_ids,
     )
-    if args.preflight:
-        print(json.dumps(report, ensure_ascii=False))
-        return
-
     control = ControlPlaneExecutorClient(
         base_url=os.getenv("KJDS_CONTROL_PLANE_URL", "http://127.0.0.1:8000"),
-        api_key=os.environ.get("KJDS_EXECUTOR_API_KEY", ""),
+        api_key=_configured_value(os.environ, "KJDS_EXECUTOR_API_KEY"),
     )
-    ozon = OzonSellerClient(
-        OzonCredentials.from_environment(),
-        base_url=os.getenv("OZON_API_URL", OFFICIAL_OZON_ORIGIN),
-        attributes_path=os.getenv(
-            "OZON_PRODUCT_ATTRIBUTES_PATH",
-            PRODUCT_ATTRIBUTES_PATH,
-        ),
+    worker = OzonExecutionWorker(
+        control_plane=control,
+        ozon_client_factory=runtime.credential_client_factory,
     )
-    worker = OzonExecutionWorker(control_plane=control, ozon=ozon)
     try:
         worker.run_once(
             command_id=args.command_id,
@@ -1268,7 +1528,6 @@ def main() -> None:
         )
     finally:
         control.close()
-        ozon.close()
 
 
 if __name__ == "__main__":

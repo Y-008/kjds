@@ -46,6 +46,7 @@ CHARGE_CATEGORY = {
     "discount": "discount",
     "tax": "tax",
     "fx": "fx",
+    "capital_cost": "loss",
     "unclaimed": "loss",
     "damage": "loss",
 }
@@ -70,6 +71,7 @@ class ProfitLedgerService:
         date_to: str | None = None,
         grain: str = "order",
         currency: str = "CNY",
+        as_of: str | None = None,
     ) -> dict[str, Any]:
         scope = store_ref.strip()
         if not scope or len(scope) > 160:
@@ -77,6 +79,7 @@ class ProfitLedgerService:
         if grain not in {"day", "order", "sku"}:
             raise ValueError("Profit ledger grain must be day, order, or sku")
         quote = self._currency(currency)
+        cutoff = self._timestamp(as_of, "as_of") if as_of else datetime.now(UTC)
         start = self._date(date_from, "date_from") if date_from else None
         end = self._date(date_to, "date_to") if date_to else None
         if start and end and end < start:
@@ -85,44 +88,81 @@ class ProfitLedgerService:
         with Session(self.engine) as session:
             products = {
                 row.id: row
-                for row in session.scalars(select(ProductRow).order_by(ProductRow.id))
+                for row in session.scalars(
+                    select(ProductRow)
+                    .where(ProductRow.created_at <= cutoff)
+                    .order_by(ProductRow.id)
+                )
             }
             product_by_sku = {row.sku: row for row in products.values()}
             order_rows = list(
-                session.scalars(select(OrderRow).order_by(OrderRow.created_at, OrderRow.id))
+                session.scalars(
+                    select(OrderRow)
+                    .where(OrderRow.created_at <= cutoff)
+                    .order_by(OrderRow.created_at, OrderRow.id)
+                )
             )
             charge_rows = list(
-                session.scalars(select(ChargeRow).order_by(ChargeRow.created_at, ChargeRow.id))
+                session.scalars(
+                    select(ChargeRow)
+                    .where(ChargeRow.created_at <= cutoff)
+                    .order_by(ChargeRow.created_at, ChargeRow.id)
+                )
             )
             fact_rows = list(
                 session.scalars(
-                    select(FactRecordRow).order_by(
-                        FactRecordRow.effective_at, FactRecordRow.id
+                    select(FactRecordRow)
+                    .where(
+                        FactRecordRow.tenant_ref.is_(None),
+                        FactRecordRow.recorded_at <= cutoff,
+                        FactRecordRow.effective_at <= cutoff,
                     )
+                    .order_by(FactRecordRow.effective_at, FactRecordRow.id)
                 )
             )
             finance_rows = list(
                 session.scalars(
-                    select(FinanceEntryRow).order_by(
-                        FinanceEntryRow.effective_at, FinanceEntryRow.id
+                    select(FinanceEntryRow)
+                    .where(
+                        FinanceEntryRow.recorded_at <= cutoff,
+                        FinanceEntryRow.effective_at <= cutoff,
+                    )
+                    .order_by(
+                        FinanceEntryRow.effective_at,
+                        FinanceEntryRow.id,
                     )
                 )
             )
             fx_rows = list(
                 session.scalars(
-                    select(FxRateRow).order_by(
-                        FxRateRow.effective_at, FxRateRow.version, FxRateRow.id
+                    select(FxRateRow)
+                    .where(
+                        FxRateRow.recorded_at <= cutoff,
+                        FxRateRow.effective_at <= cutoff,
+                    )
+                    .order_by(
+                        FxRateRow.effective_at,
+                        FxRateRow.version,
+                        FxRateRow.id,
                     )
                 )
             )
             evidence_rows = {
                 row.id: row
-                for row in session.scalars(select(EvidenceRecordRow).order_by(EvidenceRecordRow.id))
+                for row in session.scalars(
+                    select(EvidenceRecordRow)
+                    .where(EvidenceRecordRow.recorded_at <= cutoff)
+                    .order_by(EvidenceRecordRow.id)
+                )
             }
             blob_hashes = set(session.scalars(select(EvidenceBlobRow.sha256)))
             approvals = {
                 row.id: row
-                for row in session.scalars(select(ApprovalRow).order_by(ApprovalRow.id))
+                for row in session.scalars(
+                    select(ApprovalRow)
+                    .where(ApprovalRow.created_at <= cutoff)
+                    .order_by(ApprovalRow.id)
+                )
             }
 
         charge_by_order: dict[str, list[ChargeRow]] = defaultdict(list)
@@ -135,7 +175,10 @@ class ProfitLedgerService:
         for entry in finance_rows:
             finance_by_key[entry.reconciliation_key].append(entry)
 
-        scenario_by_product = self._scenario_bindings(approvals)
+        scenario_by_product = self._scenario_bindings(
+            approvals,
+            as_of=cutoff,
+        )
         rows: list[dict[str, Any]] = []
         matched_fact_ids: set[str] = set()
         matched_finance_ids: set[str] = set()
@@ -165,6 +208,7 @@ class ProfitLedgerService:
                     fx_rows=fx_rows,
                     evidence_rows=evidence_rows,
                     blob_hashes=blob_hashes,
+                    as_of=cutoff,
                     scenario=scenario_by_product.get(order.product_id),
                     quote_currency=quote,
                     store_ref=scope,
@@ -198,6 +242,7 @@ class ProfitLedgerService:
                     fx_rows=fx_rows,
                     evidence_rows=evidence_rows,
                     blob_hashes=blob_hashes,
+                    as_of=cutoff,
                     scenario=scenario_by_product.get(product.id),
                     quote_currency=quote,
                     store_ref=scope,
@@ -226,6 +271,7 @@ class ProfitLedgerService:
         payload = {
             "contract_id": self.CONTRACT_ID,
             "registry_version": "profit-ledger/1.0.0",
+            "as_of": cutoff.isoformat(),
             "store_ref": scope,
             "grain": grain,
             "currency": quote,
@@ -312,6 +358,7 @@ class ProfitLedgerService:
         fx_rows: list[FxRateRow],
         evidence_rows: dict[str, EvidenceRecordRow],
         blob_hashes: set[str],
+        as_of: datetime,
         scenario: dict[str, Any] | None,
         quote_currency: str,
         store_ref: str,
@@ -350,7 +397,10 @@ class ProfitLedgerService:
         )
         evidence_ids.update(finance_evidence)
         valid_evidence, invalid_evidence = self._evidence_state(
-            evidence_ids, evidence_rows, blob_hashes
+            evidence_ids,
+            evidence_rows,
+            blob_hashes,
+            as_of=as_of,
         )
         blockers.extend(f"invalid_evidence:{item}" for item in invalid_evidence)
         fact_order_evidence = any(item.fact_type == "ozon_order" for item in facts)
@@ -408,6 +458,7 @@ class ProfitLedgerService:
         fx_rows: list[FxRateRow],
         evidence_rows: dict[str, EvidenceRecordRow],
         blob_hashes: set[str],
+        as_of: datetime,
         scenario: dict[str, Any] | None,
         quote_currency: str,
         store_ref: str,
@@ -431,7 +482,10 @@ class ProfitLedgerService:
         )
         evidence_ids = {fact.evidence_id, *finance_evidence}
         valid_evidence, invalid_evidence = self._evidence_state(
-            evidence_ids, evidence_rows, blob_hashes
+            evidence_ids,
+            evidence_rows,
+            blob_hashes,
+            as_of=as_of,
         )
         blockers.extend(f"invalid_evidence:{item}" for item in invalid_evidence)
         blockers.extend(
@@ -511,7 +565,10 @@ class ProfitLedgerService:
         )
 
     def _scenario_bindings(
-        self, approvals: dict[str, ApprovalRow]
+        self,
+        approvals: dict[str, ApprovalRow],
+        *,
+        as_of: datetime,
     ) -> dict[str, dict[str, Any]]:
         bindings: dict[str, dict[str, Any]] = {}
         try:
@@ -526,8 +583,17 @@ class ProfitLedgerService:
                 scenario = self.sourcing_store.get_scenario(draft.scenario_id)
             except (KeyError, RuntimeError, ValueError):
                 continue
+            scenario_created_at = self._timestamp(
+                scenario.created_at,
+                "scenario.created_at",
+            )
+            if scenario_created_at > as_of:
+                continue
             current = bindings.get(draft.product_id)
-            if current is not None and current["created_at"] >= scenario.created_at:
+            if (
+                current is not None
+                and current["created_at"] >= scenario.created_at
+            ):
                 continue
             bindings[draft.product_id] = {
                 "scenario_id": scenario.id,
@@ -549,16 +615,22 @@ class ProfitLedgerService:
         evidence_ids: set[str],
         evidence_rows: dict[str, EvidenceRecordRow],
         blob_hashes: set[str],
+        *,
+        as_of: datetime,
     ) -> tuple[list[str], list[str]]:
         valid: list[str] = []
         invalid: list[str] = []
-        now = datetime.now(UTC)
         for evidence_id in sorted(item for item in evidence_ids if item):
             row = evidence_rows.get(evidence_id)
             if (
                 row is None
                 or row.blob_sha256 not in blob_hashes
-                or (row.effective_until is not None and ProfitLedgerService._aware(row.effective_until) < now)
+                or ProfitLedgerService._aware(row.effective_at) > as_of
+                or (
+                    row.effective_until is not None
+                    and as_of
+                    >= ProfitLedgerService._aware(row.effective_until)
+                )
             ):
                 invalid.append(evidence_id)
             else:
@@ -859,6 +931,16 @@ class ProfitLedgerService:
             return date.fromisoformat(value)
         except ValueError as exc:
             raise ValueError(f"{field} must use YYYY-MM-DD") from exc
+
+    @staticmethod
+    def _timestamp(value: str, field: str) -> datetime:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"{field} must be an ISO-8601 timestamp") from exc
+        if parsed.tzinfo is None:
+            raise ValueError(f"{field} must include a timezone")
+        return parsed.astimezone(UTC)
 
     @staticmethod
     def _aware(value: datetime) -> datetime:

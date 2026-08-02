@@ -6,11 +6,22 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, select
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    select,
+)
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
-from .sql_repository import Base, ContentAssetRow
+from .security import Principal
+from .sql_repository import Base
 
 METRIC_REGISTRY_VERSION = "operating-metrics/1.0.0"
 TASK_STATUSES = {"open", "acknowledged", "in_progress", "resolved", "dismissed"}
@@ -182,10 +193,30 @@ class OperatingTaskEventRow(Base):
 
 class AnomalyScanRunRow(Base):
     __tablename__ = "anomaly_scan_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "("
+            "tenant_ref IS NULL AND entity_ref IS NULL "
+            "AND scope_authority_sha256 IS NULL"
+            ") OR ("
+            "tenant_ref IS NOT NULL AND length(tenant_ref) > 0 "
+            "AND entity_ref IS NOT NULL AND length(entity_ref) > 0 "
+            "AND scope_authority_sha256 IS NOT NULL "
+            "AND length(scope_authority_sha256) = 64"
+            ")",
+            name="ck_anomaly_scan_scope_complete",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     registry_version: Mapped[str] = mapped_column(String, nullable=False)
+    tenant_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    entity_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     store_ref: Mapped[str] = mapped_column(String, nullable=False)
+    scope_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
     as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     results_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     snapshot_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -196,13 +227,49 @@ class AnomalyScanRunRow(Base):
 class OperatingIntelligenceService:
     """Evaluate server-owned metrics and close anomalies into one task interface."""
 
-    def __init__(self, *, engine, profit_ledger, evidence) -> None:
+    def __init__(
+        self,
+        *,
+        engine,
+        profit_ledger,
+        evidence,
+        scoped_evidence=None,
+    ) -> None:
         self.engine = engine
         self.profit_ledger = profit_ledger
         self.evidence = evidence
+        self.scoped_evidence = scoped_evidence
 
-    def metrics(self, *, store_ref: str = "ozon-primary") -> dict[str, Any]:
-        observations = self._observations(store_ref=store_ref)
+    def metrics(
+        self,
+        *,
+        store_ref: str = "ozon-primary",
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        as_of: str | None = None,
+    ) -> dict[str, Any]:
+        scope_ready = (
+            principal is not None
+            and principal.can_access_store(store_ref)
+            and bool(principal.tenant_ref.strip())
+            and entity_scope is not None
+            and entity_scope.get("status") == "ready"
+            and entity_scope.get("entity_ref")
+            and self._valid_hash(entity_scope.get("authority_sha256"))
+        )
+        observations = (
+            self._observations(
+                store_ref=store_ref,
+                principal=principal,
+                entity_scope=entity_scope,
+                as_of=as_of,
+            )
+            if scope_ready
+            else {
+                metric["id"]: self._observation("0", 0, [])
+                for metric in METRIC_REGISTRY
+            }
+        )
         items = [
             {
                 **metric,
@@ -220,6 +287,12 @@ class OperatingIntelligenceService:
             "contract_id": "kjds-operating-metric-registry-v1",
             "registry_version": METRIC_REGISTRY_VERSION,
             "store_ref": store_ref,
+            "scope_status": "ready" if scope_ready else "no_data",
+            "source_gaps": (
+                []
+                if scope_ready
+                else ["operating_intelligence_scope_authority_missing"]
+            ),
             "metrics": items,
             "control_envelope": {
                 "descriptive_not_causal": True,
@@ -236,12 +309,52 @@ class OperatingIntelligenceService:
         store_ref: str,
         actor_id: str,
         as_of: str | None = None,
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         actor = actor_id.strip()
         if not actor:
             raise ValueError("Anomaly scan actor is required")
         now = self._datetime(as_of) if as_of else datetime.now(UTC)
-        catalog = self.metrics(store_ref=store_ref)
+        catalog = self.metrics(
+            store_ref=store_ref,
+            principal=principal,
+            entity_scope=entity_scope,
+            as_of=self._iso(now),
+        )
+        if catalog["scope_status"] != "ready":
+            payload = {
+                "id": None,
+                "registry_version": METRIC_REGISTRY_VERSION,
+                "store_ref": store_ref,
+                "as_of": self._iso(now),
+                "status": "no_data",
+                "results": [
+                    {
+                        "metric_id": metric["id"],
+                        "status": "scope_authority_missing",
+                        "sample_size": 0,
+                        "minimum_sample": metric["minimum_sample"],
+                        "task_id": None,
+                    }
+                    for metric in catalog["metrics"]
+                ],
+                "source_gaps": catalog["source_gaps"],
+                "persisted": False,
+                "automatic_business_action": False,
+                "external_write_allowed": False,
+            }
+            payload["snapshot_sha256"] = self._hash(payload)
+            return payload
+        authority_scope = self._canonical_scope(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+        )
+        if authority_scope is None:
+            raise RuntimeError(
+                "Ready metric scope must resolve a canonical authority tuple"
+            )
         results: list[dict[str, Any]] = []
         with Session(self.engine, expire_on_commit=False) as session, session.begin():
             for metric in catalog["metrics"]:
@@ -275,7 +388,10 @@ class OperatingIntelligenceService:
                         }
                     )
                     continue
-                scope = {"store_ref": store_ref, **observation.get("scope", {})}
+                scope = {
+                    **authority_scope,
+                    "dimensions": observation.get("scope", {}),
+                }
                 active = self._cooldown_task(
                     session,
                     metric_id=metric["id"],
@@ -366,6 +482,7 @@ class OperatingIntelligenceService:
                 )
             run_payload = {
                 "registry_version": METRIC_REGISTRY_VERSION,
+                "scope": authority_scope,
                 "store_ref": store_ref,
                 "as_of": self._iso(now),
                 "results": results,
@@ -373,7 +490,12 @@ class OperatingIntelligenceService:
             run = AnomalyScanRunRow(
                 id=new_id("asn"),
                 registry_version=METRIC_REGISTRY_VERSION,
+                tenant_ref=authority_scope["tenant_ref"],
+                entity_ref=authority_scope["entity_ref"],
                 store_ref=store_ref,
+                scope_authority_sha256=authority_scope[
+                    "scope_authority_sha256"
+                ],
                 as_of=now,
                 results_json=results,
                 snapshot_sha256=self._hash(run_payload),
@@ -391,13 +513,35 @@ class OperatingIntelligenceService:
             }
 
     def tasks(
-        self, *, status: str | None = None, limit: int = 200
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 200,
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        store_ref: str | None = None,
+        as_of: str | None = None,
     ) -> list[dict[str, Any]]:
         if status is not None and status not in TASK_STATUSES:
             raise ValueError("Unknown operating task status")
         if not 1 <= limit <= 1000:
             raise ValueError("Operating task limit must be between 1 and 1000")
+        scoped, authority_scope = self._requested_scope(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+        )
+        if scoped and authority_scope is None:
+            return []
         query = select(OperatingTaskRow)
+        if authority_scope is not None:
+            query = query.where(
+                *self._task_scope_conditions(authority_scope)
+            )
+        if as_of is not None:
+            query = query.where(
+                OperatingTaskRow.created_at <= self._datetime(as_of)
+            )
         if status:
             query = query.where(OperatingTaskRow.status == status)
         query = query.order_by(
@@ -539,22 +683,57 @@ class OperatingIntelligenceService:
             session.flush()
             return self._task(task)
 
-    def scans(self, *, limit: int = 50) -> list[dict[str, Any]]:
+    def scans(
+        self,
+        *,
+        limit: int = 50,
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        store_ref: str | None = None,
+        as_of: str | None = None,
+    ) -> list[dict[str, Any]]:
         if not 1 <= limit <= 500:
             raise ValueError("Anomaly scan limit must be between 1 and 500")
-        query = (
-            select(AnomalyScanRunRow)
-            .order_by(
-                AnomalyScanRunRow.as_of.desc(),
-                AnomalyScanRunRow.id,
-            )
-            .limit(limit)
+        scoped, authority_scope = self._requested_scope(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
         )
+        if scoped and authority_scope is None:
+            return []
+        query = select(AnomalyScanRunRow)
+        if authority_scope is not None:
+            query = query.where(
+                AnomalyScanRunRow.tenant_ref
+                == authority_scope["tenant_ref"],
+                AnomalyScanRunRow.entity_ref
+                == authority_scope["entity_ref"],
+                AnomalyScanRunRow.store_ref
+                == authority_scope["store_ref"],
+                AnomalyScanRunRow.scope_authority_sha256
+                == authority_scope["scope_authority_sha256"],
+            )
+        if as_of is not None:
+            query = query.where(
+                AnomalyScanRunRow.as_of <= self._datetime(as_of)
+            )
+        query = query.order_by(
+            AnomalyScanRunRow.as_of.desc(),
+            AnomalyScanRunRow.id,
+        ).limit(limit)
         with Session(self.engine) as session:
             return [
                 {
                     "id": row.id,
                     "registry_version": row.registry_version,
+                    "scope": {
+                        "tenant_ref": row.tenant_ref,
+                        "entity_ref": row.entity_ref,
+                        "store_ref": row.store_ref,
+                        "scope_authority_sha256": (
+                            row.scope_authority_sha256
+                        ),
+                    },
                     "store_ref": row.store_ref,
                     "as_of": self._iso(row.as_of),
                     "results": row.results_json,
@@ -575,6 +754,9 @@ class OperatingIntelligenceService:
         reason: str,
         evidence_ids: list[str],
         actor_id: str,
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        store_ref: str | None = None,
     ) -> dict[str, Any]:
         event_type = event_type.strip().lower()
         reason = reason.strip()
@@ -588,13 +770,40 @@ class OperatingIntelligenceService:
         normalized_evidence = self._evidence_ids(evidence_ids)
         if event_type in {"resolve", "dismiss"} and not normalized_evidence:
             raise ValueError("Resolved or dismissed task requires Evidence")
-        if normalized_evidence:
-            self.evidence.require_valid(normalized_evidence)
+        scoped, authority_scope = self._requested_scope(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+        )
+        if scoped and authority_scope is None:
+            raise KeyError(f"Unknown operating task: {task_id}")
         expected, target = TASK_TRANSITIONS[event_type]
         now = datetime.now(UTC)
+        if normalized_evidence:
+            self.evidence.require_valid(normalized_evidence)
+            if authority_scope is not None:
+                if self.scoped_evidence is None:
+                    raise RuntimeError(
+                        "Scoped task Evidence authority is unavailable"
+                    )
+                projection = self.scoped_evidence.project(
+                    evidence_ids=normalized_evidence,
+                    principal=principal,
+                    entity_scope=entity_scope,
+                    store_ref=store_ref,
+                    as_of=now,
+                )
+                if projection["status"] != "ready":
+                    raise ValueError(
+                        "Task Evidence must be bound to the exact "
+                        "tenant/entity/store scope"
+                    )
         with Session(self.engine, expire_on_commit=False) as session, session.begin():
             task = session.get(OperatingTaskRow, task_id)
-            if task is None:
+            if task is None or (
+                authority_scope is not None
+                and not self._task_has_scope(task, authority_scope)
+            ):
                 raise KeyError(f"Unknown operating task: {task_id}")
             if task.status != expected:
                 raise ValueError(
@@ -622,9 +831,27 @@ class OperatingIntelligenceService:
             session.flush()
             return {"task": self._task(task), "event": self._event(event)}
 
-    def task_events(self, task_id: str) -> list[dict[str, Any]]:
+    def task_events(
+        self,
+        task_id: str,
+        *,
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        store_ref: str | None = None,
+    ) -> list[dict[str, Any]]:
+        scoped, authority_scope = self._requested_scope(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+        )
+        if scoped and authority_scope is None:
+            raise KeyError(f"Unknown operating task: {task_id}")
         with Session(self.engine) as session:
-            if session.get(OperatingTaskRow, task_id) is None:
+            task = session.get(OperatingTaskRow, task_id)
+            if task is None or (
+                authority_scope is not None
+                and not self._task_has_scope(task, authority_scope)
+            ):
                 raise KeyError(f"Unknown operating task: {task_id}")
             rows = session.scalars(
                 select(OperatingTaskEventRow)
@@ -635,18 +862,38 @@ class OperatingIntelligenceService:
             )
             return [self._event(row) for row in rows]
 
-    def queue_items(self, *, now: datetime) -> list[dict[str, Any]]:
+    def queue_items(
+        self,
+        *,
+        now: datetime,
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        store_ref: str | None = None,
+    ) -> list[dict[str, Any]]:
         rank = {"critical": 15, "high": 60, "medium": 240, "low": 1440}
         result: list[dict[str, Any]] = []
+        scoped, authority_scope = self._requested_scope(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+        )
+        if scoped and authority_scope is None:
+            return []
         with Session(self.engine) as session:
-            rows = session.scalars(
-                select(OperatingTaskRow)
-                .where(
-                    OperatingTaskRow.status.in_(
-                        ("open", "acknowledged", "in_progress")
-                    )
+            query = select(OperatingTaskRow).where(
+                OperatingTaskRow.status.in_(
+                    ("open", "acknowledged", "in_progress")
                 )
-                .order_by(OperatingTaskRow.created_at, OperatingTaskRow.id)
+            )
+            if authority_scope is not None:
+                query = query.where(
+                    *self._task_scope_conditions(authority_scope)
+                )
+            rows = session.scalars(
+                query.order_by(
+                    OperatingTaskRow.created_at,
+                    OperatingTaskRow.id,
+                )
             )
             for row in rows:
                 sla = rank[row.severity]
@@ -688,8 +935,110 @@ class OperatingIntelligenceService:
                 )
         return result
 
-    def _observations(self, *, store_ref: str) -> dict[str, dict[str, Any]]:
-        ledger = self.profit_ledger.snapshot(store_ref=store_ref, grain="order")
+    @classmethod
+    def _requested_scope(
+        cls,
+        *,
+        principal: Principal | None,
+        entity_scope: dict[str, Any] | None,
+        store_ref: str | None,
+    ) -> tuple[bool, dict[str, str] | None]:
+        values = (principal, entity_scope, store_ref)
+        if all(value is None for value in values):
+            return False, None
+        if principal is None or entity_scope is None or store_ref is None:
+            raise ValueError(
+                "Scoped operating intelligence requires principal, "
+                "entity_scope, and store_ref"
+            )
+        return True, cls._canonical_scope(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+        )
+
+    @classmethod
+    def _canonical_scope(
+        cls,
+        *,
+        principal: Principal | None,
+        entity_scope: dict[str, Any] | None,
+        store_ref: str,
+    ) -> dict[str, str] | None:
+        if principal is None or entity_scope is None:
+            return None
+        if not principal.can_access_store(store_ref):
+            raise PermissionError(
+                "Authenticated identity is not authorized for store_ref"
+            )
+        tenant_ref = principal.tenant_ref.strip()
+        entity_ref = str(entity_scope.get("entity_ref") or "").strip()
+        authority_sha256 = entity_scope.get("authority_sha256")
+        if (
+            entity_scope.get("status") != "ready"
+            or not tenant_ref
+            or not entity_ref
+        ):
+            return None
+        if not cls._valid_hash(authority_sha256):
+            raise ValueError(
+                "Ready entity scope requires a SHA-256 authority hash"
+            )
+        return {
+            "tenant_ref": tenant_ref,
+            "entity_ref": entity_ref,
+            "store_ref": store_ref,
+            "scope_authority_sha256": authority_sha256,
+        }
+
+    @staticmethod
+    def _task_scope_conditions(
+        authority_scope: dict[str, str],
+    ) -> tuple[Any, ...]:
+        return (
+            OperatingTaskRow.scope_json["tenant_ref"].as_string()
+            == authority_scope["tenant_ref"],
+            OperatingTaskRow.scope_json["entity_ref"].as_string()
+            == authority_scope["entity_ref"],
+            OperatingTaskRow.scope_json["store_ref"].as_string()
+            == authority_scope["store_ref"],
+            OperatingTaskRow.scope_json[
+                "scope_authority_sha256"
+            ].as_string()
+            == authority_scope["scope_authority_sha256"],
+        )
+
+    @staticmethod
+    def _task_has_scope(
+        task: OperatingTaskRow,
+        authority_scope: dict[str, str],
+    ) -> bool:
+        return all(
+            task.scope_json.get(key) == value
+            for key, value in authority_scope.items()
+        )
+
+    @staticmethod
+    def _valid_hash(value: Any) -> bool:
+        if not isinstance(value, str) or len(value) != 64:
+            return False
+        return all(character in "0123456789abcdef" for character in value)
+
+    def _observations(
+        self,
+        *,
+        store_ref: str,
+        principal: Principal,
+        entity_scope: dict[str, Any],
+        as_of: str | None,
+    ) -> dict[str, dict[str, Any]]:
+        ledger = self.profit_ledger.snapshot(
+            store_ref=store_ref,
+            grain="order",
+            principal=principal,
+            entity_scope=entity_scope,
+            as_of=as_of,
+        )
         rows = ledger["rows"]
         gross = sum((Decimal(item["gross_revenue"]) for item in rows), Decimal("0"))
         evidence_ids = sorted(
@@ -709,33 +1058,6 @@ class OperatingIntelligenceService:
             and item["cash_contribution"] is not None
             and Decimal(item["settlement_contribution"]) != 0
         ]
-        with Session(self.engine) as session:
-            assets = list(session.scalars(select(ContentAssetRow)))
-        reviewed = [
-            item
-            for item in assets
-            if item.status in {"approved", "qa_failed", "published"}
-        ]
-        failed_assets = [item for item in reviewed if item.status == "qa_failed"]
-        media_terminal = 0
-        media_failed = 0
-        try:
-            from .media_workbench import MediaExecutionRow
-
-            with Session(self.engine) as session:
-                jobs = list(
-                    session.scalars(
-                        select(MediaExecutionRow).where(
-                            MediaExecutionRow.status.in_(
-                                ("generated", "approved", "failed")
-                            )
-                        )
-                    )
-                )
-            media_terminal = len(jobs)
-            media_failed = sum(item.status == "failed" for item in jobs)
-        except (ImportError, RuntimeError):
-            pass
         total_returns = sum(
             (Decimal(item["erosion"]["returns"]) for item in rows), Decimal("0")
         )
@@ -778,13 +1100,13 @@ class OperatingIntelligenceService:
                 evidence_ids,
             ),
             "content_qa_failure_ratio": self._observation(
-                self._ratio(Decimal(len(failed_assets)), Decimal(len(reviewed))),
-                len(reviewed),
+                "0",
+                0,
                 [],
             ),
             "media_execution_failure_ratio": self._observation(
-                self._ratio(Decimal(media_failed), Decimal(media_terminal)),
-                media_terminal,
+                "0",
+                0,
                 [],
             ),
         }

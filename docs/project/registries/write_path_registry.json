@@ -4,6 +4,53 @@
   "status": "active",
   "actions": [
     {
+      "action_id": "ai_listing_internal_dry_run",
+      "risk_tier": "L1",
+      "availability": "enabled",
+      "request_entries": [
+        "POST /v1/ai-listing/runs/preflight",
+        "POST /v1/ai-listing/runs",
+        "POST /v1/ai-listing/runs/{run_id}/resume",
+        "POST /v1/ai-listing/runs/{run_id}/cancel",
+        "POST /v1/ai-listing/artifacts/{artifact_id}/feedback"
+      ],
+      "service_entry": "apps.control_plane.ai_listing.AiListingPipeline",
+      "formal_fact_writes": [
+        "ai_listing_runs",
+        "agent_runs",
+        "agent_artifacts",
+        "agent_run_events",
+        "content_assets",
+        "listing_drafts",
+        "approvals",
+        "governed_execution_plans",
+        "governed_execution_dry_runs",
+        "evidence_records",
+        "evidence_lineage",
+        "outbox_events"
+      ],
+      "delivery": {
+        "kind": "direct",
+        "entry": "apps.control_plane.ai_listing.AiListingPipeline"
+      },
+      "external_calls": [],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": false,
+      "readback": "immutable Provider-response Evidence, approved content Evidence, Listing snapshot, Governed Execution Plan and internal dry-run hash",
+      "idempotency": "tenant/entity/store/idempotency key plus frozen capture, task-input and Provider-attempt hashes",
+      "rollback_or_compensation": "disable KJDS_AI_LISTING_ENABLED and retain immutable runs, Artifacts, Evidence and dry-run receipts",
+      "limit_keys": ["max_cost_usd", "max_provider_attempts", "max_daily_runs"],
+      "audit_codes": [
+        "AI_LISTING_PREFLIGHT_BLOCKED",
+        "MODEL_CAPABILITY_UNAVAILABLE",
+        "EXTERNAL_WRITE_FORBIDDEN",
+        "POSITIVE_CM3_REQUIRED",
+        "INDEPENDENT_APPROVAL_REQUIRED"
+      ],
+      "activation_blocker": "KJDS_AI_LISTING_ENABLED remains false until gold-set gates and one real internal dry-run pass; no Ozon command, Permit or Receipt path is part of this action"
+    },
+    {
       "action_id": "content_generate",
       "risk_tier": "L1",
       "availability": "enabled",
@@ -46,6 +93,30 @@
       "rollback_or_compensation": "supersede draft; never mutate an approved listing snapshot",
       "limit_keys": ["max_daily_runs"],
       "audit_codes": ["ACTION_AUTHORIZED", "ACTION_POLICY_INVALID"]
+    },
+    {
+      "action_id": "erp_item_draft_sync",
+      "risk_tier": "L1",
+      "availability": "enabled",
+      "request_entries": [
+        "POST /v1/erp/profit-items/syncs",
+        "POST /v1/erp/profit-items/syncs/{sync_id}/dispatch"
+      ],
+      "service_entry": "apps.control_plane.profit_erp_sync.ProfitQualifiedErpSync",
+      "formal_fact_writes": ["profit_erp_item_syncs", "domain_events", "outbox_events"],
+      "delivery": {"kind": "direct", "entry": "apps.control_plane.profit_erp_sync.FrappeErpItemConnector"},
+      "external_calls": [
+        "GET Frappe /api/resource/Item/{item_code}",
+        "POST Frappe /api/resource/Item"
+      ],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": false,
+      "readback": "ERPNext Item item_code, docstatus=0 and custom_kjds_product_id exact comparison plus response hash",
+      "idempotency": "tenant/store/idempotency key plus immutable request and payload SHA-256",
+      "rollback_or_compensation": "delete or retire the reversible ERPNext draft through a separately reviewed sidecar operation; no stock or transaction exists",
+      "limit_keys": ["max_daily_runs"],
+      "audit_codes": ["ACTION_AUTHORIZED", "ACTION_POLICY_INVALID", "ERP_ITEM_READBACK_MISMATCH"]
     },
     {
       "action_id": "candidate_promote",
@@ -120,6 +191,101 @@
       "rollback_or_compensation": "governed rollback command through the same worker",
       "limit_keys": ["max_quantity", "max_daily_runs", "max_expected_loss"],
       "audit_codes": ["ACTION_AUTHORIZED", "ACTION_POLICY_VERSION_CHANGED", "OZON_TRANSPORT_UNCERTAIN", "OZON_IMPORT_NOT_CONFIRMED"]
+    },
+    {
+      "action_id": "customer_service_reply_send",
+      "risk_tier": "L3",
+      "availability": "policy_only",
+      "request_entries": [],
+      "service_entry": null,
+      "formal_fact_writes": [],
+      "delivery": {"kind": "none", "entry": null},
+      "external_calls": [],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": true,
+      "readback": null,
+      "idempotency": null,
+      "rollback_or_compensation": null,
+      "limit_keys": ["max_daily_runs", "max_expected_loss"],
+      "audit_codes": [],
+      "activation_blocker": "No formally authorized customer-message adapter, lease worker or authoritative platform readback; private endpoints, browser cookies and internal tokens are prohibited"
+    },
+    {
+      "action_id": "warehouse_inventory_adjustment",
+      "risk_tier": "L4",
+      "availability": "policy_only",
+      "request_entries": [],
+      "service_entry": null,
+      "formal_fact_writes": [],
+      "delivery": {"kind": "none", "entry": null},
+      "external_calls": [],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": true,
+      "readback": null,
+      "idempotency": null,
+      "rollback_or_compensation": null,
+      "limit_keys": ["max_quantity", "max_daily_runs", "max_inventory_exposure", "max_expected_loss"],
+      "audit_codes": [],
+      "activation_blocker": "No authorized warehouse inventory executor or immutable official readback; BAS-157 only imports independently governed formal observations"
+    },
+    {
+      "action_id": "warehouse_outbound_confirm",
+      "risk_tier": "L4",
+      "availability": "policy_only",
+      "request_entries": [],
+      "service_entry": null,
+      "formal_fact_writes": [],
+      "delivery": {"kind": "none", "entry": null},
+      "external_calls": [],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": true,
+      "readback": null,
+      "idempotency": null,
+      "rollback_or_compensation": null,
+      "limit_keys": ["max_quantity", "max_daily_runs", "max_inventory_exposure", "max_expected_loss"],
+      "audit_codes": [],
+      "activation_blocker": "No authorized warehouse outbound executor or immutable official readback; shipment confirmation remains disabled"
+    },
+    {
+      "action_id": "warehouse_label_purchase",
+      "risk_tier": "L4",
+      "availability": "policy_only",
+      "request_entries": [],
+      "service_entry": null,
+      "formal_fact_writes": [],
+      "delivery": {"kind": "none", "entry": null},
+      "external_calls": [],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": true,
+      "readback": null,
+      "idempotency": null,
+      "rollback_or_compensation": null,
+      "limit_keys": ["max_amount", "max_quantity", "max_daily_runs", "max_expected_loss"],
+      "audit_codes": [],
+      "activation_blocker": "No authorized carrier label-purchase executor or immutable official readback; no carrier payment is enabled"
+    },
+    {
+      "action_id": "warehouse_carrier_handoff",
+      "risk_tier": "L4",
+      "availability": "policy_only",
+      "request_entries": [],
+      "service_entry": null,
+      "formal_fact_writes": [],
+      "delivery": {"kind": "none", "entry": null},
+      "external_calls": [],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": true,
+      "readback": null,
+      "idempotency": null,
+      "rollback_or_compensation": null,
+      "limit_keys": ["max_quantity", "max_daily_runs", "max_inventory_exposure", "max_expected_loss"],
+      "audit_codes": [],
+      "activation_blocker": "No authorized carrier handoff executor or immutable official custody readback; the Agent cannot confirm handoff or contact carriers"
     },
     {
       "action_id": "advertising_start",
@@ -198,6 +364,62 @@
       "activation_blocker": "Legacy fact promotion is not yet bound to the action permit contract"
     },
     {
+      "action_id": "channel_authorization_change",
+      "risk_tier": "L2",
+      "availability": "enabled",
+      "request_entries": ["POST /v1/channel-account-governance/transitions"],
+      "service_entry": "apps.control_plane.channel_account_governance.ChannelAccountGovernanceStateMachine.advance",
+      "formal_fact_writes": ["approvals", "execution_plans", "domain_events", "outbox_events"],
+      "delivery": {"kind": "direct", "entry": "apps.control_plane.execution_plans.ExecutionPlanService"},
+      "external_calls": [],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": false,
+      "readback": null,
+      "idempotency": "canonical reviewed Evidence hash plus Approval source snapshot hash and caller idempotency key",
+      "rollback_or_compensation": "internal plan remains execution-gated and carries a reviewed rollback patch; no provider mutation is exposed",
+      "limit_keys": [],
+      "audit_codes": ["ACTION_AUTHORIZED", "APPROVAL_DECISION_REQUIRED", "INDEPENDENT_APPROVAL_REQUIRED"]
+    },
+    {
+      "action_id": "channel_authorization_grant",
+      "risk_tier": "L2",
+      "availability": "policy_only",
+      "request_entries": [],
+      "service_entry": null,
+      "formal_fact_writes": [],
+      "delivery": {"kind": "none", "entry": null},
+      "external_calls": [],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": false,
+      "readback": null,
+      "idempotency": null,
+      "rollback_or_compensation": "binding event is append-only with an immutable compensation plan contract; no provider mutation is exposed",
+      "limit_keys": [],
+      "audit_codes": [],
+      "activation_blocker": "Binding execution is server-owned (no public request entry); the server-side binding executor records the authorization_granted lifecycle event"
+    },
+    {
+      "action_id": "channel_authorization_compensate",
+      "risk_tier": "L2",
+      "availability": "policy_only",
+      "request_entries": [],
+      "service_entry": null,
+      "formal_fact_writes": [],
+      "delivery": {"kind": "none", "entry": null},
+      "external_calls": [],
+      "request_revalidation": true,
+      "execution_revalidation": true,
+      "single_use_permit": false,
+      "readback": null,
+      "idempotency": null,
+      "rollback_or_compensation": "compensation plan materialization reuses the channel-account change adapter contract and requires a governed channel-authorization execution; no request entry is exposed",
+      "limit_keys": [],
+      "audit_codes": [],
+      "activation_blocker": "Compensation plan materialization requires a governed channel-authorization execution and remains policy-only; no request entry is exposed"
+    },
+    {
       "action_id": "ledger_post",
       "risk_tier": "L4",
       "availability": "policy_only",
@@ -220,13 +442,17 @@
   "outbound_http_modules": [
     "apps/control_plane/providers.py",
     "apps/control_plane/ozon_read_worker.py",
-    "apps/control_plane/ozon_worker.py"
+    "apps/control_plane/ozon_worker.py",
+    "apps/control_plane/profit_erp_sync.py"
   ],
   "exclusive_external_literals": [
     {"literal": "/v3/product/import", "allowed_modules": ["apps/control_plane/ozon_worker.py"]},
     {"literal": "/upload/image", "allowed_modules": ["apps/control_plane/providers.py"]},
     {"literal": "\"/prompt\"", "allowed_modules": ["apps/control_plane/providers.py"]},
     {"literal": "/history/", "allowed_modules": ["apps/control_plane/providers.py"]},
-    {"literal": "/view", "allowed_modules": ["apps/control_plane/providers.py"]}
+    {"literal": "/view", "allowed_modules": ["apps/control_plane/providers.py"]},
+    {"literal": "/api/chat", "allowed_modules": ["apps/control_plane/providers.py"]},
+    {"literal": "/chat/completions", "allowed_modules": ["apps/control_plane/providers.py"]}
+    ,{"literal": "/api/resource/Item", "allowed_modules": ["apps/control_plane/profit_erp_sync.py"]}
   ]
 }

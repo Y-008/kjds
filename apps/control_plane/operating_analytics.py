@@ -3,13 +3,17 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from typing import Any
+
+from .security import Principal
 
 
 class OperatingAnalyticsService:
     """Project governed operating facts into one chart-ready, read-only snapshot."""
 
     CONTRACT_ID = "kjds-operating-flow-analytics-v1"
+    SCOPED_AUTHORITY_CONTRACT_ID = "kjds-scoped-operating-analytics-v1"
 
     def __init__(
         self,
@@ -25,6 +29,7 @@ class OperatingAnalyticsService:
         post_execution,
         finance,
         product_media,
+        scoped_marketplace_catalog=None,
     ) -> None:
         self.readiness = readiness
         self.operating_workbench = operating_workbench
@@ -37,11 +42,32 @@ class OperatingAnalyticsService:
         self.post_execution = post_execution
         self.finance = finance
         self.product_media = product_media
+        self.scoped_marketplace_catalog = scoped_marketplace_catalog
 
-    def snapshot(self, *, store_ref: str = "ozon-primary") -> dict[str, Any]:
+    def snapshot(
+        self,
+        *,
+        store_ref: str = "ozon-primary",
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        as_of: str | None = None,
+    ) -> dict[str, Any]:
         scope = store_ref.strip()
         if not scope or len(scope) > 160:
             raise ValueError("Operating analytics store_ref must be 1 to 160 characters")
+        context = (principal, entity_scope)
+        if any(value is not None for value in context) or as_of is not None:
+            if principal is None or entity_scope is None:
+                raise ValueError(
+                    "Scoped operating analytics requires principal "
+                    "and entity_scope"
+                )
+            return self._scoped_snapshot(
+                principal=principal,
+                entity_scope=entity_scope,
+                store_ref=scope,
+                as_of=as_of,
+            )
 
         readiness = self.readiness.report()
         workbench = self.operating_workbench.snapshot(limit=100)
@@ -362,6 +388,305 @@ class OperatingAnalyticsService:
             ).encode()
         ).hexdigest()
         return payload
+
+    def _scoped_snapshot(
+        self,
+        *,
+        principal: Principal,
+        entity_scope: dict[str, Any],
+        store_ref: str,
+        as_of: str | None,
+    ) -> dict[str, Any]:
+        if not principal.can_access_store(store_ref):
+            raise PermissionError(
+                "Authenticated identity is not authorized for store_ref"
+            )
+        workbench = self.operating_workbench.snapshot(
+            limit=100,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+            as_of=as_of,
+        )
+        cutoff = self._as_of(as_of)
+        if self.scoped_marketplace_catalog is None:
+            catalog_projection = {
+                "status": "no_data",
+                "as_of": cutoff.isoformat(),
+                "items": [],
+                "source_gaps": ["scoped_catalog_authority_missing"],
+                "blockers": [],
+            }
+        else:
+            catalog_projection = self.scoped_marketplace_catalog.latest(
+                principal=principal,
+                entity_scope=entity_scope,
+                store_ref=store_ref,
+                as_of=cutoff,
+                limit=100,
+            )
+        catalog = catalog_projection["items"]
+        bound_catalog = [
+            item for item in catalog if item.get("canonical_product_id")
+        ]
+        catalog_status = catalog_projection["status"]
+        catalog_stage_status = {
+            "ready": "verified",
+            "partial": "in_progress",
+            "blocked": "blocked",
+            "no_data": "no_data",
+        }.get(catalog_status, "no_data")
+        source_gaps = sorted(
+            {
+                *workbench.get("source_gaps", []),
+                *catalog_projection.get("source_gaps", []),
+                "scoped_growth_authority_missing",
+                "scoped_rfq_authority_missing",
+                "scoped_procurement_authority_missing",
+                "scoped_execution_authority_missing",
+                "scoped_finance_authority_missing",
+                "scoped_media_authority_missing",
+            }
+        )
+        stage_specs = (
+            ("catalog", "01", "Ozon 店铺同步", "growth"),
+            ("sku-000", "02", "需求与市场证据", "research"),
+            ("sku-001", "03", "候选与商品立项", "research"),
+            ("sku-002", "04", "商品 / 合规 / 质量", "products"),
+            ("sku-003", "05", "三报价与供应链", "sourcing"),
+            ("content", "06", "内容与俄语 Listing", "products"),
+            ("growth", "07", "价格 / 内容 / 广告实验", "growth"),
+            ("execution", "08", "审批与受控执行", "governance"),
+            ("ozn-002", "09", "订单 / 退货 / 结算", "finance"),
+            ("fin-001", "10", "利润 / FX / 对账", "finance"),
+        )
+        stages = [
+            self._stage(
+                stage_id=stage_id,
+                step=step,
+                label=label,
+                workspace=workspace,
+                status="no_data",
+                current=0,
+                target=1,
+                next_action=(
+                    "等待该对象的 tenant/entity/store 原生作用域"
+                    "或完整 Evidence 绑定后再读取"
+                ),
+                source_ids=[],
+                facts=[],
+            )
+            for stage_id, step, label, workspace in stage_specs
+        ]
+        stages[0] = self._stage(
+            stage_id="catalog",
+            step="01",
+            label="Ozon 店铺同步",
+            workspace="growth",
+            status=catalog_stage_status,
+            current=len(catalog),
+            target=1,
+            next_action=(
+                "核对作用域内已同步 Listing、库存、价格和媒体引用"
+                if catalog_status == "ready"
+                else (
+                    "补齐精确 tenant/entity/store 的目录原件与独立 "
+                    "Evidence 绑定"
+                )
+            ),
+            source_ids=[
+                item["source_evidence_id"] for item in catalog
+            ],
+            facts=[
+                f"{len(catalog)} 个作用域内目录商品",
+                f"{len(bound_catalog)} 个已绑定运营档案",
+            ],
+        )
+        coverage_specs = (
+            ("official_catalog", "店铺目录", "Ozon 目录原件"),
+            ("sku-000", "需求权威", "需求报告"),
+            ("sku-002", "商品治理", "三类 Passport"),
+            ("sku-003", "供应链经济性", "三报价 + 正 CM3"),
+            ("content_rights", "内容权利", "有权原图角色"),
+            ("growth_truth", "增长真源", "有证据增长快照"),
+            ("ozn-001", "账户与权限", "账户/收款路径"),
+            ("finance_truth", "财务与结算", "五类 Ozon 事实 + 费用/FX"),
+        )
+        pipeline_specs = (
+            ("catalog", "店铺目录", "商品"),
+            ("bound", "已绑定运营档案", "商品"),
+            ("growth", "有增长快照", "SKU"),
+            ("rfq", "已冻结 RFQ", "包"),
+            ("dispatch", "已核验发送证明", "证明"),
+            ("execution", "可执行计划", "计划"),
+            ("observation", "执行后观察", "窗口"),
+            ("finance", "正式财务分录", "分录"),
+        )
+        coverage = [
+            self._coverage(
+                "official_catalog",
+                "店铺目录",
+                len(catalog),
+                1,
+                "Ozon 目录原件",
+            ),
+            *[
+                self._coverage(item_id, label, 0, 1, unit)
+                for item_id, label, unit in coverage_specs[1:]
+            ],
+        ]
+        pipeline = [
+            self._pipeline_item("catalog", "店铺目录", len(catalog), "商品"),
+            self._pipeline_item(
+                "bound",
+                "已绑定运营档案",
+                len(bound_catalog),
+                "商品",
+            ),
+            *[
+                self._pipeline_item(item_id, label, 0, unit)
+                for item_id, label, unit in pipeline_specs[2:]
+            ],
+        ]
+        payload = {
+            "contract_id": self.CONTRACT_ID,
+            "store_ref": store_ref,
+            "scope": {
+                "tenant_ref": principal.tenant_ref,
+                "entity_ref": entity_scope.get("entity_ref"),
+                "store_ref": store_ref,
+                "scope_authority_sha256": entity_scope.get(
+                    "authority_sha256"
+                ),
+                "status": entity_scope.get("status", "no_data"),
+            },
+            "status": (
+                "partial"
+                if workbench["work_items"] or catalog
+                else (
+                    "blocked"
+                    if catalog_status == "blocked"
+                    else "no_data"
+                )
+            ),
+            "source_as_of": (
+                catalog_projection.get("as_of")
+                or workbench.get("as_of")
+            ),
+            "summary": {
+                "catalog_items": len(catalog),
+                "bound_listings": len(bound_catalog),
+                "available_stock": sum(
+                    int(item.get("available_stock") or 0)
+                    for item in catalog
+                ),
+                "external_image_references": sum(
+                    len(item.get("image_references", []))
+                    for item in catalog
+                ),
+                "external_video_references": sum(
+                    len(item.get("video_references", []))
+                    for item in catalog
+                ),
+                "gate_blockers": 0,
+                "growth_snapshot_skus": 0,
+                "rfq_packages": 0,
+                "verified_dispatch_proofs": 0,
+                "formal_finance_entries": 0,
+                "ready_execution_plans": 0,
+            },
+            "recommended_playbook": {
+                "id": (
+                    "scoped_catalog_refinement"
+                    if catalog
+                    else "scoped_authority_foundation"
+                ),
+                "label": (
+                    "作用域目录核验" if catalog else "作用域事实建档"
+                ),
+                "reasons": [
+                    (
+                        "目录事实已通过 tenant/entity/store 与 "
+                        "Evidence authority"
+                        if catalog
+                        else (
+                            "经营读模型尚无完整 tenant/entity/store "
+                            "authority"
+                        )
+                    ),
+                    (
+                        "其余经营对象仍按各自原生作用域逐项接入"
+                        if catalog
+                        else (
+                            "先绑定原始 Evidence，不把全局记录重标为"
+                            "当前店铺"
+                        )
+                    ),
+                ],
+                "advisory_only": True,
+                "automatic_mode_switch": False,
+            },
+            "focal_listing": self._focal_listing(
+                catalog=catalog,
+                products=[],
+                growth=[],
+                media_readiness={},
+            ),
+            "stages": stages,
+            "coverage": coverage,
+            "pipeline": pipeline,
+            "priority_items": workbench["work_items"][:5],
+            "data_gaps": source_gaps,
+            "source_gaps": source_gaps,
+            "excluded_sources": [
+                "legacy_global_catalog",
+                "legacy_global_readiness",
+                "legacy_global_growth",
+                "legacy_global_rfq",
+                "legacy_global_procurement",
+                "legacy_global_execution",
+                "legacy_global_finance",
+                "legacy_global_media",
+            ],
+            "guardrails": {
+                "advisory_only": True,
+                "browser_gate_recalculation": False,
+                "synthetic_business_data_allowed": False,
+                "automatic_product_selection": False,
+                "automatic_supplier_contact": False,
+                "automatic_procurement": False,
+                "automatic_pricing": False,
+                "automatic_listing": False,
+                "automatic_ad_spend": False,
+                "platform_write_allowed": False,
+            },
+        }
+        payload["snapshot_sha256"] = hashlib.sha256(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        ).hexdigest()
+        return payload
+
+    @staticmethod
+    def _as_of(value: str | None) -> datetime:
+        if value is None:
+            return datetime.now(UTC)
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(
+                "Operating analytics as_of must be an ISO-8601 timestamp"
+            ) from exc
+        if parsed.tzinfo is None:
+            raise ValueError(
+                "Operating analytics as_of must include a timezone"
+            )
+        return parsed.astimezone(UTC)
 
     def _media_readiness(
         self, bound_catalog: list[dict[str, Any]]

@@ -45,11 +45,52 @@ class RetentionClass(StrEnum):
 
 
 UNIQUE_SOURCE_REF_SOURCES = {
+    "browser-capture-inbox",
+    "channel_account_authorization_consent",
+    "channel_account_authorization_lifecycle",
+    "channel_account_compensation_plan",
+    "channel_account_governance_review",
+    "channel_account_governance_submission",
+    "channel_account_kill_switch_release",
+    "channel_account_official_readback",
+    "channel_account_one_time_permit",
     "marketplace-observation",
     "ozon-isolated-execution-worker",
+    "scope_authority_review",
+    "scope_authority_source",
+    "seller_erp_bridge_binding",
+    "seller_erp_bridge_review",
+    "seller_erp_bridge_revocation",
+    "seller_erp_bridge_source",
     "supplier_rfq_dispatch",
     "supplier_rfq_package",
 }
+
+CHANNEL_ACCOUNT_RESERVED_SOURCES = frozenset(
+    {
+        "channel_account_authorization_consent",
+        "channel_account_authorization_lifecycle",
+        "channel_account_compensation_plan",
+        "channel_account_governance_review",
+        "channel_account_governance_submission",
+        "channel_account_kill_switch_release",
+        "channel_account_official_readback",
+        "channel_account_one_time_permit",
+    }
+)
+CHANNEL_ACCOUNT_RESERVED_CONTRACTS = frozenset(
+    {
+        "kjds-channel-account-consent-evidence-v1",
+        "kjds-channel-account-governance-submission-v1",
+        "kjds-channel-account-kill-switch-evidence-v1",
+        "kjds-channel-account-lifecycle-evidence-v1",
+        "kjds-channel-account-one-time-permit-v1",
+        "kjds-channel-account-readback-v1",
+        "kjds-channel-account-compensation-evidence-v1",
+        "kjds-channel-account-sod-review-v1",
+    }
+)
+_RESERVED_CAPTURE_AUTHORITY = object()
 
 RETENTION_REVIEW_DAYS = {
     RetentionClass.OPERATIONAL: 365,
@@ -80,6 +121,54 @@ class EvidenceRecordRow(Base):
             unique=True,
             postgresql_where=text("source = 'ozon-isolated-execution-worker'"),
             sqlite_where=text("source = 'ozon-isolated-execution-worker'"),
+        ),
+        Index(
+            "uq_scope_authority_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'scope_authority_source'"),
+            sqlite_where=text("source = 'scope_authority_source'"),
+        ),
+        Index(
+            "uq_scope_authority_review_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'scope_authority_review'"),
+            sqlite_where=text("source = 'scope_authority_review'"),
+        ),
+        Index(
+            "uq_seller_erp_bridge_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'seller_erp_bridge_source'"),
+            sqlite_where=text("source = 'seller_erp_bridge_source'"),
+        ),
+        Index(
+            "uq_seller_erp_bridge_review_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'seller_erp_bridge_review'"),
+            sqlite_where=text("source = 'seller_erp_bridge_review'"),
+        ),
+        Index(
+            "uq_seller_erp_bridge_binding_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'seller_erp_bridge_binding'"),
+            sqlite_where=text("source = 'seller_erp_bridge_binding'"),
+        ),
+        Index(
+            "uq_seller_erp_bridge_revocation_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'seller_erp_bridge_revocation'"),
+            sqlite_where=text("source = 'seller_erp_bridge_revocation'"),
         ),
     )
 
@@ -217,6 +306,8 @@ class EvidenceService:
         effective_until: str | None,
         created_by: str,
         metadata: dict[str, Any] | None = None,
+        _reserved_authority: object | None = None,
+        _session: Session | None = None,
     ) -> EvidenceRecord:
         if not content:
             raise ValueError("Evidence content cannot be empty")
@@ -232,6 +323,13 @@ class EvidenceService:
             raise ValueError("effective_until must be later than effective_at")
 
         metadata = metadata or {}
+        if (
+            source.strip().lower() in CHANNEL_ACCOUNT_RESERVED_SOURCES
+            or str(metadata.get("contract_id") or "").strip() in CHANNEL_ACCOUNT_RESERVED_CONTRACTS
+            or str(metadata.get("channel_account_review_contract_id") or "").strip()
+            == "kjds-channel-account-sod-review-v1"
+        ) and _reserved_authority is not _RESERVED_CAPTURE_AUTHORITY:
+            raise ValueError("Reserved channel account Evidence requires the dedicated separation-of-duties workflow")
         retention_class = metadata.get("retention_class")
         if retention_class is not None:
             try:
@@ -243,11 +341,65 @@ class EvidenceService:
 
         digest = hashlib.sha256(content).hexdigest()
         now = datetime.now(UTC)
+        if _session is not None:
+            blob = _session.get(EvidenceBlobRow, digest)
+            if blob is None:
+                _session.add(
+                    EvidenceBlobRow(
+                        sha256=digest,
+                        byte_size=len(content),
+                        content_bytes=content,
+                        created_at=now,
+                    )
+                )
+            existing = self._captured_row(
+                _session,
+                digest=digest,
+                source=source,
+                source_ref=source_ref,
+                effective_at=effective,
+            )
+            if existing is not None:
+                return self._record(existing, len(content))
+            if source in UNIQUE_SOURCE_REF_SOURCES:
+                source_ref_winner = self._source_ref_row(
+                    _session,
+                    source=source,
+                    source_ref=source_ref,
+                )
+                if source_ref_winner is not None:
+                    if not hmac.compare_digest(
+                        source_ref_winner.blob_sha256,
+                        digest,
+                    ):
+                        raise ValueError(
+                            "Evidence source reference already has different immutable content"
+                        )
+                    return self._record(source_ref_winner, len(content))
+            row = EvidenceRecordRow(
+                id=new_id("evd"),
+                blob_sha256=digest,
+                filename=filename,
+                content_type=content_type,
+                source=source,
+                source_ref=source_ref,
+                grade=grade.value,
+                effective_at=effective,
+                effective_until=effective_end,
+                recorded_at=now,
+                created_by=created_by,
+                metadata_json=metadata,
+            )
+            _session.add(row)
+            _session.flush()
+            return self._record(row, len(content))
         try:
             with Session(self.engine) as session, session.begin():
                 blob = session.get(EvidenceBlobRow, digest)
                 if blob is None:
-                    session.add(EvidenceBlobRow(sha256=digest, byte_size=len(content), content_bytes=content, created_at=now))
+                    session.add(
+                        EvidenceBlobRow(sha256=digest, byte_size=len(content), content_bytes=content, created_at=now)
+                    )
                 existing = self._captured_row(
                     session,
                     digest=digest,
@@ -265,9 +417,7 @@ class EvidenceService:
                     )
                     if source_ref_winner is not None:
                         if not hmac.compare_digest(source_ref_winner.blob_sha256, digest):
-                            raise ValueError(
-                                "Evidence source reference already has different immutable content"
-                            )
+                            raise ValueError("Evidence source reference already has different immutable content")
                         return self._record(source_ref_winner, len(content))
                 row = EvidenceRecordRow(
                     id=new_id("evd"),
@@ -304,9 +454,7 @@ class EvidenceService:
                 if winner is None:
                     raise
                 if not hmac.compare_digest(winner.blob_sha256, digest):
-                    raise ValueError(
-                        "Evidence source reference already has different immutable content"
-                    ) from None
+                    raise ValueError("Evidence source reference already has different immutable content") from None
                 return self._record(winner, len(content))
 
     def get(self, evidence_id: str) -> EvidenceRecord:
@@ -318,6 +466,15 @@ class EvidenceService:
             if blob is None:
                 raise RuntimeError(f"Evidence blob is missing: {row.blob_sha256}")
             return self._record(row, blob.byte_size)
+
+    def get_metadata(self, evidence_id: str) -> EvidenceRecord:
+        """Load record metadata and blob size without selecting blob content."""
+
+        with Session(self.engine) as session:
+            row = session.get(EvidenceRecordRow, evidence_id)
+            if row is None:
+                raise KeyError(f"Unknown evidence: {evidence_id}")
+            return self._record(row, 0)
 
     def list(self, limit: int = 100) -> list[EvidenceRecord]:
         with Session(self.engine) as session:
@@ -367,6 +524,37 @@ class EvidenceService:
             row, byte_size = result
             return self._record(row, byte_size)
 
+    def find_binding_ids(
+        self,
+        *,
+        target_evidence_ids: list[str],
+        binding_contract_id: str,
+        as_of: datetime,
+    ) -> list[str]:
+        """Find current immutable bindings without scanning the global ledger."""
+        targets = sorted({item.strip() for item in target_evidence_ids if item.strip()})
+        contract = binding_contract_id.strip()
+        if not targets:
+            return []
+        if not contract:
+            raise ValueError("binding_contract_id is required")
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must include a timezone")
+        cutoff = as_of.astimezone(UTC)
+        with Session(self.engine) as session:
+            return list(
+                session.scalars(
+                    select(EvidenceRecordRow.id)
+                    .where(
+                        EvidenceRecordRow.metadata_json["evidence_scope_contract_id"].as_string() == contract,
+                        EvidenceRecordRow.metadata_json["target_evidence_id"].as_string().in_(targets),
+                        EvidenceRecordRow.effective_at <= cutoff,
+                        (EvidenceRecordRow.effective_until.is_(None) | (EvidenceRecordRow.effective_until > cutoff)),
+                    )
+                    .order_by(EvidenceRecordRow.id)
+                )
+            )
+
     def content(self, evidence_id: str) -> tuple[bytes, EvidenceRecord]:
         with Session(self.engine) as session:
             row = session.get(EvidenceRecordRow, evidence_id)
@@ -408,9 +596,7 @@ class EvidenceService:
                 count_query = count_query.where(source_filter)
                 rows_query = rows_query.where(source_filter)
             total = int(session.scalar(count_query) or 0)
-            rows = list(
-                session.execute(rows_query).all()
-            )
+            rows = list(session.execute(rows_query).all())
             snapshots = [
                 (
                     row.id,
@@ -466,9 +652,7 @@ class EvidenceService:
             findings=tuple(findings),
         )
 
-    def inspect_integrity(
-        self, evidence_id: str
-    ) -> tuple[EvidenceRecord, EvidenceVerification]:
+    def inspect_integrity(self, evidence_id: str) -> tuple[EvidenceRecord, EvidenceVerification]:
         """Read record and blob in one snapshot and recompute the blob digest."""
         with Session(self.engine) as session:
             row = session.get(EvidenceRecordRow, evidence_id)
@@ -536,11 +720,7 @@ class EvidenceService:
             if not verification.valid:
                 raise ValueError(f"Evidence failed hash verification: {evidence_id}")
             effective_at = self._stored_timestamp(record.effective_at)
-            effective_until = (
-                self._stored_timestamp(record.effective_until)
-                if record.effective_until
-                else None
-            )
+            effective_until = self._stored_timestamp(record.effective_until) if record.effective_until else None
             if effective_at > current:
                 raise ValueError(f"Evidence is not yet effective: {evidence_id}")
             if effective_until is not None and current >= effective_until:

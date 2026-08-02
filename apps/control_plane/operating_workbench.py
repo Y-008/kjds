@@ -5,11 +5,14 @@ import json
 from collections import defaultdict
 from typing import Any
 
+from .security import Principal
+
 
 class OperatingWorkbenchService:
     """Project existing control-plane facts into one advisory Agent briefing."""
 
     CONTRACT_ID = "kjds-operating-workbench-briefing-v1"
+    SCOPED_AUTHORITY_CONTRACT_ID = "kjds-scoped-operating-workbench-v1"
     AGENTS = (
         ("digital_ceo", "Digital CEO"),
         ("evidence_compliance", "Evidence & Compliance Agent"),
@@ -29,9 +32,31 @@ class OperatingWorkbenchService:
         self.operations_queue = operations_queue
         self.automation = automation
 
-    def snapshot(self, *, limit: int = 20) -> dict[str, Any]:
+    def snapshot(
+        self,
+        *,
+        limit: int = 20,
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        store_ref: str | None = None,
+        as_of: str | None = None,
+    ) -> dict[str, Any]:
         if limit < 1 or limit > 100:
             raise ValueError("Operating workbench limit must be between 1 and 100")
+        context = (principal, entity_scope, store_ref)
+        if any(value is not None for value in context):
+            if any(value is None for value in context):
+                raise ValueError(
+                    "Scoped operating workbench requires principal, "
+                    "entity_scope, and store_ref"
+                )
+            return self._scoped_snapshot(
+                limit=limit,
+                principal=principal,
+                entity_scope=entity_scope,
+                store_ref=store_ref,
+                as_of=as_of,
+            )
 
         readiness = self.readiness.report()
         gate_items = [
@@ -67,6 +92,87 @@ class OperatingWorkbenchService:
             "agents": self._agent_statuses(all_items),
             "work_items": visible_items,
             "candidate_portfolio": readiness["candidate_portfolio"],
+            "guardrails": {
+                "advisory_only": True,
+                "automatic_execution": False,
+                "automatic_product_selection": False,
+                "automatic_procurement": False,
+                "automatic_pricing": False,
+                "automatic_listing": False,
+                "platform_write_allowed": False,
+                "third_party_fact_promotion_allowed": False,
+            },
+        }
+        payload["snapshot_sha256"] = hashlib.sha256(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        ).hexdigest()
+        return payload
+
+    def _scoped_snapshot(
+        self,
+        *,
+        limit: int,
+        principal: Principal,
+        entity_scope: dict[str, Any],
+        store_ref: str,
+        as_of: str | None,
+    ) -> dict[str, Any]:
+        queue = self.operations_queue.projection(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+            as_of=as_of,
+        )
+        runtime_items = [
+            self._runtime_item(item)
+            for item in queue["items"]
+        ]
+        runtime_items.sort(key=self._sort_key)
+        visible_items = runtime_items[:limit]
+        payload = {
+            "contract_id": self.CONTRACT_ID,
+            "mode": "scoped_shadow_advisory",
+            "status": queue["status"],
+            "scope": queue["scope"],
+            "as_of": queue["as_of"],
+            "summary": {
+                "gate_blockers": 0,
+                "runtime_items": len(runtime_items),
+                "recommendations": 0,
+                "visible_items": len(visible_items),
+                "candidate_count": 0,
+                "selection_ready_count": 0,
+            },
+            "agents": self._agent_statuses(runtime_items),
+            "work_items": visible_items,
+            "candidate_portfolio": {
+                "status": "no_data",
+                "candidate_count": 0,
+                "selection_ready_count": 0,
+                "rows": [],
+                "source_gap": "scoped_readiness_authority_missing",
+                "advisory_only": True,
+            },
+            "source_gaps": sorted(
+                {
+                    *queue.get("source_gaps", []),
+                    "scoped_readiness_authority_missing",
+                    "scoped_automation_recommendation_authority_missing",
+                }
+            ),
+            "excluded_sources": sorted(
+                {
+                    *queue.get("excluded_sources", []),
+                    "legacy_global_gate_readiness",
+                    "legacy_global_automation_recommendations",
+                }
+            ),
             "guardrails": {
                 "advisory_only": True,
                 "automatic_execution": False,

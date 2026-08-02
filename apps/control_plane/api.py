@@ -12,15 +12,36 @@ from . import api_contracts
 from .api_contracts import API_SCHEMA_VERSION, APP_VERSION
 from .correlation import correlation_id
 from .routers import (
+    accounts_payable,
+    agent_control,
+    ai_listing,
+    channel_accounts,
+    commerce_os,
+    customer_service,
     decision_science,
+    delivery_exceptions,
+    erp_integration,
     evidence_governance,
     execution_operations,
+    finance_control,
     finance_imports,
+    growth_experiments,
+    inventory,
+    listing_lifecycle,
     marketplace_observation,
+    native_parity_acceptance,
+    oms,
     ozon_platform,
+    pim,
     procurement_supply,
     product_content,
+    profit_command,
+    returns_aftersales,
+    seller_erp_bridge,
+    seller_strategy,
+    sourcing_intelligence,
     system,
+    warehouse_fulfillment,
 )
 from .runtime import runtime
 from .security import AuthenticationFailure, WritesDisabled
@@ -30,6 +51,7 @@ app.state.runtime = runtime
 
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 KILL_SWITCH_CONTROL_PATHS = {
+    "/v1/browser-capture-inbox/preflight",
     "/v1/system/kill-switch/engage",
     "/v1/system/kill-switch/release",
     "/v1/loop-engineering/validate",
@@ -44,8 +66,12 @@ def is_write_safety_control_path(path: str) -> bool:
         path.endswith("/response-checkpoint")
         or path.endswith("/receipt")
     )
+    agent_gate_observation = path.startswith(
+        "/v1/agent-control/projects/"
+    ) and path.endswith("/observe")
     return (
         path in KILL_SWITCH_CONTROL_PATHS
+        or agent_gate_observation
         or path.startswith("/v1/operational-incidents")
         or path.startswith("/v1/operations-control")
         or limited_execution_bookkeeping
@@ -187,13 +213,34 @@ async def enforce_control_plane_security(request: Request, call_next):
 
 _ROUTE_MODULES = (
     system,
+    accounts_payable,
+    agent_control,
+    ai_listing,
+    channel_accounts,
     evidence_governance,
+    erp_integration,
+    commerce_os,
+    customer_service,
+    delivery_exceptions,
+    growth_experiments,
     decision_science,
     execution_operations,
     procurement_supply,
     ozon_platform,
     marketplace_observation,
+    native_parity_acceptance,
+    inventory,
+    listing_lifecycle,
+    oms,
+    pim,
     product_content,
+    profit_command,
+    returns_aftersales,
+    warehouse_fulfillment,
+    seller_erp_bridge,
+    seller_strategy,
+    sourcing_intelligence,
+    finance_control,
     finance_imports,
 )
 for _module in _ROUTE_MODULES:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -20,7 +21,7 @@ from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
 
-APP_VERSION = "0.58.0"
+APP_VERSION = "0.59.0"
 API_SCHEMA_VERSION = "v1"
 
 
@@ -36,6 +37,14 @@ def ensure_role(principal: Principal, *roles: str) -> None:
         require_any_role(principal, *roles)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+def ensure_store_scope(principal: Principal, store_ref: str) -> None:
+    if not principal.can_access_store(store_ref):
+        raise HTTPException(
+            status_code=403,
+            detail="Authenticated identity is not authorized for store_ref",
+        )
 
 
 def run(call):
@@ -57,8 +66,10 @@ class EvidenceOpsPlanInput(BaseModel):
 
 
 class ProductInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     sku: str = Field(min_length=1, max_length=80)
     name: str = Field(min_length=1, max_length=300)
+    store_ref: str | None = Field(default=None, min_length=1, max_length=160)
 
 
 class PassportInput(BaseModel):
@@ -116,25 +127,38 @@ class MarketplaceObservationItemInput(BaseModel):
         pattern=r"^[A-Za-z]{3}$",
     )
     displayed_price: Decimal = Field(gt=0)
+    price_scope: Literal["unit_price", "checkout_total"] | None = None
     price_kind: Literal[
         "public_display_price",
         "new_customer_price",
         "member_price",
         "range_minimum",
         "marketplace_listing_price",
+        "observed_checkout_price",
     ]
     min_order_quantity: int | None = Field(default=None, ge=1)
     availability: str = Field(default="unknown", min_length=1, max_length=80)
     specifications: dict[str, str] = Field(default_factory=dict)
-    target_product_id: str | None = Field(
-        default=None, min_length=1, max_length=160
-    )
-    target_offer_id: str | None = Field(
-        default=None, min_length=1, max_length=160
-    )
-    source_url: str | None = Field(
-        default=None, min_length=8, max_length=2000
-    )
+    target_product_id: str | None = Field(default=None, min_length=1, max_length=160)
+    target_offer_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_url: str | None = Field(default=None, min_length=8, max_length=2000)
+    product_identity: dict[str, str] = Field(default_factory=dict, max_length=40)
+    observed_quantity: int | None = Field(default=None, ge=1)
+    checkout_verified: bool = False
+    tax_included: bool | None = None
+    domestic_freight_included: bool | None = None
+    purchase_available: bool = False
+    confidence: Decimal = Field(default=Decimal("0.5"), gt=0, le=1)
+    market_signals: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    supply_signals: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    media_rights_status: Literal[
+        "unverified_external_reference",
+        "supplier_authorized",
+        "owned",
+        "licensed",
+    ] = "unverified_external_reference"
+    image_references: list[str] = Field(default_factory=list, max_length=20)
+    experiment_readbacks: dict[str, Any] = Field(default_factory=dict, max_length=20)
 
 
 class MarketplaceObservationCaptureInput(BaseModel):
@@ -143,9 +167,10 @@ class MarketplaceObservationCaptureInput(BaseModel):
         "browser_observation",
         "seller_tool_export",
         "manual_verified_public_page",
+        "public_search_index_observation",
     ]
     marketplace: Literal["1688", "ozon"]
-    store_ref: str = Field(default="external", min_length=1, max_length=160)
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     source_url: str = Field(min_length=8, max_length=2000)
     observed_at: str
     idempotency_key: str = Field(
@@ -154,10 +179,92 @@ class MarketplaceObservationCaptureInput(BaseModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
     )
     capture_note: str | None = Field(default=None, max_length=4000)
-    items: list[MarketplaceObservationItemInput] = Field(
-        min_length=1, max_length=1000
-    )
+    items: list[MarketplaceObservationItemInput] = Field(min_length=1, max_length=1000)
     confirmed: Literal[True]
+
+
+class BrowserCapturePageInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=2000)
+    canonical_url: str | None = Field(default=None, min_length=8, max_length=2000)
+    language: str | None = Field(default=None, min_length=2, max_length=40)
+    extractor_version: Literal["kjds-visible-dom/1.0", "kjds-visible-dom/1.1"]
+    capture_mode: Literal["active_tab_visible_dom"]
+
+
+class BrowserCaptureEnvelopeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    contract_version: Literal[
+        "kjds-browser-capture-envelope/1.0",
+        "kjds-browser-capture-envelope/1.1",
+    ]
+    source_profile: Literal["browser_observation"]
+    marketplace: Literal["1688", "ozon"]
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    source_url: str = Field(min_length=8, max_length=2000)
+    observed_at: str
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+    page: BrowserCapturePageInput
+    items: list[MarketplaceObservationItemInput] = Field(min_length=1, max_length=50)
+    confirmed: Literal[True]
+
+
+class AiListingRunPreflightInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    capture_submission_id: str = Field(min_length=1, max_length=180)
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    selected_variant_key: str = Field(min_length=1, max_length=500)
+    target_marketplace: Literal["ozon"] = "ozon"
+    target_locale: Literal["ru-RU"] = "ru-RU"
+    mode: Literal["internal_dry_run"] = "internal_dry_run"
+    as_of: str
+
+
+class AiListingRunCreateInput(AiListingRunPreflightInput):
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+
+
+class AiListingRunResumeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    bindings: dict[str, Any] = Field(default_factory=dict, max_length=20)
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+
+
+class AiListingRunCancelInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    reason: str = Field(min_length=1, max_length=1000)
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+
+
+class AgentArtifactFeedbackInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    verdict: Literal["accepted", "modified", "rejected"]
+    notes: str = Field(min_length=1, max_length=4000)
+    edited_output: dict[str, Any] | None = None
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
 
 
 class PortfolioPilotPrepareInput(BaseModel):
@@ -165,14 +272,171 @@ class PortfolioPilotPrepareInput(BaseModel):
     store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     product_id: str = Field(min_length=1, max_length=160)
     target_specification: dict[str, str] = Field(min_length=1, max_length=80)
-    policy_id: Literal["ozon-cny-research-screening-v1"] = (
-        "ozon-cny-research-screening-v1"
-    )
+    policy_id: Literal["ozon-cny-research-screening-v1"] = "ozon-cny-research-screening-v1"
     candidate_target: int = Field(default=100, ge=1, le=1000)
     pilot_limit: int = Field(default=10, ge=1, le=100)
     max_loss_cny: Decimal = Field(default=Decimal("500"), gt=0)
     cm3_floor_cny: Decimal = Field(default=Decimal("0"))
     as_of: str | None = None
+
+
+class BatchOpportunityPrepareInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    policy_id: Literal["cn-ozon-observed-cost-v1"] = "cn-ozon-observed-cost-v1"
+    evidence_class: (
+        Literal["manual_small", "auto_scale", "regulated", "eu_export"]
+        | None
+    ) = Field(
+        default=None,
+        description=(
+            "Explicit scenario evidence class override. When omitted the "
+            "policy is inferred deterministically (regulated flags, then "
+            "EU market, then automated scan => auto_scale, fail-closed)."
+        ),
+    )
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+    candidate_limit: int = Field(default=500, ge=1, le=50000)
+    full_evaluate_limit: int = Field(default=500, ge=1, le=5000)
+    scan_page_size: int = Field(default=500, ge=1, le=1000)
+    scan_shard_count: int = Field(default=1, ge=1, le=100)
+    scan_shard_index: int = Field(default=0, ge=0, le=99)
+    pilot_limit: int = Field(default=20, ge=1, le=100)
+    target_purchase_quantity: int = Field(default=3, ge=1, le=3)
+    max_age_hours: int = Field(default=72, ge=1, le=720)
+    max_inventory_cash_cny: Decimal = Field(default=Decimal("3000"), gt=0)
+    max_batch_inventory_cash_cny: Decimal | None = Field(default=None, gt=0)
+    cm3_floor_cny: Decimal = Field(default=Decimal("0"))
+    as_of: str | None = None
+
+
+class ProfitPilotProposalInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    display_currency: str = Field(default="CNY", pattern=r"^[A-Z]{3}$")
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=180,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$",
+    )
+    max_budget_amount: Decimal | None = Field(default=None, gt=0)
+    stop_loss_amount: Decimal | None = Field(default=None, gt=0)
+    as_of: str | None = None
+
+
+class ProfitErpItemSyncPrepareInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tenant_ref: str = Field(min_length=1, max_length=160)
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    run_id: str = Field(min_length=1, max_length=160)
+    candidate_id: str = Field(min_length=1, max_length=160)
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+
+
+class OzonGlobalRuleEvaluationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sku_ref: str = Field(min_length=1, max_length=160)
+    country: Literal["CN"] = "CN"
+    locale: Literal["zh"] = "zh"
+    passport: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    content: dict[str, Any] = Field(default_factory=dict, max_length=100)
+    prices: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    fulfillment: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    quality: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    fee: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    settlement: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    api_access: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    analytics: dict[str, Any] = Field(default_factory=dict, max_length=100)
+    downside_cm3_cny: Decimal | None = None
+    as_of: str | None = None
+
+
+class OzonGlobalRuleImpactInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    previous_registry: dict[str, Any] | None = None
+    previous_registry_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    sku_bindings: list[dict[str, Any]] = Field(default_factory=list, max_length=10000)
+    as_of: str | None = None
+
+
+class SellerOperatingSystemInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tenant_ref: str = Field(default="default", min_length=1, max_length=160)
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    seller_facts: dict[str, Any] = Field(min_length=1, max_length=80)
+    operating_facts: dict[str, Any] = Field(default_factory=dict, max_length=80)
+    policy_overrides: dict[str, Any] = Field(default_factory=dict, max_length=40)
+    portfolio_items: list[dict[str, Any]] = Field(default_factory=list, max_length=10000)
+    advantage_facts: dict[str, Any] = Field(default_factory=dict, max_length=80)
+
+
+class StoreCategoryLevelInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1, max_length=160)
+    name: str = Field(min_length=1, max_length=300)
+
+
+class StoreCategoryPathInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    path_id: str = Field(min_length=1, max_length=160)
+    role: Literal["core", "adjacent", "experimental", "excluded"]
+    level_1: StoreCategoryLevelInput | None = None
+    level_2: StoreCategoryLevelInput | None = None
+    level_3: StoreCategoryLevelInput | None = None
+    leaf_category_id: str | None = Field(default=None, min_length=1, max_length=160)
+    product_type_ids: list[str] = Field(default_factory=list, max_length=200)
+    derived_tags: list[str] = Field(default_factory=list, max_length=50)
+    target_regions: list[str] = Field(default_factory=list, max_length=100)
+
+
+class StoreOperatingProfileInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    idempotency_key: str = Field(min_length=1, max_length=180)
+    effective_at: str | None = None
+    confirmed: Literal[True]
+    store_positioning: Literal[
+        "general",
+        "category_specialist",
+        "brand_flagship",
+        "test_lab",
+        "outlet",
+        "regional",
+    ]
+    assortment_mode: Literal[
+        "controlled_distribution",
+        "refined_operation",
+        "hero_sku",
+        "brand_building",
+        "store_cluster",
+        "hybrid",
+    ]
+    price_band: Literal["budget", "value", "mid", "premium", "luxury", "mixed"]
+    target_regions: list[str] = Field(default_factory=list, max_length=100)
+    fulfillment_models: list[str] = Field(default_factory=list, max_length=20)
+    planned_growth_channels: list[Literal["ozon", "vk", "telegram"]] = Field(
+        default_factory=list, max_length=3
+    )
+    customer_segments: list[str] = Field(default_factory=list, max_length=50)
+    operational_capabilities: list[str] = Field(default_factory=list, max_length=100)
+    category_paths: list[StoreCategoryPathInput] = Field(min_length=1, max_length=200)
+    supporting_evidence_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class StoreOperatingPlanFreezeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    idempotency_key: str = Field(min_length=1, max_length=180)
+    as_of: str | None = None
+    display_currency: str = Field(default="CNY", min_length=3, max_length=3)
 
 
 class MarketplaceSkuGrowthObservationInput(BaseModel):
@@ -194,9 +458,7 @@ class MarketplaceSkuGrowthObservationInput(BaseModel):
 
 class MarketplacePortfolioGrowthPlanInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    observations: list[MarketplaceSkuGrowthObservationInput] = Field(
-        min_length=1, max_length=100
-    )
+    observations: list[MarketplaceSkuGrowthObservationInput] = Field(min_length=1, max_length=100)
     target_cm3_rate: Decimal = Field(gt=0, lt=Decimal("0.5"))
     as_of: str | None = None
 
@@ -205,9 +467,7 @@ class MarketplaceGrowthSnapshotInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source: Literal["ozon_seller_api", "ozon_export", "operator_verified"]
     idempotency_key: str = Field(min_length=1, max_length=160)
-    observations: list[MarketplaceSkuGrowthObservationInput] = Field(
-        min_length=1, max_length=1000
-    )
+    observations: list[MarketplaceSkuGrowthObservationInput] = Field(min_length=1, max_length=1000)
 
 
 class MarketplaceLatestGrowthPlanInput(BaseModel):
@@ -221,6 +481,17 @@ class OzonCatalogEvidenceImportInput(BaseModel):
     evidence_ids: list[str] = Field(min_length=1, max_length=50)
     store_ref: str = Field(min_length=1, max_length=160)
     idempotency_key: str = Field(min_length=1, max_length=160)
+
+
+class OzonCatalogReadRunImportInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    run_id: str = Field(min_length=1, max_length=300)
+    store_ref: str = Field(min_length=1, max_length=160)
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
 
 
 class ExistingOzonListingBindingInput(BaseModel):
@@ -401,11 +672,14 @@ class CostEvidenceAuthorityReviewInput(BaseModel):
 
 
 class ContentBriefInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     product_id: str
     content_type: ContentType
     locale: str = "ru-RU"
     channel: str = "OZON"
     brief: dict[str, Any]
+    store_ref: str | None = Field(default=None, min_length=1, max_length=160)
+    as_of: str | None = None
 
 
 class AssetAttachInput(BaseModel):
@@ -581,6 +855,8 @@ class OzonListingDraftInput(BaseModel):
     scenario_id: str
     content_asset_ids: list[str] = Field(min_length=1, max_length=20)
     listing_data: dict[str, Any]
+    store_ref: str | None = Field(default=None, min_length=1, max_length=160)
+    as_of: str | None = None
 
 
 class KillSwitchInput(BaseModel):
@@ -1042,6 +1318,7 @@ class IncidentClosureInput(BaseModel):
 
 class OperationsQueueScanInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     as_of: str | None = None
 
 
@@ -1049,6 +1326,104 @@ class AnomalyScanInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     as_of: str | None = None
+
+
+class ScopeGrantEventInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_ref: str = Field(min_length=1, max_length=160)
+    store_ref: str = Field(min_length=1, max_length=160)
+    subject_actor_id: str = Field(min_length=1, max_length=160)
+    event_type: Literal["grant", "revoke"]
+    effective_at: str
+    evidence_id: str = Field(min_length=1, max_length=160)
+    reason: str = Field(min_length=1, max_length=2000)
+    idempotency_key: str = Field(min_length=1, max_length=300)
+
+
+class ScopeGrantSourceReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_evidence_id: str = Field(min_length=1, max_length=160)
+    entity_ref: str = Field(min_length=1, max_length=160)
+    store_ref: str = Field(min_length=1, max_length=160)
+    subject_actor_id: str = Field(min_length=1, max_length=160)
+    event_type: Literal["grant", "revoke"]
+    effective_at: str
+    accepted: bool
+    authentic_original: bool
+    owner_authority_verified: bool
+    scope_matches: bool
+    rationale: str = Field(min_length=1, max_length=5000)
+    idempotency_key: str = Field(min_length=1, max_length=300)
+
+
+class EvidenceScopeBindingSubmitInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    target_evidence_id: str = Field(min_length=1, max_length=240)
+    effective_at: str
+    idempotency_key: str = Field(min_length=1, max_length=300)
+
+
+class EvidenceScopeBindingReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    submission_evidence_id: str = Field(min_length=1, max_length=240)
+    accepted: bool
+    rationale: str = Field(min_length=1, max_length=5000)
+    effective_at: str
+    idempotency_key: str = Field(min_length=1, max_length=300)
+
+
+class EvidenceScopeBindingRecordInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    submission_evidence_id: str = Field(min_length=1, max_length=240)
+    review_evidence_id: str = Field(min_length=1, max_length=240)
+    effective_at: str
+    idempotency_key: str = Field(min_length=1, max_length=300)
+
+
+class SellerErpBridgeReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_evidence_id: str = Field(min_length=1, max_length=160)
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    accepted: bool
+    authentic_original: bool
+    authorization_verified: bool
+    export_scope_matches: bool
+    schema_mapping_verified: bool
+    no_session_or_secret_material: bool
+    rationale: str = Field(min_length=1, max_length=5000)
+    effective_at: str
+    idempotency_key: str = Field(min_length=1, max_length=300)
+
+
+class SellerErpBridgeBindingInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_evidence_id: str = Field(min_length=1, max_length=160)
+    review_evidence_id: str = Field(min_length=1, max_length=160)
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    effective_at: str
+    effective_until: str | None = None
+    idempotency_key: str = Field(min_length=1, max_length=300)
+
+
+class SellerErpBridgeRevocationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_evidence_id: str = Field(min_length=1, max_length=160)
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    reason: str = Field(min_length=1, max_length=2000)
+    effective_at: str
+    idempotency_key: str = Field(min_length=1, max_length=300)
+
+
+class OperatingSubjectEventInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject_actor_id: str = Field(min_length=1, max_length=160)
+    event_type: Literal["bind", "revoke"]
+    effective_at: str
+    reason: str = Field(min_length=1, max_length=2000)
+    idempotency_key: str = Field(min_length=1, max_length=300)
 
 
 class OperatingTaskTransitionInput(BaseModel):
@@ -1089,6 +1464,12 @@ class ReadOnlyPilotInput(BaseModel):
     starts_at: str
     ends_at: str
     evidence_ids: list[str] = Field(min_length=1)
+    store_ref: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=160,
+    )
+    as_of: str | None = None
 
 
 class PilotControlAttestationInput(BaseModel):
@@ -1228,6 +1609,21 @@ class FxRateInput(BaseModel):
     evidence_id: str = Field(min_length=1)
 
 
+class ScopedFxEvidenceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(min_length=1, max_length=160)
+    source_currency: str = Field(min_length=3, max_length=3)
+    target_currency: str = Field(min_length=3, max_length=3)
+    rate: Decimal
+    effective_at: datetime
+    expires_at: datetime
+    evidence_id: str = Field(min_length=1, max_length=240)
+    source_type: str = Field(min_length=1, max_length=120)
+    authority: str = Field(min_length=1, max_length=300)
+    purposes: list[str] = Field(min_length=1, max_length=20)
+    idempotency_key: str = Field(min_length=1, max_length=180)
+
+
 class FinanceEntryInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     entry_kind: FinanceEntryKind
@@ -1240,6 +1636,51 @@ class FinanceEntryInput(BaseModel):
     effective_at: str
     evidence_id: str = Field(min_length=1)
     review_required: bool = False
+
+
+class SupplierInvoiceLineInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    line_number: int = Field(ge=1, le=1000)
+    product_id: str = Field(min_length=1, max_length=240)
+    description: str = Field(min_length=1, max_length=5000)
+    quantity: Decimal = Field(gt=0)
+    unit_price: Decimal = Field(ge=0)
+    net_amount: Decimal = Field(ge=0)
+    tax_amount: Decimal = Field(ge=0)
+    gross_amount: Decimal = Field(ge=0)
+
+
+class SupplierInvoiceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    invoice_ref: str = Field(min_length=1, max_length=240)
+    purchase_order_id: str = Field(min_length=1, max_length=240)
+    supplier_ref: str = Field(min_length=1, max_length=240)
+    currency: str = Field(min_length=3, max_length=3)
+    net_amount: Decimal = Field(ge=0)
+    tax_amount: Decimal = Field(ge=0)
+    gross_amount: Decimal = Field(gt=0)
+    issued_at: str
+    due_at: str
+    evidence_id: str = Field(min_length=1, max_length=240)
+    lines: list[SupplierInvoiceLineInput] = Field(
+        min_length=1,
+        max_length=1000,
+    )
+
+
+class SupplierInvoiceAuthorityReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    accepted: bool
+    authentic_original: bool
+    legal_entity_matches: bool
+    supplier_matches: bool
+    purchase_order_matches: bool
+    receipt_inspection_matches: bool
+    line_quantity_price_matches: bool
+    currency_tax_total_matches: bool
+    rationale: str = Field(min_length=1, max_length=5000)
+    idempotency_key: str = Field(min_length=1, max_length=300)
 
 
 class ReconciliationInput(BaseModel):
@@ -1260,3 +1701,259 @@ class CashPlanItemInput(BaseModel):
     probability: Decimal
     status: CashPlanStatus
     evidence_id: str = Field(min_length=1)
+
+
+class CustomerServiceCaseInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(
+        default="ozon-primary",
+        min_length=1,
+        max_length=160,
+    )
+    external_case_ref: str = Field(min_length=1, max_length=240)
+    channel: Literal["ozon", "email", "chat", "phone", "other_authorized"]
+    order_external_id: str = Field(min_length=1, max_length=240)
+    product_id: str = Field(min_length=1, max_length=240)
+    sku: str = Field(min_length=1, max_length=240)
+    locale: str = Field(min_length=1, max_length=40)
+    classification: Literal[
+        "product_question",
+        "delivery",
+        "damage",
+        "return",
+        "refund",
+        "dispute",
+        "rma",
+        "other",
+    ]
+    priority: Literal["low", "normal", "high", "urgent"]
+    evidence_id: str = Field(min_length=1, max_length=240)
+    opened_at: str
+
+
+class CustomerServiceEventInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(
+        default="ozon-primary",
+        min_length=1,
+        max_length=160,
+    )
+    source_event_ref: str = Field(min_length=1, max_length=240)
+    sequence: int = Field(ge=1)
+    event_type: Literal[
+        "case_opened",
+        "triaged",
+        "reply_drafted",
+        "reply_approval_pending",
+        "reply_permit_pending",
+        "reply_readback_pending",
+        "message_received",
+        "message_sent_readback",
+        "return_opened",
+        "dispute_opened",
+        "dispute_resolved",
+        "rma_opened",
+        "rma_resolved",
+        "resolved",
+        "closed",
+    ]
+    direction: Literal["inbound", "outbound", "system"]
+    locale: str = Field(min_length=1, max_length=40)
+    summary: str = Field(min_length=1, max_length=500)
+    body_sha256: str | None = Field(
+        default=None,
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-fA-F]{64}$",
+    )
+    evidence_id: str = Field(min_length=1, max_length=240)
+    effective_at: str
+    approval_id: str | None = Field(default=None, min_length=1, max_length=240)
+    command_id: str | None = Field(default=None, min_length=1, max_length=240)
+    receipt_id: str | None = Field(default=None, min_length=1, max_length=240)
+
+
+class WarehouseExecutionEventInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    store_ref: str = Field(
+        default="ozon-primary",
+        min_length=1,
+        max_length=160,
+    )
+    warehouse_ref: str = Field(min_length=1, max_length=160)
+    source_event_ref: str = Field(min_length=1, max_length=240)
+    aggregate_ref: str = Field(min_length=1, max_length=240)
+    sequence: int = Field(ge=1)
+    event_type: Literal[
+        "location_registered",
+        "bin_registered",
+        "lot_received",
+        "reservation_created",
+        "reservation_released",
+        "wave_created",
+        "wave_order_added",
+        "pick_scanned",
+        "pack_scanned",
+        "parcel_created",
+        "label_bound",
+        "weight_scanned",
+        "inventory_adjustment_readback",
+        "outbound_confirmed_readback",
+        "label_purchased_readback",
+        "carrier_handoff_readback",
+        "exception_recorded",
+    ]
+    order_external_id: str = Field(min_length=1, max_length=240)
+    product_id: str = Field(min_length=1, max_length=240)
+    sku: str = Field(min_length=1, max_length=240)
+    evidence_id: str = Field(min_length=1, max_length=240)
+    effective_at: str = Field(min_length=1, max_length=80)
+    location_ref: str | None = Field(default=None, max_length=240)
+    bin_ref: str | None = Field(default=None, max_length=240)
+    lot_ref: str | None = Field(default=None, max_length=240)
+    wave_ref: str | None = Field(default=None, max_length=240)
+    parcel_ref: str | None = Field(default=None, max_length=240)
+    label_ref: str | None = Field(default=None, max_length=240)
+    quantity: int | None = Field(default=None, ge=1)
+    weight_kg: str | None = Field(default=None, max_length=48)
+    weight_source: (
+        Literal[
+            "authorized_scale_readback",
+            "official_carrier_readback",
+            "authorized_formal_export",
+        ]
+        | None
+    ) = None
+    carrier_ref: str | None = Field(default=None, max_length=240)
+    service_ref: str | None = Field(default=None, max_length=240)
+    approval_id: str | None = Field(default=None, max_length=240)
+    command_id: str | None = Field(default=None, max_length=240)
+    receipt_id: str | None = Field(default=None, max_length=240)
+    kill_switch_evidence_id: str | None = Field(
+        default=None,
+        max_length=240,
+    )
+    compensation_evidence_id: str | None = Field(
+        default=None,
+        max_length=240,
+    )
+
+
+class ChannelAccountAuthorizationEventInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    store_ref: str = Field(
+        default="ozon-primary",
+        min_length=1,
+        max_length=160,
+    )
+    source_event_ref: str = Field(min_length=1, max_length=240)
+    sequence: int = Field(ge=1)
+    event_type: Literal[
+        "authorization_granted",
+        "authorization_refreshed",
+        "credential_rotated",
+        "authorization_revoked",
+        "authorization_expired",
+        "external_verification_readback",
+        "health_observed",
+        "rate_limit_observed",
+        "schema_drift_observed",
+        "unknown_outcome_observed",
+    ]
+    authorization_source: Literal[
+        "official",
+        "explicit_written_authorization",
+    ]
+    platform: str = Field(min_length=1, max_length=80)
+    account_ref: str = Field(min_length=1, max_length=240)
+    adapter_id: str = Field(min_length=1, max_length=160)
+    adapter_version: str = Field(min_length=1, max_length=80)
+    credential_kind: Literal[
+        "api_key_ref",
+        "oauth_client_ref",
+        "service_account_ref",
+    ]
+    capabilities: list[str] = Field(min_length=1, max_length=100)
+    secret_reference: str = Field(min_length=1, max_length=256)
+    credential_fingerprint_sha256: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern="^[0-9a-fA-F]{64}$",
+    )
+    health_status: Literal[
+        "healthy",
+        "degraded",
+        "unreachable",
+        "unknown",
+    ]
+    readback_outcome: Literal[
+        "succeeded",
+        "failed",
+        "unknown",
+        "not_applicable",
+    ]
+    rate_limit_state: Literal[
+        "available",
+        "limited",
+        "exhausted",
+        "unknown",
+    ]
+    external_schema_version: str = Field(min_length=1, max_length=80)
+    consent_evidence_id: str = Field(min_length=1, max_length=240)
+    evidence_id: str = Field(min_length=1, max_length=240)
+    effective_at: str = Field(min_length=1, max_length=80)
+    expires_at: str = Field(min_length=1, max_length=80)
+    verified_at: str = Field(min_length=1, max_length=80)
+    role_ref: str | None = Field(default=None, max_length=160)
+    subaccount_ref: str | None = Field(default=None, max_length=240)
+    approval_id: str | None = Field(default=None, max_length=240)
+    command_id: str | None = Field(default=None, max_length=240)
+    receipt_id: str | None = Field(default=None, max_length=240)
+    permit_evidence_id: str | None = Field(default=None, max_length=240)
+    readback_evidence_id: str | None = Field(default=None, max_length=240)
+    kill_switch_sequence: int | None = Field(default=None, ge=1)
+    kill_switch_state_id: str | None = Field(
+        default=None,
+        max_length=240,
+    )
+    kill_switch_evidence_id: str | None = Field(
+        default=None,
+        max_length=240,
+    )
+    compensation_plan_id: str | None = Field(
+        default=None,
+        max_length=240,
+    )
+    compensation_evidence_id: str | None = Field(
+        default=None,
+        max_length=240,
+    )
+
+
+class ChannelAccountKillSwitchStateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    store_ref: str = Field(
+        default="ozon-primary",
+        min_length=1,
+        max_length=160,
+    )
+    source_event_ref: str = Field(min_length=1, max_length=240)
+    sequence: int = Field(ge=1)
+    kill_switch_sequence: int = Field(ge=1)
+    writes_enabled: bool
+    action_id: Literal[
+        "channel_authorization_grant",
+        "channel_authorization_refresh",
+        "channel_credential_rotate",
+        "channel_authorization_revoke",
+        "channel_authorization_external_verify",
+    ]
+    platform: str = Field(min_length=1, max_length=80)
+    account_ref: str = Field(min_length=1, max_length=240)
+    adapter_id: str = Field(min_length=1, max_length=160)
+    adapter_version: str = Field(min_length=1, max_length=80)
+    evidence_id: str = Field(min_length=1, max_length=240)
+    effective_at: str = Field(min_length=1, max_length=80)

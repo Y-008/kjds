@@ -164,6 +164,7 @@ class MediaExecutionEventRow(Base):
 
 class MediaWorkbenchService:
     CONTRACT_ID = "kjds-media-workbench-v1"
+    READ_SOURCE_CONTRACT_ID = "kjds-scoped-media-read-source-v1"
 
     def __init__(
         self,
@@ -232,6 +233,158 @@ class MediaWorkbenchService:
                 "listing_requires_all_qa_passed": True,
                 "external_marketplace_write_allowed": False,
             },
+        }
+        payload["snapshot_sha256"] = self._hash(payload)
+        return payload
+
+    def read_sources(
+        self,
+        *,
+        asset_ids: list[str],
+        as_of: datetime,
+        max_assets: int = 2000,
+        max_executions: int = 5000,
+        max_events: int = 10000,
+        max_manifests: int = 2000,
+    ) -> dict[str, Any]:
+        """Read only pre-authorized media rows at an exact temporal cutoff."""
+
+        if as_of.tzinfo is None:
+            raise ValueError("Media read-source as_of must include a timezone")
+        cutoff = as_of.astimezone(UTC)
+        normalized = sorted(
+            {
+                str(asset_id).strip()
+                for asset_id in asset_ids
+                if str(asset_id).strip()
+            }
+        )
+        for value, field in (
+            (max_assets, "max_assets"),
+            (max_executions, "max_executions"),
+            (max_events, "max_events"),
+            (max_manifests, "max_manifests"),
+        ):
+            if not 1 <= value <= 20000:
+                raise ValueError(f"{field} must be between 1 and 20000")
+        if not normalized:
+            payload = {
+                "contract_id": self.READ_SOURCE_CONTRACT_ID,
+                "as_of": cutoff.isoformat(),
+                "authorized_asset_ids": [],
+                "assets": [],
+                "executions": [],
+                "events": [],
+                "manifests": [],
+                "truncated": {
+                    "assets": False,
+                    "executions": False,
+                    "events": False,
+                    "manifests": False,
+                },
+                "raw_read": False,
+            }
+            payload["snapshot_sha256"] = self._hash(payload)
+            return payload
+
+        with Session(self.engine) as session:
+            asset_rows = list(
+                session.scalars(
+                    select(ContentAssetRow)
+                    .where(
+                        ContentAssetRow.id.in_(normalized),
+                        ContentAssetRow.created_at <= cutoff,
+                    )
+                    .order_by(ContentAssetRow.created_at, ContentAssetRow.id)
+                    .limit(max_assets + 1)
+                ).all()
+            )
+            execution_rows = list(
+                session.scalars(
+                    select(MediaExecutionRow)
+                    .where(
+                        MediaExecutionRow.asset_id.in_(normalized),
+                        MediaExecutionRow.queued_at <= cutoff,
+                    )
+                    .order_by(
+                        MediaExecutionRow.asset_id,
+                        MediaExecutionRow.queued_at,
+                        MediaExecutionRow.id,
+                    )
+                    .limit(max_executions + 1)
+                ).all()
+            )
+            execution_ids = [row.id for row in execution_rows[:max_executions]]
+            event_rows = (
+                list(
+                    session.scalars(
+                        select(MediaExecutionEventRow)
+                        .where(
+                            MediaExecutionEventRow.execution_id.in_(
+                                execution_ids
+                            ),
+                            MediaExecutionEventRow.occurred_at <= cutoff,
+                        )
+                        .order_by(
+                            MediaExecutionEventRow.execution_id,
+                            MediaExecutionEventRow.sequence,
+                            MediaExecutionEventRow.occurred_at,
+                            MediaExecutionEventRow.id,
+                        )
+                        .limit(max_events + 1)
+                    ).all()
+                )
+                if execution_ids
+                else []
+            )
+            manifest_rows = list(
+                session.scalars(
+                    select(MediaDeliveryManifestRow)
+                    .where(
+                        MediaDeliveryManifestRow.asset_id.in_(normalized),
+                        MediaDeliveryManifestRow.created_at <= cutoff,
+                    )
+                    .order_by(
+                        MediaDeliveryManifestRow.asset_id,
+                        MediaDeliveryManifestRow.created_at,
+                        MediaDeliveryManifestRow.id,
+                    )
+                    .limit(max_manifests + 1)
+                ).all()
+            )
+
+        truncated = {
+            "assets": len(asset_rows) > max_assets,
+            "executions": len(execution_rows) > max_executions,
+            "events": len(event_rows) > max_events,
+            "manifests": len(manifest_rows) > max_manifests,
+        }
+        payload = {
+            "contract_id": self.READ_SOURCE_CONTRACT_ID,
+            "as_of": cutoff.isoformat(),
+            "authorized_asset_ids": normalized,
+            "assets": [
+                {
+                    **self._asset_row(row),
+                    "source_facts": row.source_facts_json,
+                    "created_at": self._iso(row.created_at),
+                }
+                for row in asset_rows[:max_assets]
+            ],
+            "executions": [
+                self._execution(row)
+                for row in execution_rows[:max_executions]
+            ],
+            "events": [
+                self._event(row)
+                for row in event_rows[:max_events]
+            ],
+            "manifests": [
+                self._manifest_source(row)
+                for row in manifest_rows[:max_manifests]
+            ],
+            "truncated": truncated,
+            "raw_read": True,
         }
         payload["snapshot_sha256"] = self._hash(payload)
         return payload
@@ -1108,6 +1261,35 @@ class MediaWorkbenchService:
             "error_code": row.error_code,
             "error_detail": row.error_detail,
             "external_side_effect": False,
+        }
+
+    @classmethod
+    def _event(cls, row: MediaExecutionEventRow) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "execution_id": row.execution_id,
+            "sequence": row.sequence,
+            "event_type": row.event_type,
+            "from_status": row.from_status,
+            "to_status": row.to_status,
+            "payload": row.payload_json,
+            "actor_id": row.actor_id,
+            "occurred_at": cls._iso(row.occurred_at),
+        }
+
+    @classmethod
+    def _manifest_source(
+        cls, row: MediaDeliveryManifestRow
+    ) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "asset_id": row.asset_id,
+            "execution_id": row.execution_id,
+            "asset_state_sha256": row.asset_state_sha256,
+            "manifest_sha256": row.manifest_sha256,
+            "payload": row.payload_json,
+            "created_by": row.created_by,
+            "created_at": cls._iso(row.created_at),
         }
 
     @staticmethod

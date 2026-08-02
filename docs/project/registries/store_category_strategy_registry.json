@@ -1,0 +1,110 @@
+{
+  "registry_id": "kjds-store-category-strategy-v1",
+  "version": "2026.08.02.1",
+  "effective_from": "2026-08-02",
+  "effective_to": null,
+  "status": "active_internal_policy",
+  "official_taxonomy_semantics": "platform_category_ids_are_evidence_bound_and_never_inferred_from_derived_tags",
+  "derived_tag_semantics": "internal_operating_archetypes_not_platform_taxonomy",
+  "store_positionings": [
+    "general",
+    "category_specialist",
+    "brand_flagship",
+    "test_lab",
+    "outlet",
+    "regional"
+  ],
+  "assortment_modes": [
+    "controlled_distribution",
+    "refined_operation",
+    "hero_sku",
+    "brand_building",
+    "store_cluster",
+    "hybrid"
+  ],
+  "price_bands": ["budget", "value", "mid", "premium", "luxury", "mixed"],
+  "category_roles": ["core", "adjacent", "experimental", "excluded"],
+  "growth_channels": ["ozon", "vk", "telegram"],
+  "derived_archetypes": {
+    "accessory": {
+      "preferred_modes": ["controlled_distribution", "hybrid", "refined_operation"],
+      "required_gates": ["exact_variant", "positive_downside_cm3"],
+      "focus_metrics": ["cash_cycle", "bundle_cm3", "price_competition"]
+    },
+    "replacement_part": {
+      "preferred_modes": ["controlled_distribution", "refined_operation"],
+      "required_gates": ["compatibility_evidence", "exact_variant"],
+      "focus_metrics": ["search_intent_match", "return_rate", "cash_cm3"]
+    },
+    "size_variant": {
+      "preferred_modes": ["refined_operation", "hero_sku"],
+      "required_gates": ["variant_matrix", "return_evidence"],
+      "focus_metrics": ["return_adjusted_cm3", "variant_stock", "size_conversion"]
+    },
+    "fragile": {
+      "preferred_modes": ["refined_operation"],
+      "required_gates": ["packaging_evidence", "damage_cost"],
+      "focus_metrics": ["damage_rate", "absolute_cm3", "return_logistics"]
+    },
+    "heavy": {
+      "preferred_modes": ["refined_operation"],
+      "required_gates": ["volume_weight", "route_cost"],
+      "focus_metrics": ["absolute_cm3", "logistics_ratio", "regional_margin"]
+    },
+    "regulated": {
+      "preferred_modes": ["refined_operation", "brand_building"],
+      "required_gates": ["compliance_evidence", "claims_review"],
+      "focus_metrics": ["risk_adjusted_cm3", "complaint_rate", "document_freshness"]
+    },
+    "repeat_purchase": {
+      "preferred_modes": ["hero_sku", "brand_building", "hybrid"],
+      "required_gates": ["settled_cohort_evidence"],
+      "focus_metrics": ["repeat_cash_cm3", "cohort_retention", "cash_payback"]
+    },
+    "seasonal": {
+      "preferred_modes": ["hybrid", "refined_operation"],
+      "required_gates": ["season_window", "exit_plan"],
+      "focus_metrics": ["sell_through_probability", "remaining_value", "time_to_cash"]
+    },
+    "high_ticket": {
+      "preferred_modes": ["refined_operation", "brand_building"],
+      "required_gates": ["fraud_risk", "warranty_cost", "return_evidence"],
+      "focus_metrics": ["absolute_cm3", "cash_cycle", "refund_tail_loss"]
+    },
+    "giftable": {
+      "preferred_modes": ["refined_operation", "hero_sku"],
+      "required_gates": ["content_rights", "season_window"],
+      "focus_metrics": ["content_conversion", "bundle_cm3", "seasonal_cash_cm3"]
+    },
+    "content_led": {
+      "preferred_modes": ["refined_operation", "brand_building"],
+      "required_gates": ["content_rights", "russian_native_review"],
+      "focus_metrics": ["query_view_conversion", "content_conversion", "incremental_cash_cm3"]
+    },
+    "bundle": {
+      "preferred_modes": ["refined_operation", "hero_sku"],
+      "required_gates": ["bundle_identity", "bundle_cost"],
+      "focus_metrics": ["bundle_cm3", "attach_rate", "return_adjusted_cm3"]
+    }
+  },
+  "routing_precedence": [
+    "exact_official_exclusion",
+    "exact_leaf_category",
+    "exact_product_type",
+    "exact_hierarchy_level_3",
+    "exact_hierarchy_level_2",
+    "exact_hierarchy_level_1",
+    "derived_tag_advisory_only",
+    "needs_category_data"
+  ],
+  "control_envelope": {
+    "derived_tag_can_create_official_category": false,
+    "derived_tag_can_authorize_listing": false,
+    "automatic_cross_store_publish": false,
+    "automatic_advertising": false,
+    "automatic_procurement": false,
+    "approval_required": true,
+    "permit_required": true,
+    "readback_required": true
+  }
+}

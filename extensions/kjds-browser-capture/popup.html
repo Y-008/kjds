@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>KJDS Browser Capture</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <header>
+      <span>K</span>
+      <div><strong>KJDS</strong><small>VISIBLE PAGE CAPTURE</small></div>
+    </header>
+    <main>
+      <h1>采集当前商品页</h1>
+      <p>只读取当前标签页可见 DOM/结构化商品字段，不读取 Cookie、localStorage 或内部 API。</p>
+      <button id="capture" type="button">采集并打开 KJDS 预检</button>
+      <output id="status" aria-live="polite">等待你的显式操作</output>
+    </main>
+    <footer>公开价格仅为 Observation，不是 Supplier Offer 或实际成本。</footer>
+    <script src="popup.js"></script>
+  </body>
+</html>

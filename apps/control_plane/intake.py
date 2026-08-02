@@ -42,6 +42,7 @@ class SkuEpisodeIntakeService:
         effective_at: str,
         payloads: list[PassportEvidencePayload],
         created_by: str,
+        scope_authority: dict | None = None,
     ) -> dict:
         sku = sku.strip()
         name = name.strip()
@@ -56,10 +57,51 @@ class SkuEpisodeIntakeService:
             if not isinstance(payload.facts, dict):
                 raise ValueError(f"{payload.kind.value} facts must be an object")
 
-        existing = next((product for product in self.commerce.list_products() if product.sku == sku), None)
+        if scope_authority is None:
+            products = self.commerce.list_products()
+        else:
+            products = self.commerce.repo.list_products_scoped(
+                tenant_ref=scope_authority["tenant_ref"],
+                entity_ref=scope_authority["entity_ref"],
+                store_ref=scope_authority["store_ref"],
+                as_of=scope_authority["as_of"],
+            )
+        existing = next(
+            (product for product in products if product.sku == sku),
+            None,
+        )
         if existing is not None and existing.name != name:
             raise ValueError("SKU already exists with a different product name")
-        product = existing or self.commerce.create_product(sku=sku, name=name)
+        product = existing or self.commerce.create_product(
+            sku=sku,
+            name=name,
+            tenant_ref=(
+                scope_authority["tenant_ref"]
+                if scope_authority
+                else None
+            ),
+            entity_ref=(
+                scope_authority["entity_ref"]
+                if scope_authority
+                else None
+            ),
+            store_ref=(
+                scope_authority["store_ref"]
+                if scope_authority
+                else None
+            ),
+            scope_grant_authority_sha256=(
+                scope_authority["scope_grant_authority_sha256"]
+                if scope_authority
+                else None
+            ),
+            scope_as_of=(
+                scope_authority["as_of"].isoformat()
+                if scope_authority
+                else None
+            ),
+            created_by=created_by if scope_authority else None,
+        )
 
         passports = []
         evidence_records = []
@@ -123,8 +165,15 @@ class ProductMediaEvidenceService:
         rights_filename: str,
         rights_content_type: str,
         created_by: str,
+        authorized_product=None,
     ) -> dict:
-        product = self.commerce.repo.get_product(product_id)
+        product = (
+            authorized_product
+            if authorized_product is not None
+            else self.commerce.repo.get_product(product_id)
+        )
+        if product.id != product_id:
+            raise ValueError("Authorized Product does not match product_id")
         variant_id = variant_id.strip()
         asset_role = asset_role.strip()
         source_kind = source_kind.strip()
