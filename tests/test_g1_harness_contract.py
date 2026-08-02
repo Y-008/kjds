@@ -21,6 +21,7 @@ def test_g1_harness_keeps_infrastructure_seams_without_domain_scenarios():
 
     required_seams = (
         "Replaying migrations in disposable database",
+        "Seeding the disposable operating Gate observation graph",
         "Verifying transactional outbox on PostgreSQL",
         "Running Python quality gates",
         "Verifying production API image",
@@ -46,6 +47,8 @@ def test_g1_harness_keeps_infrastructure_seams_without_domain_scenarios():
         assert route not in source
 
     assert "alembic heads" in source
+    assert "scripts/seed_g1_operating_gate.py" in source
+    assert 'actor = "g1-operating-subject"' in source
     assert 'result.migration = "20' not in source
 
 

@@ -62,7 +62,7 @@ def test_ozon_offer_state_contract_replay(case_id, expected_code):
         return httpx.Response(200, json=replay["responses"][request.url.path])
 
     client = OzonSellerClient(
-        OzonCredentials(client_id="fixture-client", api_key="fixture-key"),
+        OzonCredentials.for_test_fixture(client_id="fixture-client", api_key="fixture-key"),
         transport=httpx.MockTransport(handler),
     )
     try:

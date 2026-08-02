@@ -1238,7 +1238,7 @@ def test_usable_knowledge_compiles_to_conditional_policy_with_staged_promotion_g
     command = executor.queue(plan["id"], queued_by="execution-operator")
     assert command["status"] == "queued"
     assert command["action_id"] == "listing_publish"
-    assert command["action_policy_version"] == "2026-07-24.1"
+    assert command["action_policy_version"] == "2026-08-01.1"
     assert command["decision_hash"] == ready_plan["decision_packet"]["decision_hash"]
     assert command["risk_limits"] == {
         "max_daily_runs": "5",

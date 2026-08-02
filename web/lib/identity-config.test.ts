@@ -6,9 +6,12 @@ import {
   credentialsByActor,
   mutationOriginIsAllowed,
   parseWebActorBindings,
+  rejectedLoginResponse,
   resolveLegacyApiCredential,
   validateWebApprovalTopology,
   webAuthMode,
+  webRedirect,
+  webRequestUrl,
 } from "./identity-config.ts";
 
 test("legacy mode is limited to non-production environments", () => {
@@ -206,5 +209,57 @@ test("mutations require exact Origin or browser-controlled same-origin metadata"
       }),
     ),
     false,
+  );
+  assert.equal(
+    mutationOriginIsAllowed(
+      new Request("http://0.0.0.0:3000/auth/login", {
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:3000",
+          origin: "http://127.0.0.1:3000",
+          referer: "http://127.0.0.1:3000/login",
+          "sec-fetch-site": "same-origin",
+        },
+      }),
+    ),
+    true,
+    "the browser-visible Host must win over the container bind address",
+  );
+  assert.equal(
+    mutationOriginIsAllowed(
+      new Request("http://0.0.0.0:3000/auth/login", {
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:3000",
+          origin: "https://attacker.example",
+          "sec-fetch-site": "cross-site",
+        },
+      }),
+    ),
+    false,
+  );
+});
+
+test("browser redirects and rejected login HTML use the public Host", async () => {
+  const request = new Request("http://0.0.0.0:3000/auth/login", {
+    method: "POST",
+    headers: {
+      host: "127.0.0.1:3000",
+      origin: "http://127.0.0.1:3000",
+    },
+  });
+  assert.equal(
+    webRequestUrl(request, "/login?error=invalid").href,
+    "http://127.0.0.1:3000/login?error=invalid",
+  );
+  const rejectedLogin = rejectedLoginResponse(request);
+  assert.equal(rejectedLogin.status, 403);
+  assert.match(
+    rejectedLogin.headers.get("content-type") ?? "",
+    /^text\/html/,
+  );
+  assert.match(
+    await rejectedLogin.text(),
+    /href="http:\/\/127\.0\.0\.1:3000\/login"/,
   );
 });

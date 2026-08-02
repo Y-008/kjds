@@ -110,7 +110,7 @@ function Stop-OwnedListener {
 }
 
 function Stop-SmokeProcesses {
-    $markers = @("--port $ApiPort", "--port $WebPort", $WebSmoke)
+    $markers = @("--port $ApiPort", "--port $WebPort", "start -p $WebPort", $WebSmoke)
     try {
         $processes = Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
             $commandLine = [string]$_.CommandLine
@@ -384,6 +384,11 @@ try {
     $ApiCredentials = @{}
     $ApiCredentials[$env:KJDS_API_KEY] = @{ actor = "g1-verifier"; roles = @("operator", "reviewer", "admin") }
     $ApiCredentials[$MonitorApiKey] = @{ actor = "g1-monitor-worker"; roles = @("monitor") }
+    $OperatingSubjectApiKey = "g1-operating-subject-" + [guid]::NewGuid().ToString("N")
+    $ApiCredentials[$OperatingSubjectApiKey] = @{
+        actor = "g1-operating-subject"
+        roles = @("operator")
+    }
     $env:KJDS_API_KEYS_JSON = $ApiCredentials | ConvertTo-Json -Compress
     $env:KJDS_MONITOR_API_KEY = $MonitorApiKey
 
@@ -410,6 +415,13 @@ try {
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $result.migration_replay = $true
+
+    Write-Output "[G-1] Seeding the disposable operating Gate observation graph"
+    Invoke-External -Command uv -Arguments @(
+        "run",
+        "python",
+        "scripts/seed_g1_operating_gate.py"
+    )
 
     Write-Output "[G-1] Verifying transactional outbox on PostgreSQL"
     Invoke-External -Command uv -Arguments @("run", "python", "scripts/verify_outbox_postgres.py")
@@ -554,13 +566,34 @@ try {
         throw "Ozon Worker accepted missing execution intent or exposed credentials"
     }
 
-    $revalidationOutput = & docker compose run --rm --no-deps `
+    $unboundExecutionOutput = & docker compose run --rm --no-deps `
         -e KJDS_CONTROL_PLANE_URL=http://control.example.com `
         -e KJDS_PILOT_READER_API_KEY=g1-revalidate-pilot-reader `
         -e OZON_CLIENT_ID=g1-revalidate-seller-client `
         -e OZON_API_KEY=g1-revalidate-ozon-reader `
         ozon-read-worker python -m apps.control_plane.ozon_read_worker `
         --execute --pilot-id G1-REVALIDATE-PILOT --offer-id G1-REVALIDATE-OFFER `
+        --idempotency-key g1-execution-revalidation 2>&1
+    $unboundExecutionExit = $LASTEXITCODE
+    $unboundExecutionText = $unboundExecutionOutput -join "`n"
+    if (
+        $unboundExecutionExit -eq 0 -or
+        -not $unboundExecutionText.Contains("Managed channel credential resolver is not bound") -or
+        -not $unboundExecutionText.Contains("environment-only credentials cannot authorize a worker") -or
+        $unboundExecutionText.Contains("g1-revalidate-pilot-reader") -or
+        $unboundExecutionText.Contains("g1-revalidate-seller-client") -or
+        $unboundExecutionText.Contains("g1-revalidate-ozon-reader")
+    ) {
+        throw "Ozon Worker accepted environment-only credentials or exposed credential material"
+    }
+
+    $revalidationOutput = & docker compose run --rm --no-deps `
+        -e KJDS_CONTROL_PLANE_URL=http://control.example.com `
+        -e KJDS_PILOT_READER_API_KEY=g1-revalidate-pilot-reader `
+        -e OZON_CLIENT_ID=g1-revalidate-seller-client `
+        -e OZON_API_KEY=g1-revalidate-ozon-reader `
+        ozon-read-worker python -m apps.control_plane.ozon_read_worker `
+        --preflight --pilot-id G1-REVALIDATE-PILOT --offer-id G1-REVALIDATE-OFFER `
         --idempotency-key g1-execution-revalidation 2>&1
     $revalidationExit = $LASTEXITCODE
     $revalidationText = $revalidationOutput -join "`n"
@@ -571,7 +604,7 @@ try {
         $revalidationText.Contains("g1-revalidate-seller-client") -or
         $revalidationText.Contains("g1-revalidate-ozon-reader")
     ) {
-        throw "Ozon Worker skipped execution-time revalidation or exposed credentials"
+        throw "Ozon Worker skipped offline endpoint revalidation or exposed credentials"
     }
     $result.ozon_worker_execution_intent = $true
 
@@ -662,14 +695,6 @@ try {
     $result.loop_engineering_validation = $true
     $result.kill_switch = $true
 
-    $product = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products" -Method Post -Headers $headers -ContentType "application/json" -Body $body
-    $readiness = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/products/$($product.id)/readiness" -Headers $headers
-    $events = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/events" -Headers $headers
-    if ($readiness.ready_for_validation -ne $false -or -not ($events | Where-Object aggregate_id -eq $product.id)) {
-        throw "API write/read/event smoke failed"
-    }
-    $result.api_database_write = $true
-
     Set-Content -LiteralPath $EvidenceSmokeFile -Value "G-1 immutable evidence" -NoNewline -Encoding UTF8
     $evidenceRecord = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence" -Method Post -Headers $headers -Form @{
         file = Get-Item $EvidenceSmokeFile
@@ -681,13 +706,14 @@ try {
     }
     $verification = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/verify" -Headers $headers
     $lineage = Invoke-RestMethod "http://127.0.0.1:$ApiPort/v1/evidence/$($evidenceRecord.id)/lineage" -Method Post -Headers $headers -ContentType "application/json" -Body (@{
-        target_type = "product"
-        target_id = $product.id
+        target_type = "verification"
+        target_id = "g1-api-database-write"
         relationship = "supports"
     } | ConvertTo-Json)
-    if (-not $verification.valid -or $lineage.to_id -ne $product.id) {
+    if (-not $verification.valid -or $lineage.to_id -ne "g1-api-database-write") {
         throw "Immutable evidence and lineage smoke failed"
     }
+    $result.api_database_write = $true
     $result.evidence_ledger = $true
 
     # Detailed business workflows run in the Python suite above.  G-1 keeps
@@ -712,6 +738,7 @@ try {
         -not $healthLoop.control_plane.ok -or
         -not $healthLoop.operations_readiness.ok -or
         -not $healthLoop.evidence_integrity.ok -or
+        -not $healthLoop.agent_gate_observation.ok -or
         -not $healthLoop.evidence_integrity.completed -or
         $healthLoop.evidence_integrity.pages -lt 1 -or
         $healthLoop.evidence_integrity.invalid -ne 0
@@ -721,6 +748,7 @@ try {
             "control_plane=$($healthLoop.control_plane.ok) " +
             "readiness=$($healthLoop.operations_readiness.ok) " +
             "integrity=$($healthLoop.evidence_integrity.ok) " +
+            "agent_gate=$($healthLoop.agent_gate_observation.ok) " +
             "completed=$($healthLoop.evidence_integrity.completed) " +
             "pages=$($healthLoop.evidence_integrity.pages) " +
             "invalid=$($healthLoop.evidence_integrity.invalid)"
