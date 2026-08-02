@@ -6,8 +6,8 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 5.0 |
-| last_reviewed | 2026-07-21 |
+| version | 5.1 |
+| last_reviewed | 2026-08-02 |
 | gate | G-1–G8 |
 
 本文件只做导航，不维护迁移号、测试数量或任务状态。
@@ -22,6 +22,7 @@
 | 决策、来源和未知项 | [04_SOURCE_DECISION_UNKNOWN_REGISTER.md](04_SOURCE_DECISION_UNKNOWN_REGISTER.md) | 分开保存事实、假设、决定和未知 |
 | 架构决策 | [../adr/](../adr/) | 通过 ADR 修改稳定边界 |
 | 能力验收 | [evidence/](evidence/) | 证明对应版本，不自动代表当前仍通过 |
+| 商业化与俄罗斯作战合同 | [20260802_DUAL_ENGINE_COMMERCIALIZATION_AND_RUSSIA_GTM.md](20260802_DUAL_ENGINE_COMMERCIALIZATION_AND_RUSSIA_GTM.md) | 定义双轮商业模型、经营/软件 Gate 与多任务调度；动态状态仍回到 `03` |
 | 当前运行验证 | `.runtime/G1_VERIFICATION.json` | 本地生成，不提交 |
 
 [13_PROJECT_HANDOVER_AND_TASK_STATUS.md](13_PROJECT_HANDOVER_AND_TASK_STATUS.md) 只是一页交接导航，不复制任务表。
