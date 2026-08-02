@@ -75,6 +75,13 @@
       "activation_trigger": "grant 消费需要事件推送或跨服务通知合同时"
     },
     {
+      "module": "commercial_lifecycle.py",
+      "status": "internal_only",
+      "delivery_contract": "scoped_commercial_lifecycle_event_and_evidence_ledger",
+      "rationale": "套餐、订阅、授权、发票、支付尝试、退款与税务 Evidence 只形成 tenant/entity/store exact-scope 内部商业账本；当前不连接 Stripe、银行、PSP、税务申报或任何外部投递消费者，也不触发真实收款、退款或开票。",
+      "activation_trigger": "真实支付、发票、退款、税务申报或跨服务计费消费者上线前"
+    },
+    {
       "module": "managed_credential_leases.py",
       "status": "internal_only",
       "delivery_contract": "authoritative_managed_credential_lease_store",
