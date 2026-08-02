@@ -6,7 +6,7 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 5.2 |
+| version | 5.4 |
 | last_reviewed | 2026-08-03 |
 | gate | G-1–G8 |
 
@@ -24,10 +24,16 @@
 | 能力验收 | [evidence/](evidence/) | 证明对应版本，不自动代表当前仍通过 |
 | 商业化与俄罗斯作战合同 | [20260802_DUAL_ENGINE_COMMERCIALIZATION_AND_RUSSIA_GTM.md](20260802_DUAL_ENGINE_COMMERCIALIZATION_AND_RUSSIA_GTM.md) | 定义双轮商业模型、经营/软件 Gate 与多任务调度；动态状态仍回到 `03` |
 | 一人主责双引擎经营系统 | [14_ONE_PERSON_DUAL_ENGINE_OPERATING_SYSTEM.md](14_ONE_PERSON_DUAL_ENGINE_OPERATING_SYSTEM.md) | 定义前中后台、逆漏斗、付费 MVP、案例模块化、控制轨与多线程写域 |
-| A-E 泳道执行租约 | [registries/active_workstream_assignments.json](registries/active_workstream_assignments.json) | 当前真正占用 WIP 与共享写域的机器真源；历史 `IN_PROGRESS` 不自动获得写租约 |
+| 社媒卖家情报与运营系统 | [15_SOCIAL_COMMERCE_INTELLIGENCE_AND_OPERATIONS.md](15_SOCIAL_COMMERCE_INTELLIGENCE_AND_OPERATIONS.md) | 定义全量采集、多维用户/内容分析、小红书/抖音分线与 campaign 级发布互动回读 |
+| 俄罗斯市场需求与事件雷达 | [16_RUSSIA_MARKET_DEMAND_AND_EVENT_RADAR.md](16_RUSSIA_MARKET_DEMAND_AND_EVENT_RADAR.md) | 定义 Ozon/WB/Yandex/Telegram/VK/宏观事件的全量、多源、时序和跨源验证 |
+| A-I 泳道执行租约 | [registries/active_workstream_assignments.json](registries/active_workstream_assignments.json) | 当前真正占用 WIP 与共享写域的机器真源；历史 `IN_PROGRESS` 不自动获得写租约 |
 | TeamAgent 进化 Loop | [registries/loop_engineering_registry.json](registries/loop_engineering_registry.json) | 定义角色边界、Eval→Shadow→Review→Promotion/Rollback、Graph 学习和持续更新边界 |
 | 前沿技术采用雷达 | [registries/frontier_technology_adoption.json](registries/frontier_technology_adoption.json) | `adopt_now/pilot/watch/reject_now` 的机器真源；注册不等于实现或生产放行 |
+| 社媒来源采用注册表 | [registries/social_commerce_source_adoption.json](registries/social_commerce_source_adoption.json) | 固化官方来源、GitHub 候选、固定版本、许可证、全量采集与 campaign 能力选择 |
+| 俄罗斯市场来源注册表 | [registries/russia_market_intelligence_sources.json](registries/russia_market_intelligence_sources.json) | 固化站内需求、搜索、社媒、平台与宏观事件来源、限制和下一 Gate |
 | 思维与前沿研究 Evidence | [evidence/20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md](evidence/20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md) | 区分 Observation、一手来源、Inference 与 UNKNOWN |
+| 社媒开源研究 Evidence | [evidence/20260803_SOCIAL_COMMERCE_OPEN_SOURCE_RESEARCH.md](evidence/20260803_SOCIAL_COMMERCE_OPEN_SOURCE_RESEARCH.md) | 记录官方平台、GitHub 来源、许可、可借鉴模式、当前缺口与用户指定 CLI 选择 |
+| 俄罗斯需求与事件来源 Evidence | [evidence/20260803_RUSSIA_MARKET_DEMAND_AND_EVENT_SOURCE_RESEARCH.md](evidence/20260803_RUSSIA_MARKET_DEMAND_AND_EVENT_SOURCE_RESEARCH.md) | 记录官方来源能力、当前公共观察、来源上限与尚未接入的真实凭据 |
 | 当前运行验证 | `.runtime/G1_VERIFICATION.json` | 本地生成，不提交 |
 
 [13_PROJECT_HANDOVER_AND_TASK_STATUS.md](13_PROJECT_HANDOVER_AND_TASK_STATUS.md) 只是一页交接导航，不复制任务表。

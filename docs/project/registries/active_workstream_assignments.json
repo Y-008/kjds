@@ -75,6 +75,95 @@
       "accountable_role": "risk_owner",
       "current_task": null,
       "next_task_id": "BAS-175"
+    },
+    {
+      "id": "F",
+      "name": "social_intelligence_platform",
+      "accountable_role": "market_intelligence_owner",
+      "current_task": {
+        "task_id": "BAS-178",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "social_source_adoption",
+          "collection_contract",
+          "analysis_contract",
+          "campaign_contract",
+          "adapter_evaluation"
+        ],
+        "blocked_on": [
+          "dedicated_platform_account_binding",
+          "real_source_fixture",
+          "campaign_authority_contract"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "G",
+      "name": "xiaohongshu_operations",
+      "accountable_role": "xiaohongshu_operator",
+      "current_task": {
+        "task_id": "OPS-XHS-001",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "xiaohongshu_research_questions",
+          "xiaohongshu_content_hypotheses",
+          "xiaohongshu_campaign_drafts",
+          "xiaohongshu_analysis_taxonomy",
+          "xiaohongshu_operator_runbook"
+        ],
+        "blocked_on": [
+          "dedicated_qr_login",
+          "real_account_baseline",
+          "campaign_grant"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "H",
+      "name": "douyin_operations",
+      "accountable_role": "douyin_operator",
+      "current_task": {
+        "task_id": "OPS-DY-001",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "douyin_research_questions",
+          "douyin_content_hypotheses",
+          "douyin_campaign_drafts",
+          "douyin_analysis_taxonomy",
+          "douyin_operator_runbook"
+        ],
+        "blocked_on": [
+          "official_oauth_or_dedicated_profile",
+          "real_account_baseline",
+          "campaign_grant"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "I",
+      "name": "russia_market_intelligence",
+      "accountable_role": "russia_market_intelligence_owner",
+      "current_task": {
+        "task_id": "BAS-179",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "russia_market_source_registry",
+          "russia_demand_query_taxonomy",
+          "russia_hot_event_taxonomy",
+          "russia_market_radar_contract",
+          "russia_market_research_evidence"
+        ],
+        "blocked_on": [
+          "marketplace_analytics_scopes",
+          "yandex_search_api_identity",
+          "telegram_vk_dedicated_identity",
+          "real_market_fixtures"
+        ]
+      },
+      "next_task_id": null
     }
   ],
   "shared_write_leases": {

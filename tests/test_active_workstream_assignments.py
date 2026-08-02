@@ -16,15 +16,25 @@ def _registry():
     return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
 
 
-def test_workstream_registry_has_five_single_wip_lanes():
+def test_workstream_registry_has_nine_single_wip_lanes():
     registry = _registry()
     lanes = registry["lanes"]
 
     assert registry["schema_version"] == "kjds-active-workstream-assignments-v1"
     assert registry["policy"]["max_current_tasks_per_lane"] == 1
-    assert {lane["id"] for lane in lanes} == {"A", "B", "C", "D", "E"}
-    assert len(lanes) == 5
-    assert len({lane["name"] for lane in lanes}) == 5
+    assert {lane["id"] for lane in lanes} == {
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "H",
+        "I",
+    }
+    assert len(lanes) == 9
+    assert len({lane["name"] for lane in lanes}) == 9
 
     current_tasks = [lane["current_task"] for lane in lanes if lane["current_task"]]
     task_ids = [task["task_id"] for task in current_tasks]
@@ -59,6 +69,19 @@ def test_commercial_lane_cannot_sell_before_c0():
     assert commercial["blocked_on"] == ["c0_commercial_pilot_gate"]
     assert "payment" not in commercial["write_scope"]
     assert "invoice" not in commercial["write_scope"]
+
+
+def test_social_platform_and_channel_operations_have_separate_lanes():
+    lanes = {lane["id"]: lane for lane in _registry()["lanes"]}
+
+    assert lanes["F"]["current_task"]["task_id"] == "BAS-178"
+    assert lanes["G"]["current_task"]["task_id"] == "OPS-XHS-001"
+    assert lanes["H"]["current_task"]["task_id"] == "OPS-DY-001"
+    assert lanes["F"]["name"] == "social_intelligence_platform"
+    assert lanes["G"]["name"] == "xiaohongshu_operations"
+    assert lanes["H"]["name"] == "douyin_operations"
+    assert lanes["I"]["current_task"]["task_id"] == "BAS-179"
+    assert lanes["I"]["name"] == "russia_market_intelligence"
 
 
 def test_shared_write_leases_and_authority_stay_fail_closed():
