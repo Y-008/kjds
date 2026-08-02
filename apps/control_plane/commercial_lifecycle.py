@@ -9,14 +9,13 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
-    JSON,
     Numeric,
     String,
-    Text,
     select,
 )
 from sqlalchemy.exc import IntegrityError
@@ -1525,18 +1524,8 @@ class CommercialLifecycleService:
         previous = self._latest_event(session, scope=scope, lifecycle_kind=lifecycle_kind, record_ref=record_ref)
         self._enforce_forward_transition(lifecycle_kind=lifecycle_kind, previous=previous.state if previous else None, current=state)
 
-        if lifecycle_kind == "plan":
-            pass
-        elif lifecycle_kind == "subscription":
+        if lifecycle_kind == "subscription":
             self._require_settlement_evidence(evidence_inputs)
-        elif lifecycle_kind == "invoice":
-            pass
-        elif lifecycle_kind == "payment_attempt":
-            pass
-        elif lifecycle_kind == "refund":
-            pass
-        elif lifecycle_kind == "tax_evidence":
-            pass
 
         now = datetime.now(UTC)
         event_id = new_id("commercial_event")
