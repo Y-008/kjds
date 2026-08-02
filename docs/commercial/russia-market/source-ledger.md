@@ -11,7 +11,7 @@
 | ID | URL | 机构 | 发布日 | 访问日 | 适用范围 | 可信等级 | 备注 |
 |---|---|---|---|---|---|---|---|
 | SL-01 | https://seller.ozon.ru/en/ | Ozon | live / unstated | 2026-08-02 | Ozon 卖家注册入口、整体 onboarding | A | 说明可注册、上传商品并开始销售 |
-| SL-02 | https://docs.ozon.ru/global/en/accounting/receiving-payments/settlements/?country=TR | Ozon | live / unstated | 2026-08-02 | 结算、打款、币种、销售报表、费用口径 | A | 直接给出 bank transfer、seller country 和结算报表口径 |
+| SL-02 | https://docs.ozon.ru/global/en/accounting/receiving-payments/settlements/?country=CN | Ozon | live / unstated | 2026-08-02 | 中国卖家结算、打款、币种、销售报表、费用口径 | B | 国家参数已限定为 CN；公开页可能按会话或合同动态展示，结论须由已认证中国卖家后台、已签合同或收款银行书面确认交叉验证 |
 | SL-03 | https://docs.ozon.ru/global/en/tags/mandatory-%D1%81haracteristics/ | Ozon | live / unstated | 2026-08-02 | 必备资料索引：Documents for Selling、Brand Certificates、Product Quality Certificates、Safety Data Sheet | B | 是索引页，但能直接指向必须准备的证据类型 |
 | SL-04 | https://docs.ozon.ru/global/en/products/requirements/product-info/product-description/ | Ozon | live / unstated | 2026-08-02 | 商品页内容、年龄限制、外国代理声明、证书/文档引用 | A | 直接影响 listing 合规和展示文案 |
 | SL-05 | https://docs.ozon.ru/global/en/brand-account/ | Ozon | live / unstated | 2026-08-02 | 品牌代表、品牌销售与评论跟踪、受限销售商品索引 | B | 适合核实品牌/授权路径 |
@@ -34,6 +34,7 @@
 | SL-22 | https://english.customs.gov.cn/topic/customs16/service2/info196479.htm | China Customs | live / unstated | 2026-08-02 | 中俄海关合作概述 | B | 只做跨境合规与通关协作背景，不做结论依据 |
 | SL-23 | https://english.mofcom.gov.cn/News/PressConference/art/2024/art_7e1282d1fc37494aaa51bc84bb9b8014.html | MOFCOM | 2024-01-18 | 2026-08-02 | 中俄跨境电商和经贸合作背景 | B | 说明中俄跨境电商在商务口径下是被持续关注的业务形态 |
 | SL-24 | https://english.mofcom.gov.cn/News/PressConference/art/2021/art_d0c2dfa010b54c3b83e59d483d9b05a8.html | MOFCOM | 2021-12-16 | 2026-08-02 | 中国对俄跨境电商与海外仓合作背景 | C | 旧一些，但能证明对俄跨境电商合作长期存在 |
+| SL-25 | https://docs.ozon.ru/legal/en/partners/logistics/contract/?__rr=1 | Ozon | 2026-05-06 revision | 2026-08-02 | 代理物流合同、合规文件、包装、退货/销毁、对账结算、争议、费率附件及中国发货声明价值边界 | A | 当前官方标准条款明确覆盖中国、香港、澳门和台湾发货；具体商业条款、主体、价格及可用服务仍须以签约版本为准 |
 
 ## 读法
 

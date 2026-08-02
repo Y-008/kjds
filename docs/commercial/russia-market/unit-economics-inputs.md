@@ -9,6 +9,7 @@
 
 - `asp_rub`: 售价
 - `units_sold`
+- `product_cost_cny_per_unit`: SKU 采购或制造完全成本
 - `discount_rate`
 - `refund_rate`
 - `cancellation_rate`
@@ -27,11 +28,15 @@
 
 ### 跨境与关税税务
 
-- `fx_rate_rub_cny`
+- `fx_rate_rub_cny`: 结算口径下每 1 CNY 对应的 RUB 数量
 - `fx_spread_rate`
 - `bank_transfer_fee_rate`
+- `main_leg_freight_cny_per_shipment`: 中国至目的国/目的仓的跨境干线运费
+- `cargo_insurance_cny_per_shipment`
+- `units_per_shipment`
 - `customs_duty_rate`
 - `import_vat_rate`
+- `recoverable_import_vat_rate`: 经税务意见确认可抵扣或可退的进口 VAT 比例
 - `brokerage_fee_per_shipment`
 - `clearance_fee_per_shipment`
 - `incoterm`
@@ -74,9 +79,20 @@ platform_cost_rub
   + penalties
   + other_platform_fee
 
+product_and_main_leg_cost_rub
+  = (product_cost_cny_per_unit * fx_rate_rub_cny * units_sold)
+  + (main_leg_freight_cny_per_shipment / units_per_shipment
+     * fx_rate_rub_cny * units_sold)
+  + (cargo_insurance_cny_per_shipment / units_per_shipment
+     * fx_rate_rub_cny * units_sold)
+
+recoverable_import_vat
+  = import_vat * recoverable_import_vat_rate
+
 border_cost_rub
   = customs_duty
   + import_vat
+  - recoverable_import_vat
   + brokerage_fee
   + clearance_fee
   + bank_transfer_fee
@@ -90,6 +106,7 @@ compliance_cost_rub
 
 contribution_margin_rub
   = net_revenue_rub
+  - product_and_main_leg_cost_rub
   - platform_cost_rub
   - border_cost_rub
   - compliance_cost_rub
@@ -108,4 +125,6 @@ contribution_margin_pct
 3. 退货成本必须与履约模式分开，不能只看销售佣金。
 4. 进口 VAT 与关税必须和申报主体、Incoterms 一起算，不能单独拿税率做结论。
 5. 如果 `fx_spread_rate`、`bank_transfer_fee_rate` 或 `penalty_rate_or_fee` 无法取得书面报价，则该 SKU 不能进入可售结论。
-
+6. `recoverable_import_vat_rate` 只能由目标签约/申报主体的书面税务意见确认；没有证据时按 `0` 处理，禁止假设全额可抵扣。
+7. 货值、干线运费和货运保险必须换算到单位并进入贡献毛利，禁止把它们留在现金流表外。
+8. 干线和保险按实际批次分摊到售出单位；`units_per_shipment` 缺失或为零时不得计算贡献毛利。
