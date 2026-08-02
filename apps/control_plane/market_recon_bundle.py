@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -40,8 +41,65 @@ ARTIFACT_KINDS = {
     "analytics_by_window.json": "ozon_analytics",
     "finance_by_month.json": "ozon_finance",
     "supply_1688/supply_crawl.json": "supplier_catalog",
+    "logistics_evidence_hits.json": "logistics_observation",
 }
-REQUIRED_KINDS = frozenset(ARTIFACT_KINDS.values())
+REQUIRED_KINDS = frozenset(
+    {
+        "ozon_catalog",
+        "ozon_product_info",
+        "ozon_analytics",
+        "ozon_finance",
+        "supplier_catalog",
+    }
+)
+LOGISTICS_OBSERVATION_CONTRACT_ID = "kjds-ru002-logistics-observation-v1"
+LOGISTICS_COST_LEGS = frozenset(
+    {
+        "domestic_logistics",
+        "international_logistics",
+        "packaging",
+        "warehousing",
+        "customs",
+        "last_mile",
+        "return",
+        "customer_compensation",
+        "damage",
+    }
+)
+LOGISTICS_OBSERVATION_FIELDS = frozenset(
+    {
+        "contract_id",
+        "observation_id",
+        "source_relpath",
+        "source_sha256",
+        "source_location",
+        "excerpt",
+        "source_kind",
+        "source_excerpt_sanitized",
+        "currency",
+        "tax_treatment",
+        "validity",
+        "mapped_cost_legs",
+        "evidence_level",
+        "sku_binding",
+        "variant_binding",
+        "quantity_binding",
+        "shipment_profile_binding",
+        "effective_period",
+        "decision_eligible",
+        "actual_cost_created",
+        "external_write_allowed",
+        "status",
+        "observation_sha256",
+    }
+)
+LOGISTICS_SOURCE_KINDS = frozenset({"xlsx", "pdf", "image"})
+LOGISTICS_PHONE_PATTERN = re.compile(
+    r"(?<!\d)(?:1\d{10}|\+?\d{2,4}[-\s]?\d{6,13})(?!\d)"
+)
+LOGISTICS_EMAIL_PATTERN = re.compile(
+    r"(?i)(?<![\w.+-])[\w.+-]+@[\w.-]+\.[a-z]{2,}(?![\w.-])"
+)
 
 
 class BundleContentConflict(ValueError):
@@ -511,6 +569,22 @@ class MarketReconBundleIngestion:
             ]
         elif artifact.kind == "browser_capture" and isinstance(decoded, dict):
             records = [(str(decoded.get("url") or artifact.path), decoded)]
+        elif artifact.kind == "logistics_observation" and isinstance(
+            decoded, list
+        ):
+            records = [
+                (
+                    cls._record_key(
+                        artifact.kind,
+                        payload if isinstance(payload, dict) else {},
+                        index,
+                    ),
+                    payload
+                    if isinstance(payload, dict)
+                    else {"decoded_type": type(payload).__name__},
+                )
+                for index, payload in enumerate(decoded)
+            ]
         elif isinstance(decoded, list):
             records = [
                 (cls._record_key(artifact.kind, payload, index), payload)
@@ -581,6 +655,129 @@ class MarketReconBundleIngestion:
             if not payload.get("url") or not payload.get("captured_at"):
                 return "quarantined", "raw_evidence", ("capture_identity_missing",)
             return "accepted", "raw_evidence", ("independent_scope_binding_pending",)
+        if kind == "logistics_observation":
+            if set(payload) != LOGISTICS_OBSERVATION_FIELDS:
+                return (
+                    "quarantined",
+                    "raw_evidence",
+                    ("logistics_observation_schema_invalid",),
+                )
+            required_text = (
+                "observation_id",
+                "source_relpath",
+                "source_location",
+                "excerpt",
+            )
+            if (
+                payload.get("contract_id") != LOGISTICS_OBSERVATION_CONTRACT_ID
+                or any(
+                    not isinstance(payload.get(field), str)
+                    or not payload[field].strip()
+                    for field in required_text
+                )
+                or not cls._valid_sha256(payload.get("source_sha256"))
+                or not cls._valid_sha256(payload.get("observation_sha256"))
+                or payload.get("source_excerpt_sanitized") is not True
+                or any(
+                    cls._sanitize_logistics_text(payload[field])
+                    != payload[field]
+                    for field in (
+                        "source_relpath",
+                        "source_location",
+                        "excerpt",
+                    )
+                )
+                or len(payload["excerpt"]) > 1600
+                or not cls._valid_logistics_source_path(
+                    payload["source_relpath"]
+                )
+                or not cls._valid_logistics_observation_identity(payload)
+            ):
+                return (
+                    "quarantined",
+                    "raw_evidence",
+                    ("logistics_observation_identity_missing",),
+                )
+            unbound_fields = (
+                "sku_binding",
+                "variant_binding",
+                "quantity_binding",
+                "shipment_profile_binding",
+                "effective_period",
+            )
+            if any(
+                field not in payload or payload.get(field) is not None
+                for field in unbound_fields
+            ):
+                return (
+                    "quarantined",
+                    "raw_evidence",
+                    ("logistics_observation_premature_binding_or_amount",),
+                )
+            if any(
+                payload.get(field) is not False
+                for field in (
+                    "decision_eligible",
+                    "actual_cost_created",
+                    "external_write_allowed",
+                )
+            ) or any(
+                (
+                    payload.get("evidence_level") != "observed",
+                    payload.get("tax_treatment") != "UNKNOWN",
+                    payload.get("validity") != "UNKNOWN",
+                )
+            ):
+                return (
+                    "quarantined",
+                    "raw_evidence",
+                    ("logistics_observation_authority_overclaimed",),
+                )
+            if payload.get("status") != "observed":
+                return (
+                    "quarantined",
+                    "raw_evidence",
+                    ("logistics_source_unparsed",),
+                )
+            if payload.get("source_kind") not in LOGISTICS_SOURCE_KINDS:
+                return (
+                    "quarantined",
+                    "raw_evidence",
+                    ("logistics_observation_schema_invalid",),
+                )
+            currency = payload.get("currency")
+            if not cls._valid_currency(currency):
+                return (
+                    "quarantined",
+                    "raw_evidence",
+                    ("money_currency_missing",),
+                )
+            mapped_cost_legs = payload.get("mapped_cost_legs")
+            if (
+                not isinstance(mapped_cost_legs, list)
+                or not mapped_cost_legs
+                or any(
+                    not isinstance(cost_leg, str)
+                    or cost_leg not in LOGISTICS_COST_LEGS
+                    for cost_leg in mapped_cost_legs
+                )
+                or len(set(mapped_cost_legs)) != len(mapped_cost_legs)
+            ):
+                return (
+                    "quarantined",
+                    "raw_evidence",
+                    ("cost_component_unclassified",),
+                )
+            return (
+                "accepted",
+                "normalized_observation",
+                (
+                    "exact_quantity_missing",
+                    "independent_cost_review_pending",
+                    "sku_binding_missing",
+                    "variant_identity_unresolved",
+                ),
+            )
         return "quarantined", "raw_evidence", ("artifact_kind_unsupported",)
 
     @staticmethod
@@ -614,6 +811,7 @@ class MarketReconBundleIngestion:
             "ozon_product_info": ("offer_id", "id"),
             "ozon_analytics": ("window", "date_from", "from"),
             "ozon_finance": ("month",),
+            "logistics_observation": ("observation_id",),
         }.get(kind, ())
         for candidate in candidates:
             if payload.get(candidate) not in (None, ""):
@@ -635,6 +833,64 @@ class MarketReconBundleIngestion:
         except (InvalidOperation, TypeError, ValueError):
             return False
         return parsed.is_finite()
+
+    @staticmethod
+    def _valid_sha256(value: Any) -> bool:
+        normalized = str(value or "").strip().lower()
+        return len(normalized) == 64 and all(
+            character in "0123456789abcdef" for character in normalized
+        )
+
+    @staticmethod
+    def _sanitize_logistics_text(value: str) -> str:
+        sanitized = LOGISTICS_PHONE_PATTERN.sub("[REDACTED_PHONE]", value)
+        sanitized = LOGISTICS_EMAIL_PATTERN.sub("[REDACTED_EMAIL]", sanitized)
+        return re.sub(r"\s+", " ", sanitized).strip()
+
+    @classmethod
+    def _valid_logistics_source_path(cls, value: str) -> bool:
+        try:
+            return cls._safe_path(value) == value
+        except ValueError:
+            return False
+
+    @classmethod
+    def _valid_logistics_observation_identity(
+        cls,
+        payload: dict[str, Any],
+    ) -> bool:
+        identity = {
+            "contract_id": payload.get("contract_id"),
+            "source_relpath": payload.get("source_relpath"),
+            "source_sha256": payload.get("source_sha256"),
+            "source_location": payload.get("source_location"),
+            "excerpt": payload.get("excerpt"),
+        }
+        identity_digest = hashlib.sha256(
+            json.dumps(
+                identity,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        observation = dict(payload)
+        expected_observation_sha256 = observation.pop(
+            "observation_sha256", None
+        )
+        observation_digest = hashlib.sha256(
+            json.dumps(
+                observation,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        return (
+            expected_observation_sha256 == observation_digest
+            and payload.get("observation_id")
+            == f"ru002_{identity_digest[:24]}"
+        )
 
     @staticmethod
     def _safe_path(value: str) -> str:

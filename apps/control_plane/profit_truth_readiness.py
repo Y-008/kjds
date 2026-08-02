@@ -141,6 +141,9 @@ class ProfitTruthReadinessWorkspace:
             ),
             as_of=as_of,
         )
+        unbound_cost_evidence = self._unbound_cost_evidence(
+            by_kind.get("logistics_observation", [])
+        )
         fact_counts = Counter(row.fact_type for row in data["facts"])
         entry_counts = Counter(row.entry_kind for row in data["finance_entries"])
         profit_books = self._profit_books(
@@ -169,6 +172,7 @@ class ProfitTruthReadinessWorkspace:
             finance_projection=finance_projection,
             variant_projection=variant_projection,
             cost_projection=cost_projection,
+            unbound_cost_evidence=unbound_cost_evidence,
             missing_fx_pair_count=len(missing_fx_pairs),
             legacy_fx_count=data["legacy_fx_count"],
             profit_books=profit_books,
@@ -224,6 +228,9 @@ class ProfitTruthReadinessWorkspace:
                 "cost_evidence_request_count": cost_projection["summary"][
                     "evidence_request_count"
                 ],
+                "unbound_logistics_observation_count": unbound_cost_evidence[
+                    "summary"
+                ]["source_total"],
                 "formal_fact_count": len(data["facts"]),
                 "finance_entry_count": len(data["finance_entries"]),
                 "decision_snapshot_count": len(data["decision_snapshots"]),
@@ -261,6 +268,7 @@ class ProfitTruthReadinessWorkspace:
             "variant_identity": variant_projection,
             "finance_allocation": finance_projection,
             "cost_evidence": cost_projection,
+            "unbound_cost_evidence": unbound_cost_evidence,
             "profit_books": profit_books,
             "blockers": blockers,
             "drillthrough": {
@@ -282,6 +290,7 @@ class ProfitTruthReadinessWorkspace:
                 "proportional_finance_allocation_performed": False,
                 "formal_fact_promoted": False,
                 "finance_entry_persisted": False,
+                "unbound_cost_evidence_counted_as_sku_cost": False,
                 "pilot_proposal_allowed": False,
                 "automatic_action_allowed": False,
                 "external_write_allowed": False,
@@ -554,6 +563,106 @@ class ProfitTruthReadinessWorkspace:
             )
         return inputs
 
+    @classmethod
+    def _unbound_cost_evidence(
+        cls,
+        rows: list[MarketReconBundleItemRow],
+    ) -> dict[str, Any]:
+        cost_leg_counts: Counter[str] = Counter()
+        records: list[dict[str, Any]] = []
+        for row in rows:
+            payload = row.payload_json
+            mapped_cost_legs = (
+                sorted(
+                    {
+                        str(value).strip()
+                        for value in payload.get("mapped_cost_legs") or []
+                        if str(value).strip()
+                    }
+                )
+                if row.disposition == "accepted"
+                else []
+            )
+            if row.disposition == "accepted":
+                cost_leg_counts.update(mapped_cost_legs)
+            records.append(
+                {
+                    "observation_id": str(
+                        payload.get("observation_id") or row.record_key
+                    ),
+                    "artifact_evidence_id": row.artifact_evidence_id,
+                    "source_relpath": str(payload.get("source_relpath") or ""),
+                    "source_sha256": str(payload.get("source_sha256") or ""),
+                    "source_location": str(
+                        payload.get("source_location") or ""
+                    ),
+                    "currency": cls._currency_or_none(
+                        payload.get("currency")
+                    ),
+                    "mapped_cost_legs": mapped_cost_legs,
+                    "disposition": row.disposition,
+                    "highest_stage": row.highest_stage,
+                    "reason_codes": sorted(row.reason_codes_json or []),
+                    "sku_binding": None,
+                    "variant_binding": None,
+                    "quantity_binding": None,
+                    "shipment_profile_binding": None,
+                    "effective_period": None,
+                    "decision_eligible": False,
+                }
+            )
+        records.sort(
+            key=lambda item: (
+                item["source_relpath"],
+                item["source_location"],
+                item["observation_id"],
+            )
+        )
+        accepted = sum(item["disposition"] == "accepted" for item in records)
+        quarantined = len(records) - accepted
+        if not records:
+            status = "no_data"
+        elif accepted:
+            status = "needs_binding"
+        else:
+            status = "quarantined"
+        return {
+            "status": status,
+            "summary": {
+                "source_total": len(records),
+                "accepted": accepted,
+                "quarantined": quarantined,
+                "cost_leg_counts": dict(sorted(cost_leg_counts.items())),
+            },
+            "records": records,
+            "next_action": {
+                "action": (
+                    "bind_logistics_observation_to_sku_shipment_profile"
+                    if accepted
+                    else "correct_or_reextract_logistics_observation"
+                ),
+                "owner": "logistics-finance",
+                "required_inputs": [
+                    "sku",
+                    "exact_variant",
+                    "shipment_quantity",
+                    "physical_weight_kg",
+                    "dimensions_cm",
+                    "selected_provider_route",
+                    "effective_period",
+                ],
+                "calculation_seam": "/v1/logistics/calculations",
+            },
+            "control_envelope": {
+                "source_excerpts_exposed": False,
+                "sku_cost_coverage_incremented": False,
+                "reviewed_cost_created": False,
+                "actual_cost_created": False,
+                "profit_calculation_performed": False,
+                "external_write_allowed": False,
+            },
+        }
+
     @staticmethod
     def _fx_projection(
         row: FxRateRow,
@@ -666,6 +775,7 @@ class ProfitTruthReadinessWorkspace:
         finance_projection: dict[str, Any],
         variant_projection: dict[str, Any],
         cost_projection: dict[str, Any],
+        unbound_cost_evidence: dict[str, Any],
         missing_fx_pair_count: int,
         legacy_fx_count: int,
         profit_books: dict[str, Any],
@@ -717,6 +827,26 @@ class ProfitTruthReadinessWorkspace:
                     "fifteen_cost_evidence_incomplete",
                     requests,
                     "profit-operations",
+                )
+            )
+        unbound_logistics = unbound_cost_evidence["summary"]["accepted"]
+        if unbound_logistics:
+            values.append(
+                (
+                    "logistics_cost_evidence_sku_binding_missing",
+                    unbound_logistics,
+                    "logistics-finance",
+                )
+            )
+        quarantined_logistics = unbound_cost_evidence["summary"][
+            "quarantined"
+        ]
+        if quarantined_logistics:
+            values.append(
+                (
+                    "logistics_cost_evidence_quarantined",
+                    quarantined_logistics,
+                    "logistics-finance",
                 )
             )
         for book in (
