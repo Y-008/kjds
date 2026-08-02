@@ -6,8 +6,8 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 5.1 |
-| last_reviewed | 2026-08-02 |
+| version | 5.2 |
+| last_reviewed | 2026-08-03 |
 | gate | G-1–G8 |
 
 本文件只做导航，不维护迁移号、测试数量或任务状态。
@@ -23,6 +23,11 @@
 | 架构决策 | [../adr/](../adr/) | 通过 ADR 修改稳定边界 |
 | 能力验收 | [evidence/](evidence/) | 证明对应版本，不自动代表当前仍通过 |
 | 商业化与俄罗斯作战合同 | [20260802_DUAL_ENGINE_COMMERCIALIZATION_AND_RUSSIA_GTM.md](20260802_DUAL_ENGINE_COMMERCIALIZATION_AND_RUSSIA_GTM.md) | 定义双轮商业模型、经营/软件 Gate 与多任务调度；动态状态仍回到 `03` |
+| 一人主责双引擎经营系统 | [14_ONE_PERSON_DUAL_ENGINE_OPERATING_SYSTEM.md](14_ONE_PERSON_DUAL_ENGINE_OPERATING_SYSTEM.md) | 定义前中后台、逆漏斗、付费 MVP、案例模块化、控制轨与多线程写域 |
+| A-E 泳道执行租约 | [registries/active_workstream_assignments.json](registries/active_workstream_assignments.json) | 当前真正占用 WIP 与共享写域的机器真源；历史 `IN_PROGRESS` 不自动获得写租约 |
+| TeamAgent 进化 Loop | [registries/loop_engineering_registry.json](registries/loop_engineering_registry.json) | 定义角色边界、Eval→Shadow→Review→Promotion/Rollback、Graph 学习和持续更新边界 |
+| 前沿技术采用雷达 | [registries/frontier_technology_adoption.json](registries/frontier_technology_adoption.json) | `adopt_now/pilot/watch/reject_now` 的机器真源；注册不等于实现或生产放行 |
+| 思维与前沿研究 Evidence | [evidence/20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md](evidence/20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md) | 区分 Observation、一手来源、Inference 与 UNKNOWN |
 | 当前运行验证 | `.runtime/G1_VERIFICATION.json` | 本地生成，不提交 |
 
 [13_PROJECT_HANDOVER_AND_TASK_STATUS.md](13_PROJECT_HANDOVER_AND_TASK_STATUS.md) 只是一页交接导航，不复制任务表。

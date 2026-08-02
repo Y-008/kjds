@@ -1,0 +1,92 @@
+{
+  "schema_version": "kjds-active-workstream-assignments-v1",
+  "as_of": "2026-08-03",
+  "plan_source": "docs/project/03_REMAINING_WORK_AND_PARALLEL_PLAN.md",
+  "policy": {
+    "max_current_tasks_per_lane": 1,
+    "legacy_in_progress_is_execution_lease": false,
+    "current_task_is_execution_lease": true,
+    "external_write_allowed": false,
+    "self_approval_allowed": false,
+    "shared_schema_requires_single_integrator": true
+  },
+  "lanes": [
+    {
+      "id": "A",
+      "name": "operating_truth",
+      "accountable_role": "business_owner",
+      "current_task": {
+        "task_id": "DAY0-TRUTH-20260802",
+        "state": "active_blocked",
+        "write_scope": [
+          "operating_evidence",
+          "finance_evidence",
+          "gate_observation"
+        ],
+        "blocked_on": [
+          "real_order_evidence",
+          "platform_settlement_evidence",
+          "bank_cash_evidence",
+          "signed_profit_thresholds"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "B",
+      "name": "commercial_discovery",
+      "accountable_role": "commercial_owner",
+      "current_task": {
+        "task_id": "COM-001",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "qualification_contract",
+          "diagnostic_deliverable",
+          "sales_copy",
+          "contract_checklist"
+        ],
+        "blocked_on": [
+          "c0_commercial_pilot_gate"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "C",
+      "name": "product_engineering",
+      "accountable_role": "engineering_owner",
+      "current_task": null,
+      "next_task_id": "BAS-172"
+    },
+    {
+      "id": "D",
+      "name": "commercial_platform",
+      "accountable_role": "commercial_platform_owner",
+      "current_task": null,
+      "next_task_id": null,
+      "blocked_on": [
+        "c0_gap_list",
+        "paid_design_partner_evidence"
+      ]
+    },
+    {
+      "id": "E",
+      "name": "risk_review",
+      "accountable_role": "risk_owner",
+      "current_task": null,
+      "next_task_id": "BAS-175"
+    }
+  ],
+  "shared_write_leases": {
+    "alembic_migration": null,
+    "api_aggregation_root": null,
+    "master_spec": null,
+    "openapi_snapshot": null
+  },
+  "control_boundary": {
+    "registry_grants_business_authority": false,
+    "registry_grants_repository_write": false,
+    "registry_grants_external_write": false,
+    "registry_grants_approval_or_permit": false
+  }
+}

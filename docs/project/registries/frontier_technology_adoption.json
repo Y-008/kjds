@@ -1,0 +1,856 @@
+{
+  "schema_version": "kjds-frontier-technology-adoption-v1",
+  "as_of": "2026-08-03",
+  "registry_purpose": "A date-bounded, evidence-linked decision register for frontier technology adoption in KJDS.",
+  "decision_vocabulary": {
+    "adopt_now": "Approved to enter a scoped implementation slice; not proof that implementation or production rollout is complete.",
+    "pilot": "Approved only for an isolated, reversible experiment with measured acceptance criteria.",
+    "watch": "Monitor upstream maturity and KJDS demand; do not add a runtime dependency.",
+    "reject_now": "Do not adopt under current architecture and scale; reconsider only when the stated entry gate is met."
+  },
+  "policy": {
+    "registry_is_implementation_evidence": false,
+    "registry_is_production_readiness_evidence": false,
+    "experimental_specifications_are_production_ready": false,
+    "default_runtime_dependency_allowed": false,
+    "external_write_allowed": false,
+    "formal_fact_promotion_allowed": false,
+    "gate_semantics": {
+      "entry_gate": "Conditions and authorization required to start the decision-specific activity.",
+      "exit_gate": "Evidence required before production dependency or broader rollout can be considered."
+    }
+  },
+  "current_kjds_baseline": {
+    "agent_runtime": "In-process governed routing, redaction, GenAI-style spans and deterministic eval records are implemented; a durable provider-neutral run/eval Evidence ledger is not implemented.",
+    "workflow": "KJDS state machines and transactional outbox remain canonical; no Temporal runtime is installed.",
+    "retrieval": "Evidence, PostgreSQL and the canonical Graph are available; no production GraphRAG or vector store is installed.",
+    "database": "PostgreSQL 17 is the verified runtime baseline; PostgreSQL 18 is rehearsal-only.",
+    "web": "Next.js 16.2.11 and React 19.2.7 are installed; individual frontier rendering and caching patterns still require measured, scope-safe acceptance.",
+    "analytics": "PostgreSQL remains the only operating truth store; ClickHouse and Iceberg are not runtime dependencies."
+  },
+  "coverage_scope": {
+    "included": "Frontier dependencies or bounded implementation candidates selected for a KJDS adoption, pilot, watch, or reject decision.",
+    "existing_baselines_not_separate_candidates": [
+      "Playwright isolated browser testing",
+      "current Next.js and React runtime versions",
+      "existing KJDS state machines, outbox, Evidence, Graph, and governed Agent runtime"
+    ],
+    "operating_practices_governed_by_adr_not_runtime_entries": [
+      "context hygiene and checkpointing",
+      "long-running development harness discipline",
+      "OWASP Agentic threat modeling",
+      "NIST AI RMF governance vocabulary"
+    ]
+  },
+  "adopt_now": [
+    {
+      "id": "agent_run_tracing_and_evals",
+      "coverage_tags": [
+        "agent_tracing",
+        "agent_evals"
+      ],
+      "decision": "adopt_now",
+      "decision_rationale": "KJDS already has in-process governed runs, GenAI-style spans and deterministic eval records; persisting provider-neutral run, model, prompt-template, tool, Evidence, authority and outcome lineage closes the remaining auditability gap without creating a second control plane.",
+      "maturity": {
+        "upstream_status": "released_apis_and_established_evaluation_pattern",
+        "evidence_basis": "Official Responses API, Agents SDK tracing, graders, and eval APIs are published.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://openai.com/index/new-tools-for-building-agents/",
+        "https://platform.openai.com/docs/api-reference/graders",
+        "https://platform.openai.com/docs/api-reference/evals/"
+      ],
+      "kjds_use_cases": [
+        "Bind model, prompt, tool, Evidence, scope authority, latency, cost, and outcome to one agent run.",
+        "Regression-test extraction, research, profit-readiness, and operating-gate agents before promotion."
+      ],
+      "risks": [
+        "Trace payloads may expose prompts, tool arguments, credentials, or tenant data.",
+        "Provider-specific trace schemas can leak into canonical business contracts.",
+        "Weak graders can reward fluent but unsupported conclusions."
+      ],
+      "entry_gate": {
+        "id": "AGENT-TRACE-EVAL-ENTRY",
+        "state": "approved_to_implement",
+        "criteria": [
+          "Define a provider-neutral AgentRun envelope and redaction policy.",
+          "Choose at least one read-only workflow with a frozen eval corpus.",
+          "Keep Evidence and scope authority as canonical KJDS references."
+        ]
+      },
+      "exit_gate": {
+        "id": "AGENT-TRACE-EVAL-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Zero secret or cross-tenant leakage in trace fixtures.",
+          "Deterministic replay records model, prompt, tool, Evidence, and authority versions.",
+          "Eval thresholds and human escalation are enforced in CI without granting external write."
+        ]
+      },
+      "owner": "agent_platform",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-09-03",
+      "control_boundary": {
+        "runtime_implemented": true,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "slsa_cyclonedx_supply_chain_evidence",
+      "coverage_tags": [
+        "slsa",
+        "cyclonedx"
+      ],
+      "decision": "adopt_now",
+      "decision_rationale": "G1 already verifies code, migrations, tests, builds, and images; signed provenance plus software and AI/ML BOMs can make that evidence portable and independently verifiable.",
+      "maturity": {
+        "upstream_status": "released_standards",
+        "evidence_basis": "SLSA 1.2 and the CycloneDX AI/ML BOM guidance are published standards and guidance.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://slsa.dev/spec/v1.2/",
+        "https://slsa.dev/spec/v1.2/verifying-artifacts",
+        "https://cyclonedx.org/guides/OWASP_CycloneDX-Authoritative-Guide-to-AI-ML-BOM-en.pdf"
+      ],
+      "kjds_use_cases": [
+        "Bind G1 commit, migration head, image digests, dependencies, models, datasets, and prompts to attestations.",
+        "Verify deployable artifacts before commercial-pilot or hosted promotion."
+      ],
+      "risks": [
+        "Unsigned or unverifiable attestations create compliance theater.",
+        "BOMs can leak private package names, model identifiers, or deployment topology.",
+        "Build provenance does not prove business correctness or Evidence quality."
+      ],
+      "entry_gate": {
+        "id": "SUPPLY-CHAIN-EVIDENCE-ENTRY",
+        "state": "approved_to_implement",
+        "criteria": [
+          "Define the G1 subject digest and signer identity contract.",
+          "Classify public versus restricted BOM fields.",
+          "Use one existing API or Web image as the first subject."
+        ]
+      },
+      "exit_gate": {
+        "id": "SUPPLY-CHAIN-EVIDENCE-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Fresh-build verification fails closed on subject or signer drift.",
+          "SBOM and AI/ML BOM schemas validate and contain no secrets.",
+          "Deployment policy checks provenance while remaining separate from business truth gates."
+        ]
+      },
+      "owner": "platform_security",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-09-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "react_19_2_next_16_delivery_patterns",
+      "coverage_tags": [
+        "react_19_2",
+        "next_16"
+      ],
+      "decision": "adopt_now",
+      "decision_rationale": "Stable framework capabilities can simplify long-running operator views and build performance, but KJDS should adopt only measured patterns that preserve its existing design system and server authority boundaries.",
+      "maturity": {
+        "upstream_status": "stable_framework_releases",
+        "evidence_basis": "React 19.2 and Next.js 16 are officially released with documented APIs and migration guidance.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://react.dev/blog/2025/10/01/react-19-2",
+        "https://nextjs.org/blog/next-16"
+      ],
+      "kjds_use_cases": [
+        "Use Activity for preserving state in hidden operator workspaces where measured UX benefits exist.",
+        "Evaluate Cache Components, partial prerendering, React Compiler, and DevTools MCP without moving business decisions client-side."
+      ],
+      "risks": [
+        "Cache boundaries can serve stale tenant- or scope-sensitive data.",
+        "Compiler or rendering changes can hide hydration and authorization regressions.",
+        "Framework novelty can displace higher-value business work."
+      ],
+      "entry_gate": {
+        "id": "WEB-FRAMEWORK-PATTERN-ENTRY",
+        "state": "approved_to_implement",
+        "criteria": [
+          "Select one measured performance or state-preservation problem.",
+          "Document server-only authority and cache partitioning requirements.",
+          "Keep the existing visual language and accessibility baseline."
+        ]
+      },
+      "exit_gate": {
+        "id": "WEB-FRAMEWORK-PATTERN-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Full Web tests and production build pass.",
+          "Cross-tenant, auth, cache, and hydration negative tests pass.",
+          "Measured user or build benefit exceeds the maintenance cost."
+        ]
+      },
+      "owner": "web_platform",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-09-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    }
+  ],
+  "pilot": [
+    {
+      "id": "durable_workflow_adapter",
+      "coverage_tags": [
+        "durable_workflows"
+      ],
+      "decision": "pilot",
+      "decision_rationale": "Durable execution may help multi-hour listing, recon, procurement, and recovery flows, but KJDS must first prove a gap in its persisted state machines and outbox rather than install a second workflow owner.",
+      "maturity": {
+        "upstream_status": "mature_platform_candidate",
+        "evidence_basis": "Temporal documents durable execution, replay, task queues, and isolating nondeterministic I/O in Activities.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://temporal.io/",
+        "https://go.temporal.io/platform-hub/ai-engineering/ai-reference-architecture"
+      ],
+      "kjds_use_cases": [
+        "Replay and recover a long-running read-only market-recon workflow.",
+        "Compare durable timers and human pauses with the existing KJDS state-machine and outbox contract."
+      ],
+      "risks": [
+        "A second workflow control plane can split ownership and incident recovery.",
+        "Nondeterministic agent or network calls can break replay if placed in workflow code.",
+        "Operational overhead may exceed current workload needs."
+      ],
+      "entry_gate": {
+        "id": "DURABLE-WORKFLOW-PILOT-ENTRY",
+        "state": "isolated_pilot_only",
+        "criteria": [
+          "Measure a real workflow that exceeds the current recovery or timer SLO.",
+          "Define one adapter boundary with KJDS remaining the business-state owner.",
+          "Use a read-only disposable environment."
+        ]
+      },
+      "exit_gate": {
+        "id": "DURABLE-WORKFLOW-PILOT-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Crash, retry, timeout, cancellation, and human-resume tests pass without duplicate effects.",
+          "Measured reliability benefit exceeds platform and on-call cost.",
+          "No second canonical business state or external-write bypass exists."
+        ]
+      },
+      "owner": "reliability_platform",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-10-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "causal_temporal_graphrag_memory",
+      "coverage_tags": [
+        "causal_graphrag"
+      ],
+      "decision": "pilot",
+      "decision_rationale": "KJDS has canonical graph and Evidence primitives that can support causal and temporal retrieval; a scoped pilot is preferable to a generic vector-chat memory layer.",
+      "maturity": {
+        "upstream_status": "research_and_open_source_candidate",
+        "evidence_basis": "GraphRAG is an active open-source research project, while 2026 agent-memory evaluations show causal and tool-based retrieval advantages in specific tasks.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://www.microsoft.com/en-us/research/project/graphrag/publications/",
+        "https://www.microsoft.com/en-us/research/blog/lazygraphrag-setting-a-new-standard-for-quality-and-cost/",
+        "https://arxiv.org/abs/2602.22769",
+        "https://arxiv.org/abs/2605.20833"
+      ],
+      "kjds_use_cases": [
+        "Retrieve evidence-backed causal chains for SKU, variant, cost, campaign, and profit decisions.",
+        "Answer cross-case questions while preserving tenant, entity, store, time, and authority scope."
+      ],
+      "risks": [
+        "Graph extraction can invent edges or collapse observation into fact.",
+        "Global community summaries can leak cross-tenant information.",
+        "Indexing and retrieval cost can exceed value on small datasets."
+      ],
+      "entry_gate": {
+        "id": "CAUSAL-GRAPHRAG-PILOT-ENTRY",
+        "state": "isolated_pilot_only",
+        "criteria": [
+          "Freeze a read-only exact-scope question set with expected Evidence citations.",
+          "Use canonical KJDS nodes and edges; generated edges remain observations.",
+          "Define vector-only and deterministic graph baselines."
+        ]
+      },
+      "exit_gate": {
+        "id": "CAUSAL-GRAPHRAG-PILOT-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Citation precision, scope isolation, temporal validity, latency, and cost beat the baselines.",
+          "Unsupported edge and cross-scope leakage rates are zero in the acceptance corpus.",
+          "Memory cannot promote Fact, FinanceEntry, Pilot, Permit, or external write."
+        ]
+      },
+      "owner": "knowledge_graph",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-10-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "mcp_oauth_resource_authorization",
+      "coverage_tags": [
+        "mcp_auth"
+      ],
+      "decision": "pilot",
+      "decision_rationale": "OAuth 2.1 resource and audience binding can improve tool authorization, but it must be mapped to KJDS Principal, exact scope, Evidence authority, and incremental permissions before use.",
+      "maturity": {
+        "upstream_status": "published_protocol_specification",
+        "evidence_basis": "The MCP 2025-11-25 authorization specification defines protected-resource metadata, resource indicators, audience binding, and token handling rules.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization"
+      ],
+      "kjds_use_cases": [
+        "Issue audience-bound, least-privilege tokens to read-only research and Evidence tools.",
+        "Map incremental MCP scopes to KJDS exact-scope authority without accepting client-supplied tenant or entity identity."
+      ],
+      "risks": [
+        "Token passthrough or confused-deputy behavior can cross trust boundaries.",
+        "Protocol scopes can be mistaken for KJDS business authority.",
+        "Remote server metadata and redirect validation create SSRF and phishing surfaces."
+      ],
+      "entry_gate": {
+        "id": "MCP-AUTH-PILOT-ENTRY",
+        "state": "isolated_pilot_only",
+        "criteria": [
+          "Choose one first-party read-only MCP server.",
+          "Define issuer, audience, resource, redirect, and incremental-scope validation.",
+          "Derive KJDS tenant and entity authority server-side."
+        ]
+      },
+      "exit_gate": {
+        "id": "MCP-AUTH-PILOT-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Wrong issuer, audience, resource, scope, tenant, entity, store, or authority hash fails closed.",
+          "No token passthrough, bearer-token logging, or dynamic-client-registration abuse remains.",
+          "Revocation, expiry, rotation, audit, and incident tests pass."
+        ]
+      },
+      "owner": "identity_security",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-10-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "opentelemetry_genai_semantic_conventions",
+      "coverage_tags": [
+        "otel_genai"
+      ],
+      "decision": "pilot",
+      "decision_rationale": "Portable agent telemetry is valuable, but GenAI semantic conventions are still developing and sensitive payload attributes require explicit opt-in and redaction.",
+      "maturity": {
+        "upstream_status": "development_semantic_convention",
+        "evidence_basis": "OpenTelemetry publishes GenAI agent, operation, token, and tool attributes while warning that tool arguments and results may contain sensitive information.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://opentelemetry.io/docs/specs/semconv/",
+        "https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/"
+      ],
+      "kjds_use_cases": [
+        "Export provider-neutral latency, token, cache, tool, and workflow metrics from the AgentRun contract.",
+        "Correlate agent spans with Evidence, authority, outbox, and operating-gate events using non-sensitive identifiers."
+      ],
+      "risks": [
+        "Development attributes may change and break dashboards.",
+        "Prompt, tool-argument, and tool-result capture can expose personal, tenant, or secret data.",
+        "High-cardinality labels can create cost and availability problems."
+      ],
+      "entry_gate": {
+        "id": "OTEL-GENAI-PILOT-ENTRY",
+        "state": "isolated_pilot_only",
+        "criteria": [
+          "Version-pin a translation layer instead of exposing semantic conventions to domain models.",
+          "Default all content-bearing attributes to disabled.",
+          "Set cardinality, retention, residency, and sampling budgets."
+        ]
+      },
+      "exit_gate": {
+        "id": "OTEL-GENAI-PILOT-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Schema-upgrade, redaction, tenant-isolation, cardinality, and sampling tests pass.",
+          "Zero prompt, tool payload, credential, or raw Evidence leakage in exported telemetry.",
+          "Dashboards improve incident or cost diagnosis against a no-OTel baseline."
+        ]
+      },
+      "owner": "observability",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-10-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "postgresql_18_rehearsal",
+      "coverage_tags": [
+        "postgres18"
+      ],
+      "decision": "pilot",
+      "decision_rationale": "PostgreSQL 18 offers useful AIO, skip-scan, UUIDv7, OAuth, and temporal constraints, but KJDS should rehearse migrations and measure workloads before changing its PostgreSQL 17 baseline.",
+      "maturity": {
+        "upstream_status": "stable_database_release",
+        "evidence_basis": "PostgreSQL 18 is officially released with documented compatibility and feature changes.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://www.postgresql.org/about/news/postgresql-18-released-3142/",
+        "https://www.postgresql.org/docs/18/release-18.html"
+      ],
+      "kjds_use_cases": [
+        "Benchmark Evidence, graph, profit, outbox, and scoped logistics query plans.",
+        "Evaluate UUIDv7, temporal WITHOUT OVERLAPS and PERIOD constraints, and OAuth in disposable environments."
+      ],
+      "risks": [
+        "Extension, driver, collation, query-plan, or migration behavior may regress.",
+        "New temporal features can be mistaken for complete business-validity semantics.",
+        "An upgrade without rollback rehearsal can extend commercial downtime."
+      ],
+      "entry_gate": {
+        "id": "PG18-PILOT-ENTRY",
+        "state": "isolated_pilot_only",
+        "criteria": [
+          "Freeze PostgreSQL 17 data, query, migration, extension, backup, and restore baselines.",
+          "Use a disposable PostgreSQL 18 database with production-like schema volume.",
+          "Define rollback and dual-version compatibility tests."
+        ]
+      },
+      "exit_gate": {
+        "id": "PG18-PILOT-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Migration replay, backup and restore, extension, driver, and rollback tests pass.",
+          "No critical query regresses beyond the agreed latency or lock budget.",
+          "A production migration runbook and independent recovery proof are approved."
+        ]
+      },
+      "owner": "data_platform",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-10-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "opa_policy_adapter",
+      "coverage_tags": [
+        "opa"
+      ],
+      "decision": "pilot",
+      "decision_rationale": "Signed policy bundles and privacy-safe decision logs may help infrastructure authorization, but OPA must not own KJDS business state, Evidence authority, Approval, or Permit decisions.",
+      "maturity": {
+        "upstream_status": "established_policy_project",
+        "evidence_basis": "OPA officially documents policy bundles and decision logs.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://www.openpolicyagent.org/docs/management-bundles",
+        "https://www.openpolicyagent.org/docs/management-decision-logs"
+      ],
+      "kjds_use_cases": [
+        "Evaluate one deny-by-default, read-only infrastructure policy outside the business state machine.",
+        "Measure bundle rollback and privacy-safe decision-log value."
+      ],
+      "risks": [
+        "Policy can diverge from canonical business authority.",
+        "Stale bundles can deny healthy work or allow obsolete policy.",
+        "Decision logs may contain sensitive inputs."
+      ],
+      "entry_gate": {
+        "id": "OPA-POLICY-PILOT-ENTRY",
+        "state": "isolated_pilot_only",
+        "criteria": [
+          "Select one read-only infrastructure decision with no money or external write.",
+          "Keep exact scope, Evidence, Approval, and Permit in KJDS.",
+          "Define signed bundle, rollback, redaction, and stale-policy behavior."
+        ]
+      },
+      "exit_gate": {
+        "id": "OPA-POLICY-PILOT-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Bundle drift, stale state, outage, rollback, and privacy tests pass.",
+          "OPA and KJDS decisions cannot conflict silently.",
+          "Measured control or operations value exceeds the added platform cost."
+        ]
+      },
+      "owner": "platform_security",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-10-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    }
+  ],
+  "watch": [
+    {
+      "id": "spiffe_workload_identity",
+      "coverage_tags": [
+        "spiffe"
+      ],
+      "decision": "watch",
+      "decision_rationale": "Attested workload identity may strengthen a future hosted multi-service topology, but current KJDS deployment has not demonstrated a problem that justifies SPIRE operations and federation.",
+      "maturity": {
+        "upstream_status": "established_identity_project_without_validated_kjds_need",
+        "evidence_basis": "SPIFFE/SPIRE specifications document workload attestation, SVIDs, and federation.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://spiffe.io/docs/latest/spire-about/spire-concepts/",
+        "https://spiffe.io/docs/latest/spiffe-specs/"
+      ],
+      "kjds_use_cases": [
+        "Potentially attest API, worker, scheduler, and hosted-tool workloads without long-lived shared secrets.",
+        "Potentially federate workload identity across approved hosting boundaries."
+      ],
+      "risks": [
+        "Workload identity can be confused with tenant, entity, store, user, or commercial authority.",
+        "Control-plane outage, rotation, or federation failure can block service.",
+        "Operations cost can exceed current secret-risk reduction."
+      ],
+      "entry_gate": {
+        "id": "SPIFFE-WATCH-ENTRY",
+        "state": "monitor_only",
+        "criteria": [
+          "A hosted multi-service identity problem is measured and not solved by current managed leases.",
+          "At least two non-production workloads require short-lived attested identity.",
+          "Workload identity is explicitly separated from KJDS exact-scope authority."
+        ]
+      },
+      "exit_gate": {
+        "id": "SPIFFE-WATCH-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Attestation, rotation, federation, outage, rollback, and incident tests pass.",
+          "No workload SVID grants user, business, Approval, Permit, or external-write authority.",
+          "Measured risk reduction exceeds platform and on-call cost."
+        ]
+      },
+      "owner": "platform_security",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-11-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "mcp_tasks_durable_protocol",
+      "coverage_tags": [
+        "mcp_tasks"
+      ],
+      "decision": "watch",
+      "decision_rationale": "MCP Tasks could standardize polling, cancellation, and results for long-running tool calls, but the specification explicitly marks the feature experimental.",
+      "maturity": {
+        "upstream_status": "experimental_specification",
+        "evidence_basis": "The MCP 2025-11-25 Tasks utility is explicitly labeled experimental and subject to change.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks"
+      ],
+      "kjds_use_cases": [
+        "Potential adapter for reporting state of long-running read-only tool jobs.",
+        "Potential interoperability mapping to existing KJDS agent-task and persisted-state contracts."
+      ],
+      "risks": [
+        "Experimental lifecycle and metadata may change incompatibly.",
+        "Protocol task state can become a second canonical business state.",
+        "Cancellation semantics may not stop underlying side effects."
+      ],
+      "entry_gate": {
+        "id": "MCP-TASKS-WATCH-ENTRY",
+        "state": "monitor_only",
+        "criteria": [
+          "A stable MCP specification revision removes the experimental label.",
+          "At least two required tool providers implement compatible task lifecycle behavior.",
+          "An adapter can preserve KJDS as the canonical task and business-state owner."
+        ]
+      },
+      "exit_gate": {
+        "id": "MCP-TASKS-WATCH-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Conformance, cancellation, retry, expiry, and result-integrity tests pass.",
+          "Version drift and provider disagreement fail closed.",
+          "No external write or business-state transition is inferred from protocol status alone."
+        ]
+      },
+      "owner": "agent_platform",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-11-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "a2a_cross_agent_interoperability",
+      "coverage_tags": [
+        "a2a"
+      ],
+      "decision": "watch",
+      "decision_rationale": "A2A 1.0 is released for cross-agent interoperability, but KJDS has no demonstrated need to expose agent cards or delegate governed business work across organizations.",
+      "maturity": {
+        "upstream_status": "released_protocol_unvalidated_locally",
+        "evidence_basis": "The A2A project announces version 1.0 as production-ready, but KJDS has not validated provider interoperability, trust, or authority mapping.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://a2a-protocol.org/latest/announcing-1.0/",
+        "https://a2a-protocol.org/latest/"
+      ],
+      "kjds_use_cases": [
+        "Potential bounded delegation between a KJDS research agent and an independently operated partner agent.",
+        "Potential portable task status and artifact exchange without exposing internal orchestration."
+      ],
+      "risks": [
+        "Remote agent identity, capability claims, and artifacts may be untrusted.",
+        "Delegation can obscure authority, Evidence lineage, cost, and accountability.",
+        "Protocol adoption may add no value over first-party APIs and MCP tools."
+      ],
+      "entry_gate": {
+        "id": "A2A-WATCH-ENTRY",
+        "state": "monitor_only",
+        "criteria": [
+          "A real partner workflow requires cross-organization agent interoperability.",
+          "Agent identity, exact scope, artifact integrity, and cost ownership are specified.",
+          "Two independent implementations pass a read-only interoperability rehearsal."
+        ]
+      },
+      "exit_gate": {
+        "id": "A2A-WATCH-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Authentication, authorization, replay, cancellation, artifact, and failure tests pass.",
+          "Every remote conclusion remains an observation until KJDS Evidence review.",
+          "Delegation cannot grant Fact, FinanceEntry, Pilot, Permit, or external-write authority."
+        ]
+      },
+      "owner": "agent_platform",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-11-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "webdriver_bidi_browser_provider",
+      "coverage_tags": [
+        "webdriver_bidi"
+      ],
+      "decision": "watch",
+      "decision_rationale": "Bidirectional browser automation may reduce protocol-specific coupling, but WebDriver BiDi remains a W3C Working Draft and official Seller APIs remain the preferred integration path.",
+      "maturity": {
+        "upstream_status": "w3c_working_draft",
+        "evidence_basis": "WebDriver BiDi is published as a W3C Working Draft, not a Recommendation.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://www.w3.org/TR/webdriver-bidi/",
+        "https://playwright.dev/docs/api/class-browsercontext",
+        "https://playwright.dev/docs/api/class-tracing"
+      ],
+      "kjds_use_cases": [
+        "Potential provider-neutral transport for isolated, deterministic, read-only browser capture.",
+        "Compare browser event and network observability with the existing Playwright harness."
+      ],
+      "risks": [
+        "Draft protocol and browser implementations can drift.",
+        "Authenticated browser automation can leak cookies, profiles, personal data, or write capability.",
+        "UI automation is brittle and must not replace available official APIs."
+      ],
+      "entry_gate": {
+        "id": "WEBDRIVER-BIDI-WATCH-ENTRY",
+        "state": "monitor_only",
+        "criteria": [
+          "Required browser implementations pass the same conformance subset.",
+          "A measured Playwright transport limitation blocks a required read-only workflow.",
+          "Disposable profile, no-cookie-persistence, and network allowlist controls are defined."
+        ]
+      },
+      "exit_gate": {
+        "id": "WEBDRIVER-BIDI-WATCH-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Ten of ten deterministic read-only replay fixtures pass across supported browsers.",
+          "Zero credential persistence, unexpected navigation, CAPTCHA bypass, or external write occurs.",
+          "The provider remains behind the KJDS browser adapter and human-takeover boundary."
+        ]
+      },
+      "owner": "browser_automation",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-11-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
+    {
+      "id": "torchao_local_inference_optimization",
+      "coverage_tags": [
+        "torchao"
+      ],
+      "decision": "watch",
+      "decision_rationale": "Quantized local inference could lower extraction cost or improve data residency, but KJDS has no validated local-model quality, hardware, or unit-economics case and torchao includes mixed stable and prototype APIs.",
+      "maturity": {
+        "upstream_status": "mixed_stable_and_prototype_apis",
+        "evidence_basis": "Official torchao documentation distinguishes stable workflows from prototype and experimental quantization paths.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://docs.pytorch.org/ao/stable/",
+        "https://docs.pytorch.org/ao/stable/workflows/inference.html"
+      ],
+      "kjds_use_cases": [
+        "Potential low-cost OCR, classification, embedding, or redaction inference on controlled hardware.",
+        "Potential privacy-preserving fallback for non-decision workloads."
+      ],
+      "risks": [
+        "Quantization can reduce multilingual extraction and calibration quality.",
+        "Prototype kernels and hardware-specific paths can regress or become unsupported.",
+        "GPU operations and model maintenance can cost more than managed inference."
+      ],
+      "entry_gate": {
+        "id": "TORCHAO-WATCH-ENTRY",
+        "state": "monitor_only",
+        "criteria": [
+          "A provider-neutral eval corpus identifies a non-decision workload with acceptable local-model quality.",
+          "Volume and data-residency requirements justify owned inference.",
+          "A stable hardware and software support matrix exists."
+        ]
+      },
+      "exit_gate": {
+        "id": "TORCHAO-WATCH-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "Quality, calibration, latency, throughput, energy, and total-cost thresholds beat the managed baseline.",
+          "Fallback, model provenance, vulnerability, and drift controls pass.",
+          "Local output remains an observation and cannot silently enter decision truth."
+        ]
+      },
+      "owner": "ml_platform",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-11-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    }
+  ],
+  "reject_now": [
+    {
+      "id": "clickhouse_iceberg_platform_expansion",
+      "coverage_tags": [
+        "clickhouse",
+        "iceberg"
+      ],
+      "decision": "reject_now",
+      "decision_rationale": "ClickHouse and Iceberg are capable technologies, but current KJDS volume and team topology do not justify separate real-time analytics and lakehouse truth planes beside PostgreSQL and Evidence storage.",
+      "maturity": {
+        "upstream_status": "mature_platforms_without_validated_kjds_need",
+        "evidence_basis": "Official documentation describes ClickHouse real-time analytics and Iceberg v3 table features; rejection is based on KJDS fit, not an upstream maturity claim.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://clickhouse.com/use-cases/real-time-analytics",
+        "https://clickhouse.com/clickhouse",
+        "https://iceberg.apache.org/spec/"
+      ],
+      "kjds_use_cases": [
+        "Possible future high-volume event analytics with ClickHouse.",
+        "Possible future immutable analytical history and row lineage with Iceberg."
+      ],
+      "risks": [
+        "Additional stores create synchronization, lineage, access-control, backup, and on-call burden.",
+        "A second analytics truth plane can diverge from PostgreSQL, Evidence, and financial ledgers.",
+        "Premature platform work delays profit truth and commercial validation."
+      ],
+      "entry_gate": {
+        "id": "ANALYTICS-LAKEHOUSE-RECONSIDER",
+        "state": "blocked",
+        "criteria": [
+          "Measured PostgreSQL workload misses an approved latency or retention SLO after indexing, partitioning, and query remediation.",
+          "Data volume, concurrency, or retention economics justify a second store with an assigned operator.",
+          "Canonical ownership, replication, reconciliation, deletion, residency, and recovery contracts are approved."
+        ]
+      },
+      "exit_gate": {
+        "id": "ANALYTICS-LAKEHOUSE-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "A disposable benchmark proves material cost or latency benefit on KJDS-shaped data.",
+          "Cross-store lineage, exact-scope isolation, replay, reconciliation, backup, and disaster recovery pass.",
+          "The analytical stores cannot become business Fact, FinanceEntry, or external-write owners."
+        ]
+      },
+      "owner": "architecture_council",
+      "reviewed_on": "2026-08-03",
+      "review_due_on": "2026-11-03",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    }
+  ]
+}

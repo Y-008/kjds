@@ -1284,3 +1284,65 @@ Pilot or Final Gates.
   fulfillment lead time and working-capital occupancy. They require signed operating and finance
   Evidence with an explicit formula, scope and validity window. Neither deterministic code nor an
   Agent may infer these values or promote them into a Pilot/scale Gate.
+
+## 21. One-person accountable dual-engine operating system
+
+KJDS uses one accountable Business Owner but never collapses research, finance, risk, approval and
+execution into one identity. The stable operating contract is
+`docs/project/14_ONE_PERSON_DUAL_ENGINE_OPERATING_SYSTEM.md`; the architecture decision is
+`docs/adr/ADR-0089-one-person-dual-engine-operating-system-and-frontier-adoption.md`; the
+date-bounded research record is
+`docs/project/evidence/20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md`.
+
+The shared business loop is:
+
+```text
+evidence-backed signal or content
+  -> qualified problem
+  -> scoped diagnosis
+  -> paid bounded MVP
+  -> measured delivery
+  -> consented case evidence
+  -> reusable module
+  -> managed product or software capability
+  -> renewal, referral and next demand signal
+```
+
+The front plane owns positioning, content and qualification; the middle plane owns diagnosis,
+scope, value hypothesis, proposal and Pilot; the back plane owns delivery, customer success, case
+abstraction and productization. Profit/cash truth, Evidence/compliance, identity/authority and
+platform/data/AI controls cross every plane. Content is a demand experiment and qualification
+surface, never a Fact source or a substitute for real orders, settlement, bank cash or customer
+consent.
+
+The Russia operation and software business share canonical Product, Evidence, Profit, Scope,
+Approval, Permit and audit primitives, but they do not share raw customer data across tenants.
+Only explicitly licensed, de-identified and non-reversible patterns may become reusable knowledge.
+The offer ladder is public education -> paid diagnosis -> bounded Pilot -> managed implementation
+-> isolated subscription -> self-service SaaS. Before C0, only preparation and truthful public
+education are allowed; any paid offer requires C0, and self-service multi-tenant SaaS additionally
+requires G7. Third-party screenshot prices, income and customer outcomes remain unverified
+observations and cannot authorize pricing or claims.
+
+Frontier adoption is governed by
+`docs/project/registries/frontier_technology_adoption.json`. Every candidate is one of
+`adopt_now`, `pilot`, `watch` or `reject_now`, with official/primary evidence, risk, owner, entry
+Gate, exit Gate and review date. Current priority is to deepen the existing Agent trace/eval,
+Evidence, Graph, Outbox, PostgreSQL and G1 seams. Temporal, GraphRAG, MCP Tasks/A2A, PostgreSQL 18,
+SPIFFE/OPA, WebDriver BiDi, torchao, ClickHouse and Iceberg do not become production dependencies
+from research or registry status alone.
+
+`BAS-171` freezes this contract and its machine-readable radar. `BAS-172` is the next engineering
+slice: persist a provider-neutral, redacted AgentRun/Eval Evidence envelope that links the existing
+in-process trace and eval to model, prompt-template, tool, Evidence, authority, cost, latency and
+outcome versions. It remains proposal-only and cannot promote Fact, FinanceEntry, Approval, Permit
+or external write.
+
+`BAS-177` deepens the existing Loop Engineering registry into a governed TeamAgent evolution
+contract. Corrections, verified failures, evidenced outcomes and official source changes may create
+Observations or versioned candidates only. Eval, baseline comparison, negative/scope tests, shadow,
+independent review and rollback are mandatory before promotion. Canonical Graph learning is
+temporal and source-hashed; generated nodes/edges are Observations, raw cross-tenant learning is
+forbidden, and runtime Agents cannot self-modify code, authority, Facts, Approval, Permit or
+external-write policy. Continuous frontier review can propose a registry change but cannot install a
+dependency or change a Gate automatically.
