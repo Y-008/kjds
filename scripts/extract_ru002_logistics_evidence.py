@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 from collections.abc import Iterable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -16,6 +16,29 @@ from openpyxl import load_workbook
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WULIU_DIR = PROJECT_ROOT / "wuliu"
 DEFAULT_TESSDATA_PREFIX = PROJECT_ROOT.parent / "tessdata"
+STRUCTURED_CONTRACT_ID = "kjds-ru002-logistics-observation-v1"
+
+COST_LEG_KEYWORDS = {
+    "domestic_logistics": ("内地快递", "国内快递", "退回内地"),
+    "international_logistics": (
+        "运费",
+        "OZON",
+        "Yandex",
+        "WB",
+        "PUDO",
+        "Courier",
+        "FBP",
+        "rFBS",
+    ),
+    "packaging": ("包装", "包材", "气泡", "快递袋", "珍珠棉", "缠绕膜"),
+    "warehousing": ("仓储", "仓库", "入库", "出库"),
+    "customs": ("报关", "清关", "海关"),
+    "last_mile": ("到门", "派送", "取货点", "末端"),
+    "return": ("退货", "退回", "退仓", "退件", "销毁", "拦截"),
+    "customer_compensation": ("理赔", "赔付", "赔偿"),
+    "damage": ("丢件", "破损", "销毁", "损失"),
+}
+COST_LEG_ORDER = tuple(COST_LEG_KEYWORDS)
 
 KEYWORDS = (
     "运费",
@@ -53,6 +76,7 @@ FEE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PHONE_PATTERN = re.compile(r"(?<!\d)(?:1\d{10}|\+?\d{2,4}[-\s]?\d{6,13})(?!\d)")
+EMAIL_PATTERN = re.compile(r"(?i)(?<![\w.+-])[\w.+-]+@[\w.-]+\.[a-z]{2,}(?![\w.-])")
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +90,7 @@ class EvidenceHit:
     tax_treatment: str = "UNKNOWN"
     validity: str = "UNKNOWN"
     mapped_cost_leg: str = "UNKNOWN"
+    mapped_cost_legs: tuple[str, ...] = ()
     status: str = "observed"
 
 
@@ -79,6 +104,7 @@ def sha256_file(path: Path) -> str:
 
 def sanitize_text(text: str) -> str:
     text = PHONE_PATTERN.sub("[REDACTED_PHONE]", text)
+    text = EMAIL_PATTERN.sub("[REDACTED_EMAIL]", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -87,7 +113,7 @@ def source_relpath(path: Path) -> str:
     try:
         return path.relative_to(PROJECT_ROOT).as_posix()
     except ValueError:
-        return path.as_posix()
+        return f"external/{path.name}"
 
 
 def _infer_currency(text: str) -> str:
@@ -102,6 +128,71 @@ def _matches_interest(text: str) -> bool:
     if any(keyword in text for keyword in KEYWORDS):
         return True
     return bool(FEE_PATTERN.search(text))
+
+
+def infer_cost_legs(text: str) -> tuple[str, ...]:
+    normalized = text.upper()
+    return tuple(
+        cost_leg
+        for cost_leg in COST_LEG_ORDER
+        if any(keyword.upper() in normalized for keyword in COST_LEG_KEYWORDS[cost_leg])
+    )
+
+
+def structured_records(hits: Iterable[EvidenceHit]) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for hit in hits:
+        sanitized_source_relpath = sanitize_text(hit.source_relpath)
+        sanitized_source_location = sanitize_text(hit.location)
+        sanitized_excerpt = sanitize_text(hit.excerpt)[:1600]
+        mapped_cost_legs = hit.mapped_cost_legs or infer_cost_legs(
+            sanitized_excerpt
+        )
+        identity = {
+            "contract_id": STRUCTURED_CONTRACT_ID,
+            "source_relpath": sanitized_source_relpath,
+            "source_sha256": hit.sha256,
+            "source_location": sanitized_source_location,
+            "excerpt": sanitized_excerpt,
+        }
+        identity_sha256 = hashlib.sha256(
+            json.dumps(
+                identity,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        record: dict[str, object] = {
+            **identity,
+            "observation_id": f"ru002_{identity_sha256[:24]}",
+            "source_kind": hit.kind,
+            "source_excerpt_sanitized": True,
+            "currency": hit.currency,
+            "tax_treatment": hit.tax_treatment,
+            "validity": hit.validity,
+            "mapped_cost_legs": list(mapped_cost_legs),
+            "evidence_level": "observed",
+            "sku_binding": None,
+            "variant_binding": None,
+            "quantity_binding": None,
+            "shipment_profile_binding": None,
+            "effective_period": None,
+            "decision_eligible": False,
+            "actual_cost_created": False,
+            "external_write_allowed": False,
+            "status": hit.status,
+        }
+        record["observation_sha256"] = hashlib.sha256(
+            json.dumps(
+                record,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        records.append(record)
+    return records
 
 
 def extract_xlsx_hits(path: Path, *, row_limit: int = 30, col_limit: int = 24) -> list[EvidenceHit]:
@@ -337,14 +428,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Scan RU-002 logistics evidence sources read-only.")
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of markdown.")
     parser.add_argument("--source", type=Path, default=WULIU_DIR, help="Directory to scan.")
+    parser.add_argument("--output", type=Path, help="Write the rendered result to this path.")
     args = parser.parse_args()
 
     hits = scan_wuliu_directory(args.source)
+    rendered = (
+        json.dumps(structured_records(hits), ensure_ascii=False, indent=2)
+        if args.json
+        else render_markdown(hits)
+    )
     try:
-        if args.json:
-            print(json.dumps([asdict(hit) for hit in hits], ensure_ascii=False, indent=2))
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(rendered.rstrip() + "\n", encoding="utf-8")
         else:
-            print(render_markdown(hits))
+            print(rendered)
     except BrokenPipeError:
         return 0
     return 0

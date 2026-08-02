@@ -422,6 +422,7 @@ export type ProfitTruthReadiness = {
     complete_scoped_fx_count: number;
     legacy_unscoped_fx_count: number;
     cost_evidence_request_count: number;
+    unbound_logistics_observation_count: number;
     formal_fact_count: number;
     finance_entry_count: number;
     decision_snapshot_count: number;
@@ -479,6 +480,47 @@ export type ProfitTruthReadiness = {
       priority_rank: number;
       blocker_codes: string[];
     }>;
+  };
+  unbound_cost_evidence: {
+    status: string;
+    summary: {
+      source_total: number;
+      accepted: number;
+      quarantined: number;
+      cost_leg_counts: Record<string, number>;
+    };
+    records: Array<{
+      observation_id: string;
+      artifact_evidence_id: string;
+      source_relpath: string;
+      source_sha256: string;
+      source_location: string;
+      currency: string | null;
+      mapped_cost_legs: string[];
+      disposition: string;
+      highest_stage: string;
+      reason_codes: string[];
+      sku_binding: null;
+      variant_binding: null;
+      quantity_binding: null;
+      shipment_profile_binding: null;
+      effective_period: null;
+      decision_eligible: false;
+    }>;
+    next_action: {
+      action: string;
+      owner: string;
+      required_inputs: string[];
+      calculation_seam: string;
+    };
+    control_envelope: {
+      source_excerpts_exposed: false;
+      sku_cost_coverage_incremented: false;
+      reviewed_cost_created: false;
+      actual_cost_created: false;
+      profit_calculation_performed: false;
+      external_write_allowed: false;
+    };
   };
   profit_books: Record<string, {
     status?: string;

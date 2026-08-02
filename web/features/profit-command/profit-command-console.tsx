@@ -802,6 +802,7 @@ function TruthReadiness({ truth }: { truth: ProfitTruthReadiness | null }) {
     ["财务 Operation", truth?.summary.finance_operation_count ?? "no_data", `entry proposals ${truth?.summary.finance_entry_proposal_count ?? "no_data"}`],
     ["完整作用域 FX", truth?.summary.complete_scoped_fx_count ?? "no_data", `legacy blocked ${truth?.summary.legacy_unscoped_fx_count ?? "no_data"}`],
     ["成本补证任务", truth?.summary.cost_evidence_request_count ?? "no_data", "十五项成本 + FX + 数量 + 账本"],
+    ["物流候选证据", truth?.summary.unbound_logistics_observation_count ?? "no_data", "unbound · 不计入 SKU 成本覆盖"],
   ];
   const books = ["scenario_profit", "accrual_profit", "settlement_profit", "cash_profit"];
   return (
@@ -812,6 +813,47 @@ function TruthReadiness({ truth }: { truth: ProfitTruthReadiness | null }) {
             <span>{label}</span><strong>{value}</strong><p>{note}</p>
           </article>
         ))}
+      </section>
+
+      <section className={styles.panel}>
+        <header className={styles.panelTitle}>
+          <div><span>UNBOUND LOGISTICS EVIDENCE</span><h2>物流证据待绑定池</h2></div>
+          <p>
+            {truth?.unbound_cost_evidence.status ?? "no_data"} · accepted {truth?.unbound_cost_evidence.summary.accepted ?? 0}
+            {" / "}quarantined {truth?.unbound_cost_evidence.summary.quarantined ?? 0}
+          </p>
+        </header>
+        <div className={styles.reasonMatrix}>
+          {Object.entries(truth?.unbound_cost_evidence.summary.cost_leg_counts ?? {}).map(([costLeg, count]) => (
+            <div key={costLeg}><span className={styles.mono}>{costLeg}</span><strong>{count}</strong></div>
+          ))}
+        </div>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead><tr><th>来源 / 定位</th><th>来源哈希</th><th>币种</th><th>候选成本腿</th><th>状态</th><th>阻断</th></tr></thead>
+            <tbody>
+              {(truth?.unbound_cost_evidence.records ?? []).slice(0, 50).map((record) => (
+                <tr key={record.observation_id}>
+                  <td>{record.source_relpath}<span className={styles.mono}>{record.source_location}</span></td>
+                  <td className={styles.mono}>{record.source_sha256}</td>
+                  <td>{record.currency ?? "UNKNOWN"}</td>
+                  <td className={styles.mono}>{record.mapped_cost_legs.join(" / ") || "unclassified"}</td>
+                  <td><span className={styles.status}>{record.disposition}</span></td>
+                  <td className={styles.mono}>{record.reason_codes.join(" / ") || "binding_required"}</td>
+                </tr>
+              ))}
+              {!truth?.unbound_cost_evidence.records.length ? <tr><td colSpan={6}><Empty label="暂无显式导入的物流 observation" /></td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+        <p>
+          接口保留全部 {truth?.unbound_cost_evidence.summary.source_total ?? 0} 条，页面显示前 50 条；
+          未绑定 SKU、精确变体、shipment profile、数量与有效期前，不形成金额、reviewed/actual、15-cost covered、Fact、FinanceEntry、Pilot 或外写。
+        </p>
+        <p className={styles.mono}>
+          NEXT {truth?.unbound_cost_evidence.next_action.action ?? "bind_logistics_observation_to_sku_shipment_profile"}
+          {" · "}{truth?.unbound_cost_evidence.next_action.calculation_seam ?? "/v1/logistics/calculations"}
+        </p>
       </section>
 
       <section className={styles.panel}>

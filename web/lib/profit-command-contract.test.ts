@@ -54,10 +54,15 @@ test("profit command consumes all read projections without client profit math", 
   assert.match(component, /从曝光到现金 CM3/);
   assert.match(component, /从源证据到现金利润的真实状态/);
   assert.match(component, /多 SKU Posting 不按比例猜分/);
+  assert.match(component, /UNBOUND LOGISTICS EVIDENCE/);
+  assert.match(component, /不计入 SKU 成本覆盖/);
+  assert.match(component, /不形成金额、reviewed\/actual、15-cost covered/);
   assert.match(component, /surface === "truth"/);
   assert.match(component, /truthReadiness\?\.status/);
   assert.match(component, /truthReadiness\?\.snapshot_sha256/);
   assert.match(contracts, /legacy_records_decision_eligible: false/);
+  assert.match(contracts, /unbound_cost_evidence/);
+  assert.match(contracts, /sku_cost_coverage_incremented: false/);
   assert.match(component, /synthetic=false/);
   assert.doesNotMatch(component, /Math\.random/);
   assert.doesNotMatch(component, /amount\s*[-+*/]|downside_cm3\s*[-+*/]|expected_cm3\s*[-+*/]/);
