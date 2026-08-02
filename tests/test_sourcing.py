@@ -1,10 +1,13 @@
 from dataclasses import asdict
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest import TestCase
 
 from apps.control_plane.domain import ContentAsset, ContentStatus, ContentType, PassportType
+from apps.control_plane.logistics import LogisticsScope, LogisticsScopeContext
 from apps.control_plane.repository import InMemoryRepository
+from apps.control_plane.security import Principal
 from apps.control_plane.services import CommerceService
 from apps.control_plane.sourcing import (
     REQUIRED_COST_EVIDENCE_KEYS,
@@ -187,33 +190,62 @@ class SourcingFlowTest(TestCase):
             total_charge_cny=Decimal("18.25"),
             evidence_id="evidence://carrier/rate-card-v1",
         )
+        context = LogisticsScopeContext(
+            principal=Principal(
+                actor_id="operator-1",
+                roles=frozenset({"operator"}),
+                tenant_ref="tenant-a",
+                store_refs=frozenset({"store-a"}),
+            ),
+            scope=LogisticsScope(
+                tenant_ref="tenant-a",
+                entity_ref="entity-a",
+                store_ref="store-a",
+                scope_grant_authority_sha256="a" * 64,
+                scope_as_of="2026-07-26T00:00:00+00:00",
+            ),
+            as_of=datetime(2026, 7, 26, 0, 0, tzinfo=UTC),
+        )
+
+        def resolve_logistics(received_context, calculation_id, **_kwargs):
+            if (
+                received_context.scope.scope_grant_authority_sha256
+                != "a" * 64
+            ):
+                raise KeyError("Unknown logistics calculation: lgc-1")
+            self.assertIs(received_context, context)
+            self.assertEqual(calculation_id, "lgc-1")
+            return calculation
+
         sourcing = SourcingService(
             self.store,
             self.repo,
             evidence_validator=lambda _: None,
-            logistics_profit_resolver=lambda calculation_id, **kwargs: calculation,
+            logistics_profit_resolver=resolve_logistics,
         )
         cost_evidence = {
             **FULL_COST_EVIDENCE,
             "international_logistics": "evidence://manual/legacy-rate",
         }
 
+        inputs = ProfitInputs(
+            sale_price_rub=Decimal("1800"),
+            rub_per_cny=Decimal("12"),
+            international_freight_cny_per_kg=Decimal("0"),
+            packaging_cny=Decimal("2"),
+            last_mile_cny=Decimal("10"),
+            customs_rate=Decimal("0.10"),
+            platform_fee_rate=Decimal("0.10"),
+            advertising_rate=Decimal("0.05"),
+            return_reserve_rate=Decimal("0.10"),
+        )
         result = sourcing.calculate_profit(
             self.offer.id,
-            ProfitInputs(
-                sale_price_rub=Decimal("1800"),
-                rub_per_cny=Decimal("12"),
-                international_freight_cny_per_kg=Decimal("0"),
-                packaging_cny=Decimal("2"),
-                last_mile_cny=Decimal("10"),
-                customs_rate=Decimal("0.10"),
-                platform_fee_rate=Decimal("0.10"),
-                advertising_rate=Decimal("0.05"),
-                return_reserve_rate=Decimal("0.10"),
-            ),
+            inputs,
             ["evidence://assumptions/ru/2026-07-13"],
             cost_evidence,
             logistics_calculation_id="lgc-1",
+            logistics_context=context,
         )
 
         self.assertEqual(result.international_logistics_cny, Decimal("18.25"))
@@ -223,6 +255,35 @@ class SourcingFlowTest(TestCase):
             "evidence://carrier/rate-card-v1",
         )
         self.assertEqual(result.cost_states["international_logistics"], "estimate")
+        with self.assertRaisesRegex(ValueError, "exact scope context"):
+            sourcing.calculate_profit(
+                self.offer.id,
+                inputs,
+                ["evidence://assumptions/ru/2026-07-13"],
+                cost_evidence,
+                logistics_calculation_id="lgc-1",
+            )
+
+        drifted_context = LogisticsScopeContext(
+            principal=context.principal,
+            scope=LogisticsScope(
+                tenant_ref="tenant-a",
+                entity_ref="entity-a",
+                store_ref="store-a",
+                scope_grant_authority_sha256="b" * 64,
+                scope_as_of="2026-07-26T00:00:00+00:00",
+            ),
+            as_of=context.as_of,
+        )
+        with self.assertRaisesRegex(KeyError, "Unknown logistics calculation"):
+            sourcing.calculate_profit(
+                self.offer.id,
+                inputs,
+                ["evidence://assumptions/ru/2026-07-13"],
+                cost_evidence,
+                logistics_calculation_id="lgc-1",
+                logistics_context=drifted_context,
+            )
 
     def test_comparison_does_not_reuse_profit_from_superseded_supplier_offer(self):
         self.scenario()

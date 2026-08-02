@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from .action_policies import ActionAuthorizationService, require_action_authorization
 from .domain import ContentStatus, ContentType, ProductStatus, new_id, utc_now
+from .logistics import LogisticsScopeContext
 from .repository import Repository
 
 MONEY = Decimal("0.01")
@@ -533,6 +534,7 @@ class SourcingService:
         cost_states: dict[str, str] | None = None,
         template_id: str = PROFIT_TEMPLATE_ID,
         logistics_calculation_id: str | None = None,
+        logistics_context: LogisticsScopeContext | None = None,
     ) -> ProfitScenario:
         if template_id != PROFIT_TEMPLATE_ID:
             raise ValueError(f"Unsupported profit template: {template_id}")
@@ -563,11 +565,14 @@ class SourcingService:
         if logistics_calculation_id:
             if self.logistics_profit_resolver is None:
                 raise ValueError("Logistics calculation workspace is not configured")
+            if logistics_context is None:
+                raise ValueError("Logistics calculation requires exact scope context")
             if inputs.international_freight_cny_per_kg != 0:
                 raise ValueError(
                     "Set manual international freight rate to zero when using a logistics calculation"
                 )
             logistics_calculation = self.logistics_profit_resolver(
+                logistics_context,
                 logistics_calculation_id,
                 marketplace="OZON",
                 destination_country="RU",

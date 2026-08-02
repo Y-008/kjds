@@ -1291,6 +1291,11 @@
           "quote_evidence_ids_json": {
             "title": "Quote Evidence Ids Json",
             "type": "string"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "title": "Store Ref",
+            "type": "string"
           }
         },
         "required": [
@@ -6204,6 +6209,13 @@
             "title": "Rate Card Id",
             "type": "string"
           },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          },
           "width_cm": {
             "anyOf": [
               {
@@ -6448,6 +6460,13 @@
             "maxLength": 300,
             "minLength": 1,
             "title": "Source Sheet",
+            "type": "string"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
             "type": "string"
           },
           "volumetric_divisor_cm3_per_kg": {
@@ -9013,6 +9032,13 @@
               }
             ],
             "title": "Sale Price Rub"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
           },
           "tax_cny": {
             "anyOf": [
@@ -20407,6 +20433,32 @@
         "parameters": [
           {
             "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -20495,6 +20547,32 @@
               "title": "Calculation Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
           }
         ],
         "responses": {
@@ -20529,6 +20607,32 @@
       "get": {
         "operationId": "list_logistics_rate_cards_v1_logistics_rate_cards_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
           {
             "in": "query",
             "name": "limit",
