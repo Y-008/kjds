@@ -6,7 +6,6 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 from apps.control_plane.commercial_lifecycle import CommercialLifecycleKernel, CommercialLifecycleService
 from apps.control_plane.sql_repository import Base
