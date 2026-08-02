@@ -37,11 +37,11 @@ from .channel_account_authority import (
 from .channel_account_governance import ChannelAccountGovernanceStateMachine
 from .channel_account_runtime_identity import SignedManagedCredentialLeaseResolver
 from .commerce_operating_system import CommerceOperatingSystem
+from .commercial_lifecycle import CommercialLifecycleService
 from .content_growth import ContentGrowthService
 from .cost_evidence_review import CostEvidenceAuthorityService
 from .cross_border_capability_atlas import CrossBorderCapabilityAtlas
 from .customer_service import CustomerServiceAuthorityService
-from .commercial_lifecycle import CommercialLifecycleService
 from .database import create_database_engine
 from .decision_contracts import DecisionContractService
 from .decision_lifecycle import DecisionLifecycleService
