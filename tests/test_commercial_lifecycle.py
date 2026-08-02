@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
-from apps.control_plane.commercial_lifecycle import CommercialLifecycleKernel
+from apps.control_plane.commercial_lifecycle import CommercialLifecycleKernel, CommercialLifecycleService
+from apps.control_plane.sql_repository import Base
 
 
 def _window(start: datetime, minutes: int = 30) -> tuple[str, str, str]:
@@ -359,3 +363,224 @@ def test_request_hash_and_decision_hash_are_stable_without_leaking_other_custome
     assert len(decision["decision_sha256"]) == 64
     dumped = json.dumps(decision, ensure_ascii=False, sort_keys=True)
     assert "customer-b" not in dumped
+
+
+def _commercial_scope(
+    *,
+    customer_ref: str = "customer-a",
+    deployment_ref: str = "deploy-a",
+    tenant_ref: str = "tenant-a",
+    entity_ref: str = "entity-a",
+    store_ref: str = "store-a",
+) -> dict[str, str]:
+    return {
+        "customer_ref": customer_ref,
+        "deployment_ref": deployment_ref,
+        "tenant_ref": tenant_ref,
+        "entity_ref": entity_ref,
+        "store_ref": store_ref,
+    }
+
+
+def _commercial_evidence(evidence_id: str, *, suffix: str) -> dict[str, object]:
+    return {
+        "evidence_id": evidence_id,
+        "evidence_sha256": suffix * 64,
+        "evidence_kind": f"{suffix}_evidence",
+        "authority": "internal-commercial-ledger",
+        "source_kind": "internal_record_only",
+        "purposes": ["commercial_audit"],
+    }
+
+
+def _commercial_engine():
+    engine = create_engine("sqlite+pysqlite://", future=True)
+    Base.metadata.create_all(engine)
+    return engine
+
+
+def test_database_commercial_lifecycle_records_append_only_lineage_and_derives_entitlement():
+    service = CommercialLifecycleService(_commercial_engine())
+    scope = _commercial_scope()
+    plan_evidence = _commercial_evidence("ev-plan-1", suffix="a")
+    settlement_evidence = _commercial_evidence("ev-settlement-1", suffix="b")
+    subscription_evidence = _commercial_evidence("ev-subscription-1", suffix="c")
+    invoice_evidence = _commercial_evidence("ev-invoice-1", suffix="d")
+    payment_evidence = _commercial_evidence("ev-payment-1", suffix="e")
+    refund_evidence = _commercial_evidence("ev-refund-1", suffix="f")
+    tax_evidence = _commercial_evidence("ev-tax-1", suffix="1")
+
+    plan = service.record_plan(
+        scope=scope,
+        plan_ref="plan-1",
+        state="approved",
+        currency="CNY",
+        gross_amount=Decimal("100"),
+        effective_at=datetime(2026, 8, 2, 0, 0, tzinfo=UTC),
+        billing_window_start=datetime(2026, 8, 2, 0, 0, tzinfo=UTC),
+        billing_window_end=datetime(2026, 9, 2, 0, 0, tzinfo=UTC),
+        metric_limits=[{"metric": "requests", "limit": "100", "grace_limit": "80"}],
+        evidence=plan_evidence,
+        idempotency_key="plan-1",
+    )
+    replay = service.record_plan(
+        scope=scope,
+        plan_ref="plan-1",
+        state="approved",
+        currency="CNY",
+        gross_amount=Decimal("100"),
+        effective_at=datetime(2026, 8, 2, 0, 0, tzinfo=UTC),
+        billing_window_start=datetime(2026, 8, 2, 0, 0, tzinfo=UTC),
+        billing_window_end=datetime(2026, 9, 2, 0, 0, tzinfo=UTC),
+        metric_limits=[{"metric": "requests", "limit": "100", "grace_limit": "80"}],
+        evidence=plan_evidence,
+        idempotency_key="plan-1",
+    )
+    subscription = service.record_subscription(
+        scope=scope,
+        subscription_ref="sub-1",
+        plan_ref="plan-1",
+        state="active",
+        currency="CNY",
+        amount=Decimal("100"),
+        effective_at=datetime(2026, 8, 2, 0, 5, tzinfo=UTC),
+        expires_at=None,
+        settlement_evidence=settlement_evidence,
+        evidence=subscription_evidence,
+        idempotency_key="sub-1",
+    )
+    invoice = service.record_invoice(
+        scope=scope,
+        invoice_ref="inv-1",
+        subscription_ref="sub-1",
+        state="issued",
+        currency="CNY",
+        net_amount=Decimal("90"),
+        tax_amount=Decimal("10"),
+        gross_amount=Decimal("100"),
+        issued_at=datetime(2026, 8, 2, 0, 10, tzinfo=UTC),
+        due_at=datetime(2026, 8, 12, 0, 10, tzinfo=UTC),
+        evidence=invoice_evidence,
+        idempotency_key="inv-1",
+    )
+    payment = service.record_payment_attempt(
+        scope=scope,
+        payment_attempt_ref="pay-1",
+        invoice_ref="inv-1",
+        state="settled",
+        currency="CNY",
+        amount=Decimal("100"),
+        occurred_at=datetime(2026, 8, 2, 0, 12, tzinfo=UTC),
+        evidence=payment_evidence,
+        idempotency_key="pay-1",
+    )
+    refund = service.record_refund(
+        scope=scope,
+        refund_ref="refund-1",
+        invoice_ref="inv-1",
+        payment_attempt_ref="pay-1",
+        state="paid",
+        currency="CNY",
+        amount=Decimal("20"),
+        occurred_at=datetime(2026, 8, 2, 0, 13, tzinfo=UTC),
+        evidence=refund_evidence,
+        idempotency_key="refund-1",
+    )
+    tax = service.record_tax_evidence(
+        scope=scope,
+        tax_evidence_ref="tax-1",
+        invoice_ref="inv-1",
+        refund_ref="refund-1",
+        state="recorded",
+        currency="CNY",
+        amount=Decimal("10"),
+        observed_at=datetime(2026, 8, 2, 0, 14, tzinfo=UTC),
+        evidence=tax_evidence,
+        idempotency_key="tax-1",
+    )
+
+    snapshot = service.snapshot(**scope)
+
+    assert plan["idempotent"] is False
+    assert replay["idempotent"] is True
+    assert subscription["state"] == "active"
+    assert invoice["state"] == "issued"
+    assert payment["state"] == "settled"
+    assert refund["state"] == "paid"
+    assert tax["state"] == "recorded"
+    assert snapshot["entitlement"]["state"] == "grace"
+    assert snapshot["entitlement"]["reason"] == "outstanding_balance"
+    assert len(snapshot["events"]) >= 6
+    plan_event = next(event for event in snapshot["events"] if event["lifecycle_kind"] == "plan")
+    assert plan_event["payload"]["evidence"]["evidence_id"] == "ev-plan-1"
+    assert plan_event["response"]["evidence_lineage"][0]["evidence_kind"] == "a_evidence"
+
+
+def test_database_commercial_lifecycle_refund_cannot_exceed_collected_payment():
+    service = CommercialLifecycleService(_commercial_engine())
+    scope = _commercial_scope(customer_ref="customer-b", deployment_ref="deploy-b", tenant_ref="tenant-b", entity_ref="entity-b", store_ref="store-b")
+    service.record_plan(
+        scope=scope,
+        plan_ref="plan-2",
+        state="approved",
+        currency="CNY",
+        gross_amount=Decimal("100"),
+        effective_at=datetime(2026, 8, 2, 0, 0, tzinfo=UTC),
+        billing_window_start=datetime(2026, 8, 2, 0, 0, tzinfo=UTC),
+        billing_window_end=datetime(2026, 9, 2, 0, 0, tzinfo=UTC),
+        metric_limits=[{"metric": "requests", "limit": "100", "grace_limit": "80"}],
+        evidence=_commercial_evidence("ev-plan-2", suffix="2"),
+        idempotency_key="plan-2",
+    )
+    service.record_subscription(
+        scope=scope,
+        subscription_ref="sub-2",
+        plan_ref="plan-2",
+        state="active",
+        currency="CNY",
+        amount=Decimal("100"),
+        effective_at=datetime(2026, 8, 2, 0, 5, tzinfo=UTC),
+        expires_at=None,
+        settlement_evidence=_commercial_evidence("ev-settlement-2", suffix="3"),
+        evidence=_commercial_evidence("ev-subscription-2", suffix="4"),
+        idempotency_key="sub-2",
+    )
+    service.record_invoice(
+        scope=scope,
+        invoice_ref="inv-2",
+        subscription_ref="sub-2",
+        state="issued",
+        currency="CNY",
+        net_amount=Decimal("90"),
+        tax_amount=Decimal("10"),
+        gross_amount=Decimal("100"),
+        issued_at=datetime(2026, 8, 2, 0, 10, tzinfo=UTC),
+        due_at=datetime(2026, 8, 12, 0, 10, tzinfo=UTC),
+        evidence=_commercial_evidence("ev-invoice-2", suffix="5"),
+        idempotency_key="inv-2",
+    )
+    service.record_payment_attempt(
+        scope=scope,
+        payment_attempt_ref="pay-2",
+        invoice_ref="inv-2",
+        state="settled",
+        currency="CNY",
+        amount=Decimal("60"),
+        occurred_at=datetime(2026, 8, 2, 0, 12, tzinfo=UTC),
+        evidence=_commercial_evidence("ev-payment-2", suffix="6"),
+        idempotency_key="pay-2",
+    )
+
+    with pytest.raises(ValueError, match="refund amount must not exceed collected payment"):
+        service.record_refund(
+            scope=scope,
+            refund_ref="refund-too-large",
+            invoice_ref="inv-2",
+            payment_attempt_ref="pay-2",
+            state="paid",
+            currency="CNY",
+            amount=Decimal("61"),
+            occurred_at=datetime(2026, 8, 2, 0, 13, tzinfo=UTC),
+            evidence=_commercial_evidence("ev-refund-2", suffix="7"),
+            idempotency_key="refund-too-large",
+        )

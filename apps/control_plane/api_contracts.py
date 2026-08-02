@@ -1624,6 +1624,112 @@ class ScopedFxEvidenceInput(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=180)
 
 
+class CommercialScopeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    customer_ref: str = Field(min_length=1, max_length=160)
+    deployment_ref: str = Field(min_length=1, max_length=160)
+    tenant_ref: str = Field(min_length=1, max_length=160)
+    entity_ref: str = Field(min_length=1, max_length=160)
+    store_ref: str = Field(min_length=1, max_length=160)
+
+
+class CommercialEvidenceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evidence_id: str = Field(min_length=1, max_length=240)
+    evidence_sha256: str = Field(min_length=64, max_length=64)
+    evidence_kind: str = Field(min_length=1, max_length=120)
+    authority: str = Field(min_length=1, max_length=300)
+    source_kind: str = Field(min_length=1, max_length=120)
+    purposes: list[str] = Field(default_factory=list, max_length=20)
+
+
+class CommercialPlanInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: CommercialScopeInput
+    plan_ref: str = Field(min_length=1, max_length=240)
+    state: Literal["draft", "approved", "frozen", "closed"] = "approved"
+    currency: str = Field(min_length=3, max_length=3)
+    gross_amount: Decimal = Field(ge=0)
+    effective_at: datetime
+    billing_window_start: datetime
+    billing_window_end: datetime
+    metric_limits: list[dict[str, Any]] = Field(min_length=1, max_length=20)
+    evidence: CommercialEvidenceInput
+    idempotency_key: str = Field(min_length=1, max_length=180)
+
+
+class CommercialSubscriptionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: CommercialScopeInput
+    subscription_ref: str = Field(min_length=1, max_length=240)
+    plan_ref: str = Field(min_length=1, max_length=240)
+    state: Literal["pending", "active", "past_due", "canceled", "closed"] = "active"
+    currency: str = Field(min_length=3, max_length=3)
+    amount: Decimal = Field(ge=0)
+    effective_at: datetime
+    expires_at: datetime | None = None
+    settlement_evidence: CommercialEvidenceInput
+    evidence: CommercialEvidenceInput
+    idempotency_key: str = Field(min_length=1, max_length=180)
+
+
+class CommercialInvoiceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: CommercialScopeInput
+    invoice_ref: str = Field(min_length=1, max_length=240)
+    subscription_ref: str = Field(min_length=1, max_length=240)
+    state: Literal["draft", "issued", "partially_paid", "paid", "void", "closed"] = "issued"
+    currency: str = Field(min_length=3, max_length=3)
+    net_amount: Decimal = Field(ge=0)
+    tax_amount: Decimal = Field(ge=0)
+    gross_amount: Decimal = Field(gt=0)
+    issued_at: datetime
+    due_at: datetime
+    evidence: CommercialEvidenceInput
+    idempotency_key: str = Field(min_length=1, max_length=180)
+
+
+class CommercialPaymentAttemptInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: CommercialScopeInput
+    payment_attempt_ref: str = Field(min_length=1, max_length=240)
+    invoice_ref: str = Field(min_length=1, max_length=240)
+    state: Literal["pending", "submitted", "succeeded", "failed", "settled"] = "submitted"
+    currency: str = Field(min_length=3, max_length=3)
+    amount: Decimal = Field(gt=0)
+    occurred_at: datetime
+    evidence: CommercialEvidenceInput
+    idempotency_key: str = Field(min_length=1, max_length=180)
+
+
+class CommercialRefundInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: CommercialScopeInput
+    refund_ref: str = Field(min_length=1, max_length=240)
+    invoice_ref: str = Field(min_length=1, max_length=240)
+    payment_attempt_ref: str | None = Field(default=None, min_length=1, max_length=240)
+    state: Literal["requested", "approved", "paid", "rejected", "reversed"] = "requested"
+    currency: str = Field(min_length=3, max_length=3)
+    amount: Decimal = Field(gt=0)
+    occurred_at: datetime
+    evidence: CommercialEvidenceInput
+    idempotency_key: str = Field(min_length=1, max_length=180)
+
+
+class CommercialTaxEvidenceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: CommercialScopeInput
+    tax_evidence_ref: str = Field(min_length=1, max_length=240)
+    invoice_ref: str = Field(min_length=1, max_length=240)
+    refund_ref: str | None = Field(default=None, min_length=1, max_length=240)
+    state: Literal["recorded", "verified", "rejected"] = "recorded"
+    currency: str = Field(min_length=3, max_length=3)
+    amount: Decimal = Field(ge=0)
+    observed_at: datetime
+    evidence: CommercialEvidenceInput
+    idempotency_key: str = Field(min_length=1, max_length=180)
+
+
 class FinanceEntryInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     entry_kind: FinanceEntryKind
