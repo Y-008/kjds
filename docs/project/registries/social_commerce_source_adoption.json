@@ -1,0 +1,356 @@
+{
+  "schema_version": "kjds-social-commerce-source-adoption-v1",
+  "as_of": "2026-08-03",
+  "purpose": "Select and govern sources, open-source patterns and isolated pilots for Douyin and Xiaohongshu operating intelligence.",
+  "decision_vocabulary": {
+    "preferred_path": "Use first after its account, authorization, scope and evidence gates pass.",
+    "adopt_pattern": "Reuse a documented method or interface pattern without installing the upstream runtime.",
+    "pilot_isolated": "Evaluate in a disposable environment with a dedicated browser profile, full collection and campaign-scoped write capabilities.",
+    "watch": "Monitor releases and evidence; do not add a runtime dependency.",
+    "reject_runtime": "Do not install or execute in KJDS under the current license, permission surface or operating need."
+  },
+  "source_ladder": [
+    {
+      "rank": 1,
+      "id": "official_authorized_api",
+      "maximum_evidence_grade": "A",
+      "requirements": [
+        "operator_or_customer_authorization",
+        "approved_application_and_least_privilege_scope",
+        "exact_tenant_entity_store_binding",
+        "original_response_evidence_and_readback"
+      ]
+    },
+    {
+      "rank": 2,
+      "id": "official_operator_export",
+      "maximum_evidence_grade": "B",
+      "requirements": [
+        "exported_by_authorized_operator",
+        "original_file_hash_and_parser_contract",
+        "exact_tenant_entity_store_binding"
+      ]
+    },
+    {
+      "rank": 3,
+      "id": "dedicated_visible_browser_observation",
+      "maximum_evidence_grade": "C",
+      "requirements": [
+        "dedicated_non_personal_browser_profile",
+        "human_authenticates_machine_verifies",
+        "visible_page_only",
+        "collection_and_campaign_capability_manifest",
+        "immutable_capture_evidence"
+      ]
+    },
+    {
+      "rank": 4,
+      "id": "public_official_or_indexed_page",
+      "maximum_evidence_grade": "C",
+      "requirements": [
+        "publicly_accessible_source",
+        "terms_robots_and_rate_limit_review",
+        "source_url_observed_at_and_content_hash"
+      ]
+    },
+    {
+      "rank": 5,
+      "id": "manual_observation",
+      "maximum_evidence_grade": "D",
+      "requirements": [
+        "source_locator",
+        "observation_inference_separation",
+        "independent_review_before_reuse"
+      ]
+    }
+  ],
+  "policy": {
+    "operator_selected_install_allowed": true,
+    "full_multidimensional_collection_allowed": true,
+    "full_pagination_and_incremental_sync_allowed": true,
+    "user_content_and_engagement_analysis_allowed": true,
+    "campaign_scoped_platform_writes_allowed": true,
+    "personal_browser_cookie_extraction_allowed": true,
+    "personal_browser_cookie_extraction_mode": "operator_explicit_source_into_isolated_project_profile_only",
+    "reverse_engineered_api_requires_operator_selected_adapter": true,
+    "captcha_or_rate_limit_bypass_allowed": false,
+    "platform_write_tools_exposed_after_campaign_grant": true,
+    "authorized_media_download_and_analysis_allowed": true,
+    "third_party_content_republication_requires_rights_basis": true,
+    "comments_or_engagement_infer_sales": false,
+    "cross_customer_raw_learning_allowed": false,
+    "commercial_runtime_requires_compatible_license": true,
+    "external_write_mode": "campaign_grant_with_budget_readback_and_kill_switch",
+    "formal_fact_promotion_allowed": false
+  },
+  "current_selection": {
+    "research_method": "last30days_query_expansion_dedup_scoring_with_kjds_evidence_gate",
+    "browser_adapter_framework": "opencli_1_8_6_isolated_campaign_pilot",
+    "xiaohongshu_path": "official_commerce_api_for_authorized_shop_data_then_pinned_cli_and_isolated_visible_page_observation",
+    "douyin_path": "official_openapi_for_authorized_account_data_then_isolated_creator_center_observation",
+    "runtime_installation_status": "installed_isolated_not_authenticated",
+    "dependency_lock_status": "upstream_uv_lock_applied",
+    "cli_entrypoint_status": "python_module_entrypoint_used_because_windows_blocked_generated_xhs_exe",
+    "browser_runtime_status": "camoufox_152_0_4_beta_28_installed_digest_verified",
+    "package_compatibility_status": "uv_pip_check_pass",
+    "upstream_test_status": "112_passed_27_skipped_13_deselected_including_2_windows_unix_mode_tests",
+    "real_account_connection_status": "no_data"
+  },
+  "candidates": [
+    {
+      "id": "douyin_official_openapi",
+      "platform": "douyin",
+      "upstream": "Douyin Open Platform",
+      "version": "reviewed-2026-08-03",
+      "decision": "preferred_path",
+      "license": "platform_terms",
+      "evidence_urls": [
+        "https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/list",
+        "https://developer.open-douyin.com/docs/resource/zh-CN/mini-app/open-capacity/basic-capacities/douyin/",
+        "https://developer.open-douyin.com/docs/resource/zh-CN/dop/operation-standard/platform-capabilities/usage-spec"
+      ],
+      "borrowed_patterns": ["oauth_scope", "authorized_account_metrics", "webhook_and_openapi"],
+      "allowed_kjds_use": ["authorized_own_account_read", "authorized_customer_account_read", "official_capability_monitoring", "campaign_scoped_official_publish_comment_message_and_account_operations_when_scope_exists"],
+      "prohibited_kjds_use": ["unapproved_data_service_resale", "cross_customer_disclosure", "autonomous_publish_or_message"],
+      "entry_gate": "account_application_scope_and_exact_binding_approved",
+      "exit_gate": "official_read_replay_scope_isolation_and_evidence_integrity_pass"
+    },
+    {
+      "id": "xiaohongshu_official_commerce_api",
+      "platform": "xiaohongshu",
+      "upstream": "Xiaohongshu Open Platform",
+      "version": "reviewed-2026-08-03",
+      "decision": "preferred_path",
+      "license": "platform_terms",
+      "evidence_urls": [
+        "https://school.xiaohongshu.com/en/open/index.html",
+        "https://school.xiaohongshu.com/en/open/product/summary.html",
+        "https://school.xiaohongshu.com/en/open/inventory/retrieve.html"
+      ],
+      "borrowed_patterns": ["sandbox_first", "signed_requests", "product_order_inventory_contracts"],
+      "allowed_kjds_use": ["authorized_own_shop_read", "authorized_customer_shop_read", "official_capability_monitoring", "campaign_scoped_official_product_inventory_order_and_fulfillment_operations"],
+      "prohibited_kjds_use": ["claiming_full_site_content_api", "autonomous_inventory_or_fulfillment_write", "cross_customer_disclosure"],
+      "entry_gate": "merchant_application_sandbox_scope_and_exact_binding_approved",
+      "exit_gate": "official_read_replay_scope_isolation_and_evidence_integrity_pass"
+    },
+    {
+      "id": "last30days_skill",
+      "platform": "cross_platform",
+      "upstream": "mvanhorn/last30days-skill",
+      "version": "v3.18.4",
+      "decision": "adopt_pattern",
+      "license": "MIT",
+      "evidence_urls": ["https://github.com/mvanhorn/last30days-skill/releases/tag/v3.18.4"],
+      "borrowed_patterns": ["query_expansion", "multi_round_research", "deduplication", "engagement_aware_scoring", "citation_first_synthesis"],
+      "allowed_kjds_use": ["method_reimplementation_behind_kjds_source_contract"],
+      "prohibited_kjds_use": ["unreviewed_auto_install", "unsupported_source_claims"],
+      "entry_gate": "method_contract_and_gold_set_frozen",
+      "exit_gate": "citation_recall_dedup_and_action_conversion_beat_baseline"
+    },
+    {
+      "id": "opencli",
+      "platform": "cross_platform",
+      "upstream": "jackwener/OpenCLI",
+      "version": "v1.8.6",
+      "decision": "pilot_isolated",
+      "license": "Apache-2.0",
+      "evidence_urls": [
+        "https://github.com/jackwener/OpenCLI/releases/tag/v1.8.6",
+        "https://github.com/jackwener/OpenCLI/blob/v1.8.6/docs/adapters/browser/xiaohongshu.md",
+        "https://github.com/jackwener/OpenCLI/blob/v1.8.6/docs/adapters/browser/douyin.md"
+      ],
+      "borrowed_patterns": ["site_adapter", "typed_failure", "site_memory", "json_output", "human_authenticates_machine_verifies"],
+      "allowed_kjds_use": ["fixture_replay", "dedicated_profile_full_collection", "authorized_own_creator_read", "campaign_scoped_publish_update_delete_and_follow"],
+      "prohibited_kjds_use": ["credential_echo", "captcha_bypass", "cross_customer_account_reuse", "unlicensed_content_republication"],
+      "entry_gate": "pinned_source_security_review_and_campaign_capability_manifest",
+      "exit_gate": "collection_conservation_campaign_write_readback_zero_secret_leak_and_source_drift_tests_pass"
+    },
+    {
+      "id": "xiaohongshu_mcp",
+      "platform": "xiaohongshu",
+      "upstream": "xpzouying/xiaohongshu-mcp",
+      "version": "v2.4.3",
+      "decision": "pilot_isolated",
+      "license": "Apache-2.0",
+      "evidence_urls": ["https://github.com/xpzouying/xiaohongshu-mcp/releases/tag/v2.4.3"],
+      "borrowed_patterns": ["dedicated_browser_session", "search_detail_comment_read", "mcp_tool_contract"],
+      "allowed_kjds_use": ["fixture_replay", "full_collection_comparison_against_opencli", "campaign_scoped_publish_comment_reply_like_and_favorite"],
+      "prohibited_kjds_use": ["credential_echo", "captcha_bypass", "unbounded_multi_account_farming", "unlicensed_content_republication"],
+      "entry_gate": "disposable_profile_mcp_gateway_campaign_manifest_and_platform_risk_acknowledgement",
+      "exit_gate": "read_quality_exceeds_opencli_without_broader_permission_or_maintenance_cost"
+    },
+    {
+      "id": "xhs_research",
+      "platform": "xiaohongshu",
+      "upstream": "kunhai1994/xhs-research",
+      "version": "reviewed-2026-08-03",
+      "decision": "adopt_pattern",
+      "license": "MIT",
+      "evidence_urls": ["https://github.com/kunhai1994/xhs-research"],
+      "borrowed_patterns": ["multi_query_research", "scored_evidence_table", "bias_disclaimer", "source_linked_report"],
+      "allowed_kjds_use": ["research_workflow_pattern_only"],
+      "prohibited_kjds_use": ["automatic_dependency_install", "cookie_file_import", "raw_report_as_business_fact"],
+      "entry_gate": "prompt_and_scoring_method_reviewed",
+      "exit_gate": "kjds_eval_set_proves_better_recall_and_lower_unsupported_claim_rate"
+    },
+    {
+      "id": "douyin_creator_mcp",
+      "platform": "douyin",
+      "upstream": "Kuhakucai/douyin-mcp",
+      "version": "reviewed-2026-08-03",
+      "decision": "pilot_isolated",
+      "license": "AGPL-3.0",
+      "evidence_urls": ["https://github.com/Kuhakucai/douyin-mcp"],
+      "borrowed_patterns": ["dedicated_profile", "own_creator_incremental_sync", "freshness_and_coverage", "on_demand_transcript", "credential_redaction"],
+      "allowed_kjds_use": ["source_review", "fixture_replay", "authorized_account_full_creator_analytics_after_license_review", "campaign_scoped_platform_write_if_upstream_adds_it"],
+      "prohibited_kjds_use": ["credential_echo", "captcha_bypass", "cross_customer_raw_data_reuse", "implicit_model_download"],
+      "entry_gate": "agpl_deployment_review_platform_risk_acknowledgement_and_dedicated_profile",
+      "exit_gate": "authorized_metrics_reconcile_to_creator_center_with_zero_credential_exposure"
+    },
+    {
+      "id": "rsshub",
+      "platform": "cross_platform",
+      "upstream": "DIYgod/RSSHub",
+      "version": "reviewed-2026-08-03",
+      "decision": "watch",
+      "license": "AGPL-3.0",
+      "evidence_urls": ["https://github.com/DIYgod/RSSHub"],
+      "borrowed_patterns": ["route_based_feed_adapter", "incremental_polling"],
+      "allowed_kjds_use": ["official_public_feed_gap_assessment"],
+      "prohibited_kjds_use": ["duplicate_authority_radar_runtime", "restricted_platform_route"],
+      "entry_gate": "measured_source_gap_and_agpl_operations_review",
+      "exit_gate": "lower_total_cost_than_native_authority_radar_adapter"
+    },
+    {
+      "id": "changedetection",
+      "platform": "cross_platform",
+      "upstream": "dgtlmoon/changedetection.io",
+      "version": "0.55.8",
+      "decision": "watch",
+      "license": "Apache-2.0",
+      "evidence_urls": ["https://github.com/dgtlmoon/changedetection.io/releases/tag/0.55.8"],
+      "borrowed_patterns": ["content_change_detection", "visual_selector_monitoring", "alert_deduplication"],
+      "allowed_kjds_use": ["official_page_change_detection_comparison"],
+      "prohibited_kjds_use": ["duplicate_authority_radar_runtime", "logged_in_platform_monitoring"],
+      "entry_gate": "measured_change_detection_gap",
+      "exit_gate": "false_positive_and_operations_cost_beat_existing_collector"
+    },
+    {
+      "id": "browser_agent_frameworks",
+      "platform": "cross_platform",
+      "upstream": "browser-use/browser-use and browserbase/stagehand",
+      "version": "browser-use-0.13.7_stagehand-server-3.7.4",
+      "decision": "watch",
+      "license": "MIT",
+      "evidence_urls": [
+        "https://github.com/browser-use/browser-use/releases/tag/0.13.7",
+        "https://github.com/browserbase/stagehand/releases/tag/stagehand-server-v3/v3.7.4"
+      ],
+      "borrowed_patterns": ["browser_action_observation_separation", "schema_constrained_extraction", "replayable_browser_steps"],
+      "allowed_kjds_use": ["isolated_fixture_benchmark"],
+      "prohibited_kjds_use": ["autonomous_logged_in_operation", "platform_write", "credential_access"],
+      "entry_gate": "existing_playwright_or_opencli_failure_is_measured",
+      "exit_gate": "reliability_gain_exceeds_model_cost_and_permission_surface"
+    },
+    {
+      "id": "firecrawl",
+      "platform": "public_web",
+      "upstream": "firecrawl/firecrawl",
+      "version": "v2.11.0",
+      "decision": "watch",
+      "license": "AGPL-3.0",
+      "evidence_urls": ["https://github.com/firecrawl/firecrawl/releases/tag/v2.11.0"],
+      "borrowed_patterns": ["schema_extraction", "crawl_map", "change_tracking"],
+      "allowed_kjds_use": ["public_official_site_fixture_benchmark"],
+      "prohibited_kjds_use": ["logged_in_social_platform_collection", "restricted_source_bypass"],
+      "entry_gate": "public_web_scale_exceeds_current_collector",
+      "exit_gate": "license_cost_quality_and_evidence_lineage_pass"
+    },
+    {
+      "id": "mediacrawler",
+      "platform": "cross_platform",
+      "upstream": "NanmiCoder/MediaCrawler",
+      "version": "reviewed-2026-08-03",
+      "decision": "reject_runtime",
+      "license": "NON-COMMERCIAL-LEARNING-1.1",
+      "evidence_urls": [
+        "https://github.com/NanmiCoder/MediaCrawler",
+        "https://github.com/NanmiCoder/MediaCrawler/blob/main/LICENSE"
+      ],
+      "borrowed_patterns": ["platform_adapter_shape", "incremental_comment_storage"],
+      "allowed_kjds_use": ["architecture_observation_only"],
+      "prohibited_kjds_use": ["commercial_use", "runtime_install", "large_scale_crawling", "proxy_pool", "captcha_handling"],
+      "entry_gate": "written_commercial_license_and_full_platform_compliance_review",
+      "exit_gate": "not_applicable_while_rejected"
+    },
+    {
+      "id": "xiaohongshu_cli",
+      "platform": "xiaohongshu",
+      "upstream": "jackwener/xiaohongshu-cli",
+      "version": "0.6.4@4d63f3c0c85ccd9054fa8e96d7f761aaf2507449",
+      "decision": "pilot_isolated",
+      "license": "Apache-2.0-declared-in-pyproject",
+      "evidence_urls": [
+        "https://github.com/jackwener/xiaohongshu-cli",
+        "https://github.com/jackwener/xiaohongshu-cli/blob/4d63f3c0c85ccd9054fa8e96d7f761aaf2507449/pyproject.toml"
+      ],
+      "borrowed_patterns": ["short_index_navigation", "structured_cli_output", "full_comment_pagination", "typed_errors", "campaign_actions"],
+      "allowed_kjds_use": ["full_search_note_comment_subcomment_user_topic_hot_and_own_account_collection", "campaign_scoped_like_favorite_comment_reply_follow_post_and_delete"],
+      "prohibited_kjds_use": ["credential_echo", "captcha_bypass", "cross_customer_account_reuse", "unlicensed_content_republication"],
+      "entry_gate": "pinned_commit_isolated_environment_dedicated_qr_or_operator_selected_browser_profile_and_campaign_manifest",
+      "exit_gate": "upstream_tests_collection_conservation_action_readback_and_account_health_pass"
+    },
+    {
+      "id": "xhs_cli_alternative",
+      "platform": "xiaohongshu",
+      "upstream": "jackwener/xhs-cli",
+      "version": "reviewed-2026-08-03",
+      "decision": "watch",
+      "license": "Apache-2.0",
+      "evidence_urls": ["https://github.com/jackwener/xhs-cli"],
+      "borrowed_patterns": ["dom_write_readback", "structured_cli_output"],
+      "allowed_kjds_use": ["fallback_comparison_if_selected_cli_breaks"],
+      "prohibited_kjds_use": ["duplicate_runtime_install", "credential_echo", "captcha_bypass"],
+      "entry_gate": "selected_xiaohongshu_cli_has_measured_unrecoverable_gap",
+      "exit_gate": "fallback_quality_exceeds_selected_cli_at_lower_total_cost"
+    },
+    {
+      "id": "archived_douyin_downloader_mcp",
+      "platform": "douyin",
+      "upstream": "yzfly/douyin-mcp-server",
+      "version": "reviewed-2026-08-03",
+      "decision": "reject_runtime",
+      "license": "Apache-2.0",
+      "evidence_urls": ["https://github.com/yzfly/douyin-mcp-server"],
+      "borrowed_patterns": ["chunked_transcription"],
+      "allowed_kjds_use": ["transcription_pipeline_observation_only"],
+      "prohibited_kjds_use": ["runtime_install", "no_watermark_download", "archived_dependency"],
+      "entry_gate": "maintained_officially_permitted_media_source",
+      "exit_gate": "not_applicable_while_rejected"
+    },
+    {
+      "id": "behavior_simulation_comment_clis",
+      "platform": "douyin_and_xiaohongshu",
+      "upstream": "Yht20927/douyin-cli and Yht20927/xiaohongshu-cli",
+      "version": "reviewed-2026-08-03",
+      "decision": "reject_runtime",
+      "license": "MIT",
+      "evidence_urls": [
+        "https://github.com/Yht20927/douyin-cli",
+        "https://github.com/Yht20927/xiaohongshu-cli"
+      ],
+      "borrowed_patterns": ["reply_draft_review", "failure_memory", "llm_cost_tracking"],
+      "allowed_kjds_use": ["offline_draft_and_failure_taxonomy_observation_only"],
+      "prohibited_kjds_use": ["behavior_simulation", "automatic_comment", "automatic_like", "automatic_message", "page_context_private_api", "runtime_install"],
+      "entry_gate": "write_and_simulation_surfaces_removed_and_platform_authorization_proven",
+      "exit_gate": "not_applicable_while_rejected"
+    }
+  ],
+  "control_boundary": {
+    "registry_is_install_approval": false,
+    "registry_is_account_authorization": false,
+    "registry_is_platform_terms_approval": false,
+    "registry_grants_external_write": false,
+    "registry_promotes_business_fact": false
+  }
+}
