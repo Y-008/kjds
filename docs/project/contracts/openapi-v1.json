@@ -3163,6 +3163,654 @@
         "title": "ChargeType",
         "type": "string"
       },
+      "CommercialEvidenceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Authority",
+            "type": "string"
+          },
+          "evidence_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "evidence_kind": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Evidence Kind",
+            "type": "string"
+          },
+          "evidence_sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Evidence Sha256",
+            "type": "string"
+          },
+          "purposes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Purposes",
+            "type": "array"
+          },
+          "source_kind": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Source Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "evidence_sha256",
+          "evidence_kind",
+          "authority",
+          "source_kind"
+        ],
+        "title": "CommercialEvidenceInput",
+        "type": "object"
+      },
+      "CommercialInvoiceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "due_at": {
+            "format": "date-time",
+            "title": "Due At",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/CommercialEvidenceInput"
+          },
+          "gross_amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Gross Amount"
+          },
+          "idempotency_key": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "invoice_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Invoice Ref",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "net_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Net Amount"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CommercialScopeInput"
+          },
+          "state": {
+            "default": "issued",
+            "enum": [
+              "draft",
+              "issued",
+              "partially_paid",
+              "paid",
+              "void",
+              "closed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "subscription_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Subscription Ref",
+            "type": "string"
+          },
+          "tax_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Tax Amount"
+          }
+        },
+        "required": [
+          "scope",
+          "invoice_ref",
+          "subscription_ref",
+          "currency",
+          "net_amount",
+          "tax_amount",
+          "gross_amount",
+          "issued_at",
+          "due_at",
+          "evidence",
+          "idempotency_key"
+        ],
+        "title": "CommercialInvoiceInput",
+        "type": "object"
+      },
+      "CommercialPaymentAttemptInput": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/CommercialEvidenceInput"
+          },
+          "idempotency_key": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "invoice_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Invoice Ref",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payment_attempt_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Payment Attempt Ref",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CommercialScopeInput"
+          },
+          "state": {
+            "default": "submitted",
+            "enum": [
+              "pending",
+              "submitted",
+              "succeeded",
+              "failed",
+              "settled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "payment_attempt_ref",
+          "invoice_ref",
+          "currency",
+          "amount",
+          "occurred_at",
+          "evidence",
+          "idempotency_key"
+        ],
+        "title": "CommercialPaymentAttemptInput",
+        "type": "object"
+      },
+      "CommercialPlanInput": {
+        "additionalProperties": false,
+        "properties": {
+          "billing_window_end": {
+            "format": "date-time",
+            "title": "Billing Window End",
+            "type": "string"
+          },
+          "billing_window_start": {
+            "format": "date-time",
+            "title": "Billing Window Start",
+            "type": "string"
+          },
+          "currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/CommercialEvidenceInput"
+          },
+          "gross_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Gross Amount"
+          },
+          "idempotency_key": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "metric_limits": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Metric Limits",
+            "type": "array"
+          },
+          "plan_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Plan Ref",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CommercialScopeInput"
+          },
+          "state": {
+            "default": "approved",
+            "enum": [
+              "draft",
+              "approved",
+              "frozen",
+              "closed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "plan_ref",
+          "currency",
+          "gross_amount",
+          "effective_at",
+          "billing_window_start",
+          "billing_window_end",
+          "metric_limits",
+          "evidence",
+          "idempotency_key"
+        ],
+        "title": "CommercialPlanInput",
+        "type": "object"
+      },
+      "CommercialRefundInput": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/CommercialEvidenceInput"
+          },
+          "idempotency_key": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "invoice_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Invoice Ref",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payment_attempt_ref": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Attempt Ref"
+          },
+          "refund_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Refund Ref",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CommercialScopeInput"
+          },
+          "state": {
+            "default": "requested",
+            "enum": [
+              "requested",
+              "approved",
+              "paid",
+              "rejected",
+              "reversed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "refund_ref",
+          "invoice_ref",
+          "currency",
+          "amount",
+          "occurred_at",
+          "evidence",
+          "idempotency_key"
+        ],
+        "title": "CommercialRefundInput",
+        "type": "object"
+      },
+      "CommercialScopeInput": {
+        "additionalProperties": false,
+        "properties": {
+          "customer_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Customer Ref",
+            "type": "string"
+          },
+          "deployment_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Deployment Ref",
+            "type": "string"
+          },
+          "entity_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Entity Ref",
+            "type": "string"
+          },
+          "store_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          },
+          "tenant_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Tenant Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "customer_ref",
+          "deployment_ref",
+          "tenant_ref",
+          "entity_ref",
+          "store_ref"
+        ],
+        "title": "CommercialScopeInput",
+        "type": "object"
+      },
+      "CommercialSubscriptionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/CommercialEvidenceInput"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "idempotency_key": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "plan_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Plan Ref",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CommercialScopeInput"
+          },
+          "settlement_evidence": {
+            "$ref": "#/components/schemas/CommercialEvidenceInput"
+          },
+          "state": {
+            "default": "active",
+            "enum": [
+              "pending",
+              "active",
+              "past_due",
+              "canceled",
+              "closed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "subscription_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Subscription Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "subscription_ref",
+          "plan_ref",
+          "currency",
+          "amount",
+          "effective_at",
+          "settlement_evidence",
+          "evidence",
+          "idempotency_key"
+        ],
+        "title": "CommercialSubscriptionInput",
+        "type": "object"
+      },
+      "CommercialTaxEvidenceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/CommercialEvidenceInput"
+          },
+          "idempotency_key": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "invoice_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Invoice Ref",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "refund_ref": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refund Ref"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CommercialScopeInput"
+          },
+          "state": {
+            "default": "recorded",
+            "enum": [
+              "recorded",
+              "verified",
+              "rejected"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "tax_evidence_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Tax Evidence Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "tax_evidence_ref",
+          "invoice_ref",
+          "currency",
+          "amount",
+          "observed_at",
+          "evidence",
+          "idempotency_key"
+        ],
+        "title": "CommercialTaxEvidenceInput",
+        "type": "object"
+      },
       "ContentBriefInput": {
         "additionalProperties": false,
         "properties": {
@@ -13543,6 +14191,346 @@
           }
         ],
         "summary": "Commerce Os Workspace"
+      }
+    },
+    "/v1/commercial-lifecycle/invoices": {
+      "post": {
+        "operationId": "record_invoice_v1_commercial_lifecycle_invoices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialInvoiceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Record Invoice"
+      }
+    },
+    "/v1/commercial-lifecycle/payment-attempts": {
+      "post": {
+        "operationId": "record_payment_attempt_v1_commercial_lifecycle_payment_attempts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialPaymentAttemptInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Record Payment Attempt"
+      }
+    },
+    "/v1/commercial-lifecycle/plans": {
+      "post": {
+        "operationId": "record_plan_v1_commercial_lifecycle_plans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialPlanInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Record Plan"
+      }
+    },
+    "/v1/commercial-lifecycle/refunds": {
+      "post": {
+        "operationId": "record_refund_v1_commercial_lifecycle_refunds_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialRefundInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Record Refund"
+      }
+    },
+    "/v1/commercial-lifecycle/snapshot": {
+      "get": {
+        "operationId": "commercial_lifecycle_snapshot_v1_commercial_lifecycle_snapshot_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "customer_ref",
+            "required": true,
+            "schema": {
+              "title": "Customer Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "deployment_ref",
+            "required": true,
+            "schema": {
+              "title": "Deployment Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_ref",
+            "required": true,
+            "schema": {
+              "title": "Tenant Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": true,
+            "schema": {
+              "title": "Entity Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": true,
+            "schema": {
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Commercial Lifecycle Snapshot"
+      }
+    },
+    "/v1/commercial-lifecycle/subscriptions": {
+      "post": {
+        "operationId": "record_subscription_v1_commercial_lifecycle_subscriptions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialSubscriptionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Record Subscription"
+      }
+    },
+    "/v1/commercial-lifecycle/tax-evidence": {
+      "post": {
+        "operationId": "record_tax_evidence_v1_commercial_lifecycle_tax_evidence_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommercialTaxEvidenceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Record Tax Evidence"
       }
     },
     "/v1/content/assets": {

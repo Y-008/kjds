@@ -41,6 +41,7 @@ from .content_growth import ContentGrowthService
 from .cost_evidence_review import CostEvidenceAuthorityService
 from .cross_border_capability_atlas import CrossBorderCapabilityAtlas
 from .customer_service import CustomerServiceAuthorityService
+from .commercial_lifecycle import CommercialLifecycleService
 from .database import create_database_engine
 from .decision_contracts import DecisionContractService
 from .decision_lifecycle import DecisionLifecycleService
@@ -218,6 +219,7 @@ class RuntimeServices:
     causal_knowledge: Any
     causal_policies: Any
     commerce: Any
+    commercial_lifecycle: Any
     commerce_os: Any
     native_parity_acceptance: Any
     content: Any
@@ -408,6 +410,7 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
     )
     commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
+    commercial_lifecycle = CommercialLifecycleService(engine=engine)
     action_policies = ActionPolicyRegistry()
     action_authorization = ActionAuthorizationService(action_policies)
     policy_shadow = PolicyShadowService(
@@ -1127,6 +1130,7 @@ def build_runtime() -> RuntimeServices:
         causal_knowledge=causal_knowledge,
         causal_policies=causal_policies,
         commerce=commerce,
+        commercial_lifecycle=commercial_lifecycle,
         commerce_os=commerce_os,
         native_parity_acceptance=native_parity_acceptance,
         content=content,

@@ -8,7 +8,59 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    JSON,
+    Numeric,
+    String,
+    Text,
+    select,
+)
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Mapped, Session, mapped_column
+
+from .domain import new_id
+from .sql_repository import Base
+
 CommercialState = Literal["active", "grace", "read_only", "closed"]
+
+CommercialLifecycleKind = Literal[
+    "plan",
+    "subscription",
+    "entitlement",
+    "invoice",
+    "payment_attempt",
+    "refund",
+    "tax_evidence",
+]
+
+CommercialLifecycleState = Literal[
+    "draft",
+    "approved",
+    "frozen",
+    "pending",
+    "active",
+    "past_due",
+    "canceled",
+    "issued",
+    "partially_paid",
+    "paid",
+    "void",
+    "closed",
+    "submitted",
+    "succeeded",
+    "failed",
+    "settled",
+    "requested",
+    "rejected",
+    "verified",
+    "recorded",
+    "grace",
+    "read_only",
+]
 
 ALLOWED_METRICS = frozenset(
     {
@@ -18,6 +70,14 @@ ALLOWED_METRICS = frozenset(
         "storage_gib",
     }
 )
+
+ALLOWED_COMMERICAL_CURRENCIES = frozenset({"CNY", "RUB"})
+PLAN_STATE_ORDER = {"draft": 0, "approved": 1, "frozen": 2, "closed": 3}
+SUBSCRIPTION_STATE_ORDER = {"pending": 0, "active": 1, "past_due": 2, "canceled": 3, "closed": 4}
+INVOICE_STATE_ORDER = {"draft": 0, "issued": 1, "partially_paid": 2, "paid": 3, "void": 4, "closed": 5}
+PAYMENT_STATE_ORDER = {"pending": 0, "submitted": 1, "succeeded": 2, "failed": 3, "settled": 4}
+REFUND_STATE_ORDER = {"requested": 0, "approved": 1, "paid": 2, "rejected": 3, "reversed": 4}
+TAX_STATE_ORDER = {"recorded": 0, "verified": 1, "rejected": 2}
 
 STATE_ORDER: dict[CommercialState, int] = {
     "active": 0,
@@ -50,6 +110,11 @@ def _canonical(value: Any) -> bytes:
 
 def _sha256(value: Any) -> str:
     return hashlib.sha256(_canonical(value)).hexdigest()
+
+
+def _request_hash(kind: str, event: dict[str, Any]) -> str:
+    payload = {key: value for key, value in event.items() if key != "kind"}
+    return _sha256({"kind": kind, "payload": payload})
 
 
 def _text(value: Any, field: str, *, maximum: int = 160) -> str:
@@ -712,5 +777,1210 @@ class CommercialLifecycleKernel:
         return current if STATE_ORDER[current] >= STATE_ORDER[candidate] else candidate
 
     def _request_hash(self, *, kind: str, event: dict[str, Any]) -> str:
-        payload = {key: value for key, value in event.items() if key != "kind"}
-        return _sha256({"kind": kind, "payload": payload})
+        return _request_hash(kind, event)
+
+
+class CommercialLifecycleEventRow(Base):
+    __tablename__ = "commercial_lifecycle_events"
+    __table_args__ = (
+        CheckConstraint(
+            "customer_ref IS NOT NULL AND length(customer_ref) > 0 "
+            "AND deployment_ref IS NOT NULL AND length(deployment_ref) > 0 "
+            "AND tenant_ref IS NOT NULL AND length(tenant_ref) > 0 "
+            "AND entity_ref IS NOT NULL AND length(entity_ref) > 0 "
+            "AND store_ref IS NOT NULL AND length(store_ref) > 0",
+            name="ck_commercial_lifecycle_events_scope_required",
+        ),
+        CheckConstraint(
+            "length(request_sha256) = 64 AND length(decision_sha256) = 64",
+            name="ck_commercial_lifecycle_events_hashes",
+        ),
+        CheckConstraint(
+            "currency IS NULL OR (length(currency) = 3)",
+            name="ck_commercial_lifecycle_events_currency",
+        ),
+        CheckConstraint(
+            "amount IS NULL OR amount >= 0",
+            name="ck_commercial_lifecycle_events_amount",
+        ),
+        Index(
+            "uq_commercial_lifecycle_scope_kind_idempotency",
+            "customer_ref",
+            "deployment_ref",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "lifecycle_kind",
+            "idempotency_key",
+            unique=True,
+        ),
+        Index(
+            "ix_commercial_lifecycle_scope_recorded",
+            "customer_ref",
+            "deployment_ref",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "recorded_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    lifecycle_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_kind: Mapped[str] = mapped_column(String(80), nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    customer_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    deployment_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    tenant_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    entity_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    store_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    record_ref: Mapped[str] = mapped_column(String(240), nullable=False)
+    parent_ref: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(38, 12), nullable=True)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    response_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    request_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(180), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CommercialLifecycleEvidenceRow(Base):
+    __tablename__ = "commercial_lifecycle_evidence"
+    __table_args__ = (
+        CheckConstraint(
+            "length(evidence_id) > 0 AND length(evidence_sha256) = 64 "
+            "AND length(evidence_kind) > 0 AND length(authority) > 0 "
+            "AND length(source_kind) > 0",
+            name="ck_commercial_lifecycle_evidence_required",
+        ),
+        Index(
+            "uq_commercial_lifecycle_evidence_event",
+            "event_id",
+            "evidence_id",
+            unique=True,
+        ),
+        Index(
+            "ix_commercial_lifecycle_evidence_scope",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "recorded_at",
+            "event_id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("commercial_lifecycle_events.id"),
+        nullable=False,
+    )
+    customer_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    deployment_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    tenant_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    entity_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    store_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    evidence_id: Mapped[str] = mapped_column(String(240), nullable=False)
+    evidence_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_kind: Mapped[str] = mapped_column(String(120), nullable=False)
+    authority: Mapped[str] = mapped_column(String(300), nullable=False)
+    source_kind: Mapped[str] = mapped_column(String(120), nullable=False)
+    purposes_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CommercialLifecycleService:
+    """Append-only internal commercial lifecycle ledger."""
+
+    CONTRACT_ID = "kjds-commercial-lifecycle-db-v1"
+    PLAN_EVENT_KIND = "commercial_plan_recorded"
+    SUBSCRIPTION_EVENT_KIND = "commercial_subscription_recorded"
+    ENTITLEMENT_EVENT_KIND = "commercial_entitlement_recorded"
+    INVOICE_EVENT_KIND = "commercial_invoice_recorded"
+    PAYMENT_EVENT_KIND = "commercial_payment_attempt_recorded"
+    REFUND_EVENT_KIND = "commercial_refund_recorded"
+    TAX_EVENT_KIND = "commercial_tax_evidence_recorded"
+
+    def __init__(self, engine) -> None:
+        self.engine = engine
+
+    def record_plan(
+        self,
+        *,
+        scope: dict[str, Any],
+        plan_ref: str,
+        state: str,
+        currency: str,
+        gross_amount: Decimal,
+        effective_at: datetime,
+        billing_window_start: datetime,
+        billing_window_end: datetime,
+        metric_limits: list[dict[str, Any]],
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        try:
+            with Session(self.engine) as session, session.begin():
+                scoped = self._scope(**scope)
+                response = self._record_plan(
+                    session,
+                    scope=scoped,
+                    plan_ref=plan_ref,
+                    state=state,
+                    currency=currency,
+                    gross_amount=gross_amount,
+                    effective_at=effective_at,
+                    billing_window_start=billing_window_start,
+                    billing_window_end=billing_window_end,
+                    metric_limits=metric_limits,
+                    evidence=evidence,
+                    idempotency_key=idempotency_key,
+                )
+                return response
+        except IntegrityError as exc:
+            raise ValueError("commercial lifecycle write conflicts with an existing record") from exc
+
+    def record_subscription(
+        self,
+        *,
+        scope: dict[str, Any],
+        subscription_ref: str,
+        plan_ref: str,
+        state: str,
+        currency: str,
+        amount: Decimal,
+        effective_at: datetime,
+        expires_at: datetime | None,
+        settlement_evidence: dict[str, Any],
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        try:
+            with Session(self.engine) as session, session.begin():
+                scoped = self._scope(**scope)
+                response = self._record_subscription(
+                    session,
+                    scope=scoped,
+                    subscription_ref=subscription_ref,
+                    plan_ref=plan_ref,
+                    state=state,
+                    currency=currency,
+                    amount=amount,
+                    effective_at=effective_at,
+                    expires_at=expires_at,
+                    settlement_evidence=settlement_evidence,
+                    evidence=evidence,
+                    idempotency_key=idempotency_key,
+                )
+                return response
+        except IntegrityError as exc:
+            raise ValueError("commercial lifecycle write conflicts with an existing record") from exc
+
+    def record_invoice(
+        self,
+        *,
+        scope: dict[str, Any],
+        invoice_ref: str,
+        subscription_ref: str,
+        state: str,
+        currency: str,
+        net_amount: Decimal,
+        tax_amount: Decimal,
+        gross_amount: Decimal,
+        issued_at: datetime,
+        due_at: datetime,
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        try:
+            with Session(self.engine) as session, session.begin():
+                scoped = self._scope(**scope)
+                response = self._record_invoice(
+                    session,
+                    scope=scoped,
+                    invoice_ref=invoice_ref,
+                    subscription_ref=subscription_ref,
+                    state=state,
+                    currency=currency,
+                    net_amount=net_amount,
+                    tax_amount=tax_amount,
+                    gross_amount=gross_amount,
+                    issued_at=issued_at,
+                    due_at=due_at,
+                    evidence=evidence,
+                    idempotency_key=idempotency_key,
+                )
+                return response
+        except IntegrityError as exc:
+            raise ValueError("commercial lifecycle write conflicts with an existing record") from exc
+
+    def record_payment_attempt(
+        self,
+        *,
+        scope: dict[str, Any],
+        payment_attempt_ref: str,
+        invoice_ref: str,
+        state: str,
+        currency: str,
+        amount: Decimal,
+        occurred_at: datetime,
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        try:
+            with Session(self.engine) as session, session.begin():
+                scoped = self._scope(**scope)
+                response = self._record_payment_attempt(
+                    session,
+                    scope=scoped,
+                    payment_attempt_ref=payment_attempt_ref,
+                    invoice_ref=invoice_ref,
+                    state=state,
+                    currency=currency,
+                    amount=amount,
+                    occurred_at=occurred_at,
+                    evidence=evidence,
+                    idempotency_key=idempotency_key,
+                )
+                return response
+        except IntegrityError as exc:
+            raise ValueError("commercial lifecycle write conflicts with an existing record") from exc
+
+    def record_refund(
+        self,
+        *,
+        scope: dict[str, Any],
+        refund_ref: str,
+        invoice_ref: str,
+        payment_attempt_ref: str | None,
+        state: str,
+        currency: str,
+        amount: Decimal,
+        occurred_at: datetime,
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        try:
+            with Session(self.engine) as session, session.begin():
+                scoped = self._scope(**scope)
+                response = self._record_refund(
+                    session,
+                    scope=scoped,
+                    refund_ref=refund_ref,
+                    invoice_ref=invoice_ref,
+                    payment_attempt_ref=payment_attempt_ref,
+                    state=state,
+                    currency=currency,
+                    amount=amount,
+                    occurred_at=occurred_at,
+                    evidence=evidence,
+                    idempotency_key=idempotency_key,
+                )
+                return response
+        except IntegrityError as exc:
+            raise ValueError("commercial lifecycle write conflicts with an existing record") from exc
+
+    def record_tax_evidence(
+        self,
+        *,
+        scope: dict[str, Any],
+        tax_evidence_ref: str,
+        invoice_ref: str,
+        refund_ref: str | None,
+        state: str,
+        currency: str,
+        amount: Decimal,
+        observed_at: datetime,
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        try:
+            with Session(self.engine) as session, session.begin():
+                scoped = self._scope(**scope)
+                response = self._record_tax_evidence(
+                    session,
+                    scope=scoped,
+                    tax_evidence_ref=tax_evidence_ref,
+                    invoice_ref=invoice_ref,
+                    refund_ref=refund_ref,
+                    state=state,
+                    currency=currency,
+                    amount=amount,
+                    observed_at=observed_at,
+                    evidence=evidence,
+                    idempotency_key=idempotency_key,
+                )
+                return response
+        except IntegrityError as exc:
+            raise ValueError("commercial lifecycle write conflicts with an existing record") from exc
+
+    def snapshot(
+        self,
+        *,
+        customer_ref: str,
+        deployment_ref: str,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        as_of: datetime | None = None,
+    ) -> dict[str, Any]:
+        scope = self._scope(
+            customer_ref=customer_ref,
+            deployment_ref=deployment_ref,
+            tenant_ref=tenant_ref,
+            entity_ref=entity_ref,
+            store_ref=store_ref,
+        )
+        with Session(self.engine) as session:
+            events = self._events(session, scope=scope, as_of=as_of)
+            if not events:
+                raise KeyError("commercial lifecycle not found for exact scope")
+            snapshot = self._snapshot_from_events(events, scope=scope, as_of=as_of)
+            return snapshot
+
+    def _record_plan(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        plan_ref: str,
+        state: str,
+        currency: str,
+        gross_amount: Decimal,
+        effective_at: datetime,
+        billing_window_start: datetime,
+        billing_window_end: datetime,
+        metric_limits: list[dict[str, Any]],
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        if state not in PLAN_STATE_ORDER:
+            raise ValueError("plan state is not allowlisted")
+        self._currency(currency)
+        amount = _decimal(gross_amount, "gross_amount")
+        if amount < 0:
+            raise ValueError("gross_amount must be non-negative")
+        effective_at = _timestamp(effective_at, "effective_at")
+        billing_window_start = _timestamp(billing_window_start, "billing_window_start")
+        billing_window_end = _timestamp(billing_window_end, "billing_window_end")
+        if billing_window_end <= billing_window_start:
+            raise ValueError("billing_window_end must be after billing_window_start")
+        if not isinstance(metric_limits, list) or not metric_limits:
+            raise ValueError("metric_limits must contain at least one item")
+        for item in metric_limits:
+            if not isinstance(item, dict):
+                raise ValueError("metric_limits must be objects")
+            metric = _text(item.get("metric"), "metric", maximum=80)
+            if metric not in ALLOWED_METRICS:
+                raise ValueError("metric is not allowlisted")
+            limit = _decimal(item.get("limit"), f"{metric}.limit")
+            if limit <= 0:
+                raise ValueError("metric limits must be positive")
+            grace_raw = item.get("grace_limit", limit)
+            grace_limit = _decimal(grace_raw, f"{metric}.grace_limit")
+            if grace_limit < 0 or grace_limit > limit:
+                raise ValueError("grace_limit must be between zero and limit")
+        return self._append_event(
+            session,
+            scope=scope,
+            lifecycle_kind="plan",
+            event_kind=self.PLAN_EVENT_KIND,
+            state=state,
+            record_ref=_text(plan_ref, "plan_ref", maximum=240),
+            parent_ref=None,
+            currency=self._currency(currency),
+            amount=amount,
+            occurred_at=effective_at,
+            payload={
+                "plan_ref": plan_ref,
+                "state": state,
+                "currency": self._currency(currency),
+                "gross_amount": str(amount),
+                "effective_at": effective_at.isoformat(),
+                "billing_window_start": billing_window_start.isoformat(),
+                "billing_window_end": billing_window_end.isoformat(),
+                "metric_limits": _copy(metric_limits),
+                "evidence": _copy(evidence),
+                "kind": self.PLAN_EVENT_KIND,
+            },
+            evidence_inputs=[evidence],
+            idempotency_key=idempotency_key,
+        )
+
+    def _record_subscription(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        subscription_ref: str,
+        plan_ref: str,
+        state: str,
+        currency: str,
+        amount: Decimal,
+        effective_at: datetime,
+        expires_at: datetime | None,
+        settlement_evidence: dict[str, Any],
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        if state not in SUBSCRIPTION_STATE_ORDER:
+            raise ValueError("subscription state is not allowlisted")
+        amount = _decimal(amount, "amount")
+        if amount < 0:
+            raise ValueError("amount must be non-negative")
+        currency = self._currency(currency)
+        effective_at = _timestamp(effective_at, "effective_at")
+        if expires_at is not None:
+            expires_at = _timestamp(expires_at, "expires_at")
+            if expires_at <= effective_at:
+                raise ValueError("expires_at must be after effective_at")
+        plan = self._latest_event(session, scope=scope, lifecycle_kind="plan", record_ref=plan_ref)
+        if plan is None:
+            raise KeyError("subscription requires an existing commercial plan")
+        if plan.state == "draft":
+            raise ValueError("subscription requires an approved or frozen plan")
+        return self._append_event(
+            session,
+            scope=scope,
+            lifecycle_kind="subscription",
+            event_kind=self.SUBSCRIPTION_EVENT_KIND,
+            state=state,
+            record_ref=_text(subscription_ref, "subscription_ref", maximum=240),
+            parent_ref=_text(plan_ref, "plan_ref", maximum=240),
+            currency=currency,
+            amount=amount,
+            occurred_at=effective_at,
+            payload={
+                "subscription_ref": subscription_ref,
+                "plan_ref": plan_ref,
+                "state": state,
+                "currency": currency,
+                "amount": str(amount),
+                "effective_at": effective_at.isoformat(),
+                "expires_at": expires_at.isoformat() if expires_at else None,
+                "settlement_evidence": _copy(settlement_evidence),
+                "evidence": _copy(evidence),
+                "kind": self.SUBSCRIPTION_EVENT_KIND,
+            },
+            evidence_inputs=[evidence, settlement_evidence],
+            idempotency_key=idempotency_key,
+        )
+
+    def _record_invoice(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        invoice_ref: str,
+        subscription_ref: str,
+        state: str,
+        currency: str,
+        net_amount: Decimal,
+        tax_amount: Decimal,
+        gross_amount: Decimal,
+        issued_at: datetime,
+        due_at: datetime,
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        if state not in INVOICE_STATE_ORDER:
+            raise ValueError("invoice state is not allowlisted")
+        currency = self._currency(currency)
+        net_amount = _decimal(net_amount, "net_amount")
+        tax_amount = _decimal(tax_amount, "tax_amount")
+        gross_amount = _decimal(gross_amount, "gross_amount")
+        if net_amount < 0 or tax_amount < 0 or gross_amount <= 0:
+            raise ValueError("invoice amounts must be non-negative and gross_amount must be positive")
+        if net_amount + tax_amount != gross_amount:
+            raise ValueError("gross_amount must equal net_amount plus tax_amount")
+        issued_at = _timestamp(issued_at, "issued_at")
+        due_at = _timestamp(due_at, "due_at")
+        if due_at < issued_at:
+            raise ValueError("due_at must be on or after issued_at")
+        subscription = self._latest_event(session, scope=scope, lifecycle_kind="subscription", record_ref=subscription_ref)
+        if subscription is None:
+            raise KeyError("invoice requires an existing subscription")
+        return self._append_event(
+            session,
+            scope=scope,
+            lifecycle_kind="invoice",
+            event_kind=self.INVOICE_EVENT_KIND,
+            state=state,
+            record_ref=_text(invoice_ref, "invoice_ref", maximum=240),
+            parent_ref=_text(subscription_ref, "subscription_ref", maximum=240),
+            currency=currency,
+            amount=gross_amount,
+            occurred_at=issued_at,
+            payload={
+                "invoice_ref": invoice_ref,
+                "subscription_ref": subscription_ref,
+                "state": state,
+                "currency": currency,
+                "net_amount": str(net_amount),
+                "tax_amount": str(tax_amount),
+                "gross_amount": str(gross_amount),
+                "issued_at": issued_at.isoformat(),
+                "due_at": due_at.isoformat(),
+                "evidence": _copy(evidence),
+                "kind": self.INVOICE_EVENT_KIND,
+            },
+            evidence_inputs=[evidence],
+            idempotency_key=idempotency_key,
+        )
+
+    def _record_payment_attempt(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        payment_attempt_ref: str,
+        invoice_ref: str,
+        state: str,
+        currency: str,
+        amount: Decimal,
+        occurred_at: datetime,
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        if state not in PAYMENT_STATE_ORDER:
+            raise ValueError("payment attempt state is not allowlisted")
+        currency = self._currency(currency)
+        amount = _decimal(amount, "amount")
+        if amount <= 0:
+            raise ValueError("payment attempt amount must be positive")
+        occurred_at = _timestamp(occurred_at, "occurred_at")
+        invoice = self._latest_event(session, scope=scope, lifecycle_kind="invoice", record_ref=invoice_ref)
+        if invoice is None:
+            raise KeyError("payment attempt requires an existing invoice")
+        self._ensure_payment_capacity(session, scope=scope, invoice_ref=invoice_ref, amount=amount)
+        return self._append_event(
+            session,
+            scope=scope,
+            lifecycle_kind="payment_attempt",
+            event_kind=self.PAYMENT_EVENT_KIND,
+            state=state,
+            record_ref=_text(payment_attempt_ref, "payment_attempt_ref", maximum=240),
+            parent_ref=_text(invoice_ref, "invoice_ref", maximum=240),
+            currency=currency,
+            amount=amount,
+            occurred_at=occurred_at,
+            payload={
+                "payment_attempt_ref": payment_attempt_ref,
+                "invoice_ref": invoice_ref,
+                "state": state,
+                "currency": currency,
+                "amount": str(amount),
+                "occurred_at": occurred_at.isoformat(),
+                "evidence": _copy(evidence),
+                "kind": self.PAYMENT_EVENT_KIND,
+            },
+            evidence_inputs=[evidence],
+            idempotency_key=idempotency_key,
+        )
+
+    def _record_refund(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        refund_ref: str,
+        invoice_ref: str,
+        payment_attempt_ref: str | None,
+        state: str,
+        currency: str,
+        amount: Decimal,
+        occurred_at: datetime,
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        if state not in REFUND_STATE_ORDER:
+            raise ValueError("refund state is not allowlisted")
+        currency = self._currency(currency)
+        amount = _decimal(amount, "amount")
+        if amount <= 0:
+            raise ValueError("refund amount must be positive")
+        occurred_at = _timestamp(occurred_at, "occurred_at")
+        invoice = self._latest_event(session, scope=scope, lifecycle_kind="invoice", record_ref=invoice_ref)
+        if invoice is None:
+            raise KeyError("refund requires an existing invoice")
+        settled = self._payment_total(session, scope=scope, invoice_ref=invoice_ref)
+        refunded = self._refund_total(session, scope=scope, invoice_ref=invoice_ref)
+        if refunded + amount > settled:
+            raise ValueError("refund amount must not exceed collected payment")
+        return self._append_event(
+            session,
+            scope=scope,
+            lifecycle_kind="refund",
+            event_kind=self.REFUND_EVENT_KIND,
+            state=state,
+            record_ref=_text(refund_ref, "refund_ref", maximum=240),
+            parent_ref=_text(payment_attempt_ref, "payment_attempt_ref", maximum=240) if payment_attempt_ref else _text(invoice_ref, "invoice_ref", maximum=240),
+            currency=currency,
+            amount=amount,
+            occurred_at=occurred_at,
+            payload={
+                "refund_ref": refund_ref,
+                "invoice_ref": invoice_ref,
+                "payment_attempt_ref": payment_attempt_ref,
+                "state": state,
+                "currency": currency,
+                "amount": str(amount),
+                "occurred_at": occurred_at.isoformat(),
+                "evidence": _copy(evidence),
+                "kind": self.REFUND_EVENT_KIND,
+            },
+            evidence_inputs=[evidence],
+            idempotency_key=idempotency_key,
+        )
+
+    def _record_tax_evidence(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        tax_evidence_ref: str,
+        invoice_ref: str,
+        refund_ref: str | None,
+        state: str,
+        currency: str,
+        amount: Decimal,
+        observed_at: datetime,
+        evidence: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        if state not in TAX_STATE_ORDER:
+            raise ValueError("tax evidence state is not allowlisted")
+        currency = self._currency(currency)
+        amount = _decimal(amount, "amount")
+        if amount < 0:
+            raise ValueError("amount must be non-negative")
+        observed_at = _timestamp(observed_at, "observed_at")
+        invoice = self._latest_event(session, scope=scope, lifecycle_kind="invoice", record_ref=invoice_ref)
+        if invoice is None:
+            raise KeyError("tax evidence requires an existing invoice")
+        if refund_ref:
+            refund = self._latest_event(session, scope=scope, lifecycle_kind="refund", record_ref=refund_ref)
+            if refund is None:
+                raise KeyError("tax evidence refund_ref does not match an existing refund")
+        return self._append_event(
+            session,
+            scope=scope,
+            lifecycle_kind="tax_evidence",
+            event_kind=self.TAX_EVENT_KIND,
+            state=state,
+            record_ref=_text(tax_evidence_ref, "tax_evidence_ref", maximum=240),
+            parent_ref=_text(refund_ref, "refund_ref", maximum=240) if refund_ref else _text(invoice_ref, "invoice_ref", maximum=240),
+            currency=currency,
+            amount=amount,
+            occurred_at=observed_at,
+            payload={
+                "tax_evidence_ref": tax_evidence_ref,
+                "invoice_ref": invoice_ref,
+                "refund_ref": refund_ref,
+                "state": state,
+                "currency": currency,
+                "amount": str(amount),
+                "observed_at": observed_at.isoformat(),
+                "evidence": _copy(evidence),
+                "kind": self.TAX_EVENT_KIND,
+            },
+            evidence_inputs=[evidence],
+            idempotency_key=idempotency_key,
+        )
+
+    def _append_event(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        lifecycle_kind: str,
+        event_kind: str,
+        state: str,
+        record_ref: str,
+        parent_ref: str | None,
+        currency: str | None,
+        amount: Decimal | None,
+        occurred_at: datetime,
+        payload: dict[str, Any],
+        evidence_inputs: list[dict[str, Any]],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        request_hash = _request_hash(event_kind, payload | {"scope": scope.as_dict(), "idempotency_key": idempotency_key})
+        existing = self._idempotent_event(
+            session,
+            scope=scope,
+            lifecycle_kind=lifecycle_kind,
+            idempotency_key=idempotency_key,
+        )
+        if existing is not None:
+            if existing.request_sha256 != request_hash:
+                raise ValueError("idempotency key conflicts with a different commercial request")
+            response = _copy(existing.response_json)
+            response["idempotent"] = True
+            return response
+
+        previous = self._latest_event(session, scope=scope, lifecycle_kind=lifecycle_kind, record_ref=record_ref)
+        self._enforce_forward_transition(lifecycle_kind=lifecycle_kind, previous=previous.state if previous else None, current=state)
+
+        if lifecycle_kind == "plan":
+            pass
+        elif lifecycle_kind == "subscription":
+            self._require_settlement_evidence(evidence_inputs)
+        elif lifecycle_kind == "invoice":
+            pass
+        elif lifecycle_kind == "payment_attempt":
+            pass
+        elif lifecycle_kind == "refund":
+            pass
+        elif lifecycle_kind == "tax_evidence":
+            pass
+
+        now = datetime.now(UTC)
+        event_id = new_id("commercial_event")
+        response = self._make_response(
+            scope=scope,
+            lifecycle_kind=lifecycle_kind,
+            event_kind=event_kind,
+            state=state,
+            record_ref=record_ref,
+            parent_ref=parent_ref,
+            currency=currency,
+            amount=amount,
+            occurred_at=occurred_at,
+            request_sha256=request_hash,
+            evidence_inputs=evidence_inputs,
+            idempotent=False,
+            recorded_at=now,
+        )
+        event = CommercialLifecycleEventRow(
+            id=event_id,
+            lifecycle_kind=lifecycle_kind,
+            event_kind=event_kind,
+            state=state,
+            customer_ref=scope.customer_ref,
+            deployment_ref=scope.deployment_ref,
+            tenant_ref=scope.tenant_ref,
+            entity_ref=scope.entity_ref,
+            store_ref=scope.store_ref,
+            record_ref=record_ref,
+            parent_ref=parent_ref,
+            currency=currency,
+            amount=amount,
+            payload_json=_copy(payload),
+            response_json=_copy(response),
+            request_sha256=request_hash,
+            decision_sha256=response["decision_sha256"],
+            idempotency_key=idempotency_key,
+            occurred_at=occurred_at,
+            recorded_at=now,
+        )
+        session.add(event)
+        for entry in evidence_inputs:
+            self._append_evidence(
+                session,
+                event_id=event_id,
+                scope=scope,
+                evidence=entry,
+                recorded_at=now,
+        )
+        entitlement = self._recompute_entitlement(session, scope=scope, trigger_event=event, trigger_payload=payload, recorded_at=now)
+        if entitlement is not None:
+            session.add(entitlement)
+        session.flush()
+        return response
+
+    def _recompute_entitlement(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        trigger_event: CommercialLifecycleEventRow,
+        trigger_payload: dict[str, Any],
+        recorded_at: datetime,
+    ) -> CommercialLifecycleEventRow | None:
+        state, reason, derived = self._derive_entitlement(session, scope=scope, as_of=trigger_event.recorded_at)
+        latest = self._latest_event(session, scope=scope, lifecycle_kind="entitlement", record_ref="entitlement")
+        if latest is not None and latest.state == state and latest.payload_json.get("reason") == reason:
+            return None
+        response = self._make_response(
+            scope=scope,
+            lifecycle_kind="entitlement",
+            event_kind=self.ENTITLEMENT_EVENT_KIND,
+            state=state,
+            record_ref="entitlement",
+            parent_ref=trigger_event.record_ref,
+            currency=derived.get("currency"),
+            amount=_decimal(derived.get("outstanding_total"), "outstanding_total"),
+            occurred_at=trigger_event.occurred_at,
+            request_sha256=_sha256(
+                {
+                    "kind": self.ENTITLEMENT_EVENT_KIND,
+                    "scope": scope.as_dict(),
+                    "trigger": trigger_payload,
+                    "state": state,
+                    "reason": reason,
+                }
+            ),
+            evidence_inputs=[],
+            idempotent=False,
+            recorded_at=recorded_at,
+            extra={"reason": reason, **derived},
+        )
+        return CommercialLifecycleEventRow(
+            id=new_id("commercial_entitlement"),
+            lifecycle_kind="entitlement",
+            event_kind=self.ENTITLEMENT_EVENT_KIND,
+            state=state,
+            customer_ref=scope.customer_ref,
+            deployment_ref=scope.deployment_ref,
+            tenant_ref=scope.tenant_ref,
+            entity_ref=scope.entity_ref,
+            store_ref=scope.store_ref,
+            record_ref="entitlement",
+            parent_ref=trigger_event.record_ref,
+            currency=derived.get("currency"),
+            amount=derived.get("outstanding_total"),
+            payload_json={
+                "reason": reason,
+                **derived,
+            },
+            response_json=response,
+            request_sha256=response["request_sha256"],
+            decision_sha256=response["decision_sha256"],
+            idempotency_key=f"{trigger_event.idempotency_key}:entitlement",
+            occurred_at=trigger_event.occurred_at,
+            recorded_at=recorded_at,
+        )
+
+    def _derive_entitlement(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        as_of: datetime,
+    ) -> tuple[str, str, dict[str, Any]]:
+        subscription = self._latest_event(session, scope=scope, lifecycle_kind="subscription")
+        if subscription is None:
+            return "closed", "missing_subscription", {"subscription_ref": None, "plan_ref": None, "invoice_refs": [], "payment_total": "0", "refund_total": "0", "outstanding_total": "0", "currency": None}
+        if subscription.state in {"canceled", "closed"}:
+            return "closed", "subscription_closed", self._entitlement_payload(session, scope=scope, subscription=subscription)
+        if subscription.payload_json.get("settlement_evidence") is None:
+            return "closed", "missing_settlement_evidence", self._entitlement_payload(session, scope=scope, subscription=subscription)
+        payload = self._entitlement_payload(session, scope=scope, subscription=subscription)
+        outstanding = Decimal(payload["outstanding_total"])
+        invoice_due = _timestamp(payload["invoice_due"], "invoice_due") if payload["invoice_due"] else None
+        if outstanding <= 0:
+            return "active", "subscription_and_settlement_confirmed", payload
+        if invoice_due and invoice_due < as_of:
+            return "read_only", "invoice_overdue", payload
+        if subscription.state == "past_due":
+            return "read_only", "subscription_past_due", payload
+        return "grace", "outstanding_balance", payload
+
+    def _entitlement_payload(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        subscription: CommercialLifecycleEventRow,
+    ) -> dict[str, Any]:
+        invoice_refs = []
+        payment_total = Decimal("0")
+        refund_total = Decimal("0")
+        invoice_due: datetime | None = None
+        currency = subscription.currency
+        for invoice in self._events(session, scope=scope, as_of=None, lifecycle_kind="invoice"):
+            invoice_refs.append(invoice.record_ref)
+            due_raw = invoice.payload_json.get("due_at")
+            if due_raw:
+                due_at = _timestamp(due_raw, "due_at")
+                if invoice_due is None or due_at > invoice_due:
+                    invoice_due = due_at
+            if currency is None:
+                currency = invoice.currency
+            payment_total += self._payment_total(session, scope=scope, invoice_ref=invoice.record_ref)
+            refund_total += self._refund_total(session, scope=scope, invoice_ref=invoice.record_ref)
+        outstanding = max(payment_total - refund_total, Decimal("0"))
+        return {
+            "subscription_ref": subscription.record_ref,
+            "plan_ref": subscription.parent_ref,
+            "invoice_refs": invoice_refs,
+            "payment_total": str(payment_total),
+            "refund_total": str(refund_total),
+            "outstanding_total": str(outstanding),
+            "currency": currency,
+            "invoice_due": invoice_due.isoformat() if invoice_due else None,
+        }
+
+    def _snapshot_from_events(
+        self,
+        events: list[CommercialLifecycleEventRow],
+        *,
+        scope: CommercialScope,
+        as_of: datetime | None,
+    ) -> dict[str, Any]:
+        by_kind: dict[str, list[dict[str, Any]]] = {kind: [] for kind in ("plan", "subscription", "entitlement", "invoice", "payment_attempt", "refund", "tax_evidence")}
+        for event in events:
+            by_kind[event.lifecycle_kind].append(self._event_dict(event))
+        entitlement = by_kind["entitlement"][-1] if by_kind["entitlement"] else None
+        latest_plan = by_kind["plan"][-1] if by_kind["plan"] else None
+        latest_subscription = by_kind["subscription"][-1] if by_kind["subscription"] else None
+        latest_invoice = by_kind["invoice"][-1] if by_kind["invoice"] else None
+        return {
+            "contract_id": self.CONTRACT_ID,
+            "scope": scope.as_dict(),
+            "scope_hash": scope.scope_hash,
+            "as_of": as_of.astimezone(UTC).isoformat() if as_of else None,
+            "plan": latest_plan,
+            "subscription": latest_subscription,
+            "entitlement": entitlement,
+            "invoice": latest_invoice,
+            "payment_attempts": by_kind["payment_attempt"],
+            "refunds": by_kind["refund"],
+            "tax_evidence": by_kind["tax_evidence"],
+            "events": [self._event_dict(event) for event in events],
+        }
+
+    def _make_response(
+        self,
+        *,
+        scope: CommercialScope,
+        lifecycle_kind: str,
+        event_kind: str,
+        state: str,
+        record_ref: str,
+        parent_ref: str | None,
+        currency: str | None,
+        amount: Decimal | None,
+        occurred_at: datetime,
+        request_sha256: str,
+        evidence_inputs: list[dict[str, Any]],
+        idempotent: bool,
+        recorded_at: datetime,
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "contract_id": self.CONTRACT_ID,
+            "kind": event_kind,
+            "lifecycle_kind": lifecycle_kind,
+            "state": state,
+            "scope": scope.as_dict(),
+            "record_ref": record_ref,
+            "parent_ref": parent_ref,
+            "currency": currency,
+            "amount": str(amount) if amount is not None else None,
+            "occurred_at": occurred_at.astimezone(UTC).isoformat(),
+            "recorded_at": recorded_at.astimezone(UTC).isoformat(),
+            "request_sha256": request_sha256,
+            "evidence_lineage": [
+                {
+                    "evidence_id": item["evidence_id"],
+                    "evidence_sha256": item["evidence_sha256"],
+                    "evidence_kind": item["evidence_kind"],
+                    "authority": item["authority"],
+                    "source_kind": item["source_kind"],
+                    "purposes": list(item.get("purposes", [])),
+                }
+                for item in evidence_inputs
+            ],
+        }
+        if extra:
+            payload.update(extra)
+        payload["decision_sha256"] = _sha256(payload)
+        payload["idempotent"] = idempotent
+        return payload
+
+    def _append_evidence(
+        self,
+        session: Session,
+        *,
+        event_id: str,
+        scope: CommercialScope,
+        evidence: dict[str, Any],
+        recorded_at: datetime,
+    ) -> None:
+        evidence_id = _text(evidence.get("evidence_id"), "evidence_id", maximum=240)
+        evidence_sha256 = _text(evidence.get("evidence_sha256"), "evidence_sha256", maximum=64)
+        if len(evidence_sha256) != 64 or any(ch not in HEX64 for ch in evidence_sha256.lower()):
+            raise ValueError("evidence_sha256 must be a 64-character lowercase hex digest")
+        row = CommercialLifecycleEvidenceRow(
+            id=new_id("commercial_evidence"),
+            event_id=event_id,
+            customer_ref=scope.customer_ref,
+            deployment_ref=scope.deployment_ref,
+            tenant_ref=scope.tenant_ref,
+            entity_ref=scope.entity_ref,
+            store_ref=scope.store_ref,
+            evidence_id=evidence_id,
+            evidence_sha256=evidence_sha256.lower(),
+            evidence_kind=_text(evidence.get("evidence_kind"), "evidence_kind", maximum=120),
+            authority=_text(evidence.get("authority"), "authority", maximum=300),
+            source_kind=_text(evidence.get("source_kind"), "source_kind", maximum=120),
+            purposes_json=list(evidence.get("purposes") or []),
+            recorded_at=recorded_at,
+        )
+        session.add(row)
+
+    def _events(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        as_of: datetime | None,
+        lifecycle_kind: str | None = None,
+    ) -> list[CommercialLifecycleEventRow]:
+        query = select(CommercialLifecycleEventRow).where(
+            CommercialLifecycleEventRow.customer_ref == scope.customer_ref,
+            CommercialLifecycleEventRow.deployment_ref == scope.deployment_ref,
+            CommercialLifecycleEventRow.tenant_ref == scope.tenant_ref,
+            CommercialLifecycleEventRow.entity_ref == scope.entity_ref,
+            CommercialLifecycleEventRow.store_ref == scope.store_ref,
+        )
+        if lifecycle_kind is not None:
+            query = query.where(CommercialLifecycleEventRow.lifecycle_kind == lifecycle_kind)
+        if as_of is not None:
+            query = query.where(CommercialLifecycleEventRow.recorded_at <= as_of)
+        query = query.order_by(CommercialLifecycleEventRow.recorded_at, CommercialLifecycleEventRow.id)
+        return list(session.scalars(query))
+
+    def _latest_event(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        lifecycle_kind: str,
+        record_ref: str | None = None,
+    ) -> CommercialLifecycleEventRow | None:
+        query = select(CommercialLifecycleEventRow).where(
+            CommercialLifecycleEventRow.customer_ref == scope.customer_ref,
+            CommercialLifecycleEventRow.deployment_ref == scope.deployment_ref,
+            CommercialLifecycleEventRow.tenant_ref == scope.tenant_ref,
+            CommercialLifecycleEventRow.entity_ref == scope.entity_ref,
+            CommercialLifecycleEventRow.store_ref == scope.store_ref,
+            CommercialLifecycleEventRow.lifecycle_kind == lifecycle_kind,
+        )
+        if record_ref is not None:
+            query = query.where(CommercialLifecycleEventRow.record_ref == record_ref)
+        query = query.order_by(CommercialLifecycleEventRow.recorded_at.desc(), CommercialLifecycleEventRow.id.desc())
+        return session.scalars(query).first()
+
+    def _idempotent_event(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        lifecycle_kind: str,
+        idempotency_key: str,
+    ) -> CommercialLifecycleEventRow | None:
+        query = select(CommercialLifecycleEventRow).where(
+            CommercialLifecycleEventRow.customer_ref == scope.customer_ref,
+            CommercialLifecycleEventRow.deployment_ref == scope.deployment_ref,
+            CommercialLifecycleEventRow.tenant_ref == scope.tenant_ref,
+            CommercialLifecycleEventRow.entity_ref == scope.entity_ref,
+            CommercialLifecycleEventRow.store_ref == scope.store_ref,
+            CommercialLifecycleEventRow.lifecycle_kind == lifecycle_kind,
+            CommercialLifecycleEventRow.idempotency_key == idempotency_key,
+        )
+        return session.scalars(query).first()
+
+    def _payment_total(self, session: Session, *, scope: CommercialScope, invoice_ref: str) -> Decimal:
+        total = Decimal("0")
+        for row in self._events(session, scope=scope, as_of=None, lifecycle_kind="payment_attempt"):
+            if row.parent_ref != invoice_ref:
+                continue
+            if row.state in {"succeeded", "settled"}:
+                total += row.amount or Decimal("0")
+        return total
+
+    def _refund_total(self, session: Session, *, scope: CommercialScope, invoice_ref: str) -> Decimal:
+        total = Decimal("0")
+        for row in self._events(session, scope=scope, as_of=None, lifecycle_kind="refund"):
+            if row.payload_json.get("invoice_ref") != invoice_ref:
+                continue
+            if row.state in {"approved", "paid"}:
+                total += row.amount or Decimal("0")
+        return total
+
+    def _ensure_payment_capacity(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        invoice_ref: str,
+        amount: Decimal,
+    ) -> None:
+        invoice = self._latest_event(session, scope=scope, lifecycle_kind="invoice", record_ref=invoice_ref)
+        if invoice is None:
+            raise KeyError("invoice not found for exact scope")
+        payment_total = self._payment_total(session, scope=scope, invoice_ref=invoice_ref)
+        refund_total = self._refund_total(session, scope=scope, invoice_ref=invoice_ref)
+        outstanding = (invoice.amount or Decimal("0")) - payment_total + refund_total
+        if amount > max(outstanding, Decimal("0")):
+            raise ValueError("payment attempt amount must not exceed the outstanding invoice balance")
+
+    def _require_settlement_evidence(self, evidence_inputs: list[dict[str, Any]]) -> None:
+        if len(evidence_inputs) < 2:
+            raise ValueError("subscription requires both subscription evidence and settlement evidence")
+        first = _text(evidence_inputs[0].get("evidence_id"), "subscription_evidence_id", maximum=240)
+        second = _text(evidence_inputs[1].get("evidence_id"), "settlement_evidence_id", maximum=240)
+        if first == second:
+            raise ValueError("subscription evidence and settlement evidence must be distinct")
+
+    def _enforce_forward_transition(self, *, lifecycle_kind: str, previous: str | None, current: str) -> None:
+        if previous is None:
+            return
+        if lifecycle_kind == "plan":
+            order = PLAN_STATE_ORDER
+        elif lifecycle_kind == "subscription":
+            order = SUBSCRIPTION_STATE_ORDER
+        elif lifecycle_kind == "invoice":
+            order = INVOICE_STATE_ORDER
+        elif lifecycle_kind == "payment_attempt":
+            order = PAYMENT_STATE_ORDER
+        elif lifecycle_kind == "refund":
+            order = REFUND_STATE_ORDER
+        elif lifecycle_kind == "tax_evidence":
+            order = TAX_STATE_ORDER
+        else:
+            return
+        if order[current] < order[previous]:
+            raise ValueError(f"{lifecycle_kind} state cannot move backwards")
+
+    def _event_dict(self, row: CommercialLifecycleEventRow) -> dict[str, Any]:
+        reason = row.payload_json.get("reason")
+        return {
+            "id": row.id,
+            "lifecycle_kind": row.lifecycle_kind,
+            "event_kind": row.event_kind,
+            "state": row.state,
+            "record_ref": row.record_ref,
+            "parent_ref": row.parent_ref,
+            "currency": row.currency,
+            "amount": str(row.amount) if row.amount is not None else None,
+            "reason": reason,
+            "payload": _copy(row.payload_json),
+            "response": _copy(row.response_json),
+            "request_sha256": row.request_sha256,
+            "decision_sha256": row.decision_sha256,
+            "idempotency_key": row.idempotency_key,
+            "occurred_at": row.occurred_at.astimezone(UTC).isoformat(),
+            "recorded_at": row.recorded_at.astimezone(UTC).isoformat(),
+        }
+
+    def _currency(self, value: str) -> str:
+        currency = _text(value, "currency", maximum=3).upper()
+        if currency not in ALLOWED_COMMERICAL_CURRENCIES:
+            raise ValueError("currency is not allowlisted")
+        return currency
+
+    def _scope(self, **scope: Any) -> CommercialScope:
+        return CommercialScope(
+            customer_ref=_text(scope.get("customer_ref"), "customer_ref"),
+            deployment_ref=_text(scope.get("deployment_ref"), "deployment_ref"),
+            tenant_ref=_text(scope.get("tenant_ref"), "tenant_ref"),
+            entity_ref=_text(scope.get("entity_ref"), "entity_ref"),
+            store_ref=_text(scope.get("store_ref"), "store_ref"),
+        )
