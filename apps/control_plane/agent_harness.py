@@ -759,11 +759,21 @@ class AgentHarnessService:
             for observation in observations:
                 key = observation.task_id or f"verifier:{observation.verifier_id}"
                 latest.setdefault(key, observation)
-            edges_query = select(GraphEdgeRow).where(GraphEdgeRow.project_id == project.id)
+            edges_query = select(GraphEdgeRow).where(
+                GraphEdgeRow.project_id == project.id,
+                GraphEdgeRow.effective_from <= as_of,
+                or_(
+                    GraphEdgeRow.effective_until.is_(None),
+                    GraphEdgeRow.effective_until > as_of,
+                ),
+            )
             if graph_kind:
                 edges_query = edges_query.where(GraphEdgeRow.graph_kind == graph_kind)
             edges = session.scalars(edges_query.order_by(GraphEdgeRow.id)).all()
-            nodes_query = select(GraphNodeRow).where(GraphNodeRow.project_id == project.id)
+            nodes_query = select(GraphNodeRow).where(
+                GraphNodeRow.project_id == project.id,
+                GraphNodeRow.created_at <= as_of,
+            )
             if graph_kind:
                 connected_ids = {
                     node_id
@@ -974,6 +984,12 @@ class AgentHarnessService:
                     "confidence": e.confidence,
                     "evidence_ref": e.evidence_ref,
                     "can_satisfy_gate": e.derivation_method != "inferred",
+                    "effective_from": _utc(e.effective_from).isoformat(),
+                    "effective_until": (
+                        _utc(e.effective_until).isoformat()
+                        if e.effective_until is not None
+                        else None
+                    ),
                     "content_sha256": e.content_sha256,
                 }
                 for e in edges
@@ -1036,3 +1052,225 @@ class AgentHarnessService:
         }
         snapshot["snapshot_sha256"] = _sha(snapshot)
         return snapshot
+
+    def temporal_graph_projection(
+        self,
+        project_id: str,
+        *,
+        principal: Principal,
+        entity_scope: dict[str, Any],
+        store_ref: str,
+        as_of: datetime,
+        graph_kind: str | None = None,
+    ) -> dict[str, Any]:
+        """Project the canonical Graph under exact current scope and valid time.
+
+        This is a read seam for governed retrieval. It does not infer or persist
+        edges. Rows with incomplete authority remain visible only as blockers,
+        never as gate-satisfying knowledge.
+        """
+
+        contract_id = "kjds-canonical-graph-temporal-read-v1"
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must include a timezone")
+        if graph_kind and graph_kind not in GRAPH_KINDS:
+            raise ValueError("unknown graph kind")
+        cutoff = as_of.astimezone(UTC)
+        if not principal.can_access_store(store_ref):
+            raise PermissionError("store is outside authorized scope")
+
+        status = str(entity_scope.get("status", "no_data"))
+        authority_sha256 = entity_scope.get("authority_sha256")
+        entity_ref = entity_scope.get("entity_ref")
+        exact_scope = (
+            status == "ready"
+            and entity_scope.get("tenant_ref") == principal.tenant_ref
+            and entity_scope.get("store_ref") == store_ref
+            and isinstance(entity_ref, str)
+            and bool(entity_ref)
+            and isinstance(authority_sha256, str)
+            and len(authority_sha256) == 64
+            and all(
+                character in "0123456789abcdef"
+                for character in authority_sha256.lower()
+            )
+        )
+        scope = {
+            "tenant_ref": principal.tenant_ref,
+            "entity_ref": entity_ref if exact_scope else None,
+            "store_ref": store_ref,
+            "scope_grant_authority_sha256": (
+                authority_sha256 if exact_scope else None
+            ),
+        }
+
+        def empty_projection(result_status: str, reason: str) -> dict[str, Any]:
+            result = {
+                "contract_id": contract_id,
+                "status": result_status,
+                "reason": reason,
+                "project_id": project_id,
+                "scope": scope,
+                "as_of": cutoff.isoformat(),
+                "nodes": [],
+                "edges": [],
+                "generated_edges_are_observations": True,
+                "formal_fact_allowed": False,
+                "external_write_allowed": False,
+            }
+            result["snapshot_sha256"] = _sha(result)
+            return result
+
+        if not exact_scope:
+            result_status = "blocked" if status == "blocked" else "no_data"
+            return empty_projection(
+                result_status,
+                "exact_current_scope_authority_required",
+            )
+
+        expected_scope = {
+            "tenant_ref": principal.tenant_ref,
+            "entity_ref": entity_ref,
+            "store_ref": store_ref,
+            "scope_grant_authority_sha256": authority_sha256,
+        }
+        with Session(self.engine) as session:
+            project = session.scalar(
+                select(GraphProjectRow).where(
+                    GraphProjectRow.id == project_id,
+                    GraphProjectRow.tenant_ref == principal.tenant_ref,
+                    GraphProjectRow.entity_ref == entity_ref,
+                    GraphProjectRow.store_ref == store_ref,
+                )
+            )
+            if project is None:
+                return empty_projection(
+                    "no_data",
+                    "exact_scope_project_not_found",
+                )
+
+            all_edges_query = select(GraphEdgeRow).where(
+                GraphEdgeRow.project_id == project.id
+            )
+            valid_edges_query = all_edges_query.where(
+                GraphEdgeRow.effective_from <= cutoff,
+                or_(
+                    GraphEdgeRow.effective_until.is_(None),
+                    GraphEdgeRow.effective_until > cutoff,
+                ),
+            )
+            if graph_kind:
+                all_edges_query = all_edges_query.where(
+                    GraphEdgeRow.graph_kind == graph_kind
+                )
+                valid_edges_query = valid_edges_query.where(
+                    GraphEdgeRow.graph_kind == graph_kind
+                )
+            all_edges = list(session.scalars(all_edges_query))
+            edges = list(
+                session.scalars(valid_edges_query.order_by(GraphEdgeRow.id))
+            )
+            connected_ids = {
+                node_id
+                for edge in edges
+                for node_id in (edge.source_node_id, edge.target_node_id)
+            }
+            nodes_query = select(GraphNodeRow).where(
+                GraphNodeRow.project_id == project.id,
+                GraphNodeRow.created_at <= cutoff,
+                GraphNodeRow.id.in_(connected_ids),
+            )
+            nodes = list(session.scalars(nodes_query.order_by(GraphNodeRow.id)))
+
+        if not edges:
+            reason = (
+                "no_valid_edges_as_of" if all_edges else "graph_edges_missing"
+            )
+            return empty_projection("no_data", reason)
+
+        node_by_id = {node.id: node for node in nodes}
+        missing_endpoint_ids = {
+            node_id
+            for edge in edges
+            for node_id in (edge.source_node_id, edge.target_node_id)
+            if node_id not in node_by_id
+        }
+        if missing_endpoint_ids:
+            return empty_projection(
+                "blocked",
+                "edge_endpoint_outside_exact_project_scope_or_as_of",
+            )
+
+        invalid_node_ids = {
+            node.id
+            for node in nodes
+            if node.scope_json != expected_scope
+        }
+        if invalid_node_ids:
+            return empty_projection(
+                "blocked",
+                "graph_node_exact_scope_authority_mismatch",
+            )
+
+        node_items = [
+            {
+                "id": node.id,
+                "kind": node.graph_kind,
+                "stable_key": node.stable_key,
+                "type": node.node_type,
+                "label": node.label,
+                "authority": node.authority,
+                "source": node.source,
+                "version": node.version,
+                "content_sha256": node.content_sha256,
+            }
+            for node in nodes
+        ]
+        edge_items: list[dict[str, Any]] = []
+        eligible_count = 0
+        for edge in edges:
+            blockers: list[str] = []
+            if edge.derivation_method == "inferred":
+                blockers.append("inferred_edge_observation_only")
+            if not edge.evidence_ref:
+                blockers.append("edge_evidence_missing")
+            eligible = not blockers
+            eligible_count += int(eligible)
+            edge_items.append(
+                {
+                    "id": edge.id,
+                    "kind": edge.graph_kind,
+                    "source": edge.source_node_id,
+                    "target": edge.target_node_id,
+                    "type": edge.edge_type,
+                    "derivation": edge.derivation_method,
+                    "confidence": edge.confidence,
+                    "evidence_ref": edge.evidence_ref,
+                    "effective_from": _utc(edge.effective_from).isoformat(),
+                    "effective_until": (
+                        _utc(edge.effective_until).isoformat()
+                        if edge.effective_until is not None
+                        else None
+                    ),
+                    "eligible_for_retrieval": eligible,
+                    "blockers": blockers,
+                    "content_sha256": edge.content_sha256,
+                }
+            )
+        result = {
+            "contract_id": contract_id,
+            "status": "ready" if eligible_count else "blocked",
+            "reason": (
+                None if eligible_count else "no_evidence_backed_edge_available"
+            ),
+            "project_id": project_id,
+            "scope": scope,
+            "as_of": cutoff.isoformat(),
+            "nodes": node_items,
+            "edges": edge_items,
+            "generated_edges_are_observations": True,
+            "formal_fact_allowed": False,
+            "external_write_allowed": False,
+        }
+        result["snapshot_sha256"] = _sha(result)
+        return result
