@@ -477,7 +477,6 @@ def test_leader_relation_rejects_ineligible_observation(engine, kernel):
     snapshot_ref = result["snapshot"]["snapshot_ref"]
     group_table = reflected_table(engine, GROUPS)
     observation_table = reflected_table(engine, OBSERVATIONS)
-    leader_table = reflected_table(engine, LEADERS)
     with engine.connect() as connection:
         group = connection.execute(
             select(group_table).where(group_table.c.snapshot_ref == snapshot_ref)
@@ -488,18 +487,19 @@ def test_leader_relation_rejects_ineligible_observation(engine, kernel):
                 observation_table.c.eligibility_state != "eligible",
             )
         ).mappings().one()
-        leader = dict(connection.execute(select(leader_table).limit(1)).mappings().one())
-    leader.update(
-        leader_ref=f"sbl_{uuid4().hex}",
-        group_ref=group["group_ref"],
-        snapshot_ref=group["snapshot_ref"],
-        tenant_ref=group["tenant_ref"],
-        entity_ref=group["entity_ref"],
-        store_ref=group["store_ref"],
-        scope_authority_sha256=group["scope_authority_sha256"],
-        observation_ref=ineligible["observation_ref"],
-        ordinal=999,
-    )
+    leader_table = reflected_table(engine, LEADERS)
+    leader = {
+        "leader_ref": f"sbl_{uuid4().hex}",
+        "observation_ref": ineligible["observation_ref"],
+        "group_ref": group["group_ref"],
+        "snapshot_ref": group["snapshot_ref"],
+        "tenant_ref": group["tenant_ref"],
+        "entity_ref": group["entity_ref"],
+        "store_ref": group["store_ref"],
+        "scope_authority_sha256": group["scope_authority_sha256"],
+        "ordinal": 1,
+        "created_at": NOW,
+    }
     with (
         pytest.raises(DBAPIError, match="leader eligibility conservation"),
         engine.begin() as connection,

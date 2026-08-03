@@ -2712,10 +2712,17 @@ class StrategicBenchmarkKernel:
     ) -> tuple[datetime, str]:
         try:
             prefix, body = cursor.split(".", 1)
-            if prefix != "sbcursor_v2":
+            if prefix != "sbcursor_v2" or not re.fullmatch(r"[A-Za-z0-9_-]+", body):
                 raise ValueError
             padding = "=" * (-len(body) % 4)
-            sealed = base64.urlsafe_b64decode(body + padding)
+            sealed = base64.b64decode(
+                (body + padding).encode("ascii"),
+                altchars=b"-_",
+                validate=True,
+            )
+            canonical_body = base64.urlsafe_b64encode(sealed).decode().rstrip("=")
+            if not hmac.compare_digest(canonical_body, body):
+                raise ValueError
             if len(sealed) <= 28:
                 raise ValueError
             nonce, ciphertext = sealed[:12], sealed[12:]

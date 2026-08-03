@@ -655,6 +655,21 @@ def test_cursor_binds_exact_scope_authority_filter_as_of_and_position(
             limit=1,
             cursor=cursor[:-1] + ("0" if cursor[-1] != "0" else "1"),
         )
+    for malformed_cursor in (
+        cursor[: cursor.index(".") + 5] + "!!!!" + cursor[cursor.index(".") + 5 :],
+        cursor + "=",
+        cursor + "==",
+    ):
+        with pytest.raises(KeyError):
+            service.list(
+                principal=principal(),
+                store_ref="store-a",
+                as_of=NOW,
+                domain="product_experience",
+                metric_id="activation_rate",
+                limit=1,
+                cursor=malformed_cursor,
+            )
     scope.authority_version = "v2"
     assert service.list(
         principal=principal(), store_ref="store-a", as_of=NOW, limit=100
