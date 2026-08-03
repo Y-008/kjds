@@ -334,6 +334,13 @@
       "activation_trigger": "经营计划获准交付独立 Listing、广告或采购编排消费者前"
     },
     {
+      "module": "strategic_benchmark.py",
+      "status": "internal_only",
+      "delivery_contract": "immutable_exact_scope_benchmark_snapshot_and_comparison_ledger",
+      "rationale": "战略 Benchmark 只在同一事务冻结脱敏 Evidence、可比组、观测哈希和保守 Leader 投影；不声称全局 Top1，不创建 Fact、FinanceEntry、Approval、Permit、Outbox 事件或任何外部动作。",
+      "activation_trigger": "Benchmark 结果获准推送 GapGraph、资本配置、销售编排或独立跨服务消费者前"
+    },
+    {
       "module": "scoped_facts.py",
       "status": "internal_only",
       "delivery_contract": "transactional_scoped_fact_and_promotion_ledger",

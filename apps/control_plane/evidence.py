@@ -60,6 +60,8 @@ UNIQUE_SOURCE_REF_SOURCES = {
     "marketplace-observation",
     "ozon-isolated-execution-worker",
     "primary-source-intake",
+    "strategic-benchmark-snapshot",
+    "strategic-benchmark-observation",
     "scope_authority_review",
     "scope_authority_source",
     "seller_erp_bridge_binding",
@@ -118,6 +120,15 @@ class EvidenceRecordRow(Base):
     __tablename__ = "evidence_records"
     __table_args__ = (
         UniqueConstraint("blob_sha256", "source", "source_ref", "effective_at", name="uq_evidence_capture"),
+        UniqueConstraint(
+            "id",
+            "blob_sha256",
+            "source",
+            "source_ref",
+            "grade",
+            "effective_at",
+            name="uq_evidence_record_strategic_binding",
+        ),
         Index(
             "uq_execution_evidence_source_ref",
             "source",
@@ -141,6 +152,22 @@ class EvidenceRecordRow(Base):
             unique=True,
             postgresql_where=text("source = 'primary-source-intake'"),
             sqlite_where=text("source = 'primary-source-intake'"),
+        ),
+        Index(
+            "uq_strategic_benchmark_evidence_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'strategic-benchmark-snapshot'"),
+            sqlite_where=text("source = 'strategic-benchmark-snapshot'"),
+        ),
+        Index(
+            "uq_strategic_benchmark_observation_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'strategic-benchmark-observation'"),
+            sqlite_where=text("source = 'strategic-benchmark-observation'"),
         ),
         Index(
             "uq_scope_authority_source_ref",

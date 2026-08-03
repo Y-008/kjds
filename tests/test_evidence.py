@@ -115,6 +115,48 @@ def test_primary_source_intake_evidence_source_ref_is_globally_immutable():
         assert session.query(EvidenceRecordRow).count() == 1
 
 
+def test_strategic_benchmark_evidence_source_ref_is_globally_immutable():
+    engine, service = make_service()
+    common = {
+        "filename": "snapshot.json",
+        "content_type": "application/json",
+        "source": "strategic-benchmark-snapshot",
+        "source_ref": "strategic-benchmark-snapshot://sbs_00000000000000000000000000000001",
+        "grade": EvidenceGrade.D,
+        "effective_at": "2026-08-03T00:00:00Z",
+        "effective_until": "2026-08-04T00:00:00Z",
+        "created_by": "benchmark-kernel",
+    }
+    first = service.capture(content=b'{"request_sha256":"first"}', **common)
+
+    assert service.capture(content=b'{"request_sha256":"first"}', **common).id == first.id
+    with pytest.raises(ValueError, match="different immutable content"):
+        service.capture(content=b'{"request_sha256":"second"}', **common)
+    with Session(engine) as session:
+        assert session.query(EvidenceRecordRow).count() == 1
+
+
+def test_strategic_benchmark_observation_source_ref_is_globally_immutable():
+    engine, service = make_service()
+    digest = "a" * 64
+    common = {
+        "filename": "observation.json",
+        "content_type": "application/json",
+        "source": "strategic-benchmark-observation",
+        "source_ref": f"strategic-benchmark-observation://sha256/{digest}",
+        "grade": EvidenceGrade.A,
+        "effective_at": "2026-08-03T00:00:00Z",
+        "effective_until": "2026-08-04T00:00:00Z",
+        "created_by": "benchmark-source-adapter",
+    }
+    first = service.capture(content=b'{"metric":"first"}', **common)
+    assert service.capture(content=b'{"metric":"first"}', **common).id == first.id
+    with pytest.raises(ValueError, match="different immutable content"):
+        service.capture(content=b'{"metric":"second"}', **common)
+    with Session(engine) as session:
+        assert session.query(EvidenceRecordRow).count() == 1
+
+
 def test_other_evidence_sources_keep_bitemporal_source_ref_semantics():
     _, service = make_service()
 

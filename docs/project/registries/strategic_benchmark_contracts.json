@@ -30,6 +30,97 @@
     "creates_fact_or_finance_entry": false,
     "creates_approval_permit_payment_or_external_write": false
   },
+  "observation_evidence_contract": {
+    "schema_id": "kjds-strategic-benchmark-observation-v1",
+    "schema_version": "1",
+    "evidence_source": "strategic-benchmark-observation",
+    "content_type": "application/json",
+    "content_addressed_source_ref_prefix": "strategic-benchmark-observation://sha256/",
+    "recorded_at_must_not_exceed_as_of": true,
+    "http_accepts_evidence_refs_only": true,
+    "additional_payload_fields_allowed": false,
+    "required_payload_fields": [
+      "schema_id",
+      "schema_version",
+      "tenant_ref",
+      "entity_ref",
+      "store_ref",
+      "scope_authority_sha256",
+      "domain",
+      "metric_id",
+      "cohort_ref",
+      "market",
+      "window_start",
+      "window_end",
+      "methodology_id",
+      "methodology_version",
+      "source_contract_id",
+      "source_contract_version",
+      "subject_ref",
+      "subject_class",
+      "value",
+      "uncertainty_lower",
+      "uncertainty_upper",
+      "confidence_bps",
+      "sample_size",
+      "observed_at",
+      "recorded_at"
+    ],
+    "source_contracts": [
+      {
+        "id": "kjds-internal-reviewed-metric-v1",
+        "version": "1",
+        "source_kind": "independently_reviewed_internal",
+        "public_exact_allowed": false,
+        "subject_classes": ["kjds_current"]
+      },
+      {
+        "id": "official-public-benchmark-v1",
+        "version": "1",
+        "source_kind": "official_first_party",
+        "public_exact_allowed": true,
+        "subject_classes": ["peer", "frontier_candidate"]
+      },
+      {
+        "id": "audited-filing-benchmark-v1",
+        "version": "1",
+        "source_kind": "audited_filing",
+        "public_exact_allowed": true,
+        "subject_classes": ["peer", "frontier_candidate"]
+      },
+      {
+        "id": "licensed-primary-benchmark-v1",
+        "version": "1",
+        "source_kind": "licensed_primary",
+        "public_exact_allowed": false,
+        "subject_classes": ["peer", "frontier_candidate"]
+      },
+      {
+        "id": "terms-permitted-public-measurement-v1",
+        "version": "1",
+        "source_kind": "terms_permitted_public_measurement",
+        "public_exact_allowed": true,
+        "subject_classes": ["peer", "frontier_candidate"]
+      }
+    ]
+  },
+  "eligibility_policy": {
+    "contract_id": "kjds-strategic-benchmark-eligibility-v1",
+    "methodology_id": "conservative-interval-separation",
+    "methodology_version": "1",
+    "minimum_confidence_bps": 8000,
+    "minimum_sample_size": 5,
+    "requires_finite_non_negative_values": true,
+    "requires_uncertainty_interval": true,
+    "requires_current_exact_scope_evidence": true,
+    "metric_overrides": {
+      "global_acquisition_and_sales.verified_account_coverage": {
+        "minimum_source_grade": "B",
+        "minimum_confidence_bps": 8500,
+        "minimum_sample_size": 10
+      }
+    }
+  },
   "top1_semantics": {
     "global_top1_allowed": false,
     "allowed_labels": [

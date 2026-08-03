@@ -43,6 +43,7 @@ from .routers import (
     seller_erp_bridge,
     seller_strategy,
     sourcing_intelligence,
+    strategic_benchmark,
     system,
     warehouse_fulfillment,
 )
@@ -150,9 +151,17 @@ async def contract_http_error(request: Request, exc: HTTPException) -> JSONRespo
 
 @app.exception_handler(RequestValidationError)
 async def contract_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    public_errors = [
+        {
+            key: value
+            for key, value in error.items()
+            if key in {"type", "loc", "msg"}
+        }
+        for error in exc.errors()
+    ]
     return contract_error(
         status_code=422,
-        detail=exc.errors(),
+        detail=public_errors,
         request_id=getattr(request.state, "request_id", request_id_for(request)),
         trace_id=getattr(request.state, "trace_id", trace_id_for(request)),
     )
@@ -240,6 +249,7 @@ _ROUTE_MODULES = (
     pim,
     product_content,
     primary_source_intake,
+    strategic_benchmark,
     profit_command,
     returns_aftersales,
     warehouse_fulfillment,
