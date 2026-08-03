@@ -185,7 +185,7 @@
 | OPS-DY-001 | G-1–G6 | 抖音全量研究与运营分项 | 抖音运营+视频+产品+销售 | 官方 OAuth/创作者中心优先，专用浏览器为降级；建立视频钩子、节奏、评论意图、创作者/商品匹配、直播/短视频漏斗、授权账号指标和内容 campaign 基线，来源中断进入 Adapter 解决 Loop，账号绑定与 grant 前不冒充真实执行。 | BAS-178 | IN_PROGRESS_PREP_ONLY |
 | BAS-179 | G-1–G6 | 俄罗斯市场需求与热点事件全量雷达 | Russia Market Intelligence+Commerce+Evidence+Risk | 组合 Ozon/Wildberries/Yandex Market 站内需求、Yandex Wordstat 地区/时间需求、Telegram/VK 公开讨论、平台官方变更与宏观/贸易/物流事件；每源全分页/字段/时间窗、记录 native cap、checkpoint、失败页、守恒与历史回补，按需求/竞争/热点/平台/宏观/供应分层并做可解释跨源评分。当前先完成来源与 fixture，不把公共新闻冒充 SKU 销量或利润。 | BAS-178、BR-139 | IN_PROGRESS_PREP_ONLY |
 | BAS-180 | G-1 | Commander 与媒体子代理合同冻结 | Agent Platform+Media+Evidence+Risk | 冻结 Commander/Tool Gateway、五个媒体 Tool、异步 Job、单租户 Connector、ContentAsset/Evidence 引用和 Source Adoption；本票仅 ADR/registry/contract tests，不实现迁移、API、Worker、MCP 或 Provider。 | BAS-172、BAS-176、BAS-178 | DONE_ENGINEERING |
-| BAS-181 | G-1 | 媒体 Connector Registry 与租户绑定 | Agent Platform+Identity+Media | 实现本地/托管 Connector 注册、exact-tenant 绑定、能力与脱敏健康状态；不保存 OAuth/Cookie 正文，不建立跨身份轮换池。 | BAS-180 | IN_PROGRESS |
+| BAS-181 | G-1 | 媒体 Connector Registry 与租户绑定 | Agent Platform+Identity+Media | 实现本地/托管 Connector 注册、exact-tenant 绑定、能力与脱敏健康状态；不保存 OAuth/Cookie 正文，不建立跨身份轮换池。 | BAS-180 | DONE_ENGINEERING |
 | BAS-182 | G-1 | Codex app-server Image Worker | Agent Platform+Media | 以固定协议实现事件解析、产物回收、LOGIN_REQUIRED/LIMITED/UNKNOWN_OUTCOME 停止与回读；不依赖 ChatGPT 网页 DOM 作为生产主通道。 | BAS-181 | QUEUED |
 | BAS-183 | G-1–C0 | 异步图片 API、SSE、幂等与计量接线 | API+Media+Commercial Platform | 提供生成/编辑 Job、状态/SSE/取消与 OpenAI 风格兼容层；同幂等键只执行和计量一次，KJDS Token/套餐/余额仍归 COM-002。 | BAS-182、COM-002 | QUEUED |
 | BAS-184 | G-1 | Commander MCP/Tool Gateway | Agent Platform+Media+Evidence | 复用 AgentHarness 编译 CampaignBrief 并调用版本化媒体 Tool；主模型只见能力、状态、成本和 ContentAsset 引用，不见凭证或 Blob 正文。 | BAS-180、BAS-183 | QUEUED |
@@ -196,13 +196,13 @@
 | BAS-189 | C0–S1 | 邀请制媒体付费 Pilot | Commercial Platform+Media+Risk | 在 COM-002 Token、计量、收退款、SLA、DPA、退出导出完成后开放邀请制 Pilot；工程状态不得冒充可售、可扣费或生产 SLA。 | BAS-183、BAS-188、COM-002 | QUEUED |
 | BAS-190 | G-1 | 本地 DEMO 客户端边界合同冻结 | Product+Web+Risk | 冻结 ScenarioPack、DemoSession、LocalDemoGateway、合成数据/不计费标志和零生产依赖负向合同；本票仅 ADR/registry/test，不修改真实套餐、额度、授权、计费、API 或外写 Gate。 | BAS-176、COM-002、BAS-180 | DONE_ENGINEERING |
 | BAS-191 | G-1 | ScenarioPack 与 DemoSession 领域内核 | Product+Web | 在独立 `clients/local-demo` 建立版本化合成场景、SHA-256、确定性时钟、会话 TTL 和重置；不读取真实业务表或环境凭证。 | BAS-190 | DONE_ENGINEERING |
-| BAS-192 | G-1 | LocalDemoGateway 与内存会话仓 | Product+Web+Risk | 实现唯一 query/apply/reset 接口、幂等、跨会话 404、payload drift 和零生产导入/网络合同；动作只生成 DemoTransition。 | BAS-191 | IN_PROGRESS |
+| BAS-192 | G-1 | LocalDemoGateway 与内存会话仓 | Product+Web+Risk | 实现唯一 query/apply/reset 接口、幂等、跨会话 404、payload drift 和零生产导入/网络合同；动作只生成 DemoTransition。 | BAS-191 | DONE_ENGINEERING |
 | BAS-193 | G-1 | 独立 DEMO PWA 壳与持续水印 | Product Design+Web | 建立不复用生产根布局的本地 PWA，桌面/390px 均持续显示 LOCAL DEMO/合成数据/不计费，离线首屏且零 `/backend` 请求。 | BAS-192 | QUEUED |
 | BAS-194 | G-1 | DEMO 全链路九工作区 | Product+Commerce+Web | 用固定 ScenarioPack 实现驾驶舱、选品、PIM、刊登、OMS、履约、客服、增长和利润的查询/模拟推进/错误重放，不创建任何真实权威对象。 | BAS-193 | QUEUED |
 | BAS-195 | G-1 | DEMO 离线便携包与清理 | Release+Web | 交付 PWA/便携 ZIP、loopback 启动、断网冷启动、显式重置和清理脚本；构建不含账号、Cookie、API Key 或真实数据。 | BAS-194 | QUEUED |
 | BAS-196 | G-1 | DEMO 隔离验收与交付 Evidence | QA+Risk+Release | 验证 Node/Web/E2E、1440/390、零外网、零 `/backend`、零秘密、零生产写、跨会话隔离、构建哈希和可重复清理。 | BAS-195 | QUEUED |
 | BAS-197 | G-1 | 一手资料、Top1 对标与资本经营闭环合同冻结 | Strategy+Product+Data+Capital+Risk | 冻结 StrategicBenchmarkKernel、PrimarySourceEnvelope、分维度/队列/时窗 Top1 语义、差距图、实验组合、资本配置提案与约束破甲评测；只接受可复验证据晋级事实，本票仅 ADR/registry/tests。 | BAS-172、BAS-176、BAS-180、BAS-190 | DONE_ENGINEERING |
-| BAS-198 | G-1 | PrimarySource Intake 与证据化标准化 | Data+Evidence+Finance+Market Intelligence | 复用 Evidence/Lineage 接收经营原件、平台官方数据、供应商/物流/银行/结算及技术一手基准；保存原件哈希、合同、许可、作用域、时间和守恒报告，不在 Git 保存秘密、PII 或原始经营数据。 | BAS-197 | QUEUED |
+| BAS-198 | G-1 | PrimarySource Intake 与证据化标准化 | Data+Evidence+Finance+Market Intelligence | 复用 Evidence/Lineage 接收经营原件、平台官方数据、供应商/物流/银行/结算及技术一手基准；保存原件哈希、合同、许可、作用域、时间和守恒报告，不在 Git 保存秘密、PII 或原始经营数据。 | BAS-197 | IN_PROGRESS |
 | BAS-199 | G-1 | 多维 Top1 Benchmark 与可比队列 | Strategy+Product+Data | 按技术、AI、产品、商业、运营、资本、组织、韧性和合规冻结 metric/cohort/window/source contract；Top1 只代表当前可验证维度领先者，不产生全局营销排名。 | BAS-198 | QUEUED |
 | BAS-200 | G-1 | GapGraph 与战略机会组合 | Strategy+Graph+Product | 将当前 Evidence、Top1 基准、能力图谱、客户问题和单位经济映射为可解释差距、机会、依赖、最大损失、替代方案与失效条件；不复制 BAS-173 的检索真源。 | BAS-199、BAS-173 | QUEUED |
 | BAS-201 | C0–S1 | 实验组合与资本配置提案 | Capital+Finance+Growth+Risk | 在现金底线、runway、最大损失、回收期、downside CM3、证据覆盖和停止条件下比较 build/buy/partner/defer；输出提案，不自批预算、不付款、不投资证券。 | BAS-200、COM-002 | QUEUED |
