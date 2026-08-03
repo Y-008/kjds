@@ -177,8 +177,8 @@
 | BAS-172 | G-1–G5 | 持久化 AgentRun/Trace/Eval Evidence 合同 | Agent Platform+Evidence+Security | 加深现有 `GovernedAgentRuntime`：provider-neutral append-only envelope 绑定 model/prompt-template/tool/Evidence/authority/eval/cost/latency/outcome 版本；正文默认不落库，跨 scope/脱敏/重放/漂移失败关闭；无 Fact/FinanceEntry/Approval/Permit/外写。 | BAS-166、BAS-171 | DONE_ENGINEERING |
 | BAS-173 | G0–G5 | 因果与时序检索金标基准 | Knowledge Graph+Evidence+Profit | 用真实失败问题比较 SQL/全文/规范图/因果时序检索，逐题核对引用、scope、有效期、成本和延迟；胜出前不安装 pgvector/GraphRAG 平台，生成边仅为 Observation。 | BAS-172 | NEXT_READY |
 | BAS-174 | G-1–G5 | Durable workflow adapter 触发式基准 | Reliability+Operations | 只有真实跨小时/跨人工等待流程未达恢复或重放 SLO 才启动；与现有 state machine/outbox 对照 crash/retry/cancel/resume/重复副作用和运维成本；KJDS 保持业务状态 Owner。 | BAS-172、真实 SLO 缺口 | BLOCKED_TRIGGER |
-| BAS-175 | G-1 | 发布 provenance 与 SBOM/AI-BOM | Platform Security+Release | 选择一个 API/Web 镜像，把 G1 commit、migration head、image digest、依赖、模型/adapter/eval 版本绑定可验证 provenance；SBOM/AI-BOM 无 secret，验证失败关闭，且不替代经营 Gate。 | BAS-171 | IN_PROGRESS |
-| BAS-176 | G-1 | PostgreSQL 18 隔离验证线 | Data+Release+Recovery | 仅在 disposable lane 完成全迁移回放、扩展兼容、查询基准、备份恢复、回滚和锁/延迟观测；exit Gate 未通过前不修改 PostgreSQL 17 生产/验证基线。 | BAS-171、BAS-175 非阻塞 | PILOT_QUEUED |
+| BAS-175 | G-1 | 发布 provenance 与 SBOM/AI-BOM | Platform Security+Release | API 与 PostgreSQL 镜像已绑定 G1 commit、0090 migration head、镜像 digest、依赖及哈希化 model/adapter/eval 合同；Ed25519 签名 SLSA 1.2 L1、CycloneDX 1.7 软件/AI-BOM、17.10 patch 与负向漂移合同均通过。仅有本地临时 signer，结果保持 `not_for_deployment`，不替代经营 Gate。 | BAS-171 | DONE_ENGINEERING |
+| BAS-176 | G-1 | PostgreSQL 18 隔离验证线 | Data+Release+Recovery | 仅在 disposable lane 完成全迁移回放、扩展兼容、查询基准、备份恢复、回滚和锁/延迟观测；exit Gate 未通过前不修改 PostgreSQL 17 生产/验证基线。 | BAS-171、BAS-175 | NEXT_READY |
 | BAS-177 | G0–G5 | Governed TeamAgent 自学习进化 Loop | Agent Platform+Graph+Evidence+Risk | 复用 Loop Engineering 与 canonical Graph，把 correction/failure/outcome 形成 SkillCandidate→Eval→Shadow→独立 Review→Promotion/Rollback；AgentRole/Skill/EvalSet/Model/Tool/Policy/Evidence/Outcome 全版本化，跨租户学习仅用获许可脱敏模式；运行时不得自改代码/权限/Fact/Approval/Permit/外写。 | BAS-172、BAS-173 | QUEUED |
 | BAS-178 | G-1–G6 | 全量社媒情报与 campaign 执行内核 | Market Intelligence+Agent Platform+Evidence+Risk | 建立唯一 `SocialCommerceIntelligenceWorkspace`，组合官方 API/导出、固定版本 CLI、专用浏览器与人工 Evidence；全分页/全字段/全时间窗采集必须有 checkpoint、覆盖率、失败页和守恒，原始/规范/分析/实验/动作/结果分层，支持卖家、公开或授权用户、内容、评论、商品、时间与技术多维分析。发布、互动、私信、下载和账号动作通过一次 campaign grant 获得批量动作集、预算、有效期、停止条件、幂等、回读与 kill switch，不做逐条审批；失败进入官方文档→源码→Issue→Release→Fork→替代 Adapter 的解决 Loop。 | BAS-172、BR-138 | IN_PROGRESS_PREP_ONLY |
 | OPS-XHS-001 | G-1–G6 | 小红书全量研究与运营分项 | 小红书运营+内容+产品+销售 | 固定 `xiaohongshu-cli` 0.6.4 提交并在项目本地隔离安装；专用二维码账号建立搜索、笔记、全量评论/子评论、用户、话题、通知与自有内容基线，输出卖家分群、评论意图、内容结构、产品需求、日历和 campaign 草案；账号绑定与 grant 前不冒充真实执行，真实写后必须读回。 | BAS-178 | IN_PROGRESS_PREP_ONLY |
@@ -210,8 +210,9 @@
   银行到账和签署利润阈值前，不扩库存、不加大广告、不宣称 Actual Cash CM3。
 - 软件轮唯一放行目标是 `C0 Commercial Pilot Gate`；`COM-001` 只准备真实销售资产，
   `COM-002` 关闭交付/计费/法务/退出缺口，全部检查 PASS 前保持 `not_for_sale`。
-- 产品工程按 `BAS-172` 推进 AgentRun/Trace/Eval Evidence；风险发布按 `BAS-175`
-  推进 provenance 与 SBOM/AI-BOM。两者不得占用同一共享 Schema 或发布集成窗口。
+- `BAS-172` AgentRun/Trace/Eval Evidence 与 `BAS-175` provenance/SBOM/AI-BOM
+  均已完成工程验证；产品工程下一候选为 `BAS-173`，风险发布下一候选为
+  `BAS-176`，两者在机器租约签发前不得自行占用共享 Schema 或发布集成窗口。
 - `BAS-178`、`OPS-XHS-001`、`OPS-DY-001`、`BAS-179` 继续限制在来源、fixture、
   研究问题和 campaign 草案；账号绑定、campaign grant 和独立 Gate 前不得外写。
 - 当前资源排序为真实现金证据 > C0 关闭 > 可审计 Agent/Release > 市场情报准备；
