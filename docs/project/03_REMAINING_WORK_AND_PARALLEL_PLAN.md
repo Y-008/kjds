@@ -6,7 +6,7 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 9.60 |
+| version | 9.61 |
 | last_reviewed | 2026-08-03 |
 | next_review | 2026-08-10 |
 | gate | G-1–G8 |
@@ -185,6 +185,7 @@
 | OPS-DY-001 | G-1–G6 | 抖音全量研究与运营分项 | 抖音运营+视频+产品+销售 | 官方 OAuth/创作者中心优先，专用浏览器为降级；建立视频钩子、节奏、评论意图、创作者/商品匹配、直播/短视频漏斗、授权账号指标和内容 campaign 基线，来源中断进入 Adapter 解决 Loop，账号绑定与 grant 前不冒充真实执行。 | BAS-178 | IN_PROGRESS_PREP_ONLY |
 | BAS-179 | G-1–G6 | 俄罗斯市场需求与热点事件全量雷达 | Russia Market Intelligence+Commerce+Evidence+Risk | 组合 Ozon/Wildberries/Yandex Market 站内需求、Yandex Wordstat 地区/时间需求、Telegram/VK 公开讨论、平台官方变更与宏观/贸易/物流事件；每源全分页/字段/时间窗、记录 native cap、checkpoint、失败页、守恒与历史回补，按需求/竞争/热点/平台/宏观/供应分层并做可解释跨源评分。当前先完成来源与 fixture，不把公共新闻冒充 SKU 销量或利润。 | BAS-178、BR-139 | IN_PROGRESS_PREP_ONLY |
 | COM-001 | C0 | 逆漏斗最小销售包 | 经营+销售+产品+法务 | 形成客户资格/拒绝表、只读诊断交付物、Evidence-backed 案例模板、SOW、价格实验、合同/DPA/SLA 清单和成交页真实文案；C0 通过前仅准备，不报价成交、不收款、不形成应收。 | BAS-171、C0 缺口清单 | IN_PROGRESS_PREP_ONLY |
+| COM-002 | C0–S3 | 单客户交付底座与 C0 关闭包 | Commercial Platform+Release+Finance+Legal | 以 C0 清单为唯一验收源，依次完成发布 provenance、托管双客户负向隔离、真实 TLS/Secrets/备份恢复、商业生命周期与收退款、单位经济、Contract/DPA/SLA、退出导出和删除演练；每项独立晋级，全部 PASS 前不得销售。 | C0-001–003、BAS-175、经营负责人输入 | IN_PROGRESS_PREP_ONLY |
 | DAY0-TRUTH-20260802 | G0–G4 | Ozon 真实经营真源校正 | 工程+经营+财务 | BAS-160 中 `channel-accounts workspace=ready` 只代表渠道账户授权控制面；真实商品只读与真实财务只读已通过，真实订单、平台结算、银行到账和任何 provider 外写仍未通过。因此 BAS-160 整项保持 `IN_PROGRESS`，不得解释为 ready；利润计算与扩量继续失败关闭。 | BAS-160、BAS-161 | PARTIAL_BLOCKED |
 | FIN-THRESHOLDS-20260802 | G1–G5 | 利润增长阈值签署 | 经营负责人+财务负责人 | downside CM3、退款率、CAC/ACOS、履约时效和现金占用阈值全部保持 `UNKNOWN`；必须由真实经营/财务 Evidence、口径、有效期和双负责人签署后才能成为 Gate 输入，系统与 Agent 不得猜数。 | DAY0-TRUTH-20260802、FIN-001 | BLOCKED_INPUT |
 | BAS-003 | G-1 | API、DB、Web 真实 smoke | 工程负责人 | 冷启动可复现；健康检查通过 | BAS-002 | DONE |
@@ -202,6 +203,19 @@
 | EVD-001 | G1 | 不可变证据对象与双时间设计 | 工程负责人 | 哈希、原件、血缘、等级、effective/recorded 时间可验证 | BAS-002 | DONE |
 
 `BLOCKED` 项不是工程问题：需要账号所有者、真实商品/供应商、样品或一手业务文件。增加开发窗口不能消除这些阻塞。
+
+### 2026-08-03 总控收敛决定
+
+- 经营轮唯一放行目标是 `R3 首个现金闭环` 的证据链；在真实订单、平台结算、
+  银行到账和签署利润阈值前，不扩库存、不加大广告、不宣称 Actual Cash CM3。
+- 软件轮唯一放行目标是 `C0 Commercial Pilot Gate`；`COM-001` 只准备真实销售资产，
+  `COM-002` 关闭交付/计费/法务/退出缺口，全部检查 PASS 前保持 `not_for_sale`。
+- 产品工程按 `BAS-172` 推进 AgentRun/Trace/Eval Evidence；风险发布按 `BAS-175`
+  推进 provenance 与 SBOM/AI-BOM。两者不得占用同一共享 Schema 或发布集成窗口。
+- `BAS-178`、`OPS-XHS-001`、`OPS-DY-001`、`BAS-179` 继续限制在来源、fixture、
+  研究问题和 campaign 草案；账号绑定、campaign grant 和独立 Gate 前不得外写。
+- 当前资源排序为真实现金证据 > C0 关闭 > 可审计 Agent/Release > 市场情报准备；
+  连续两轮不能提高对应 Gate 通过率的工作停止占用主执行窗口。
 
 平台发布边界：仓库已有 `apps.control_plane.ozon_worker.OzonExecutionWorker`，并非“没有平台发布器”。BAS-089 已完成普通批准 `ListingDraft` 到受控执行计划、命令、写前/写后证据、状态轮询、回读和补偿的工程接线；Worker 运行时仍受 Gate、Kill Switch 和一次性许可约束且默认关闭，当前仅有 mock/工程合同验收，未完成真实 Ozon 账户验收。写路径注册表中的 `availability=enabled` 仅表示工程能力存在，不表示运行已开启、业务 Gate 已通过或真实账户可执行。
 
