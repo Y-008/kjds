@@ -109,6 +109,7 @@ from .pilot_readiness import PilotReadinessService
 from .pilot_runs import PilotRunService
 from .policy_shadow import PolicyShadowService
 from .post_execution import PostExecutionService
+from .primary_source_intake import PrimarySourceIntake
 from .procurement import ProcurementService
 from .profit_command import ProfitCommandWorkspace
 from .profit_data_remediation import ProfitDataRemediationWorkspace
@@ -291,6 +292,7 @@ class RuntimeServices:
     profit_erp_sync: Any
     profit_truth_readiness: Any
     product_media: Any
+    primary_source_intake: Any
     providers: Any
     read_only_claims: Any
     readiness: Any
@@ -366,6 +368,12 @@ def build_runtime() -> RuntimeServices:
     )
     scope_grants = ScopeGrantAuthority(engine=engine, evidence=evidence)
     scoped_evidence = ScopedEvidenceAuthority(evidence=evidence)
+    primary_source_intake = PrimarySourceIntake(
+        engine=engine,
+        evidence=evidence,
+        scope_grants=scope_grants,
+        scoped_evidence=scoped_evidence,
+    )
     evidence_scope_binding = EvidenceScopeBindingService(
         evidence=evidence,
         scoped_evidence=scoped_evidence,
@@ -1210,6 +1218,7 @@ def build_runtime() -> RuntimeServices:
         profit_command=profit_command,
         profit_data_remediation=profit_data_remediation,
         product_media=product_media,
+        primary_source_intake=primary_source_intake,
         providers=providers,
         read_only_claims=read_only_claims,
         readiness=readiness,

@@ -1,6 +1,6 @@
 {
   "contract": "kjds-outbox-coverage-v1",
-  "as_of": "2026-08-02",
+  "as_of": "2026-08-03",
   "scope": "apps/control_plane 中直接创建 SQLAlchemy Session 且开启 session.begin() 的模块",
   "full_system_outbox": false,
   "status_definitions": {
@@ -304,6 +304,13 @@
       "delivery_contract": "profit_erp_item_syncs explicit dispatch and readback",
       "rationale": "利润款先在同一 PostgreSQL 事务冻结 Item 草稿与幂等 outbox，再由显式 dispatch 调用最小权限 ERPNext Item create/read；失败与回读差异留在同步账，不触发采购、库存或付款。",
       "activation_trigger": "改为独立 ERP sync worker 或事件推送时"
+    },
+    {
+      "module": "primary_source_intake.py",
+      "status": "internal_only",
+      "delivery_contract": "immutable_exact_scope_primary_source_evidence_and_normalization_ledger",
+      "rationale": "一手资料 Intake 只在同一事务保存脱敏 Evidence、exact-scope 原件清单、质量守恒和标准化候选；不晋升正式 Fact，不创建 FinanceEntry、Approval、Permit、Pilot、Outbox 事件或任何平台、供应商、客户外部动作。",
+      "activation_trigger": "Intake 完成需要推送独立事实晋级、CRM、销售编排或跨服务消费者前"
     },
     {
       "module": "read_only_claims.py",
