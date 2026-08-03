@@ -203,7 +203,7 @@
 | BAS-196 | G-1 | DEMO 隔离验收与交付 Evidence | QA+Risk+Release | 验证 Node/Web/E2E、1440/390、零外网、零 `/backend`、零秘密、零生产写、跨会话隔离、构建哈希和可重复清理。 | BAS-195 | QUEUED |
 | BAS-197 | G-1 | 一手资料、Top1 对标与资本经营闭环合同冻结 | Strategy+Product+Data+Capital+Risk | 冻结 StrategicBenchmarkKernel、PrimarySourceEnvelope、分维度/队列/时窗 Top1 语义、差距图、实验组合、资本配置提案与约束破甲评测；只接受可复验证据晋级事实，本票仅 ADR/registry/tests。 | BAS-172、BAS-176、BAS-180、BAS-190 | DONE_ENGINEERING |
 | BAS-198 | G-1 | PrimarySource Intake 与证据化标准化 | Data+Evidence+Finance+Market Intelligence | 复用 Evidence/Lineage 接收经营原件、平台官方数据、供应商/物流/银行/结算及技术一手基准；保存原件哈希、合同、许可、作用域、时间和守恒报告，不在 Git 保存秘密、PII 或原始经营数据。 | BAS-197 | DONE_ENGINEERING |
-| BAS-199 | G-1 | 多维 Top1 Benchmark 与可比队列 | Strategy+Product+Data | 按技术、AI、产品、商业、运营、资本、组织、韧性和合规冻结 metric/cohort/window/source contract；Top1 只代表当前可验证维度领先者，不产生全局营销排名。 | BAS-198 | IN_PROGRESS |
+| BAS-199 | G-1 | 多维 Top1 Benchmark 与可比队列 | Strategy+Product+Data | 按技术、AI、产品、商业、运营、资本、组织、韧性和合规冻结 metric/cohort/window/source contract；Top1 只代表当前可验证维度领先者，不产生全局营销排名。 | BAS-198 | DONE_ENGINEERING |
 | BAS-200 | G-1 | GapGraph 与战略机会组合 | Strategy+Graph+Product | 将当前 Evidence、Top1 基准、能力图谱、客户问题和单位经济映射为可解释差距、机会、依赖、最大损失、替代方案与失效条件；不复制 BAS-173 的检索真源。 | BAS-199、BAS-173 | QUEUED |
 | BAS-201 | C0–S1 | 实验组合与资本配置提案 | Capital+Finance+Growth+Risk | 在现金底线、runway、最大损失、回收期、downside CM3、证据覆盖和停止条件下比较 build/buy/partner/defer；输出提案，不自批预算、不付款、不投资证券。 | BAS-200、COM-002 | QUEUED |
 | BAS-202 | G-1 | Constraint Breaker 红队与技术搬运 Gate | AI+Security+Architecture+QA | 用本地合成 fixture 对提示注入、跨作用域、幂等漂移、工具投毒、间接注入和 unknown outcome 做可复现攻击评测；技术候选必须经 best_solution、许可证、数据边界、成本、回滚和真实样本 Gate 后才进入依赖。 | BAS-197、BAS-177 | QUEUED |

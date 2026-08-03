@@ -109,34 +109,18 @@ def test_bas192_release_advances_local_demo_lane():
     assert demo["next_task_id"] == "BAS-193"
 
 
-def test_bas199_holds_strategic_intelligence_and_shared_api_leases():
+def test_bas199_release_advances_strategic_lane_without_preleasing_bas200():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     strategic = lanes["L"]
 
-    assert strategic["current_task"] == {
-        "task_id": "BAS-199",
-        "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
-        "write_scope": [
-            "strategic_benchmark_kernel",
-            "benchmark_snapshot_evidence",
-            "benchmark_comparability_and_leader_projection",
-            "runtime_composition",
-            "strategic_benchmark_api",
-            "alembic_migration_0093",
-            "strategic_benchmark_tests",
-            "outbox_coverage_registration",
-            "openapi_snapshot",
-        ],
-        "blocked_on": [],
-    }
+    assert strategic["current_task"] is None
     assert strategic["next_task_id"] == "BAS-200"
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-199",
-        "api_aggregation_root": "BAS-199",
+        "alembic_migration": None,
+        "api_aggregation_root": None,
         "master_spec": None,
-        "openapi_snapshot": "BAS-199",
+        "openapi_snapshot": None,
     }
 
 
@@ -166,9 +150,9 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "master_spec",
         "openapi_snapshot",
     }
-    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-199"
-    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-199"
-    assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-199"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
+    assert registry["shared_write_leases"]["openapi_snapshot"] is None
+    assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["policy"]["legacy_in_progress_is_execution_lease"] is False
     assert registry["policy"]["current_task_is_execution_lease"] is True
