@@ -88,34 +88,18 @@ def test_social_platform_and_channel_operations_have_separate_lanes():
     assert lanes["I"]["name"] == "russia_market_intelligence"
 
 
-def test_bas172_holds_the_only_migration_and_openapi_leases():
+def test_bas172_release_advances_lane_c_without_preleasing_bas173():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
-    current = engineering["current_task"]
 
-    assert current == {
-        "task_id": "BAS-172",
-        "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
-        "write_scope": [
-            "governed_agent_runtime",
-            "agent_runtime_evidence_ledger",
-            "evidence_source_registration",
-            "runtime_composition",
-            "agent_control_read_api",
-            "alembic_migration_0090",
-            "agent_runtime_test_contracts",
-            "openapi_snapshot",
-        ],
-        "blocked_on": [],
-    }
+    assert engineering["current_task"] is None
     assert engineering["next_task_id"] == "BAS-173"
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-172",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
-        "openapi_snapshot": "BAS-172",
+        "openapi_snapshot": None,
     }
 
 
@@ -127,8 +111,8 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "master_spec",
         "openapi_snapshot",
     }
-    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-172"
-    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-172"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
+    assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["policy"]["legacy_in_progress_is_execution_lease"] is False
