@@ -148,7 +148,7 @@ flowchart LR
 | Agent 质量与成本 | 现有 trace/eval/routing | OTel GenAI 语义、持久 eval ledger、分层模型路由 | 输出仍为 proposal |
 | 长任务恢复 | 现有状态机 + Outbox | durable workflow adapter 基准 | 未证明痛点前不引入 Temporal |
 | 复杂知识检索 | Evidence + canonical Graph | 因果/时间 GraphRAG 基准 | 先与 SQL/全文检索比较 |
-| 工具互操作 | 现有 provider protocols | MCP OAuth、实验性 Tasks、A2A 适配 | 不让协议成为权限 Owner |
+| 工具互操作 | 现有 provider protocols | MCP 2026-07-28 OAuth、草案 Tasks 扩展、A2A 适配 | 不让协议成为权限 Owner；不在 SDK 支持前升级线协议 |
 | 供应链安全 | G1 secret/image checks | SLSA provenance、SBOM、AI-BOM | 先覆盖发布物，不扩大运行面 |
 | 数据平台 | PostgreSQL 17 | PostgreSQL 18 隔离回放和性能基准 | 不直接升级生产 |
 | 浏览器读回 | Seller API/正式导出优先 | Playwright/WebDriver BiDi 隔离适配 | 不保存 Cookie，不替代官方接口 |

@@ -250,6 +250,22 @@ Evidence、Profit、Scope Authority、Approval、Permit 和审计内核，但保
 | PS-032 | [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/) | W3C Candidate Recommendation 定义更强的公钥认证能力 | `PILOT`。适合管理员/审批者强认证；需恢复、设备丢失、浏览器兼容与 step-up 流程 |
 | PS-033 | [torchao inference workflows](https://docs.pytorch.org/ao/stable/workflows/inference.html) 与 [torchao documentation](https://docs.pytorch.org/ao/stable/) | 官方文档描述 int4/fp8 等量化推理工作流，并区分稳定与实验能力 | `WATCH`。只有私有/本地模型经济性成立且 eval 不退化时采用；不以量化速度替代决策质量 |
 
+### 5.5 2026-08-03 增量官方来源复核
+
+以下结论是本日第二次增量复核产生的 `VERIFIED_PRIMARY_SOURCE` Observation。它们只更新
+采用判断与验收条件，不证明依赖已经升级、运行环境已经修补或任何 Gate 已通过：
+
+| ID | 一手来源 | 新 Observation | 候选与失效条件 |
+|---|---|---|---|
+| PS-034 | [MCP 2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28)、[authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization) 与 [maintainer release explanation](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/) | 2026-07-28 已形成稳定、无会话握手的自包含请求协议，并强化 issuer、resource、audience、registration 与 step-up；它对 2025-era 实现存在 breaking change | OAuth 继续 `PILOT`。只有 Python SDK 明确支持该版本且 issuer/audience/resource/exact-scope 负向测试通过，才可迁移线协议；否则保持现有版本 |
+| PS-035 | [MCP Tasks overview](https://modelcontextprotocol.io/extensions/tasks/overview) 与 [draft extension specification](https://tasks.extensions.modelcontextprotocol.io/specification/draft/tasks) | Tasks 已从 2025-11-25 实验性核心迁到 2026-07-28 可选扩展，但扩展规范仍为 draft、两端必须显式支持，旧新生命周期不兼容 | 保持 `WATCH`。若版本化扩展、Python SDK 与两个真实 Provider 未通过 lifecycle/cancel/replay/scope 测试，禁止替换 KJDS canonical task state |
+| PS-036 | [OpenTelemetry semantic conventions 1.43](https://opentelemetry.io/docs/specs/semconv/)、[moved GenAI notice](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-exceptions/) 与 [deprecated attribute registry](https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/) | GenAI 语义已移出主 semantic-conventions 版本线，旧属性页被标记 moved/deprecated | 保持 `PILOT`。BAS-172 只冻结 provider-neutral、hash-only 运行真相；OTel 通过可替换翻译层映射，任一正文泄漏或字段漂移即回滚 |
+| PS-037 | [PostgreSQL 18.4/17.10 security release](https://www.postgresql.org/about/news/postgresql-184-1710-1614-1518-and-1423-released-3297/) | 2026-05-14 官方安全版本同时覆盖 18.4 与 17.10；当前 Docker daemon 未运行，无法证明本机实际镜像 patch level | PostgreSQL 17 安全 patch 验证归入 `ADOPT_NOW` 的 BAS-175 provenance；18 仍是 BAS-176 `PILOT`。未证明 17.10+ 与镜像 digest 前，不得形成新的部署版本证明 |
+
+本次还复核了 A2A 1.0、Temporal、GraphRAG、OPA、SPIFFE 与 torchao 的官方来源；未发现足以
+改变既有 `WATCH/PILOT` 决策的 KJDS 新需求或本地量化收益。Ozon Seller 文档在本次访问中
+超时，因此其变化状态保持 `UNKNOWN`，不能据此声明无变化。
+
 ## 6. KJDS 前沿技术采用决策
 
 ### 6.1 现在采用

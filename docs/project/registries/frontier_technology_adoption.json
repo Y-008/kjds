@@ -24,7 +24,7 @@
     "agent_runtime": "In-process governed routing, redaction, GenAI-style spans and deterministic eval records are implemented; a durable provider-neutral run/eval Evidence ledger is not implemented.",
     "workflow": "KJDS state machines and transactional outbox remain canonical; no Temporal runtime is installed.",
     "retrieval": "Evidence, PostgreSQL and the canonical Graph are available; no production GraphRAG or vector store is installed.",
-    "database": "PostgreSQL 17 is the verified runtime baseline; PostgreSQL 18 is rehearsal-only.",
+    "database": "PostgreSQL 17 is the declared runtime baseline and PostgreSQL 18 is rehearsal-only; the running patch level was not observable during the 2026-08-03 review, and PostgreSQL 17.10 or later is required before fresh deployment evidence can pass.",
     "web": "Next.js 16.2.11 and React 19.2.7 are installed; individual frontier rendering and caching patterns still require measured, scope-safe acceptance.",
     "analytics": "PostgreSQL remains the only operating truth store; ClickHouse and Iceberg are not runtime dependencies."
   },
@@ -118,7 +118,8 @@
       ],
       "kjds_use_cases": [
         "Bind G1 commit, migration head, image digests, dependencies, models, datasets, and prompts to attestations.",
-        "Verify deployable artifacts before commercial-pilot or hosted promotion."
+        "Verify deployable artifacts before commercial-pilot or hosted promotion.",
+        "Bind the resolved PostgreSQL image digest and patch version to deployment evidence instead of relying on a floating major-version tag."
       ],
       "risks": [
         "Unsigned or unverifiable attestations create compliance theater.",
@@ -140,6 +141,7 @@
         "criteria": [
           "Fresh-build verification fails closed on subject or signer drift.",
           "SBOM and AI/ML BOM schemas validate and contain no secrets.",
+          "The resolved PostgreSQL image reports version 17.10 or later and its digest is present in the verified subject set.",
           "Deployment policy checks provenance while remaining separate from business truth gates."
         ]
       },
@@ -323,14 +325,16 @@
         "mcp_auth"
       ],
       "decision": "pilot",
-      "decision_rationale": "OAuth 2.1 resource and audience binding can improve tool authorization, but it must be mapped to KJDS Principal, exact scope, Evidence authority, and incremental permissions before use.",
+      "decision_rationale": "The stable MCP 2026-07-28 authorization contract strengthens issuer, resource, audience, discovery, registration, and step-up behavior, but it must be mapped to KJDS Principal, exact scope, Evidence authority, and incremental permissions before use.",
       "maturity": {
-        "upstream_status": "published_protocol_specification",
-        "evidence_basis": "The MCP 2025-11-25 authorization specification defines protected-resource metadata, resource indicators, audience binding, and token handling rules.",
+        "upstream_status": "stable_protocol_revision_with_sdk_validation_pending",
+        "evidence_basis": "The MCP 2026-07-28 specification is released and defines issuer validation, protected-resource metadata, resource indicators, audience binding, discovery, registration, refresh-token, and step-up rules; KJDS has not validated its Python SDK path against that revision.",
         "stable_for_kjds_production": false
       },
       "evidence_urls": [
-        "https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization"
+        "https://modelcontextprotocol.io/specification/2026-07-28",
+        "https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization",
+        "https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/"
       ],
       "kjds_use_cases": [
         "Issue audience-bound, least-privilege tokens to read-only research and Evidence tools.",
@@ -339,14 +343,15 @@
       "risks": [
         "Token passthrough or confused-deputy behavior can cross trust boundaries.",
         "Protocol scopes can be mistaken for KJDS business authority.",
-        "Remote server metadata and redirect validation create SSRF and phishing surfaces."
+        "Remote server metadata and redirect validation create SSRF and phishing surfaces.",
+        "The 2026-07-28 stateless request and capability model is a breaking change from the currently installed Python SDK contract."
       ],
       "entry_gate": {
         "id": "MCP-AUTH-PILOT-ENTRY",
         "state": "isolated_pilot_only",
         "criteria": [
           "Choose one first-party read-only MCP server.",
-          "Define issuer, audience, resource, redirect, and incremental-scope validation.",
+          "Freeze one supported protocol and SDK version before implementing issuer, audience, resource, redirect, registration, and incremental-scope validation.",
           "Derive KJDS tenant and entity authority server-side."
         ]
       },
@@ -375,14 +380,15 @@
         "otel_genai"
       ],
       "decision": "pilot",
-      "decision_rationale": "Portable agent telemetry is valuable, but GenAI semantic conventions are still developing and sensitive payload attributes require explicit opt-in and redaction.",
+      "decision_rationale": "Portable agent telemetry is valuable, but GenAI semantic conventions now evolve in a separate repository and sensitive payload attributes require explicit opt-in, version pinning, and redaction.",
       "maturity": {
-        "upstream_status": "development_semantic_convention",
-        "evidence_basis": "OpenTelemetry publishes GenAI agent, operation, token, and tool attributes while warning that tool arguments and results may contain sensitive information.",
+        "upstream_status": "separate_evolving_genai_semantic_convention",
+        "evidence_basis": "OpenTelemetry semantic conventions 1.43 mark GenAI conventions as moved to a separate repository; the old registry pages are deprecated, so KJDS requires a pinned translation boundary rather than domain-schema coupling.",
         "stable_for_kjds_production": false
       },
       "evidence_urls": [
         "https://opentelemetry.io/docs/specs/semconv/",
+        "https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-exceptions/",
         "https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/"
       ],
       "kjds_use_cases": [
@@ -428,15 +434,16 @@
         "postgres18"
       ],
       "decision": "pilot",
-      "decision_rationale": "PostgreSQL 18 offers useful AIO, skip-scan, UUIDv7, OAuth, and temporal constraints, but KJDS should rehearse migrations and measure workloads before changing its PostgreSQL 17 baseline.",
+      "decision_rationale": "PostgreSQL 18 offers useful AIO, skip-scan, UUIDv7, OAuth, and temporal constraints, but KJDS should rehearse migrations and measure workloads before changing its PostgreSQL 17 baseline; security patching of PostgreSQL 17 remains an immediate baseline obligation, not a reason to skip the major-version pilot.",
       "maturity": {
         "upstream_status": "stable_database_release",
-        "evidence_basis": "PostgreSQL 18 is officially released with documented compatibility and feature changes.",
+        "evidence_basis": "PostgreSQL 18 is officially released with documented compatibility and feature changes; the 2026-05-14 security release establishes 18.4 and 17.10 as the reviewed secure patch lines.",
         "stable_for_kjds_production": false
       },
       "evidence_urls": [
         "https://www.postgresql.org/about/news/postgresql-18-released-3142/",
-        "https://www.postgresql.org/docs/18/release-18.html"
+        "https://www.postgresql.org/docs/18/release-18.html",
+        "https://www.postgresql.org/about/news/postgresql-184-1710-1614-1518-and-1423-released-3297/"
       ],
       "kjds_use_cases": [
         "Benchmark Evidence, graph, profit, outbox, and scoped logistics query plans.",
@@ -445,12 +452,14 @@
       "risks": [
         "Extension, driver, collation, query-plan, or migration behavior may regress.",
         "New temporal features can be mistaken for complete business-validity semantics.",
-        "An upgrade without rollback rehearsal can extend commercial downtime."
+        "An upgrade without rollback rehearsal can extend commercial downtime.",
+        "Conflating a required PostgreSQL 17 security patch with the PostgreSQL 18 pilot can either delay remediation or bypass major-version evidence."
       ],
       "entry_gate": {
         "id": "PG18-PILOT-ENTRY",
         "state": "isolated_pilot_only",
         "criteria": [
+          "Verify the PostgreSQL 17 baseline is patched to 17.10 or later independently of this pilot.",
           "Freeze PostgreSQL 17 data, query, migration, extension, backup, and restore baselines.",
           "Use a disposable PostgreSQL 18 database with production-like schema volume.",
           "Define rollback and dual-version compatibility tests."
@@ -589,29 +598,32 @@
         "mcp_tasks"
       ],
       "decision": "watch",
-      "decision_rationale": "MCP Tasks could standardize polling, cancellation, and results for long-running tool calls, but the specification explicitly marks the feature experimental.",
+      "decision_rationale": "MCP Tasks has moved from the experimental 2025-11-25 core into an opt-in extension of the stable 2026-07-28 protocol, but the extension specification remains draft and SDK/provider support is uneven.",
       "maturity": {
-        "upstream_status": "experimental_specification",
-        "evidence_basis": "The MCP 2025-11-25 Tasks utility is explicitly labeled experimental and subject to change.",
+        "upstream_status": "official_extension_with_draft_spec_and_uneven_sdk_support",
+        "evidence_basis": "The stable MCP 2026-07-28 core defines the extension mechanism and identifies Tasks as an opt-in extension, while the Tasks extension documentation still points to a draft specification and requires explicit support by both peers.",
         "stable_for_kjds_production": false
       },
       "evidence_urls": [
-        "https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks"
+        "https://modelcontextprotocol.io/specification/2026-07-28",
+        "https://modelcontextprotocol.io/extensions/tasks/overview",
+        "https://tasks.extensions.modelcontextprotocol.io/specification/draft/tasks"
       ],
       "kjds_use_cases": [
         "Potential adapter for reporting state of long-running read-only tool jobs.",
         "Potential interoperability mapping to existing KJDS agent-task and persisted-state contracts."
       ],
       "risks": [
-        "Experimental lifecycle and metadata may change incompatibly.",
+        "The extension lifecycle, draft schema, and SDK implementations may change incompatibly.",
         "Protocol task state can become a second canonical business state.",
-        "Cancellation semantics may not stop underlying side effects."
+        "Cancellation semantics may not stop underlying side effects.",
+        "The 2025-11-25 and 2026-07-28 Tasks lifecycles are not wire-compatible and tasks/list was removed for unsafe scoping."
       ],
       "entry_gate": {
         "id": "MCP-TASKS-WATCH-ENTRY",
         "state": "monitor_only",
         "criteria": [
-          "A stable MCP specification revision removes the experimental label.",
+          "A versioned Tasks extension specification and the KJDS Python SDK path support the 2026-07-28 lifecycle without legacy fallback.",
           "At least two required tool providers implement compatible task lifecycle behavior.",
           "An adapter can preserve KJDS as the canonical task and business-state owner."
         ]
