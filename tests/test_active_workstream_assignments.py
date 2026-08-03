@@ -91,63 +91,52 @@ def test_social_platform_and_channel_operations_have_separate_lanes():
     assert lanes["I"]["name"] == "russia_market_intelligence"
 
 
-def test_bas181_holds_only_the_media_connector_lane_and_shared_api_leases():
+def test_bas181_release_advances_media_lane():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     media = lanes["J"]
 
-    assert media["current_task"] == {
-        "task_id": "BAS-181",
-        "state": "in_progress",
-        "owner_thread_id": "019fc5d0-bbff-74c2-a8ee-fb53111255a9",
-        "write_scope": [
-            "media_connector_registry",
-            "media_connector_api",
-            "runtime_composition",
-            "api_aggregation_root",
-            "alembic_migration_0091",
-            "media_connector_tests",
-            "postgres_smoke_ci",
-            "openapi_snapshot",
-        ],
-        "blocked_on": [],
-    }
+    assert media["current_task"] is None
     assert media["next_task_id"] == "BAS-182"
-    assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-181",
-        "api_aggregation_root": "BAS-181",
-        "master_spec": None,
-        "openapi_snapshot": "BAS-181",
-    }
 
 
-def test_bas192_holds_only_the_local_demo_gateway_lane():
+def test_bas192_release_advances_local_demo_lane():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     demo = lanes["K"]
 
-    assert demo["current_task"] == {
-        "task_id": "BAS-192",
-        "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
-        "write_scope": [
-            "local_demo_gateway",
-            "local_demo_memory_session_store",
-            "local_demo_network_policy",
-            "local_demo_gateway_tests",
-        ],
-        "blocked_on": [],
-    }
+    assert demo["current_task"] is None
     assert demo["next_task_id"] == "BAS-193"
 
 
-def test_bas197_release_advances_strategic_intelligence_lane():
+def test_bas198_holds_strategic_intelligence_lane_and_shared_api_leases():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     strategic = lanes["L"]
 
-    assert strategic["current_task"] is None
-    assert strategic["next_task_id"] == "BAS-198"
+    assert strategic["current_task"] == {
+        "task_id": "BAS-198",
+        "state": "in_progress",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "write_scope": [
+            "primary_source_intake_service",
+            "primary_source_lineage_and_conservation",
+            "evidence_source_registration",
+            "runtime_composition",
+            "primary_source_intake_api",
+            "alembic_migration_0092",
+            "primary_source_intake_tests",
+            "openapi_snapshot",
+        ],
+        "blocked_on": [],
+    }
+    assert strategic["next_task_id"] == "BAS-199"
+    assert registry["shared_write_leases"] == {
+        "alembic_migration": "BAS-198",
+        "api_aggregation_root": "BAS-198",
+        "master_spec": None,
+        "openapi_snapshot": "BAS-198",
+    }
 
 
 def test_bas172_release_advances_lane_c_without_preleasing_bas173():
@@ -176,9 +165,9 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "master_spec",
         "openapi_snapshot",
     }
-    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-181"
-    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-181"
-    assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-181"
+    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-198"
+    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-198"
+    assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-198"
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["policy"]["legacy_in_progress_is_execution_lease"] is False
     assert registry["policy"]["current_task_is_execution_lease"] is True
