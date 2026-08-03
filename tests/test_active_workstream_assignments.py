@@ -116,21 +116,38 @@ def test_bas199_release_advances_strategic_lane_without_preleasing_bas200():
 
     assert strategic["current_task"] is None
     assert strategic["next_task_id"] == "BAS-200"
-    assert registry["shared_write_leases"] == {
-        "alembic_migration": None,
-        "api_aggregation_root": None,
-        "master_spec": None,
-        "openapi_snapshot": None,
-    }
+    assert "BAS-200" not in registry["shared_write_leases"].values()
 
 
-def test_bas173_release_advances_product_engineering_without_preleasing_bas200():
+def test_bas177_holds_product_engineering_team_agent_evolution_lease():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] is None
-    assert engineering["next_task_id"] == "BAS-177"
+    assert engineering["current_task"] == {
+        "task_id": "BAS-177",
+        "state": "in_progress",
+        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
+        "write_scope": [
+            "governed_team_agent_evolution",
+            "versioned_skill_candidate",
+            "frozen_eval_set_contract",
+            "baseline_negative_scope_evaluation",
+            "governed_shadow_evaluation",
+            "independent_review_promotion",
+            "rollback_retirement",
+            "canonical_graph_learning_observation",
+            "evolution_evidence_ledger",
+            "alembic_migration_0094",
+            "evolution_test_contracts",
+        ],
+        "blocked_on": [],
+    }
+    assert engineering["next_task_id"] is None
+    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-177"
+    assert registry["shared_write_leases"]["api_aggregation_root"] is None
+    assert registry["shared_write_leases"]["master_spec"] is None
+    assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert all(
         lane["current_task"] is None
         or lane["current_task"]["task_id"] != "BAS-200"
@@ -155,7 +172,7 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "master_spec",
         "openapi_snapshot",
     }
-    assert registry["shared_write_leases"]["alembic_migration"] is None
+    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-177"
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
