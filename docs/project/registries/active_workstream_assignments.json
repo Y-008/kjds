@@ -203,7 +203,7 @@
       "current_task": {
         "task_id": "BAS-190",
         "state": "in_progress",
-        "owner_thread_id": "019fc654-03dc-7c71-a520-8f85918f3e44",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
         "write_scope": [
           "local_demo_boundary_adr",
           "local_demo_contract_registry",
