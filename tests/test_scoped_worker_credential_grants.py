@@ -187,7 +187,14 @@ class Switch:
         return SimpleNamespace(engaged=False)
 
 
-def native_pilot(engine, *, operation="ozon.product.read"):
+def native_pilot(
+    engine,
+    *,
+    operation="ozon.product.read",
+    starts_at="2026-08-01T00:00:00+00:00",
+    ends_at="2026-08-03T00:00:00+00:00",
+):
+    review_as_of = datetime.fromisoformat(starts_at) + timedelta(hours=1)
     evidence = EvidenceService(engine)
     source = evidence.capture(
         content=b"native pilot evidence",
@@ -213,8 +220,8 @@ def native_pilot(engine, *, operation="ozon.product.read"):
         allowed_operations=[operation],
         max_daily_requests=5,
         max_targets=2,
-        starts_at="2026-08-01T00:00:00+00:00",
-        ends_at="2026-08-03T00:00:00+00:00",
+        starts_at=starts_at,
+        ends_at=ends_at,
         evidence_ids=[source.id],
         requested_by="owner",
         scope_authority={
@@ -235,9 +242,11 @@ def native_pilot(engine, *, operation="ozon.product.read"):
             evidence_ids=[source.id],
             attested_by="owner",
         )
-    pilots.submit_review(pilot["id"], actor_id="owner", as_of="2026-08-01T01:00:00+00:00")
+    pilots.submit_review(
+        pilot["id"], actor_id="owner", as_of=review_as_of.isoformat()
+    )
     pilots.review(pilot["id"], accepted=True, rationale="independent", actor_id="reviewer")
-    pilots.activate(pilot["id"], actor_id="admin", as_of="2026-08-01T01:00:00+00:00")
+    pilots.activate(pilot["id"], actor_id="admin", as_of=review_as_of.isoformat())
     return pilots, pilot
 
 
@@ -463,6 +472,7 @@ def test_drifted_lease_binding_never_signs_grant():
 
 def test_issued_grant_round_trips_through_scoped_factory_and_consumes_once():
     engine = database()
+    run_as_of = datetime.now(UTC)
     record = lease_record()
     record = replace(
         record,
@@ -486,6 +496,7 @@ def test_issued_grant_round_trips_through_scoped_factory_and_consumes_once():
         handle=handle,
         secret_reference_sha256=record.secret_reference_sha256,
         credential_fingerprint_sha256=record.credential_fingerprint_sha256,
+        expires_at=record.expires_at,
     )
     issuer = CanonicalWorkerCredentialGrantIssuer(
         grant_issuer="kjds-control-plane",
@@ -493,7 +504,11 @@ def test_issued_grant_round_trips_through_scoped_factory_and_consumes_once():
         signing_key=b"g" * 32,
         lease_source=BindingSource(binding_value),
     )
-    pilots, pilot = native_pilot(engine)
+    pilots, pilot = native_pilot(
+        engine,
+        starts_at=(run_as_of - timedelta(hours=1)).isoformat(),
+        ends_at=(run_as_of + timedelta(hours=1)).isoformat(),
+    )
     runs = PilotRunService(
         engine=engine,
         pilots=pilots,
@@ -506,7 +521,7 @@ def test_issued_grant_round_trips_through_scoped_factory_and_consumes_once():
         operation="ozon.product.read",
         target_ref="offer-1",
         worker_id="reader-1",
-        as_of=datetime.now(UTC).isoformat(),
+        as_of=run_as_of.isoformat(),
     )
     grant = started["credential_grant"]
 
@@ -533,7 +548,7 @@ def test_issued_grant_round_trips_through_scoped_factory_and_consumes_once():
             lease_resolver=resolver,
             client_builder=builder,
         )
-        with factory.open(grant=grant, as_of=datetime.now(UTC)):
+        with factory.open(grant=grant, as_of=run_as_of):
             assert len(opens) == 1
         session.commit()
         assert opens[0].client_id == "client-1"
@@ -556,7 +571,7 @@ def test_issued_grant_round_trips_through_scoped_factory_and_consumes_once():
             client_builder=builder,
         )
         with pytest.raises(PermissionError, match="consumed"):
-            factory.open(grant=grant, as_of=datetime.now(UTC))
+            factory.open(grant=grant, as_of=run_as_of)
         assert len(opens) == 1
 
 
