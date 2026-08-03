@@ -1,0 +1,267 @@
+{
+  "schema_version": "kjds-media-agent-contracts-v1",
+  "as_of": "2026-08-03",
+  "status": "contract_only",
+  "work_item": "BAS-180",
+  "contract_sha_policy": "canonical_json_sha256",
+  "authority_owners": {
+    "commander_goal_graph_and_verifiers": "AgentHarness",
+    "media_blob_hash_lineage_qa_and_manifest": "ContentAsset/Evidence",
+    "connector_descriptor_and_tenant_binding": "BAS-181",
+    "codex_protocol_worker": "BAS-182",
+    "job_api_sse_idempotency_and_usage_adapter": "BAS-183",
+    "access_token_plan_balance_refund_sla_dpa_export_delete": "COM-002",
+    "social_campaign_grant_publish_readback_revoke_kill": "BAS-178"
+  },
+  "control_envelope": {
+    "proposal_only_until_existing_media_qa_passes": true,
+    "formal_fact": false,
+    "listing_eligible_by_job_success": false,
+    "agent_self_approval": false,
+    "agent_permit_issuance": false,
+    "platform_write_allowed": false,
+    "credential_material_visible_to_commander": false,
+    "blob_bytes_visible_to_commander": false,
+    "provider_selection": "explicit",
+    "automatic_cross_provider_failover": false,
+    "automatic_connector_identity_rotation": false,
+    "unknown_outcome_automatic_retry": false
+  },
+  "scope_contract": {
+    "authority_source": "authenticated_principal_and_current_scope_authority",
+    "idempotency_scope": ["derived_tenant_ref", "tool_name", "idempotency_key"],
+    "connector_binding": ["derived_tenant_ref", "connector_ref", "provider"],
+    "caller_supplied_authority_fields_allowed": false,
+    "caller_forbidden_scope_fields": ["tenant_ref", "entity_ref", "store_ref", "authority_sha256", "actor_id", "roles"]
+  },
+  "sensitive_field_policy": {
+    "recursive_key_matching": true,
+    "case_insensitive": true,
+    "forbidden_payload_keys": [
+      "authorization",
+      "api_key",
+      "access_token",
+      "refresh_token",
+      "oauth_token",
+      "client_secret",
+      "password",
+      "cookie",
+      "cookies",
+      "local_storage",
+      "localStorage",
+      "browser_profile",
+      "browser_profile_archive",
+      "codex_home_contents"
+    ],
+    "log_redaction_required": true,
+    "evidence_body_secret_capture_allowed": false
+  },
+  "tool_gateway": {
+    "contract_id": "kjds-media-tool-gateway-v1",
+    "commander_owner": "AgentHarness",
+    "common_allowed_inputs": [
+      "project_ref",
+      "brief_ref",
+      "provider",
+      "connector_ref",
+      "idempotency_key",
+      "output_contract"
+    ],
+    "immediate_result_required_fields": ["contract_version", "job_ref", "status"],
+    "immediate_result_additional_fields_allowed": false,
+    "immediate_result_status": "QUEUED",
+    "tools": [
+      {
+        "name": "media.image_generate",
+        "version": "1.0.0",
+        "owner_task": "BAS-183",
+        "purpose": "Generate image proposal artifacts from a governed brief.",
+        "required_capabilities": ["image_generation"],
+        "additional_allowed_inputs": ["prompt", "size", "count", "reference_asset_refs"],
+        "accepted_providers": ["codex_oauth", "comfyui"],
+        "result_kind": "image_artifact_evidence",
+        "external_side_effect": "provider_media_generation_only"
+      },
+      {
+        "name": "media.image_edit",
+        "version": "1.0.0",
+        "owner_task": "BAS-183",
+        "purpose": "Edit rights-approved reference images under preservation constraints.",
+        "required_capabilities": ["image_editing"],
+        "additional_allowed_inputs": ["prompt", "size", "count", "reference_asset_refs", "preservation_constraints"],
+        "accepted_providers": ["codex_oauth", "comfyui"],
+        "result_kind": "image_artifact_evidence",
+        "external_side_effect": "provider_media_generation_only"
+      },
+      {
+        "name": "media.video_blueprint",
+        "version": "1.0.0",
+        "owner_task": "BAS-186",
+        "purpose": "Convert a rights-approved reference video into an auditable EditingBlueprint proposal.",
+        "required_capabilities": ["vision", "structured_output"],
+        "additional_allowed_inputs": ["reference_asset_refs", "analysis_contract", "target_channels"],
+        "accepted_providers": ["codex_oauth"],
+        "result_kind": "editing_blueprint_evidence",
+        "external_side_effect": "analysis_only"
+      },
+      {
+        "name": "media.video_render",
+        "version": "1.0.0",
+        "owner_task": "BAS-186",
+        "purpose": "Render an admitted EditingBlueprint with approved media inputs.",
+        "required_capabilities": ["video_render"],
+        "additional_allowed_inputs": ["editing_blueprint_ref", "source_asset_refs", "audio_asset_refs", "render_profile"],
+        "accepted_providers": ["ffmpeg", "remotion"],
+        "result_kind": "video_artifact_evidence",
+        "external_side_effect": "local_media_render_only"
+      },
+      {
+        "name": "tutorial.build",
+        "version": "1.0.0",
+        "owner_task": "BAS-187",
+        "purpose": "Compile software feature nodes into a TutorialGraph and governed capture Job.",
+        "required_capabilities": ["tutorial_graph", "windows_capture"],
+        "additional_allowed_inputs": ["application_ref", "feature_nodes", "capture_policy", "narration_profile"],
+        "accepted_providers": ["windows_agent"],
+        "result_kind": "tutorial_graph_and_media_evidence",
+        "external_side_effect": "approved_local_application_control_only"
+      }
+    ]
+  },
+  "job_contract": {
+    "contract_id": "kjds-media-job-v1",
+    "start_state": "QUEUED",
+    "states": [
+      "QUEUED",
+      "DISPATCHED",
+      "RUNNING",
+      "UPLOADING",
+      "SUCCEEDED",
+      "LOGIN_REQUIRED",
+      "LIMITED",
+      "FAILED",
+      "CANCELLED",
+      "UNKNOWN_OUTCOME"
+    ],
+    "terminal_states": ["SUCCEEDED", "FAILED", "CANCELLED"],
+    "paused_states": ["LOGIN_REQUIRED", "LIMITED", "UNKNOWN_OUTCOME"],
+    "transitions": {
+      "QUEUED": ["DISPATCHED", "CANCELLED", "FAILED"],
+      "DISPATCHED": ["RUNNING", "LOGIN_REQUIRED", "LIMITED", "FAILED", "CANCELLED", "UNKNOWN_OUTCOME"],
+      "RUNNING": ["UPLOADING", "LOGIN_REQUIRED", "LIMITED", "FAILED", "CANCELLED", "UNKNOWN_OUTCOME"],
+      "UPLOADING": ["SUCCEEDED", "FAILED", "CANCELLED", "UNKNOWN_OUTCOME"],
+      "LOGIN_REQUIRED": ["DISPATCHED", "FAILED", "CANCELLED"],
+      "LIMITED": ["DISPATCHED", "FAILED", "CANCELLED"],
+      "UNKNOWN_OUTCOME": ["UPLOADING", "SUCCEEDED", "FAILED", "CANCELLED"],
+      "SUCCEEDED": [],
+      "FAILED": [],
+      "CANCELLED": []
+    },
+    "resume_requirements": {
+      "LOGIN_REQUIRED": ["same_connector_ref", "fresh_login_status", "explicit_resume"],
+      "LIMITED": ["same_connector_ref", "fresh_limit_status", "cooldown_satisfied", "explicit_resume"],
+      "UNKNOWN_OUTCOME": ["same_connector_ref", "provider_readback", "artifact_store_readback", "no_new_dispatch"]
+    },
+    "required_record_fields": [
+      "job_ref",
+      "tool_name",
+      "tool_version",
+      "derived_tenant_ref",
+      "project_ref",
+      "brief_ref",
+      "provider",
+      "connector_ref",
+      "idempotency_sha256",
+      "request_sha256",
+      "status",
+      "attempt_count",
+      "created_at",
+      "updated_at"
+    ],
+    "success_required_references": ["artifact_evidence_refs"],
+    "governed_commerce_success_references": ["content_asset_ref", "artifact_evidence_refs"],
+    "sanitized_optional_fields": ["usage_ref", "cost_summary", "latency_ms", "failure_code", "provider_operation_ref", "content_asset_ref"],
+    "defaults": {
+      "connector_concurrency": 1,
+      "tenant_queue_cap": 100,
+      "raw_artifact_retention_days": 30,
+      "automatic_retry_after_unknown_outcome": false,
+      "automatic_cross_provider_retry": false,
+      "automatic_identity_rotation": false
+    }
+  },
+  "connector_contract": {
+    "contract_id": "kjds-media-connector-descriptor-v1",
+    "owner_task": "BAS-181",
+    "deployment_modes": ["customer_local", "hosted_isolated"],
+    "providers": ["codex_oauth", "comfyui", "ffmpeg", "remotion", "windows_agent"],
+    "health_states": ["ENROLLING", "READY", "BUSY", "LOGIN_REQUIRED", "LIMITED", "OFFLINE", "ERROR", "REVOKED"],
+    "allowed_record_fields": [
+      "connector_ref",
+      "derived_tenant_ref",
+      "provider",
+      "deployment_mode",
+      "binding_sha256",
+      "protocol_version",
+      "capabilities",
+      "health",
+      "concurrency_limit",
+      "rate_limit_summary",
+      "last_heartbeat_at",
+      "created_at",
+      "revoked_at"
+    ],
+    "rate_limit_summary_fields": ["status", "observed_at", "retry_after_at"],
+    "credential_storage": "provider_or_codex_owned_local_store_outside_kjds_database",
+    "job_assignment_requirements": [
+      "connector_derived_tenant_matches_job_derived_tenant",
+      "connector_provider_matches_job_provider",
+      "required_capabilities_are_present",
+      "connector_is_ready",
+      "active_job_count_below_concurrency_limit"
+    ],
+    "shared_pool": false,
+    "cross_tenant_reuse": false,
+    "automatic_rotation": false,
+    "raw_credential_readback": false
+  },
+  "artifact_contract": {
+    "contract_id": "kjds-media-job-artifact-reference-v1",
+    "evidence_owner": "ContentAsset/Evidence",
+    "required_evidence_metadata": [
+      "job_ref",
+      "connector_ref",
+      "provider",
+      "tool_name",
+      "tool_version",
+      "sha256",
+      "byte_size",
+      "mime_type",
+      "generated_at"
+    ],
+    "type_specific_metadata": {
+      "image": ["width", "height"],
+      "video": ["width", "height", "duration_ms", "encoder_manifest_sha256"],
+      "editing_blueprint": ["schema_version", "source_asset_refs"],
+      "tutorial": ["tutorial_graph_version", "capture_manifest_sha256"]
+    },
+    "standalone_proposal_listing_eligible": false,
+    "content_asset_attachment_requires_existing_scope_and_media_qa": true,
+    "job_owns_blob_bytes": false,
+    "job_owns_qa_or_approval": false
+  },
+  "future_public_surface": {
+    "owner_task": "BAS-183",
+    "canonical_mode": "asynchronous",
+    "compatibility_facade": "openai_style_images_after_native_job_admission",
+    "authentication_owner": "COM-002",
+    "planned_operations": [
+      "submit_image_generation",
+      "submit_image_edit",
+      "read_job",
+      "stream_job_events",
+      "cancel_job"
+    ],
+    "implemented_by_bas_180": false
+  }
+}
