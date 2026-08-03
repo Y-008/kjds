@@ -184,7 +184,7 @@
 | OPS-XHS-001 | G-1–G6 | 小红书全量研究与运营分项 | 小红书运营+内容+产品+销售 | 固定 `xiaohongshu-cli` 0.6.4 提交并在项目本地隔离安装；专用二维码账号建立搜索、笔记、全量评论/子评论、用户、话题、通知与自有内容基线，输出卖家分群、评论意图、内容结构、产品需求、日历和 campaign 草案；账号绑定与 grant 前不冒充真实执行，真实写后必须读回。 | BAS-178 | IN_PROGRESS_PREP_ONLY |
 | OPS-DY-001 | G-1–G6 | 抖音全量研究与运营分项 | 抖音运营+视频+产品+销售 | 官方 OAuth/创作者中心优先，专用浏览器为降级；建立视频钩子、节奏、评论意图、创作者/商品匹配、直播/短视频漏斗、授权账号指标和内容 campaign 基线，来源中断进入 Adapter 解决 Loop，账号绑定与 grant 前不冒充真实执行。 | BAS-178 | IN_PROGRESS_PREP_ONLY |
 | BAS-179 | G-1–G6 | 俄罗斯市场需求与热点事件全量雷达 | Russia Market Intelligence+Commerce+Evidence+Risk | 组合 Ozon/Wildberries/Yandex Market 站内需求、Yandex Wordstat 地区/时间需求、Telegram/VK 公开讨论、平台官方变更与宏观/贸易/物流事件；每源全分页/字段/时间窗、记录 native cap、checkpoint、失败页、守恒与历史回补，按需求/竞争/热点/平台/宏观/供应分层并做可解释跨源评分。当前先完成来源与 fixture，不把公共新闻冒充 SKU 销量或利润。 | BAS-178、BR-139 | IN_PROGRESS_PREP_ONLY |
-| BAS-180 | G-1 | Commander 与媒体子代理合同冻结 | Agent Platform+Media+Evidence+Risk | 冻结 Commander/Tool Gateway、五个媒体 Tool、异步 Job、单租户 Connector、ContentAsset/Evidence 引用和 Source Adoption；本票仅 ADR/registry/contract tests，不实现迁移、API、Worker、MCP 或 Provider。 | BAS-172、BAS-176、BAS-178 | IN_PROGRESS |
+| BAS-180 | G-1 | Commander 与媒体子代理合同冻结 | Agent Platform+Media+Evidence+Risk | 冻结 Commander/Tool Gateway、五个媒体 Tool、异步 Job、单租户 Connector、ContentAsset/Evidence 引用和 Source Adoption；本票仅 ADR/registry/contract tests，不实现迁移、API、Worker、MCP 或 Provider。 | BAS-172、BAS-176、BAS-178 | DONE_ENGINEERING |
 | BAS-181 | G-1 | 媒体 Connector Registry 与租户绑定 | Agent Platform+Identity+Media | 实现本地/托管 Connector 注册、exact-tenant 绑定、能力与脱敏健康状态；不保存 OAuth/Cookie 正文，不建立跨身份轮换池。 | BAS-180 | QUEUED |
 | BAS-182 | G-1 | Codex app-server Image Worker | Agent Platform+Media | 以固定协议实现事件解析、产物回收、LOGIN_REQUIRED/LIMITED/UNKNOWN_OUTCOME 停止与回读；不依赖 ChatGPT 网页 DOM 作为生产主通道。 | BAS-181 | QUEUED |
 | BAS-183 | G-1–C0 | 异步图片 API、SSE、幂等与计量接线 | API+Media+Commercial Platform | 提供生成/编辑 Job、状态/SSE/取消与 OpenAI 风格兼容层；同幂等键只执行和计量一次，KJDS Token/套餐/余额仍归 COM-002。 | BAS-182、COM-002 | QUEUED |
@@ -194,13 +194,21 @@
 | BAS-187 | G-1 | TutorialGraph 与 Windows Agent | Media+Desktop Automation+Evidence | 把软件功能节点编译为操作、UI 锚点、截图、说明和讲解产物；每步可回读/恢复，敏感窗口和凭证区域默认遮蔽。 | BAS-184 | QUEUED |
 | BAS-188 | G-1–G6 | 媒体交付包接入社媒平台 | Media+Social Intelligence | 将图片、视频蓝图和教程产物组装为 DeliveryManifest 交给 BAS-178；社媒发布、campaign grant、回读、撤销和 kill switch 仍归 BAS-178。 | BAS-185、BAS-186、BAS-187、BAS-178 | QUEUED |
 | BAS-189 | C0–S1 | 邀请制媒体付费 Pilot | Commercial Platform+Media+Risk | 在 COM-002 Token、计量、收退款、SLA、DPA、退出导出完成后开放邀请制 Pilot；工程状态不得冒充可售、可扣费或生产 SLA。 | BAS-183、BAS-188、COM-002 | QUEUED |
-| BAS-190 | G-1 | 本地 DEMO 客户端边界合同冻结 | Product+Web+Risk | 冻结 ScenarioPack、DemoSession、LocalDemoGateway、合成数据/不计费标志和零生产依赖负向合同；本票仅 ADR/registry/test，不修改真实套餐、额度、授权、计费、API 或外写 Gate。 | BAS-176、COM-002、BAS-180 | IN_PROGRESS |
+| BAS-190 | G-1 | 本地 DEMO 客户端边界合同冻结 | Product+Web+Risk | 冻结 ScenarioPack、DemoSession、LocalDemoGateway、合成数据/不计费标志和零生产依赖负向合同；本票仅 ADR/registry/test，不修改真实套餐、额度、授权、计费、API 或外写 Gate。 | BAS-176、COM-002、BAS-180 | DONE_ENGINEERING |
 | BAS-191 | G-1 | ScenarioPack 与 DemoSession 领域内核 | Product+Web | 在独立 `clients/local-demo` 建立版本化合成场景、SHA-256、确定性时钟、会话 TTL 和重置；不读取真实业务表或环境凭证。 | BAS-190 | QUEUED |
 | BAS-192 | G-1 | LocalDemoGateway 与内存会话仓 | Product+Web+Risk | 实现唯一 query/apply/reset 接口、幂等、跨会话 404、payload drift 和零生产导入/网络合同；动作只生成 DemoTransition。 | BAS-191 | QUEUED |
 | BAS-193 | G-1 | 独立 DEMO PWA 壳与持续水印 | Product Design+Web | 建立不复用生产根布局的本地 PWA，桌面/390px 均持续显示 LOCAL DEMO/合成数据/不计费，离线首屏且零 `/backend` 请求。 | BAS-192 | QUEUED |
 | BAS-194 | G-1 | DEMO 全链路九工作区 | Product+Commerce+Web | 用固定 ScenarioPack 实现驾驶舱、选品、PIM、刊登、OMS、履约、客服、增长和利润的查询/模拟推进/错误重放，不创建任何真实权威对象。 | BAS-193 | QUEUED |
 | BAS-195 | G-1 | DEMO 离线便携包与清理 | Release+Web | 交付 PWA/便携 ZIP、loopback 启动、断网冷启动、显式重置和清理脚本；构建不含账号、Cookie、API Key 或真实数据。 | BAS-194 | QUEUED |
 | BAS-196 | G-1 | DEMO 隔离验收与交付 Evidence | QA+Risk+Release | 验证 Node/Web/E2E、1440/390、零外网、零 `/backend`、零秘密、零生产写、跨会话隔离、构建哈希和可重复清理。 | BAS-195 | QUEUED |
+| BAS-197 | G-1 | 一手资料、Top1 对标与资本经营闭环合同冻结 | Strategy+Product+Data+Capital+Risk | 冻结 StrategicBenchmarkKernel、PrimarySourceEnvelope、分维度/队列/时窗 Top1 语义、差距图、实验组合、资本配置提案与约束破甲评测；只接受可复验证据晋级事实，本票仅 ADR/registry/tests。 | BAS-172、BAS-176、BAS-180、BAS-190 | IN_PROGRESS |
+| BAS-198 | G-1 | PrimarySource Intake 与证据化标准化 | Data+Evidence+Finance+Market Intelligence | 复用 Evidence/Lineage 接收经营原件、平台官方数据、供应商/物流/银行/结算及技术一手基准；保存原件哈希、合同、许可、作用域、时间和守恒报告，不在 Git 保存秘密、PII 或原始经营数据。 | BAS-197 | QUEUED |
+| BAS-199 | G-1 | 多维 Top1 Benchmark 与可比队列 | Strategy+Product+Data | 按技术、AI、产品、商业、运营、资本、组织、韧性和合规冻结 metric/cohort/window/source contract；Top1 只代表当前可验证维度领先者，不产生全局营销排名。 | BAS-198 | QUEUED |
+| BAS-200 | G-1 | GapGraph 与战略机会组合 | Strategy+Graph+Product | 将当前 Evidence、Top1 基准、能力图谱、客户问题和单位经济映射为可解释差距、机会、依赖、最大损失、替代方案与失效条件；不复制 BAS-173 的检索真源。 | BAS-199、BAS-173 | QUEUED |
+| BAS-201 | C0–S1 | 实验组合与资本配置提案 | Capital+Finance+Growth+Risk | 在现金底线、runway、最大损失、回收期、downside CM3、证据覆盖和停止条件下比较 build/buy/partner/defer；输出提案，不自批预算、不付款、不投资证券。 | BAS-200、COM-002 | QUEUED |
+| BAS-202 | G-1 | Constraint Breaker 红队与技术搬运 Gate | AI+Security+Architecture+QA | 用本地合成 fixture 对提示注入、跨作用域、幂等漂移、工具投毒、间接注入和 unknown outcome 做可复现攻击评测；技术候选必须经 best_solution、许可证、数据边界、成本、回滚和真实样本 Gate 后才进入依赖。 | BAS-197、BAS-177 | QUEUED |
+| BAS-203 | G-1–C0 | 战略情报与资本经营驾驶舱 | Product+Web+Strategy+Finance | 展示一手资料覆盖、Top1 对标、差距、机会组合、实验、资本提案、结果和失效条件；客户端只读，不重算事实、排名、Gate 或预算权限。 | BAS-198、BAS-199、BAS-200、BAS-201 | QUEUED |
+| BAS-204 | G-1 | 闭环回写、时效复审与可验证进化 | Agent Platform+Evidence+Strategy+QA | 结果回写必须绑定 AgentRun/Evidence/实验/成本/经营 Outcome，按时效自动降级并触发复审；模型、Skill、技术或策略晋级继续由 BAS-177 评测、Shadow、批准和回滚控制。 | BAS-177、BAS-201、BAS-202、BAS-203 | QUEUED |
 | COM-001 | C0 | 逆漏斗最小销售包 | 经营+销售+产品+法务 | 形成客户资格/拒绝表、只读诊断交付物、Evidence-backed 案例模板、SOW、价格实验、合同/DPA/SLA 清单和成交页真实文案；C0 通过前仅准备，不报价成交、不收款、不形成应收。 | BAS-171、C0 缺口清单 | IN_PROGRESS_PREP_ONLY |
 | COM-002 | C0–S3 | 单客户交付底座与 C0 关闭包 | Commercial Platform+Release+Finance+Legal | 以 C0 清单为唯一验收源，依次完成发布 provenance、托管双客户负向隔离、真实 TLS/Secrets/备份恢复、商业生命周期与收退款、单位经济、Contract/DPA/SLA、退出导出和删除演练；每项独立晋级，全部 PASS 前不得销售。 | C0-001–003、BAS-175、经营负责人输入 | IN_PROGRESS_PREP_ONLY |
 | DAY0-TRUTH-20260802 | G0–G4 | Ozon 真实经营真源校正 | 工程+经营+财务 | BAS-160 中 `channel-accounts workspace=ready` 只代表渠道账户授权控制面；真实商品只读与真实财务只读已通过，真实订单、平台结算、银行到账和任何 provider 外写仍未通过。因此 BAS-160 整项保持 `IN_PROGRESS`，不得解释为 ready；利润计算与扩量继续失败关闭。 | BAS-160、BAS-161 | PARTIAL_BLOCKED |
