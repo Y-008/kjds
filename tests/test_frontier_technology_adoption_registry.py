@@ -177,11 +177,11 @@ def test_experimental_or_draft_technology_is_not_adopt_now_or_production_ready()
     by_id = {item["id"]: item for _, item in _entries(registry)}
     constrained = {
         "mcp_tasks_durable_protocol": (
-            "experimental_specification",
+            "official_extension_with_draft_spec_and_uneven_sdk_support",
             "watch",
         ),
         "opentelemetry_genai_semantic_conventions": (
-            "development_semantic_convention",
+            "separate_evolving_genai_semantic_convention",
             "pilot",
         ),
         "webdriver_bidi_browser_provider": (
@@ -200,6 +200,32 @@ def test_experimental_or_draft_technology_is_not_adopt_now_or_production_ready()
         assert item["maturity"]["upstream_status"] == maturity
         assert item["decision"] == decision
         assert item["maturity"]["stable_for_kjds_production"] is False
+
+
+def test_incremental_review_tracks_breaking_protocol_and_database_security_changes():
+    registry = _load_registry()
+    by_id = {item["id"]: item for _, item in _entries(registry)}
+
+    mcp_auth = by_id["mcp_oauth_resource_authorization"]
+    assert "2026-07-28" in mcp_auth["decision_rationale"]
+    assert any("2026-07-28" in url for url in mcp_auth["evidence_urls"])
+
+    mcp_tasks = by_id["mcp_tasks_durable_protocol"]
+    assert mcp_tasks["decision"] == "watch"
+    assert any("draft" in url for url in mcp_tasks["evidence_urls"])
+    assert any("not wire-compatible" in risk for risk in mcp_tasks["risks"])
+
+    otel = by_id["opentelemetry_genai_semantic_conventions"]
+    assert otel["decision"] == "pilot"
+    assert "separate repository" in otel["maturity"]["evidence_basis"]
+
+    postgres = by_id["postgresql_18_rehearsal"]
+    assert postgres["decision"] == "pilot"
+    assert any("17.10" in criterion for criterion in postgres["entry_gate"]["criteria"])
+
+    provenance = by_id["slsa_cyclonedx_supply_chain_evidence"]
+    assert provenance["decision"] == "adopt_now"
+    assert any("17.10" in criterion for criterion in provenance["exit_gate"]["criteria"])
 
 
 def test_registry_is_fail_closed_and_only_reports_the_existing_agent_baseline():
