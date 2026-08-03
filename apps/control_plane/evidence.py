@@ -59,6 +59,7 @@ UNIQUE_SOURCE_REF_SOURCES = {
     "governed-agent-run-evidence",
     "marketplace-observation",
     "ozon-isolated-execution-worker",
+    "primary-source-intake",
     "scope_authority_review",
     "scope_authority_source",
     "seller_erp_bridge_binding",
@@ -132,6 +133,14 @@ class EvidenceRecordRow(Base):
             unique=True,
             postgresql_where=text("source = 'governed-agent-run-evidence'"),
             sqlite_where=text("source = 'governed-agent-run-evidence'"),
+        ),
+        Index(
+            "uq_primary_source_intake_evidence_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'primary-source-intake'"),
+            sqlite_where=text("source = 'primary-source-intake'"),
         ),
         Index(
             "uq_scope_authority_source_ref",

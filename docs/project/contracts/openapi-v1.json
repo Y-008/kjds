@@ -3816,6 +3816,33 @@
         "title": "CommercialTaxEvidenceInput",
         "type": "object"
       },
+      "ConservationInput": {
+        "additionalProperties": false,
+        "properties": {
+          "duplicate_count": {
+            "minimum": 0.0,
+            "title": "Duplicate Count",
+            "type": "integer"
+          },
+          "quarantined_count": {
+            "minimum": 0.0,
+            "title": "Quarantined Count",
+            "type": "integer"
+          },
+          "source_total": {
+            "minimum": 0.0,
+            "title": "Source Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_total",
+          "quarantined_count",
+          "duplicate_count"
+        ],
+        "title": "ConservationInput",
+        "type": "object"
+      },
       "ContentBriefInput": {
         "additionalProperties": false,
         "properties": {
@@ -3987,6 +4014,39 @@
           "rationale"
         ],
         "title": "CostEvidenceAuthorityReviewInput",
+        "type": "object"
+      },
+      "CountsOutput": {
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "integer"
+          },
+          "duplicate": {
+            "title": "Duplicate",
+            "type": "integer"
+          },
+          "quarantined": {
+            "title": "Quarantined",
+            "type": "integer"
+          },
+          "source_total": {
+            "title": "Source Total",
+            "type": "integer"
+          },
+          "suppressed": {
+            "title": "Suppressed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_total",
+          "accepted",
+          "suppressed",
+          "quarantined",
+          "duplicate"
+        ],
+        "title": "CountsOutput",
         "type": "object"
       },
       "CustomerServiceCaseInput": {
@@ -4704,6 +4764,24 @@
           "objective"
         ],
         "title": "EvidenceOpsPlanInput",
+        "type": "object"
+      },
+      "EvidenceRefOutput": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sha256"
+        ],
+        "title": "EvidenceRefOutput",
         "type": "object"
       },
       "EvidenceScopeBindingRecordInput": {
@@ -5946,6 +6024,41 @@
         "title": "IncidentRecoveryReviewInput",
         "type": "object"
       },
+      "IntegrityInput": {
+        "additionalProperties": false,
+        "properties": {
+          "raw_blob_reverified": {
+            "const": true,
+            "title": "Raw Blob Reverified",
+            "type": "boolean"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "title": "Verified At",
+            "type": "string"
+          },
+          "verifier_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Verifier Id",
+            "type": "string"
+          },
+          "verifier_version": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Verifier Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "raw_blob_reverified",
+          "verifier_id",
+          "verifier_version",
+          "verified_at"
+        ],
+        "title": "IntegrityInput",
+        "type": "object"
+      },
       "KillSwitchInput": {
         "additionalProperties": false,
         "properties": {
@@ -5960,6 +6073,315 @@
           "reason"
         ],
         "title": "KillSwitchInput",
+        "type": "object"
+      },
+      "LeadRecordInput": {
+        "additionalProperties": false,
+        "properties": {
+          "business_entity_name": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Business Entity Name",
+            "type": "string"
+          },
+          "category": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "confidence_bps": {
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Confidence Bps",
+            "type": "integer"
+          },
+          "contact_purpose_basis": {
+            "enum": [
+              "not_applicable",
+              "consent",
+              "existing_customer",
+              "contractual_necessity",
+              "documented_legitimate_business_interest"
+            ],
+            "title": "Contact Purpose Basis",
+            "type": "string"
+          },
+          "contact_ref": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Ref"
+          },
+          "country_or_region": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Country Or Region",
+            "type": "string"
+          },
+          "do_not_contact_status": {
+            "enum": [
+              "unknown",
+              "clear",
+              "do_not_contact",
+              "withdrawn"
+            ],
+            "title": "Do Not Contact Status",
+            "type": "string"
+          },
+          "entity_type": {
+            "enum": [
+              "seller_account",
+              "supplier_entity",
+              "prospect_account",
+              "buyer_signal",
+              "verified_contact_point",
+              "qualified_opportunity"
+            ],
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "jurisdiction": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Jurisdiction",
+            "type": "string"
+          },
+          "license_or_terms_basis": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "License Or Terms Basis",
+            "type": "string"
+          },
+          "marketplace_or_site": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Marketplace Or Site",
+            "type": "string"
+          },
+          "public_business_url": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Business Url"
+          },
+          "signal_observed_at": {
+            "format": "date-time",
+            "title": "Signal Observed At",
+            "type": "string"
+          },
+          "signal_type": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Signal Type",
+            "type": "string"
+          },
+          "source_family": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Source Family",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_family",
+          "marketplace_or_site",
+          "business_entity_name",
+          "country_or_region",
+          "category",
+          "entity_type",
+          "signal_type",
+          "signal_observed_at",
+          "license_or_terms_basis",
+          "contact_purpose_basis",
+          "jurisdiction",
+          "do_not_contact_status",
+          "confidence_bps"
+        ],
+        "title": "LeadRecordInput",
+        "type": "object"
+      },
+      "LeadRecordOutput": {
+        "properties": {
+          "business_entity_name": {
+            "title": "Business Entity Name",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "confidence_bps": {
+            "title": "Confidence Bps",
+            "type": "integer"
+          },
+          "contact_purpose_basis": {
+            "enum": [
+              "not_applicable",
+              "consent",
+              "existing_customer",
+              "contractual_necessity",
+              "documented_legitimate_business_interest"
+            ],
+            "title": "Contact Purpose Basis",
+            "type": "string"
+          },
+          "contact_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Ref"
+          },
+          "country_or_region": {
+            "title": "Country Or Region",
+            "type": "string"
+          },
+          "disposition": {
+            "enum": [
+              "accepted",
+              "suppressed"
+            ],
+            "title": "Disposition",
+            "type": "string"
+          },
+          "do_not_contact_status": {
+            "enum": [
+              "unknown",
+              "clear",
+              "do_not_contact",
+              "withdrawn"
+            ],
+            "title": "Do Not Contact Status",
+            "type": "string"
+          },
+          "entity_type": {
+            "enum": [
+              "seller_account",
+              "supplier_entity",
+              "prospect_account",
+              "buyer_signal",
+              "verified_contact_point",
+              "qualified_opportunity"
+            ],
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "jurisdiction": {
+            "title": "Jurisdiction",
+            "type": "string"
+          },
+          "lead_stage": {
+            "enum": [
+              "observed",
+              "entity_resolved",
+              "icp_matched",
+              "contact_basis_verified",
+              "qualified_opportunity"
+            ],
+            "title": "Lead Stage",
+            "type": "string"
+          },
+          "license_or_terms_basis": {
+            "title": "License Or Terms Basis",
+            "type": "string"
+          },
+          "marketplace_or_site": {
+            "title": "Marketplace Or Site",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "public_business_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Business Url"
+          },
+          "record_ref": {
+            "title": "Record Ref",
+            "type": "string"
+          },
+          "signal_observed_at": {
+            "format": "date-time",
+            "title": "Signal Observed At",
+            "type": "string"
+          },
+          "signal_type": {
+            "title": "Signal Type",
+            "type": "string"
+          },
+          "source_family": {
+            "title": "Source Family",
+            "type": "string"
+          },
+          "source_record_sha256": {
+            "title": "Source Record Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_ref",
+          "ordinal",
+          "source_record_sha256",
+          "source_family",
+          "marketplace_or_site",
+          "entity_type",
+          "business_entity_name",
+          "country_or_region",
+          "category",
+          "public_business_url",
+          "signal_type",
+          "signal_observed_at",
+          "license_or_terms_basis",
+          "contact_ref",
+          "contact_purpose_basis",
+          "jurisdiction",
+          "do_not_contact_status",
+          "confidence_bps",
+          "evidence_refs",
+          "disposition",
+          "lead_stage"
+        ],
+        "title": "LeadRecordOutput",
         "type": "object"
       },
       "LimitedExecutionClaimInput": {
@@ -8282,6 +8704,85 @@
         "title": "OzonListingDraftInput",
         "type": "object"
       },
+      "PaginationInput": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_ref": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Ref"
+          },
+          "expected_pages": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Expected Pages",
+            "type": "integer"
+          },
+          "failed_page_refs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Failed Page Refs",
+            "type": "array"
+          },
+          "received_pages": {
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Received Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_pages",
+          "received_pages"
+        ],
+        "title": "PaginationInput",
+        "type": "object"
+      },
+      "PaginationOutput": {
+        "properties": {
+          "checkpoint_sha256": {
+            "title": "Checkpoint Sha256",
+            "type": "string"
+          },
+          "expected_pages": {
+            "title": "Expected Pages",
+            "type": "integer"
+          },
+          "failed_page_count": {
+            "title": "Failed Page Count",
+            "type": "integer"
+          },
+          "failed_page_sha256": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Page Sha256",
+            "type": "array"
+          },
+          "received_pages": {
+            "title": "Received Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_pages",
+          "received_pages",
+          "failed_page_count",
+          "failed_page_sha256",
+          "checkpoint_sha256"
+        ],
+        "title": "PaginationOutput",
+        "type": "object"
+      },
       "PassportInput": {
         "additionalProperties": false,
         "properties": {
@@ -8830,6 +9331,365 @@
         "title": "PortfolioPilotPrepareInput",
         "type": "object"
       },
+      "PrimarySourceAdmissionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "envelope": {
+            "$ref": "#/components/schemas/SourceEnvelopeInput"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/LeadRecordInput"
+            },
+            "maxItems": 500,
+            "title": "Records",
+            "type": "array"
+          },
+          "store_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "store_ref",
+          "as_of",
+          "envelope"
+        ],
+        "title": "PrimarySourceAdmissionInput",
+        "type": "object"
+      },
+      "PrimarySourceAdmissionOutput": {
+        "properties": {
+          "contract_id": {
+            "const": "kjds-primary-source-intake-v1",
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "intake": {
+            "$ref": "#/components/schemas/PrimarySourceDescriptorOutput"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/LeadRecordOutput"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "contract_id",
+          "intake",
+          "records"
+        ],
+        "title": "PrimarySourceAdmissionOutput",
+        "type": "object"
+      },
+      "PrimarySourceDescriptorOutput": {
+        "properties": {
+          "acquisition_mode": {
+            "enum": [
+              "official_api",
+              "account_owner_export",
+              "licensed_dataset",
+              "terms_permitted_public_business_observation",
+              "consented_first_party_crm_import"
+            ],
+            "title": "Acquisition Mode",
+            "type": "string"
+          },
+          "admission_grade": {
+            "enum": [
+              "B",
+              "C"
+            ],
+            "title": "Admission Grade",
+            "type": "string"
+          },
+          "allowed_purpose": {
+            "title": "Allowed Purpose",
+            "type": "string"
+          },
+          "approval_created": {
+            "const": false,
+            "title": "Approval Created",
+            "type": "boolean"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "blob_sha256": {
+            "title": "Blob Sha256",
+            "type": "string"
+          },
+          "byte_count": {
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/CountsOutput"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "cross_border_transfer_classification": {
+            "enum": [
+              "not_applicable",
+              "domestic_only",
+              "approved_transfer",
+              "restricted"
+            ],
+            "title": "Cross Border Transfer Classification",
+            "type": "string"
+          },
+          "data_classification": {
+            "enum": [
+              "business_public",
+              "business_confidential",
+              "financial_restricted",
+              "personal_professional",
+              "security_restricted"
+            ],
+            "title": "Data Classification",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/EvidenceRefOutput"
+          },
+          "external_write_allowed": {
+            "const": false,
+            "title": "External Write Allowed",
+            "type": "boolean"
+          },
+          "finance_entry_created": {
+            "const": false,
+            "title": "Finance Entry Created",
+            "type": "boolean"
+          },
+          "formal_fact_promoted": {
+            "const": false,
+            "title": "Formal Fact Promoted",
+            "type": "boolean"
+          },
+          "idempotent_replay": {
+            "title": "Idempotent Replay",
+            "type": "boolean"
+          },
+          "intake_ref": {
+            "title": "Intake Ref",
+            "type": "string"
+          },
+          "jurisdiction": {
+            "title": "Jurisdiction",
+            "type": "string"
+          },
+          "license_or_terms_basis": {
+            "title": "License Or Terms Basis",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PaginationOutput"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "permit_created": {
+            "const": false,
+            "title": "Permit Created",
+            "type": "boolean"
+          },
+          "personal_contact_retained": {
+            "const": false,
+            "title": "Personal Contact Retained",
+            "type": "boolean"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/QualityOutput"
+          },
+          "raw_source_retained": {
+            "const": false,
+            "title": "Raw Source Retained",
+            "type": "boolean"
+          },
+          "request_sha256": {
+            "title": "Request Sha256",
+            "type": "string"
+          },
+          "retention_class": {
+            "enum": [
+              "operational",
+              "financial",
+              "compliance",
+              "experiment",
+              "security"
+            ],
+            "title": "Retention Class",
+            "type": "string"
+          },
+          "review_due_at": {
+            "format": "date-time",
+            "title": "Review Due At",
+            "type": "string"
+          },
+          "scope_binding_sha256": {
+            "title": "Scope Binding Sha256",
+            "type": "string"
+          },
+          "source_contract_id": {
+            "title": "Source Contract Id",
+            "type": "string"
+          },
+          "source_contract_version": {
+            "title": "Source Contract Version",
+            "type": "string"
+          },
+          "source_locator_sha256": {
+            "title": "Source Locator Sha256",
+            "type": "string"
+          },
+          "source_pack_id": {
+            "enum": [
+              "operating_cash_truth",
+              "marketplace_demand_and_catalog",
+              "unit_economics_supply_and_logistics",
+              "global_trade_lead_intelligence",
+              "customer_product_and_revenue",
+              "ai_technology_and_cost_benchmark",
+              "competitor_enterprise_and_capital",
+              "risk_legal_security_and_compliance"
+            ],
+            "title": "Source Pack Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "store_ref": {
+            "title": "Store Ref",
+            "type": "string"
+          },
+          "subject_ref_sha256": {
+            "title": "Subject Ref Sha256",
+            "type": "string"
+          },
+          "verifier": {
+            "$ref": "#/components/schemas/VerifierOutput"
+          }
+        },
+        "required": [
+          "intake_ref",
+          "store_ref",
+          "scope_binding_sha256",
+          "source_pack_id",
+          "source_contract_id",
+          "source_contract_version",
+          "subject_ref_sha256",
+          "source_locator_sha256",
+          "blob_sha256",
+          "byte_count",
+          "mime_type",
+          "acquisition_mode",
+          "admission_grade",
+          "license_or_terms_basis",
+          "allowed_purpose",
+          "jurisdiction",
+          "retention_class",
+          "data_classification",
+          "cross_border_transfer_classification",
+          "parser_version",
+          "verifier",
+          "captured_at",
+          "effective_at",
+          "as_of",
+          "review_due_at",
+          "counts",
+          "pagination",
+          "quality",
+          "status",
+          "evidence",
+          "request_sha256",
+          "idempotent_replay",
+          "raw_source_retained",
+          "personal_contact_retained",
+          "formal_fact_promoted",
+          "finance_entry_created",
+          "approval_created",
+          "permit_created",
+          "external_write_allowed",
+          "created_by",
+          "created_at"
+        ],
+        "title": "PrimarySourceDescriptorOutput",
+        "type": "object"
+      },
+      "PrimarySourceListOutput": {
+        "properties": {
+          "contract_id": {
+            "const": "kjds-primary-source-intake-v1",
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrimarySourceDescriptorOutput"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "contract_id",
+          "items",
+          "next_cursor"
+        ],
+        "title": "PrimarySourceListOutput",
+        "type": "object"
+      },
       "ProcurementCandidateInput": {
         "additionalProperties": false,
         "properties": {
@@ -9292,6 +10152,49 @@
           "evidence"
         ],
         "title": "ProfitScenarioInput",
+        "type": "object"
+      },
+      "QualityOutput": {
+        "properties": {
+          "accuracy": {
+            "title": "Accuracy",
+            "type": "string"
+          },
+          "completeness": {
+            "title": "Completeness",
+            "type": "string"
+          },
+          "conservation": {
+            "title": "Conservation",
+            "type": "string"
+          },
+          "consistency": {
+            "title": "Consistency",
+            "type": "string"
+          },
+          "timeliness": {
+            "title": "Timeliness",
+            "type": "string"
+          },
+          "uniqueness": {
+            "title": "Uniqueness",
+            "type": "string"
+          },
+          "validity": {
+            "title": "Validity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "completeness",
+          "uniqueness",
+          "validity",
+          "consistency",
+          "timeliness",
+          "accuracy",
+          "conservation"
+        ],
+        "title": "QualityOutput",
         "type": "object"
       },
       "RateLimitSummaryInput": {
@@ -10196,6 +11099,188 @@
           "seller_facts"
         ],
         "title": "SellerOperatingSystemInput",
+        "type": "object"
+      },
+      "SourceEnvelopeInput": {
+        "additionalProperties": false,
+        "properties": {
+          "acquisition_mode": {
+            "enum": [
+              "official_api",
+              "account_owner_export",
+              "licensed_dataset",
+              "terms_permitted_public_business_observation",
+              "consented_first_party_crm_import"
+            ],
+            "title": "Acquisition Mode",
+            "type": "string"
+          },
+          "allowed_purpose": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Allowed Purpose",
+            "type": "string"
+          },
+          "blob_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Blob Sha256",
+            "type": "string"
+          },
+          "byte_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "conservation": {
+            "$ref": "#/components/schemas/ConservationInput"
+          },
+          "cross_border_transfer_classification": {
+            "enum": [
+              "not_applicable",
+              "domestic_only",
+              "approved_transfer",
+              "restricted"
+            ],
+            "title": "Cross Border Transfer Classification",
+            "type": "string"
+          },
+          "data_classification": {
+            "enum": [
+              "business_public",
+              "business_confidential",
+              "financial_restricted",
+              "personal_professional",
+              "security_restricted"
+            ],
+            "title": "Data Classification",
+            "type": "string"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "field_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Field Count",
+            "type": "integer"
+          },
+          "integrity": {
+            "$ref": "#/components/schemas/IntegrityInput"
+          },
+          "jurisdiction": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Jurisdiction",
+            "type": "string"
+          },
+          "license_or_terms_basis": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "License Or Terms Basis",
+            "type": "string"
+          },
+          "mime_type": {
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PaginationInput"
+          },
+          "parser_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "retention_class": {
+            "enum": [
+              "operational",
+              "financial",
+              "compliance",
+              "experiment",
+              "security"
+            ],
+            "title": "Retention Class",
+            "type": "string"
+          },
+          "review_due_at": {
+            "format": "date-time",
+            "title": "Review Due At",
+            "type": "string"
+          },
+          "source_contract_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Contract Id",
+            "type": "string"
+          },
+          "source_contract_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Source Contract Version",
+            "type": "string"
+          },
+          "source_locator_ref": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source Locator Ref",
+            "type": "string"
+          },
+          "source_pack_id": {
+            "enum": [
+              "operating_cash_truth",
+              "marketplace_demand_and_catalog",
+              "unit_economics_supply_and_logistics",
+              "global_trade_lead_intelligence",
+              "customer_product_and_revenue",
+              "ai_technology_and_cost_benchmark",
+              "competitor_enterprise_and_capital",
+              "risk_legal_security_and_compliance"
+            ],
+            "title": "Source Pack Id",
+            "type": "string"
+          },
+          "subject_ref": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Subject Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_pack_id",
+          "source_contract_id",
+          "source_contract_version",
+          "subject_ref",
+          "source_locator_ref",
+          "blob_sha256",
+          "byte_count",
+          "mime_type",
+          "captured_at",
+          "effective_at",
+          "acquisition_mode",
+          "license_or_terms_basis",
+          "allowed_purpose",
+          "jurisdiction",
+          "retention_class",
+          "data_classification",
+          "cross_border_transfer_classification",
+          "parser_version",
+          "field_count",
+          "pagination",
+          "integrity",
+          "conservation",
+          "review_due_at"
+        ],
+        "title": "SourceEnvelopeInput",
         "type": "object"
       },
       "SourcePlatform": {
@@ -11224,6 +12309,35 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifierOutput": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "raw_blob_reverified": {
+            "title": "Raw Blob Reverified",
+            "type": "boolean"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "title": "Verified At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "raw_blob_reverified",
+          "verified_at"
+        ],
+        "title": "VerifierOutput",
         "type": "object"
       },
       "WarehouseExecutionEventInput": {
@@ -25461,6 +26575,256 @@
           }
         ],
         "summary": "Prepare Portfolio Pilot"
+      }
+    },
+    "/v1/primary-source-intakes": {
+      "get": {
+        "operationId": "list_primary_sources_v1_primary_source_intakes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "As Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_pack_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "operating_cash_truth",
+                    "marketplace_demand_and_catalog",
+                    "unit_economics_supply_and_logistics",
+                    "global_trade_lead_intelligence",
+                    "customer_product_and_revenue",
+                    "ai_technology_and_cost_benchmark",
+                    "competitor_enterprise_and_capital",
+                    "risk_legal_security_and_compliance"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Pack Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "complete",
+                    "partial"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrimarySourceListOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "List Primary Sources"
+      },
+      "post": {
+        "operationId": "admit_primary_source_v1_primary_source_intakes_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrimarySourceAdmissionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrimarySourceAdmissionOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Admit Primary Source"
+      }
+    },
+    "/v1/primary-source-intakes/{intake_ref}": {
+      "get": {
+        "operationId": "get_primary_source_v1_primary_source_intakes__intake_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intake_ref",
+            "required": true,
+            "schema": {
+              "title": "Intake Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "As Of",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrimarySourceAdmissionOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Get Primary Source"
       }
     },
     "/v1/procurement/sample-orders": {
