@@ -1,0 +1,283 @@
+{
+  "schema_version": "kjds-strategic-benchmark-contracts-v1",
+  "as_of": "2026-08-03",
+  "purpose": "Define the single evidence-backed strategic benchmark, gap, experiment and capital-allocation contract for KJDS.",
+  "kernel": {
+    "name": "StrategicBenchmarkKernel",
+    "interface_methods": [
+      "build_snapshot",
+      "compare",
+      "propose_portfolio",
+      "reconcile"
+    ],
+    "canonical_inputs": [
+      "Evidence",
+      "Lineage",
+      "Fact",
+      "Finance",
+      "OperatingGraph",
+      "AgentRun",
+      "existing_domain_read_models"
+    ],
+    "canonical_outputs": [
+      "BenchmarkSnapshot",
+      "GapMap",
+      "ExperimentPortfolioProposal",
+      "CapitalAllocationProposal",
+      "ReconciliationObservation"
+    ],
+    "creates_new_truth_store": false,
+    "creates_fact_or_finance_entry": false,
+    "creates_approval_permit_payment_or_external_write": false
+  },
+  "top1_semantics": {
+    "global_top1_allowed": false,
+    "allowed_labels": [
+      "metric_leader",
+      "frontier_candidate",
+      "best_feasible_for_kjds"
+    ],
+    "required_dimensions": [
+      "domain",
+      "metric_id",
+      "direction",
+      "unit",
+      "cohort",
+      "market",
+      "window",
+      "as_of",
+      "source_grade",
+      "sample",
+      "methodology",
+      "uncertainty",
+      "evidence_refs"
+    ],
+    "comparison_states": [
+      "comparable",
+      "partial",
+      "not_comparable",
+      "no_data",
+      "stale",
+      "invalidated"
+    ],
+    "marketing_claim_alone_can_win": false,
+    "model_output_alone_can_win": false,
+    "synthetic_demo_can_set_current_value": false,
+    "source_or_method_drift_invalidates": true
+  },
+  "domains": [
+    {
+      "id": "technology_architecture",
+      "metrics": [
+        {"id": "deployment_frequency", "direction": "higher_is_better", "unit": "verified_deployments_per_period", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "change_failure_rate", "direction": "lower_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "recovery_time", "direction": "lower_is_better", "unit": "minutes", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "cost_per_verified_outcome", "direction": "lower_is_better", "unit": "currency_per_verified_outcome", "minimum_source_grade": "A", "freshness_days": 30}
+      ]
+    },
+    {
+      "id": "ai_agent",
+      "metrics": [
+        {"id": "frozen_eval_pass_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 14},
+        {"id": "unsupported_claim_rate", "direction": "lower_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 14},
+        {"id": "tool_task_success_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 14},
+        {"id": "cross_scope_leakage", "direction": "lower_is_better", "unit": "count", "minimum_source_grade": "A", "freshness_days": 1},
+        {"id": "verified_task_cost", "direction": "lower_is_better", "unit": "currency_per_verified_task", "minimum_source_grade": "A", "freshness_days": 14}
+      ]
+    },
+    {
+      "id": "product_experience",
+      "metrics": [
+        {"id": "activation_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "time_to_first_value", "direction": "lower_is_better", "unit": "minutes", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "core_task_success", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "retention", "direction": "higher_is_better", "unit": "cohort_ratio", "minimum_source_grade": "A", "freshness_days": 45}
+      ]
+    },
+    {
+      "id": "global_acquisition_and_sales",
+      "metrics": [
+        {"id": "verified_account_coverage", "direction": "higher_is_better", "unit": "accounts", "minimum_source_grade": "B", "freshness_days": 30},
+        {"id": "icp_precision", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "verified_contact_coverage", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "positive_reply_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "qualified_opportunity_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "cash_payback_period", "direction": "lower_is_better", "unit": "days", "minimum_source_grade": "A", "freshness_days": 45}
+      ]
+    },
+    {
+      "id": "commerce_supply_operations",
+      "metrics": [
+        {"id": "exact_identity_match_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 14},
+        {"id": "fully_costed_candidate_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 14},
+        {"id": "inventory_turns", "direction": "higher_is_better", "unit": "turns_per_year", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "fulfillment_sla_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 14},
+        {"id": "return_rate", "direction": "lower_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30}
+      ]
+    },
+    {
+      "id": "finance_and_capital",
+      "metrics": [
+        {"id": "cash_runway", "direction": "higher_is_better", "unit": "months", "minimum_source_grade": "A", "freshness_days": 7},
+        {"id": "cash_conversion_cycle", "direction": "lower_is_better", "unit": "days", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "downside_cm3", "direction": "higher_is_better", "unit": "currency", "minimum_source_grade": "A", "freshness_days": 14},
+        {"id": "maximum_loss", "direction": "lower_is_better", "unit": "currency", "minimum_source_grade": "A", "freshness_days": 7},
+        {"id": "capital_payback", "direction": "lower_is_better", "unit": "days", "minimum_source_grade": "A", "freshness_days": 30}
+      ]
+    },
+    {
+      "id": "organization_execution",
+      "metrics": [
+        {"id": "owner_coverage", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 14},
+        {"id": "decision_latency", "direction": "lower_is_better", "unit": "hours", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "blocked_time", "direction": "lower_is_better", "unit": "hours", "minimum_source_grade": "A", "freshness_days": 14},
+        {"id": "verified_automation_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 14}
+      ]
+    },
+    {
+      "id": "security_resilience",
+      "metrics": [
+        {"id": "cross_tenant_leakage", "direction": "lower_is_better", "unit": "count", "minimum_source_grade": "A", "freshness_days": 1},
+        {"id": "append_only_integrity_failures", "direction": "lower_is_better", "unit": "count", "minimum_source_grade": "A", "freshness_days": 1},
+        {"id": "recovery_success_rate", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "verified_supply_chain_subject_coverage", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30}
+      ]
+    },
+    {
+      "id": "data_compliance_governance",
+      "metrics": [
+        {"id": "fresh_evidence_coverage", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 7},
+        {"id": "lineage_coverage", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 7},
+        {"id": "license_contract_coverage", "direction": "higher_is_better", "unit": "ratio", "minimum_source_grade": "A", "freshness_days": 30},
+        {"id": "pii_minimization_exception_count", "direction": "lower_is_better", "unit": "count", "minimum_source_grade": "A", "freshness_days": 1}
+      ]
+    }
+  ],
+  "best_solution_profile": {
+    "hard_elimination_dimensions": [
+      "evidence",
+      "authority",
+      "security",
+      "privacy",
+      "legal_and_license",
+      "cash_floor",
+      "maximum_loss",
+      "rollback",
+      "acceptance"
+    ],
+    "comparison_dimensions": [
+      "long_term_risk_adjusted_value",
+      "total_cost_of_ownership",
+      "time_to_value",
+      "operational_fit",
+      "maintainability",
+      "reversibility",
+      "replacement_cost"
+    ],
+    "required_options": ["build", "buy", "partner", "defer", "no_action"],
+    "equal_weight_total_score_allowed": false,
+    "required_records": [
+      "selected_option",
+      "rejected_options_and_reasons",
+      "sensitivity",
+      "invalidation_conditions",
+      "review_date",
+      "approval_requirement"
+    ]
+  },
+  "capital_allocation_proposal": {
+    "proposal_only": true,
+    "securities_investment_scope": false,
+    "required_fields": [
+      "cash_floor",
+      "runway",
+      "budget_cap",
+      "maximum_loss",
+      "timebox",
+      "downside_base_upside",
+      "payback_period",
+      "evidence_coverage",
+      "dependencies",
+      "owner",
+      "primary_metric",
+      "guardrails",
+      "stop_conditions",
+      "rollback",
+      "no_action_comparison"
+    ],
+    "self_approval_allowed": false,
+    "payment_or_external_write_allowed": false
+  },
+  "constraint_breaker": {
+    "target_scope": "local_synthetic_kjds_fixtures_or_explicitly_admitted_isolated_endpoints",
+    "attack_classes": [
+      "prompt_injection",
+      "indirect_document_or_web_injection",
+      "cross_tenant_or_session_scope",
+      "idempotency_drift",
+      "toolchain_poisoning",
+      "data_poisoning",
+      "budget_escape",
+      "unknown_outcome_replay",
+      "authority_claim_forgery",
+      "metric_gaming"
+    ],
+    "required_receipts": [
+      "corpus_sha256",
+      "environment_versions",
+      "bounded_attack_parameters",
+      "safe_output_projection",
+      "finding",
+      "fix_reference",
+      "regression_result",
+      "evidence_refs"
+    ],
+    "production_credentials_allowed": false,
+    "captcha_or_login_bypass_allowed": false,
+    "unbounded_external_network_allowed": false,
+    "production_external_write_allowed": false
+  },
+  "technology_adoption_candidates": [
+    {
+      "id": "inspect_ai_eval_adapter",
+      "decision": "isolated_pilot",
+      "official_source": "https://inspect.aisi.org.uk/",
+      "version_pin_required": true,
+      "kjds_role": "bounded agent, tool and MCP evaluation runner with token, message, time and cost limits",
+      "canonical_owner": false
+    },
+    {
+      "id": "pyrit_red_team_adapter",
+      "decision": "isolated_pilot",
+      "official_source": "https://github.com/microsoft/PyRIT/releases",
+      "observed_candidate_version": "0.13.0",
+      "version_pin_required": true,
+      "kjds_role": "composable attack and scorer adapter; breaking changes and template-injection regressions must be tested",
+      "canonical_owner": false
+    },
+    {
+      "id": "openai_evals_graders_adapter",
+      "decision": "adapter_candidate",
+      "official_source": "https://platform.openai.com/docs/api-reference/graders",
+      "version_pin_required": true,
+      "kjds_role": "provider evaluation adapter behind KJDS frozen corpus, Evidence and AgentRun contracts",
+      "canonical_owner": false
+    },
+    {
+      "id": "opentelemetry_genai_semconv_mapping",
+      "decision": "mapping_pilot",
+      "official_source": "https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/",
+      "version_pin_required": true,
+      "kjds_role": "non-authoritative telemetry mapping only",
+      "canonical_owner": false
+    }
+  ],
+  "control_boundary": {
+    "contract_is_runtime_implementation": false,
+    "contract_is_top1_claim": false,
+    "contract_is_business_authority": false,
+    "contract_is_capital_approval": false,
+    "contract_grants_external_write": false,
+    "unknown_current_values_remain_unknown": true
+  }
+}
