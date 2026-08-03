@@ -48,7 +48,7 @@ def harness():
             GraphProjectRow(
                 id="kjds-059",
                 tenant_ref="tenant-a",
-                entity_ref=None,
+                entity_ref="entity-a",
                 store_ref="store-a",
                 title="KJDS 0.59",
                 lifecycle="active",
@@ -95,7 +95,12 @@ def harness():
                     label=kind,
                     authority="declared",
                     source="ADR-0048",
-                    scope_json={"tenant_ref": "tenant-a", "store_ref": "store-a"},
+                    scope_json={
+                        "tenant_ref": "tenant-a",
+                        "entity_ref": "entity-a",
+                        "store_ref": "store-a",
+                        "scope_grant_authority_sha256": "a" * 64,
+                    },
                     version="1",
                     content_sha256=_sha([kind, "root"]),
                     artifact_ref="docs/adr/ADR-0048-agent-harness-and-canonical-graph.md",
@@ -394,6 +399,214 @@ def test_inferred_edge_is_exploratory_and_scope_fails_closed():
             store_ref="store-b",
             as_of=datetime.now(UTC),
         )
+
+
+def test_temporal_projection_requires_exact_scope_authority_and_evidence():
+    service = harness()
+    now = datetime.now(UTC)
+    scope = {
+        "status": "ready",
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "authority_sha256": "a" * 64,
+    }
+    with Session(service.engine) as session, session.begin():
+        session.add(
+            GraphEdgeRow(
+                id="edge-evidence-backed",
+                project_id="kjds-059",
+                graph_kind="engineering",
+                source_node_id="node-engineering",
+                target_node_id="node-runtime",
+                edge_type="requires",
+                derivation_method="evidence",
+                confidence=100,
+                evidence_ref="evd-safe",
+                effective_from=now - timedelta(minutes=1),
+                effective_until=now + timedelta(minutes=1),
+                content_sha256=_sha(["evidence-backed"]),
+            )
+        )
+    projection = service.temporal_graph_projection(
+        "kjds-059",
+        principal=principal(roles=frozenset({"operator"})),
+        entity_scope=scope,
+        store_ref="store-a",
+        as_of=now,
+        graph_kind="engineering",
+    )
+    assert projection["status"] == "ready"
+    assert [edge["id"] for edge in projection["edges"]] == [
+        "edge-evidence-backed",
+        "edge-inferred",
+    ]
+    assert projection["edges"][0]["eligible_for_retrieval"] is True
+    assert projection["edges"][1]["eligible_for_retrieval"] is False
+    assert projection["formal_fact_allowed"] is False
+    assert projection["external_write_allowed"] is False
+
+    at_end = service.temporal_graph_projection(
+        "kjds-059",
+        principal=principal(roles=frozenset({"operator"})),
+        entity_scope=scope,
+        store_ref="store-a",
+        as_of=now + timedelta(minutes=1),
+        graph_kind="engineering",
+    )
+    assert all(edge["id"] != "edge-evidence-backed" for edge in at_end["edges"])
+
+    wrong_authority = service.temporal_graph_projection(
+        "kjds-059",
+        principal=principal(roles=frozenset({"operator"})),
+        entity_scope={**scope, "authority_sha256": "b" * 64},
+        store_ref="store-a",
+        as_of=now,
+        graph_kind="engineering",
+    )
+    assert wrong_authority["status"] == "blocked"
+    assert wrong_authority["nodes"] == []
+    assert wrong_authority["edges"] == []
+
+    non_hex_authority = service.temporal_graph_projection(
+        "kjds-059",
+        principal=principal(roles=frozenset({"operator"})),
+        entity_scope={**scope, "authority_sha256": "z" * 64},
+        store_ref="store-a",
+        as_of=now,
+        graph_kind="engineering",
+    )
+    assert non_hex_authority["status"] == "no_data"
+    assert non_hex_authority["reason"] == "exact_current_scope_authority_required"
+    assert non_hex_authority["nodes"] == []
+    assert non_hex_authority["edges"] == []
+
+    revoked = service.temporal_graph_projection(
+        "kjds-059",
+        principal=principal(roles=frozenset({"operator"})),
+        entity_scope={**scope, "status": "no_data", "entity_ref": None},
+        store_ref="store-a",
+        as_of=now,
+        graph_kind="engineering",
+    )
+    assert revoked["status"] == "no_data"
+    assert revoked["reason"] == "exact_current_scope_authority_required"
+
+
+def test_temporal_projection_excludes_future_nodes_and_blocks_cross_project_endpoints():
+    service = harness()
+    now = datetime.now(UTC)
+    exact_scope = {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "a" * 64,
+    }
+    with Session(service.engine) as session, session.begin():
+        session.add(
+            GraphProjectRow(
+                id="other-project",
+                tenant_ref="tenant-a",
+                entity_ref="entity-a",
+                store_ref="store-a",
+                title="Other",
+                lifecycle="active",
+                baseline_sha256="c" * 64,
+                goal_contract_sha256="d" * 64,
+                created_at=now,
+            )
+        )
+        session.add_all(
+            [
+                GraphNodeRow(
+                    id="node-future",
+                    project_id="kjds-059",
+                    graph_kind="evidence",
+                    stable_key="future",
+                    node_type="claim",
+                    label="future",
+                    authority="evidence",
+                    source="fixture",
+                    scope_json=exact_scope,
+                    version="1",
+                    content_sha256=_sha(["future"]),
+                    artifact_ref=None,
+                    created_at=now + timedelta(minutes=1),
+                ),
+                GraphNodeRow(
+                    id="node-other-project",
+                    project_id="other-project",
+                    graph_kind="evidence",
+                    stable_key="other",
+                    node_type="claim",
+                    label="other",
+                    authority="evidence",
+                    source="fixture",
+                    scope_json=exact_scope,
+                    version="1",
+                    content_sha256=_sha(["other"]),
+                    artifact_ref=None,
+                    created_at=now - timedelta(minutes=1),
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                GraphEdgeRow(
+                    id="edge-future-node",
+                    project_id="kjds-059",
+                    graph_kind="evidence",
+                    source_node_id="node-evidence",
+                    target_node_id="node-future",
+                    edge_type="requires",
+                    derivation_method="evidence",
+                    confidence=100,
+                    evidence_ref="evd-future",
+                    effective_from=now - timedelta(minutes=1),
+                    effective_until=None,
+                    content_sha256=_sha(["future-node-edge"]),
+                ),
+                GraphEdgeRow(
+                    id="edge-cross-project-node",
+                    project_id="kjds-059",
+                    graph_kind="evidence",
+                    source_node_id="node-evidence",
+                    target_node_id="node-other-project",
+                    edge_type="requires",
+                    derivation_method="evidence",
+                    confidence=100,
+                    evidence_ref="evd-cross",
+                    effective_from=now - timedelta(minutes=1),
+                    effective_until=None,
+                    content_sha256=_sha(["cross-project-edge"]),
+                ),
+            ]
+        )
+    projection = service.temporal_graph_projection(
+        "kjds-059",
+        principal=principal(roles=frozenset({"operator"})),
+        entity_scope={
+            "status": "ready",
+            **exact_scope,
+            "authority_sha256": exact_scope["scope_grant_authority_sha256"],
+        },
+        store_ref="store-a",
+        as_of=now,
+        graph_kind="evidence",
+    )
+    assert projection["status"] == "blocked"
+    assert projection["reason"] == "edge_endpoint_outside_exact_project_scope_or_as_of"
+    assert projection["nodes"] == []
+    assert projection["edges"] == []
+
+    legacy = service.workspace(
+        "kjds-059",
+        principal=principal(roles=frozenset({"operator"})),
+        store_ref="store-a",
+        as_of=now,
+        graph_kind="evidence",
+    )
+    assert "node-future" not in {node["id"] for node in legacy["nodes"]}
 
 
 def test_unregistered_or_wrong_verifier_cannot_self_certify():
