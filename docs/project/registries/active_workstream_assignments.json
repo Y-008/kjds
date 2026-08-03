@@ -177,6 +177,24 @@
         ]
       },
       "next_task_id": null
+    },
+    {
+      "id": "J",
+      "name": "media_agent_platform",
+      "accountable_role": "media_agent_platform_owner",
+      "current_task": {
+        "task_id": "BAS-180",
+        "state": "in_progress",
+        "owner_thread_id": "019fc5d0-bbff-74c2-a8ee-fb53111255a9",
+        "write_scope": [
+          "commander_media_subagent_adr",
+          "media_agent_source_adoption_registry",
+          "media_agent_contract_registry",
+          "media_agent_contract_tests"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": "BAS-181"
     }
   ],
   "shared_write_leases": {
