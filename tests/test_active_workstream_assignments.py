@@ -108,21 +108,7 @@ def test_bas176_holds_only_the_disposable_postgres_rehearsal_lane():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     risk = lanes["E"]
 
-    assert risk["current_task"] == {
-        "task_id": "BAS-176",
-        "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
-        "write_scope": [
-            "postgres18_disposable_runner",
-            "postgres18_compatibility_contract",
-            "postgres18_migration_replay",
-            "postgres18_backup_restore",
-            "postgres18_rollback_rehearsal",
-            "postgres18_lock_latency_benchmark",
-            "postgres18_test_contracts",
-        ],
-        "blocked_on": [],
-    }
+    assert risk["current_task"] is None
     assert risk["next_task_id"] is None
     assert all(value is None for value in registry["shared_write_leases"].values())
 
