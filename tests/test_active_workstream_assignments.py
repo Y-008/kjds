@@ -39,7 +39,11 @@ def test_workstream_registry_has_nine_single_wip_lanes():
     current_tasks = [lane["current_task"] for lane in lanes if lane["current_task"]]
     task_ids = [task["task_id"] for task in current_tasks]
     assert len(task_ids) == len(set(task_ids))
-    assert all(task["state"] in {"active_blocked", "in_progress_preparation_only"} for task in current_tasks)
+    assert all(
+        task["state"]
+        in {"active_blocked", "in_progress_preparation_only", "in_progress"}
+        for task in current_tasks
+    )
 
 
 def test_current_and_next_tasks_exist_in_the_dynamic_plan():
@@ -84,6 +88,37 @@ def test_social_platform_and_channel_operations_have_separate_lanes():
     assert lanes["I"]["name"] == "russia_market_intelligence"
 
 
+def test_bas172_holds_the_only_migration_and_openapi_leases():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+    engineering = lanes["C"]
+    current = engineering["current_task"]
+
+    assert current == {
+        "task_id": "BAS-172",
+        "state": "in_progress",
+        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
+        "write_scope": [
+            "governed_agent_runtime",
+            "agent_runtime_evidence_ledger",
+            "evidence_source_registration",
+            "runtime_composition",
+            "agent_control_read_api",
+            "alembic_migration_0090",
+            "agent_runtime_test_contracts",
+            "openapi_snapshot",
+        ],
+        "blocked_on": [],
+    }
+    assert engineering["next_task_id"] == "BAS-173"
+    assert registry["shared_write_leases"] == {
+        "alembic_migration": "BAS-172",
+        "api_aggregation_root": None,
+        "master_spec": None,
+        "openapi_snapshot": "BAS-172",
+    }
+
+
 def test_shared_write_leases_and_authority_stay_fail_closed():
     registry = _registry()
     assert set(registry["shared_write_leases"]) == {
@@ -92,7 +127,10 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "master_spec",
         "openapi_snapshot",
     }
-    assert all(owner is None for owner in registry["shared_write_leases"].values())
+    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-172"
+    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-172"
+    assert registry["shared_write_leases"]["api_aggregation_root"] is None
+    assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["policy"]["legacy_in_progress_is_execution_lease"] is False
     assert registry["policy"]["current_task_is_execution_lease"] is True
     assert registry["policy"]["external_write_allowed"] is False
