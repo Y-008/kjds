@@ -58,7 +58,7 @@
       "current_task": {
         "task_id": "BAS-172",
         "state": "in_progress",
-        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
         "write_scope": [
           "governed_agent_runtime",
           "agent_runtime_evidence_ledger",
