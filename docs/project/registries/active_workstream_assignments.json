@@ -55,20 +55,7 @@
       "id": "C",
       "name": "product_engineering",
       "accountable_role": "engineering_owner",
-      "current_task": {
-        "task_id": "BAS-173",
-        "state": "in_progress",
-        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
-        "write_scope": [
-          "governed_retrieval_benchmark",
-          "retrieval_gold_set_contract",
-          "retrieval_benchmark_observation",
-          "canonical_graph_temporal_read_projection",
-          "retrieval_benchmark_tests",
-          "retrieval_benchmark_evidence"
-        ],
-        "blocked_on": []
-      },
+      "current_task": null,
       "next_task_id": "BAS-177"
     },
     {

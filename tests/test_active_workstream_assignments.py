@@ -124,26 +124,18 @@ def test_bas199_release_advances_strategic_lane_without_preleasing_bas200():
     }
 
 
-def test_bas173_holds_product_engineering_retrieval_benchmark_lease():
+def test_bas173_release_advances_product_engineering_without_preleasing_bas200():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] == {
-        "task_id": "BAS-173",
-        "state": "in_progress",
-        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
-        "write_scope": [
-            "governed_retrieval_benchmark",
-            "retrieval_gold_set_contract",
-            "retrieval_benchmark_observation",
-            "canonical_graph_temporal_read_projection",
-            "retrieval_benchmark_tests",
-            "retrieval_benchmark_evidence",
-        ],
-        "blocked_on": [],
-    }
+    assert engineering["current_task"] is None
     assert engineering["next_task_id"] == "BAS-177"
+    assert all(
+        lane["current_task"] is None
+        or lane["current_task"]["task_id"] != "BAS-200"
+        for lane in registry["lanes"]
+    )
 
 
 def test_bas176_holds_only_the_disposable_postgres_rehearsal_lane():
