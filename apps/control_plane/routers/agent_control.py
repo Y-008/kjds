@@ -3,11 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..agent_harness import GRAPH_KINDS
+from ..agent_runtime import AgentRunEvidenceRef, AgentRunScopeContext
 from ..api_contracts import (
     OperatingSubjectEventInput,
     current_principal,
@@ -19,6 +20,20 @@ from ..runtime import runtime
 from ..security import Principal
 
 router = APIRouter()
+
+RUN_STATUSES = Literal[
+    "started",
+    "route_selected",
+    "attempt_started",
+    "attempt_completed",
+    "attempt_denied",
+    "attempt_failed",
+    "eval_completed",
+    "succeeded",
+    "failed",
+    "denied",
+    "unknown_outcome",
+]
 
 
 @router.get("/v1/agent-control/runtime")
@@ -69,6 +84,118 @@ def governed_agent_runtime_descriptor(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     return payload
+
+
+def _run_query_scope(
+    *,
+    principal: Principal,
+    store_ref: str,
+    as_of: str | None,
+) -> AgentRunScopeContext:
+    if not principal.can_access_store(store_ref):
+        raise HTTPException(404, "Governed Agent run scope not found")
+    cutoff = _as_of(as_of)
+    entity_scope = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=cutoff,
+    )
+    if (
+        entity_scope.get("status") != "ready"
+        or not entity_scope.get("entity_ref")
+        or not entity_scope.get("authority_sha256")
+    ):
+        raise HTTPException(404, "Governed Agent run scope not found")
+    evidence_id = str(entity_scope.get("evidence_id") or "").strip()
+    evidence_sha256 = str(entity_scope.get("evidence_sha256") or "").strip()
+    evidence_refs = (
+        (
+            AgentRunEvidenceRef(
+                evidence_id=evidence_id,
+                evidence_sha256=evidence_sha256,
+            ),
+        )
+        if evidence_id and evidence_sha256
+        else ()
+    )
+    return AgentRunScopeContext(
+        tenant_ref=principal.tenant_ref,
+        entity_ref=str(entity_scope["entity_ref"]),
+        store_ref=store_ref,
+        authority_sha256=str(entity_scope["authority_sha256"]),
+        actor_id=principal.actor_id,
+        scope_as_of=cutoff,
+        evidence_refs=evidence_refs,
+    )
+
+
+@router.get("/v1/agent-control/runs")
+def governed_agent_runs(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+    status: RUN_STATUSES | None = None,
+    task_type: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    context = _run_query_scope(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.governed_agent_runtime.list_runs(
+            context=context,
+            status=status,
+            task_type=task_type,
+            limit=limit,
+            offset=offset,
+        )
+    )
+
+
+@router.get("/v1/agent-control/runs/{run_id}")
+def governed_agent_run(
+    run_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    context = _run_query_scope(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.governed_agent_runtime.get_run(
+            context=context,
+            run_id=run_id,
+        )
+    )
+
+
+@router.get("/v1/agent-control/runs/{run_id}/replay")
+def replay_governed_agent_run(
+    run_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+):
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    context = _run_query_scope(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.governed_agent_runtime.replay(
+            context=context,
+            run_id=run_id,
+        )
+    )
 
 
 def _as_of(value: str | None) -> datetime:

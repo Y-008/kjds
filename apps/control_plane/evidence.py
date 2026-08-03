@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -54,6 +56,7 @@ UNIQUE_SOURCE_REF_SOURCES = {
     "channel_account_kill_switch_release",
     "channel_account_official_readback",
     "channel_account_one_time_permit",
+    "governed-agent-run-evidence",
     "marketplace-observation",
     "ozon-isolated-execution-worker",
     "scope_authority_review",
@@ -121,6 +124,14 @@ class EvidenceRecordRow(Base):
             unique=True,
             postgresql_where=text("source = 'ozon-isolated-execution-worker'"),
             sqlite_where=text("source = 'ozon-isolated-execution-worker'"),
+        ),
+        Index(
+            "uq_governed_agent_run_evidence_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'governed-agent-run-evidence'"),
+            sqlite_where=text("source = 'governed-agent-run-evidence'"),
         ),
         Index(
             "uq_scope_authority_source_ref",
@@ -292,6 +303,12 @@ def parse_timestamp(value: str, field: str) -> datetime:
 class EvidenceService:
     def __init__(self, engine) -> None:
         self.engine = engine
+
+    @contextmanager
+    def transaction(self) -> Iterator[Session]:
+        """Open one governed transaction for Evidence and its owning ledger."""
+        with Session(self.engine) as session, session.begin():
+            yield session
 
     def capture(
         self,

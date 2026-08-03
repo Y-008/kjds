@@ -19,6 +19,7 @@ from .agent_runtime import (
     ExistingInferenceRuntimeAdapter,
     GovernedAgentRuntime,
 )
+from .agent_runtime_evidence import SqlAgentRuntimeEvidenceLedger
 from .ai_listing import AiListingPipeline
 from .automation import AutomationService
 from .batch_opportunity import BatchOpportunityWorkspace
@@ -184,6 +185,7 @@ class RuntimeServices:
     action_policies: Any
     agent_harness: Any
     agent_inference: Any
+    agent_runtime_evidence: Any
     governed_agent_runtime: Any
     ai_listing: Any
     authenticator: Any
@@ -1019,10 +1021,14 @@ def build_runtime() -> RuntimeServices:
                 ),
             )
         )
-    governed_agent_runtime = (
-        GovernedAgentRuntime(governed_runtime_adapters)
-        if governed_runtime_adapters
-        else None
+    agent_runtime_evidence = SqlAgentRuntimeEvidenceLedger(
+        engine=engine,
+        evidence=evidence,
+    )
+    governed_agent_runtime = GovernedAgentRuntime(
+        governed_runtime_adapters,
+        task_registry=agent_task_registry,
+        audit_ledger=agent_runtime_evidence,
     )
     ai_listing = AiListingPipeline(
         engine=engine,
@@ -1096,6 +1102,7 @@ def build_runtime() -> RuntimeServices:
         action_policies=action_policies,
         agent_harness=agent_harness,
         agent_inference=agent_inference,
+        agent_runtime_evidence=agent_runtime_evidence,
         governed_agent_runtime=governed_agent_runtime,
         ai_listing=ai_listing,
         authenticator=authenticator,
