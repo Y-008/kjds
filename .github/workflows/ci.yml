@@ -75,6 +75,11 @@ jobs:
       - name: Verify one migration head
         run: test "$(uv run python -m alembic heads | grep -c '(head)')" -eq 1
       - run: uv run python -m alembic upgrade head
+      - name: Verify media connector PostgreSQL contracts
+        run: >-
+          uv run pytest -q -p no:cacheprovider
+          --basetemp=.runtime/pytest-media-connectors-postgres
+          tests/test_media_connectors_postgres.py
       - name: Verify API readiness
         shell: bash
         run: |
