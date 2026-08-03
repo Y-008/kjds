@@ -185,7 +185,7 @@
 | OPS-DY-001 | G-1–G6 | 抖音全量研究与运营分项 | 抖音运营+视频+产品+销售 | 官方 OAuth/创作者中心优先，专用浏览器为降级；建立视频钩子、节奏、评论意图、创作者/商品匹配、直播/短视频漏斗、授权账号指标和内容 campaign 基线，来源中断进入 Adapter 解决 Loop，账号绑定与 grant 前不冒充真实执行。 | BAS-178 | IN_PROGRESS_PREP_ONLY |
 | BAS-179 | G-1–G6 | 俄罗斯市场需求与热点事件全量雷达 | Russia Market Intelligence+Commerce+Evidence+Risk | 组合 Ozon/Wildberries/Yandex Market 站内需求、Yandex Wordstat 地区/时间需求、Telegram/VK 公开讨论、平台官方变更与宏观/贸易/物流事件；每源全分页/字段/时间窗、记录 native cap、checkpoint、失败页、守恒与历史回补，按需求/竞争/热点/平台/宏观/供应分层并做可解释跨源评分。当前先完成来源与 fixture，不把公共新闻冒充 SKU 销量或利润。 | BAS-178、BR-139 | IN_PROGRESS_PREP_ONLY |
 | BAS-180 | G-1 | Commander 与媒体子代理合同冻结 | Agent Platform+Media+Evidence+Risk | 冻结 Commander/Tool Gateway、五个媒体 Tool、异步 Job、单租户 Connector、ContentAsset/Evidence 引用和 Source Adoption；本票仅 ADR/registry/contract tests，不实现迁移、API、Worker、MCP 或 Provider。 | BAS-172、BAS-176、BAS-178 | DONE_ENGINEERING |
-| BAS-181 | G-1 | 媒体 Connector Registry 与租户绑定 | Agent Platform+Identity+Media | 实现本地/托管 Connector 注册、exact-tenant 绑定、能力与脱敏健康状态；不保存 OAuth/Cookie 正文，不建立跨身份轮换池。 | BAS-180 | QUEUED |
+| BAS-181 | G-1 | 媒体 Connector Registry 与租户绑定 | Agent Platform+Identity+Media | 实现本地/托管 Connector 注册、exact-tenant 绑定、能力与脱敏健康状态；不保存 OAuth/Cookie 正文，不建立跨身份轮换池。 | BAS-180 | IN_PROGRESS |
 | BAS-182 | G-1 | Codex app-server Image Worker | Agent Platform+Media | 以固定协议实现事件解析、产物回收、LOGIN_REQUIRED/LIMITED/UNKNOWN_OUTCOME 停止与回读；不依赖 ChatGPT 网页 DOM 作为生产主通道。 | BAS-181 | QUEUED |
 | BAS-183 | G-1–C0 | 异步图片 API、SSE、幂等与计量接线 | API+Media+Commercial Platform | 提供生成/编辑 Job、状态/SSE/取消与 OpenAI 风格兼容层；同幂等键只执行和计量一次，KJDS Token/套餐/余额仍归 COM-002。 | BAS-182、COM-002 | QUEUED |
 | BAS-184 | G-1 | Commander MCP/Tool Gateway | Agent Platform+Media+Evidence | 复用 AgentHarness 编译 CampaignBrief 并调用版本化媒体 Tool；主模型只见能力、状态、成本和 ContentAsset 引用，不见凭证或 Blob 正文。 | BAS-180、BAS-183 | QUEUED |
@@ -195,8 +195,8 @@
 | BAS-188 | G-1–G6 | 媒体交付包接入社媒平台 | Media+Social Intelligence | 将图片、视频蓝图和教程产物组装为 DeliveryManifest 交给 BAS-178；社媒发布、campaign grant、回读、撤销和 kill switch 仍归 BAS-178。 | BAS-185、BAS-186、BAS-187、BAS-178 | QUEUED |
 | BAS-189 | C0–S1 | 邀请制媒体付费 Pilot | Commercial Platform+Media+Risk | 在 COM-002 Token、计量、收退款、SLA、DPA、退出导出完成后开放邀请制 Pilot；工程状态不得冒充可售、可扣费或生产 SLA。 | BAS-183、BAS-188、COM-002 | QUEUED |
 | BAS-190 | G-1 | 本地 DEMO 客户端边界合同冻结 | Product+Web+Risk | 冻结 ScenarioPack、DemoSession、LocalDemoGateway、合成数据/不计费标志和零生产依赖负向合同；本票仅 ADR/registry/test，不修改真实套餐、额度、授权、计费、API 或外写 Gate。 | BAS-176、COM-002、BAS-180 | DONE_ENGINEERING |
-| BAS-191 | G-1 | ScenarioPack 与 DemoSession 领域内核 | Product+Web | 在独立 `clients/local-demo` 建立版本化合成场景、SHA-256、确定性时钟、会话 TTL 和重置；不读取真实业务表或环境凭证。 | BAS-190 | IN_PROGRESS |
-| BAS-192 | G-1 | LocalDemoGateway 与内存会话仓 | Product+Web+Risk | 实现唯一 query/apply/reset 接口、幂等、跨会话 404、payload drift 和零生产导入/网络合同；动作只生成 DemoTransition。 | BAS-191 | QUEUED |
+| BAS-191 | G-1 | ScenarioPack 与 DemoSession 领域内核 | Product+Web | 在独立 `clients/local-demo` 建立版本化合成场景、SHA-256、确定性时钟、会话 TTL 和重置；不读取真实业务表或环境凭证。 | BAS-190 | DONE_ENGINEERING |
+| BAS-192 | G-1 | LocalDemoGateway 与内存会话仓 | Product+Web+Risk | 实现唯一 query/apply/reset 接口、幂等、跨会话 404、payload drift 和零生产导入/网络合同；动作只生成 DemoTransition。 | BAS-191 | IN_PROGRESS |
 | BAS-193 | G-1 | 独立 DEMO PWA 壳与持续水印 | Product Design+Web | 建立不复用生产根布局的本地 PWA，桌面/390px 均持续显示 LOCAL DEMO/合成数据/不计费，离线首屏且零 `/backend` 请求。 | BAS-192 | QUEUED |
 | BAS-194 | G-1 | DEMO 全链路九工作区 | Product+Commerce+Web | 用固定 ScenarioPack 实现驾驶舱、选品、PIM、刊登、OMS、履约、客服、增长和利润的查询/模拟推进/错误重放，不创建任何真实权威对象。 | BAS-193 | QUEUED |
 | BAS-195 | G-1 | DEMO 离线便携包与清理 | Release+Web | 交付 PWA/便携 ZIP、loopback 启动、断网冷启动、显式重置和清理脚本；构建不含账号、Cookie、API Key 或真实数据。 | BAS-194 | QUEUED |
