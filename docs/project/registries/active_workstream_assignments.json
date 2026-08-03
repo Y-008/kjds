@@ -86,8 +86,22 @@
       "id": "E",
       "name": "risk_review",
       "accountable_role": "risk_owner",
-      "current_task": null,
-      "next_task_id": "BAS-176"
+      "current_task": {
+        "task_id": "BAS-176",
+        "state": "in_progress",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "write_scope": [
+          "postgres18_disposable_runner",
+          "postgres18_compatibility_contract",
+          "postgres18_migration_replay",
+          "postgres18_backup_restore",
+          "postgres18_rollback_rehearsal",
+          "postgres18_lock_latency_benchmark",
+          "postgres18_test_contracts"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": null
     },
     {
       "id": "F",
