@@ -84,6 +84,7 @@ from .marketplace_observation import (
     MarketplaceObservationWorkspace,
     PortfolioPilotWorkspace,
 )
+from .media_connectors import MediaConnectorRegistry
 from .media_workbench import MediaWorkbenchService
 from .native_parity_acceptance import (
     ACCEPTANCE_DIMENSIONS,
@@ -261,6 +262,7 @@ class RuntimeServices:
     marketplace_growth: Any
     marketplace_observation: Any
     market_recon_bundles: Any
+    media_connectors: Any
     scoped_marketplace_observation: Any
     scoped_oms: Any
     scoped_inventory: Any
@@ -355,6 +357,7 @@ def _build_worker_grant_issuer(engine):
 def build_runtime() -> RuntimeServices:
     repo = build_repository()
     engine = getattr(repo, "engine", None) or create_database_engine()
+    media_connectors = MediaConnectorRegistry(engine=engine)
     agent_harness = AgentHarnessService(engine)
     evidence = EvidenceService(engine)
     market_recon_bundles = MarketReconBundleIngestion(
@@ -1178,6 +1181,7 @@ def build_runtime() -> RuntimeServices:
         marketplace_growth=marketplace_growth,
         marketplace_observation=marketplace_observation,
         market_recon_bundles=market_recon_bundles,
+        media_connectors=media_connectors,
         scoped_marketplace_observation=scoped_marketplace_observation,
         scoped_oms=scoped_oms,
         scoped_inventory=scoped_inventory,

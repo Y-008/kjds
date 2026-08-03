@@ -5811,6 +5811,44 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HealthObservationInput": {
+        "additionalProperties": false,
+        "properties": {
+          "health": {
+            "enum": [
+              "READY",
+              "BUSY",
+              "LOGIN_REQUIRED",
+              "LIMITED",
+              "OFFLINE",
+              "ERROR"
+            ],
+            "title": "Health",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "rate_limit_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateLimitSummaryInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "health",
+          "observed_at"
+        ],
+        "title": "HealthObservationInput",
+        "type": "object"
+      },
       "IncidentClosureInput": {
         "additionalProperties": false,
         "properties": {
@@ -7199,6 +7237,179 @@
           "asset_id"
         ],
         "title": "MediaBatchItemInput",
+        "type": "object"
+      },
+      "MediaConnectorDescriptorOutput": {
+        "properties": {
+          "binding_sha256": {
+            "title": "Binding Sha256",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "concurrency_limit": {
+            "const": 1,
+            "title": "Concurrency Limit",
+            "type": "integer"
+          },
+          "connector_ref": {
+            "title": "Connector Ref",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deployment_mode": {
+            "enum": [
+              "customer_local",
+              "hosted_isolated"
+            ],
+            "title": "Deployment Mode",
+            "type": "string"
+          },
+          "derived_tenant_ref": {
+            "title": "Derived Tenant Ref",
+            "type": "string"
+          },
+          "health": {
+            "enum": [
+              "ENROLLING",
+              "READY",
+              "BUSY",
+              "LOGIN_REQUIRED",
+              "LIMITED",
+              "OFFLINE",
+              "ERROR",
+              "REVOKED"
+            ],
+            "title": "Health",
+            "type": "string"
+          },
+          "last_heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Heartbeat At"
+          },
+          "protocol_version": {
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "codex_oauth",
+              "comfyui",
+              "ffmpeg",
+              "remotion",
+              "windows_agent"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "rate_limit_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateLimitSummaryOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "connector_ref",
+          "derived_tenant_ref",
+          "provider",
+          "deployment_mode",
+          "binding_sha256",
+          "protocol_version",
+          "capabilities",
+          "health",
+          "concurrency_limit",
+          "rate_limit_summary",
+          "last_heartbeat_at",
+          "created_at",
+          "revoked_at"
+        ],
+        "title": "MediaConnectorDescriptorOutput",
+        "type": "object"
+      },
+      "MediaConnectorListOutput": {
+        "properties": {
+          "contract_id": {
+            "const": "kjds-media-connector-descriptor-v1",
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MediaConnectorDescriptorOutput"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "contract_id",
+          "items",
+          "next_cursor"
+        ],
+        "title": "MediaConnectorListOutput",
+        "type": "object"
+      },
+      "MediaConnectorResultOutput": {
+        "properties": {
+          "connector": {
+            "$ref": "#/components/schemas/MediaConnectorDescriptorOutput"
+          },
+          "contract_id": {
+            "const": "kjds-media-connector-descriptor-v1",
+            "title": "Contract Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_id",
+          "connector"
+        ],
+        "title": "MediaConnectorResultOutput",
         "type": "object"
       },
       "MediaExecutionInput": {
@@ -9083,6 +9294,80 @@
         "title": "ProfitScenarioInput",
         "type": "object"
       },
+      "RateLimitSummaryInput": {
+        "additionalProperties": false,
+        "properties": {
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "retry_after_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry After At"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "limited",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "observed_at"
+        ],
+        "title": "RateLimitSummaryInput",
+        "type": "object"
+      },
+      "RateLimitSummaryOutput": {
+        "properties": {
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "retry_after_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry After At"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "limited",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "observed_at",
+          "retry_after_at"
+        ],
+        "title": "RateLimitSummaryOutput",
+        "type": "object"
+      },
       "ReadOnlyClaimInput": {
         "additionalProperties": false,
         "properties": {
@@ -9360,6 +9645,74 @@
           "fx_source"
         ],
         "title": "ReconciliationInput",
+        "type": "object"
+      },
+      "RegistrationInput": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "concurrency_limit": {
+            "const": 1,
+            "default": 1,
+            "title": "Concurrency Limit",
+            "type": "integer"
+          },
+          "deployment_mode": {
+            "enum": [
+              "customer_local",
+              "hosted_isolated"
+            ],
+            "title": "Deployment Mode",
+            "type": "string"
+          },
+          "protocol_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Protocol Version",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "codex_oauth",
+              "comfyui",
+              "ffmpeg",
+              "remotion",
+              "windows_agent"
+            ],
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "deployment_mode",
+          "protocol_version",
+          "capabilities"
+        ],
+        "title": "RegistrationInput",
+        "type": "object"
+      },
+      "RevokeInput": {
+        "additionalProperties": false,
+        "properties": {
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "observed_at"
+        ],
+        "title": "RevokeInput",
         "type": "object"
       },
       "SampleOrderInput": {
@@ -22326,6 +22679,349 @@
           }
         ],
         "summary": "Page Marketplace Observations"
+      }
+    },
+    "/v1/media-connectors": {
+      "get": {
+        "operationId": "list_media_connectors_v1_media_connectors_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "codex_oauth",
+                    "comfyui",
+                    "ffmpeg",
+                    "remotion",
+                    "windows_agent"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "health",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ENROLLING",
+                    "READY",
+                    "BUSY",
+                    "LOGIN_REQUIRED",
+                    "LIMITED",
+                    "OFFLINE",
+                    "ERROR",
+                    "REVOKED"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Health"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaConnectorListOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "List Media Connectors"
+      },
+      "post": {
+        "operationId": "register_media_connector_v1_media_connectors_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistrationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaConnectorResultOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Register Media Connector"
+      }
+    },
+    "/v1/media-connectors/{connector_ref}": {
+      "get": {
+        "operationId": "get_media_connector_v1_media_connectors__connector_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_ref",
+            "required": true,
+            "schema": {
+              "title": "Connector Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaConnectorResultOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Get Media Connector"
+      }
+    },
+    "/v1/media-connectors/{connector_ref}/observations": {
+      "post": {
+        "operationId": "observe_media_connector_v1_media_connectors__connector_ref__observations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_ref",
+            "required": true,
+            "schema": {
+              "title": "Connector Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HealthObservationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaConnectorResultOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Observe Media Connector"
+      }
+    },
+    "/v1/media-connectors/{connector_ref}/revoke": {
+      "post": {
+        "operationId": "revoke_media_connector_v1_media_connectors__connector_ref__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_ref",
+            "required": true,
+            "schema": {
+              "title": "Connector Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaConnectorResultOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Revoke Media Connector"
       }
     },
     "/v1/media-factory/workspace": {
