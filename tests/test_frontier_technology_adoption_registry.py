@@ -228,7 +228,7 @@ def test_incremental_review_tracks_breaking_protocol_and_database_security_chang
     assert any("17.10" in criterion for criterion in provenance["exit_gate"]["criteria"])
 
 
-def test_registry_is_fail_closed_and_only_reports_the_existing_agent_baseline():
+def test_registry_reports_implemented_evidence_controls_without_promoting_production():
     registry = _load_registry()
     policy = registry["policy"]
 
@@ -244,7 +244,10 @@ def test_registry_is_fail_closed_and_only_reports_the_existing_agent_baseline():
         for _, item in entries
         if item["control_boundary"]["runtime_implemented"]
     }
-    assert runtime_implemented == {"agent_run_tracing_and_evals"}
+    assert runtime_implemented == {
+        "agent_run_tracing_and_evals",
+        "slsa_cyclonedx_supply_chain_evidence",
+    }
     assert all(
         item["control_boundary"]["production_dependency_allowed"] is False
         and item["control_boundary"]["external_write_allowed"] is False
@@ -253,8 +256,10 @@ def test_registry_is_fail_closed_and_only_reports_the_existing_agent_baseline():
     )
 
     baseline = registry["current_kjds_baseline"]
-    assert "deterministic eval records are implemented" in baseline["agent_runtime"]
-    assert "PostgreSQL 17" in baseline["database"]
+    assert "append-only AgentRun/Trace/Eval Evidence ledger" in baseline["agent_runtime"]
+    assert "17.10" in baseline["database"]
+    assert "not_for_deployment" in baseline["release"]
+    assert "hosted release signer is UNKNOWN" in baseline["release"]
     assert "Next.js 16.2.11" in baseline["web"]
     assert "ClickHouse and Iceberg are not runtime dependencies" in baseline["analytics"]
 

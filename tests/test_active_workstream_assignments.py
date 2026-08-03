@@ -103,27 +103,12 @@ def test_bas172_release_advances_lane_c_without_preleasing_bas173():
     }
 
 
-def test_bas175_holds_release_provenance_without_shared_schema_leases():
+def test_bas175_release_advances_lane_e_without_preleasing_bas176():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     risk = lanes["E"]
 
-    assert risk["current_task"] == {
-        "task_id": "BAS-175",
-        "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
-        "write_scope": [
-            "release_provenance_contract",
-            "api_image_subject",
-            "software_sbom_manifest",
-            "ai_bom_manifest",
-            "postgres_image_provenance",
-            "provenance_verifier",
-            "deployment_policy_gate",
-            "release_test_contracts",
-        ],
-        "blocked_on": [],
-    }
+    assert risk["current_task"] is None
     assert risk["next_task_id"] == "BAS-176"
     assert all(value is None for value in registry["shared_write_leases"].values())
 
