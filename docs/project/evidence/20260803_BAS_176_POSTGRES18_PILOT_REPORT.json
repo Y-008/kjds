@@ -1,0 +1,198 @@
+{
+  "baseline": {
+    "healthy": true,
+    "image": "postgres:17.10-alpine",
+    "imageIdSha256": "742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
+    "repoDigest": "postgres@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
+    "serverVersion": "PostgreSQL 17.10 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+  },
+  "benchmarks": {
+    "queries": [
+      {
+        "candidateMaximumMs": 0.087,
+        "candidateMedianMs": 0.073,
+        "candidatePlanNodes": [
+          "Index Scan",
+          "Limit"
+        ],
+        "candidateResultSha256": "c6d12e7195bcc17e3c4a22a04b32f7f81b21ee39729073ca487dbe1df1a3b684",
+        "name": "exact_scope_latest",
+        "sourceMaximumMs": 0.251,
+        "sourceMedianMs": 0.082,
+        "sourcePlanNodes": [
+          "Index Scan",
+          "Limit"
+        ],
+        "sourceResultSha256": "c6d12e7195bcc17e3c4a22a04b32f7f81b21ee39729073ca487dbe1df1a3b684"
+      },
+      {
+        "candidateMaximumMs": 0.133,
+        "candidateMedianMs": 0.052,
+        "candidatePlanNodes": [
+          "Aggregate",
+          "Index Scan"
+        ],
+        "candidateResultSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "name": "status_scope_aggregate",
+        "sourceMaximumMs": 0.077,
+        "sourceMedianMs": 0.059,
+        "sourcePlanNodes": [
+          "Aggregate",
+          "Bitmap Heap Scan",
+          "Bitmap Index Scan",
+          "Sort"
+        ],
+        "sourceResultSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "candidateMaximumMs": 1.326,
+        "candidateMedianMs": 1.037,
+        "candidatePlanNodes": [
+          "Aggregate",
+          "Bitmap Heap Scan",
+          "Bitmap Index Scan",
+          "Sort"
+        ],
+        "candidateResultSha256": "be7455a8157813674ef0ab457cc45f89dbd1b0230288c66fe820188a6d3cceb1",
+        "name": "tenant_time_aggregate",
+        "sourceMaximumMs": 0.72,
+        "sourceMedianMs": 0.678,
+        "sourcePlanNodes": [
+          "Aggregate",
+          "Bitmap Heap Scan",
+          "Bitmap Index Scan",
+          "Sort"
+        ],
+        "sourceResultSha256": "be7455a8157813674ef0ab457cc45f89dbd1b0230288c66fe820188a6d3cceb1"
+      }
+    ],
+    "rowCount": 20000
+  },
+  "candidate": {
+    "healthy": true,
+    "image": "postgres:18.4-alpine",
+    "imageIdSha256": "9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+    "repoDigest": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+    "serverVersion": "PostgreSQL 18.4 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit"
+  },
+  "cleanup": {
+    "containersRemoved": true,
+    "networkRemoved": true,
+    "temporaryArchivesRemoved": true
+  },
+  "compatibility": {
+    "candidateExtensions": [
+      {
+        "name": "plpgsql",
+        "version": "1.0"
+      }
+    ],
+    "driverCompatible": true,
+    "psycopgVersion": "3.3.4",
+    "sourceExtensions": [
+      {
+        "name": "plpgsql",
+        "version": "1.0"
+      }
+    ],
+    "sqlalchemyVersion": "2.0.51"
+  },
+  "contractId": "kjds-postgres18-pilot-report-v1",
+  "controls": {
+    "baselinePromotionAllowed": false,
+    "engineeringRehearsalPassed": true,
+    "exitGateState": "not_passed",
+    "externalWriteAllowed": false,
+    "formalFactPromotionAllowed": false,
+    "independentRecoveryApprovalState": "UNKNOWN",
+    "productionDependencyAllowed": false,
+    "productionMigrationRunbookState": "UNKNOWN"
+  },
+  "features": {
+    "aioViewAvailable": true,
+    "ioMethod": "worker",
+    "oauthRuntimeConfigured": false,
+    "oauthServerCapabilityVisible": true,
+    "temporalOverlapRejected": true,
+    "temporalWithoutOverlapsSupported": true,
+    "uuidv7Supported": true
+  },
+  "isolation": {
+    "baselineContainerUnchanged": true,
+    "composeFileUnchanged": true,
+    "composeImage": "postgres:17-alpine",
+    "disposableContainersOnly": true,
+    "loopbackPortsOnly": true,
+    "namedVolumesCreated": false,
+    "productionDatabaseTouched": false,
+    "tmpfsDataOnly": true
+  },
+  "locks": {
+    "baseline": {
+      "blockerRolledBack": true,
+      "conflictObserved": true,
+      "rowUnchanged": true,
+      "timeoutSqlstate": "55P03",
+      "ungrantedLockObserved": true,
+      "waitMs": 1207.345
+    },
+    "candidate": {
+      "blockerRolledBack": true,
+      "conflictObserved": true,
+      "rowUnchanged": true,
+      "timeoutSqlstate": "55P03",
+      "ungrantedLockObserved": true,
+      "waitMs": 1205.445
+    }
+  },
+  "migration": {
+    "columnCount": 1951,
+    "constraintCount": 611,
+    "downgradeCheckpoint": "20260717_0024",
+    "emptyUpgradeHead": "20260803_0090",
+    "emptyUpgradeSchemaComponents": {
+      "columns": "99f5a6d638ae2138996ec478ca85b82ee56dc13e0d01c9228c886baf6df60174",
+      "constraints": "a15a7889f1c1bbb362d10dd61a4eb842d245d02877467981cd96862ee5fca549",
+      "indexes": "3d29d095c95ccb4125ef24f0db892bc990c5931ff56cb855219a4a556d67a7fb",
+      "tables": "bd15d2cae70c52587b60a06a44fa42b1f6f901e0eec0c00133c9e7a2d9d80791"
+    },
+    "emptyUpgradeSchemaSha256": "9a071c740f652a300bb6ca2a53bcc9157b61a560c10647e456ecccb5d29e8489",
+    "indexCount": 420,
+    "replayHead": "20260803_0090",
+    "replaySchemaComponents": {
+      "columns": "99f5a6d638ae2138996ec478ca85b82ee56dc13e0d01c9228c886baf6df60174",
+      "constraints": "a15a7889f1c1bbb362d10dd61a4eb842d245d02877467981cd96862ee5fca549",
+      "indexes": "3d29d095c95ccb4125ef24f0db892bc990c5931ff56cb855219a4a556d67a7fb",
+      "tables": "bd15d2cae70c52587b60a06a44fa42b1f6f901e0eec0c00133c9e7a2d9d80791"
+    },
+    "replaySchemaSha256": "9a071c740f652a300bb6ca2a53bcc9157b61a560c10647e456ecccb5d29e8489",
+    "sourceHead": "20260803_0090",
+    "sourceSchemaComponents": {
+      "columns": "99f5a6d638ae2138996ec478ca85b82ee56dc13e0d01c9228c886baf6df60174",
+      "constraints": "a15a7889f1c1bbb362d10dd61a4eb842d245d02877467981cd96862ee5fca549",
+      "indexes": "3d29d095c95ccb4125ef24f0db892bc990c5931ff56cb855219a4a556d67a7fb",
+      "tables": "bd15d2cae70c52587b60a06a44fa42b1f6f901e0eec0c00133c9e7a2d9d80791"
+    },
+    "sourceSchemaSha256": "9a071c740f652a300bb6ca2a53bcc9157b61a560c10647e456ecccb5d29e8489",
+    "tableCount": 122
+  },
+  "migrationHead": "20260803_0090",
+  "observedAt": "2026-08-03T06:25:37.801476Z",
+  "policySha256": "fe4f8b0744ba90375b7868c4b1aee68a852ea0346183d2cfbdd9af6d96ca3d35",
+  "sourceCommit": "c6220c2b359387cc18ce7d9ae16f34bc45df28c2",
+  "transfer": {
+    "archiveBytes": 1607427,
+    "archiveSha256": "009116666889b48d1a4028df68df80832e5045b737d33d261128bd2d1460cd13",
+    "candidateDataSha256": "eb67fdd3cd9bc36728d2af99a07f158541dde96219e4b0f10757fff26fd43aed",
+    "candidateSchemaSha256": "9a071c740f652a300bb6ca2a53bcc9157b61a560c10647e456ecccb5d29e8489",
+    "candidateWritesAccepted": false,
+    "forwardRestorePassed": true,
+    "inPlaceMajorDowngradeClaimed": false,
+    "method": "restore_frozen_pre_cutover_pg17_custom_dump",
+    "rollbackDataSha256": "eb67fdd3cd9bc36728d2af99a07f158541dde96219e4b0f10757fff26fd43aed",
+    "rollbackRestorePassed": true,
+    "rollbackSchemaSha256": "9a071c740f652a300bb6ca2a53bcc9157b61a560c10647e456ecccb5d29e8489",
+    "rowCount": 20000,
+    "sourceDataSha256": "eb67fdd3cd9bc36728d2af99a07f158541dde96219e4b0f10757fff26fd43aed"
+  }
+}

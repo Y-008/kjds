@@ -24,7 +24,7 @@
     "agent_runtime": "Governed routing, redaction, a provider-neutral append-only AgentRun/Trace/Eval Evidence ledger, deterministic replay receipts, and eval records are implemented; provider execution remains proposal-only and cannot self-promote or self-modify authority.",
     "workflow": "KJDS state machines and transactional outbox remain canonical; no Temporal runtime is installed.",
     "retrieval": "Evidence, PostgreSQL and the canonical Graph are available; no production GraphRAG or vector store is installed.",
-    "database": "PostgreSQL 17 remains the declared runtime baseline and PostgreSQL 18 is rehearsal-only; fresh G1 evidence verified postgres:17-alpine at 17.10 and bound its resolved image digest to the signed release bundle.",
+    "database": "PostgreSQL 17 remains the declared runtime baseline. BAS-176 now implements and passes a disposable PostgreSQL 17.10 to 18.4 forward-restore and 17.10 rollback rehearsal at migration head 0090, including semantic schema replay, 20,000-row data equality, query, lock, feature, and cleanup gates; PostgreSQL 18 remains rehearsal-only because the production runbook and independent recovery approval are UNKNOWN.",
     "release": "G1 now issues and verifies Ed25519-signed SLSA 1.2 L1 provenance plus CycloneDX 1.7 software and restricted AI BOMs for the API and PostgreSQL subjects; the only implemented signer is ephemeral and local, so the result remains not_for_deployment and the hosted release signer is UNKNOWN.",
     "web": "Next.js 16.2.11 and React 19.2.7 are installed; individual frontier rendering and caching patterns still require measured, scope-safe acceptance.",
     "analytics": "PostgreSQL remains the only operating truth store; ClickHouse and Iceberg are not runtime dependencies."
@@ -435,10 +435,10 @@
         "postgres18"
       ],
       "decision": "pilot",
-      "decision_rationale": "PostgreSQL 18 offers useful AIO, skip-scan, UUIDv7, OAuth, and temporal constraints, but KJDS should rehearse migrations and measure workloads before changing its PostgreSQL 17 baseline; security patching of PostgreSQL 17 remains an immediate baseline obligation, not a reason to skip the major-version pilot.",
+      "decision_rationale": "BAS-176 now provides a reproducible disposable PostgreSQL 17.10 to 18.4 to 17.10 rehearsal with migration replay, frozen backup, restore, rollback, query, lock, feature, and cleanup verification. The PostgreSQL 17 baseline remains unchanged because production runbook and independent recovery approval evidence are still UNKNOWN.",
       "maturity": {
         "upstream_status": "stable_database_release",
-        "evidence_basis": "PostgreSQL 18 is officially released with documented compatibility and feature changes; the 2026-05-14 security release establishes 18.4 and 17.10 as the reviewed secure patch lines.",
+        "evidence_basis": "PostgreSQL 18 is officially released with documented compatibility and feature changes; the 2026-05-14 security release establishes 18.4 and 17.10 as the reviewed secure patch lines. KJDS BAS-176 engineering evidence passed on 2026-08-03 without promoting the runtime baseline.",
         "stable_for_kjds_production": false
       },
       "evidence_urls": [
@@ -479,7 +479,7 @@
       "reviewed_on": "2026-08-03",
       "review_due_on": "2026-10-03",
       "control_boundary": {
-        "runtime_implemented": false,
+        "runtime_implemented": true,
         "production_dependency_allowed": false,
         "external_write_allowed": false,
         "formal_fact_promotion_allowed": false

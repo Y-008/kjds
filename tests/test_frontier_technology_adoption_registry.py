@@ -246,6 +246,7 @@ def test_registry_reports_implemented_evidence_controls_without_promoting_produc
     }
     assert runtime_implemented == {
         "agent_run_tracing_and_evals",
+        "postgresql_18_rehearsal",
         "slsa_cyclonedx_supply_chain_evidence",
     }
     assert all(
@@ -257,7 +258,10 @@ def test_registry_reports_implemented_evidence_controls_without_promoting_produc
 
     baseline = registry["current_kjds_baseline"]
     assert "append-only AgentRun/Trace/Eval Evidence ledger" in baseline["agent_runtime"]
-    assert "17.10" in baseline["database"]
+    assert "17.10 to 18.4" in baseline["database"]
+    assert "production runbook and independent recovery approval are UNKNOWN" in (
+        baseline["database"]
+    )
     assert "not_for_deployment" in baseline["release"]
     assert "hosted release signer is UNKNOWN" in baseline["release"]
     assert "Next.js 16.2.11" in baseline["web"]
