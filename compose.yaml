@@ -19,6 +19,9 @@ services:
     build:
       context: .
       target: api
+      args:
+        KJDS_BUILD_COMMIT: ${KJDS_BUILD_COMMIT:-UNKNOWN}
+        KJDS_MIGRATION_HEAD: ${KJDS_MIGRATION_HEAD:-UNKNOWN}
     ports:
       - "8000:8000"
     environment:

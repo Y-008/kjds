@@ -8,6 +8,7 @@ $Web = Join-Path $Root "web"
 $WebSmoke = Join-Path $Runtime ("web-g1-" + [guid]::NewGuid().ToString("N"))
 $PytestTemp = Join-Path $Runtime ("pytest-g1-" + [guid]::NewGuid().ToString("N"))
 $BackupSmokeDirectory = Join-Path $Runtime ("backup-g1-" + [guid]::NewGuid().ToString("N"))
+$ReleaseEvidenceDirectory = Join-Path $Runtime ("release-g1-" + [guid]::NewGuid().ToString("N"))
 $DatabaseName = "kjds_g1_smoke"
 $RestoreDatabaseName = "kjds_g1_restore"
 $ApiPort = 8010
@@ -310,6 +311,14 @@ $result = [ordered]@{
     web_tests = $false
     web_build = $false
     container_import = $false
+    release_provenance = $false
+    release_software_sbom = $false
+    release_ai_bom = $false
+    release_postgres_subject = $false
+    release_deployment_policy = $false
+    release_slsa_build_level = $null
+    release_api_image_sha256 = $null
+    release_postgres_image_sha256 = $null
     web_container_health = $false
     api_health = $false
     api_auth = $false
@@ -502,7 +511,48 @@ try {
     $result.web_build = $true
 
     Write-Output "[G-1] Verifying production API image contains required runtime assets"
+    $env:KJDS_BUILD_COMMIT = $result.git_commit
+    $env:KJDS_MIGRATION_HEAD = $result.migration
     Invoke-External -Command docker -Arguments @("compose", "build", "api", "web", "ozon-read-worker")
+
+    Write-Output "[G-1] Verifying signed release provenance, SBOM and AI-BOM"
+    $releaseOutput = & uv run python scripts/verify_release_provenance.py g1 `
+        --api-image "kjds-api:latest" `
+        --postgres-image "postgres:17-alpine" `
+        --source-commit $result.git_commit `
+        --migration-head $result.migration `
+        --output-dir $ReleaseEvidenceDirectory
+    if ($LASTEXITCODE -ne 0) {
+        throw "Release provenance verification failed"
+    }
+    $release = ($releaseOutput | Select-Object -Last 1) | ConvertFrom-Json
+    if (
+        $release.status -ne "PASS" -or
+        $release.cryptographic_verification -ne $true -or
+        $release.subject_verification -ne $true -or
+        $release.cyclonedx_schema_validation -ne $true -or
+        $release.secret_free -ne $true -or
+        $release.postgres_version -notmatch '^17\.(?:1[0-9]|[2-9][0-9])' -or
+        $release.slsa_build_level -ne "L1" -or
+        $release.deployment_policy_status -ne "not_for_deployment" -or
+        $release.production_dependency_allowed -ne $false -or
+        $release.business_truth_gate_promoted -ne $false -or
+        $release.formal_fact_created -ne $false -or
+        $release.external_write_allowed -ne $false -or
+        $release.software_component_count -lt 1 -or
+        $release.ai_contract_count -lt 4
+    ) {
+        throw "Release provenance controls violated the G1 contract"
+    }
+    $result.release_provenance = $true
+    $result.release_software_sbom = $true
+    $result.release_ai_bom = $true
+    $result.release_postgres_subject = $true
+    $result.release_deployment_policy = $true
+    $result.release_slsa_build_level = $release.slsa_build_level
+    $result.release_api_image_sha256 = $release.api_image_sha256
+    $result.release_postgres_image_sha256 = $release.postgres_image_sha256
+
     Invoke-External -Command docker -Arguments @(
         "compose",
         "run",
@@ -956,6 +1006,16 @@ try {
             }
         },
         @{
+            Name = "release evidence directory"
+            Action = {
+                $errorMessage = Remove-OwnedPath `
+                    -Path $ReleaseEvidenceDirectory `
+                    -RuntimeRoot $Runtime `
+                    -Recurse
+                if ($errorMessage) { throw $errorMessage }
+            }
+        },
+        @{
             Name = "Evidence smoke file"
             Action = {
                 $errorMessage = Remove-OwnedPath `
@@ -971,6 +1031,7 @@ try {
                     -not (Test-Path -LiteralPath $WebSmoke) -and
                     -not (Test-Path -LiteralPath $PytestTemp) -and
                     -not (Test-Path -LiteralPath $BackupSmokeDirectory) -and
+                    -not (Test-Path -LiteralPath $ReleaseEvidenceDirectory) -and
                     -not (Test-Path -LiteralPath $EvidenceSmokeFile)
                 if (-not $result.cleanup_files) {
                     throw "Disposable files remain after cleanup"

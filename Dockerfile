@@ -1,5 +1,11 @@
 FROM python:3.12-slim AS control-plane
 
+ARG KJDS_BUILD_COMMIT=UNKNOWN
+ARG KJDS_MIGRATION_HEAD=UNKNOWN
+LABEL org.opencontainers.image.revision="${KJDS_BUILD_COMMIT}" \
+      io.kjds.migration.head="${KJDS_MIGRATION_HEAD}" \
+      io.kjds.release.provenance.contract="kjds-release-evidence-bundle-v1"
+
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY apps ./apps
