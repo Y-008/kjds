@@ -174,6 +174,7 @@ from .sourcing_store import SqlSourcingStore
 from .sql_repository import SqlAlchemyRepository
 from .store_category_strategy import StoreCategoryStrategyWorkspace
 from .store_profile_intake import StoreProfileIntake
+from .strategic_benchmark import StrategicBenchmarkKernel
 from .supplier_quote_authority import SupplierQuoteAuthorityService
 from .supplier_rfq import SupplierRfqWorkspace
 from .supplier_rfq_dispatch import SupplierRfqDispatchWorkspace
@@ -293,6 +294,7 @@ class RuntimeServices:
     profit_truth_readiness: Any
     product_media: Any
     primary_source_intake: Any
+    strategic_benchmark: Any
     providers: Any
     read_only_claims: Any
     readiness: Any
@@ -369,6 +371,12 @@ def build_runtime() -> RuntimeServices:
     scope_grants = ScopeGrantAuthority(engine=engine, evidence=evidence)
     scoped_evidence = ScopedEvidenceAuthority(evidence=evidence)
     primary_source_intake = PrimarySourceIntake(
+        engine=engine,
+        evidence=evidence,
+        scope_grants=scope_grants,
+        scoped_evidence=scoped_evidence,
+    )
+    strategic_benchmark = StrategicBenchmarkKernel(
         engine=engine,
         evidence=evidence,
         scope_grants=scope_grants,
@@ -1219,6 +1227,7 @@ def build_runtime() -> RuntimeServices:
         profit_data_remediation=profit_data_remediation,
         product_media=product_media,
         primary_source_intake=primary_source_intake,
+        strategic_benchmark=strategic_benchmark,
         providers=providers,
         read_only_claims=read_only_claims,
         readiness=readiness,

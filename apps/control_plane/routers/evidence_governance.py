@@ -35,6 +35,10 @@ from ..security import Principal
 from ..source_connectors import source_connector_catalog
 
 router = APIRouter()
+STRATEGIC_BENCHMARK_EVIDENCE_SOURCES = {
+    "strategic-benchmark-observation",
+    "strategic-benchmark-snapshot",
+}
 
 
 def _scope_context(
@@ -65,6 +69,32 @@ def _ensure_channel_evidence_access(
     *,
     content: bool = False,
 ) -> None:
+    if record.source in STRATEGIC_BENCHMARK_EVIDENCE_SOURCES:
+        metadata = record.metadata
+        store_ref = str(metadata.get("store_ref") or "")
+        canonical_scope = (
+            runtime.scope_grants.current(
+                principal=principal,
+                store_ref=store_ref,
+                as_of=datetime.now(UTC),
+            )
+            if store_ref and principal.can_access_store(store_ref)
+            else {"status": "no_data"}
+        )
+        if (
+            metadata.get("tenant_ref") != principal.tenant_ref
+            or canonical_scope.get("status") != "ready"
+            or canonical_scope.get("tenant_ref") != principal.tenant_ref
+            or canonical_scope.get("store_ref") != store_ref
+            or canonical_scope.get("entity_ref") != metadata.get("entity_ref")
+            or canonical_scope.get("authority_sha256")
+            != metadata.get("scope_authority_sha256")
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Evidence not found",
+            )
+        return
     if record.source not in CHANNEL_ACCOUNT_RESERVED_SOURCES:
         return
     metadata = record.metadata
@@ -127,6 +157,7 @@ async def capture_evidence(
         "supplier_rfq_dispatch",
         "supplier_rfq_dispatch_review",
         "supplier_rfq_package",
+        *STRATEGIC_BENCHMARK_EVIDENCE_SOURCES,
     }:
         raise HTTPException(status_code=422, detail="Reserved evidence source requires its dedicated workflow")
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))

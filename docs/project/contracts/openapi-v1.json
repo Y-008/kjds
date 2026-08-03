@@ -3168,6 +3168,30 @@
         "title": "ChargeType",
         "type": "string"
       },
+      "CitationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "grade": {
+            "title": "Grade",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "sha256",
+          "grade"
+        ],
+        "title": "CitationResponse",
+        "type": "object"
+      },
       "CommercialEvidenceInput": {
         "additionalProperties": false,
         "properties": {
@@ -3816,6 +3840,171 @@
         "title": "CommercialTaxEvidenceInput",
         "type": "object"
       },
+      "ComparisonItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_group_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Group Ref"
+          },
+          "baseline_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Label"
+          },
+          "baseline_leader_observation_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Leader Observation Refs"
+          },
+          "baseline_leader_subject_tokens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Leader Subject Tokens"
+          },
+          "cohort_ref": {
+            "title": "Cohort Ref",
+            "type": "string"
+          },
+          "current_group_ref": {
+            "title": "Current Group Ref",
+            "type": "string"
+          },
+          "current_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Label"
+          },
+          "current_leader_observation_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Leader Observation Refs"
+          },
+          "current_leader_subject_tokens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Leader Subject Tokens"
+          },
+          "direction": {
+            "enum": [
+              "higher_is_better",
+              "lower_is_better"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "leader_changed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leader Changed"
+          },
+          "market": {
+            "title": "Market",
+            "type": "string"
+          },
+          "metric_id": {
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "comparable",
+              "not_comparable",
+              "stale",
+              "invalidated"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "metric_id",
+          "cohort_ref",
+          "market",
+          "direction",
+          "unit",
+          "current_group_ref",
+          "baseline_group_ref",
+          "state",
+          "reason_code"
+        ],
+        "title": "ComparisonItemResponse",
+        "type": "object"
+      },
       "ConservationInput": {
         "additionalProperties": false,
         "properties": {
@@ -4047,6 +4236,35 @@
           "duplicate"
         ],
         "title": "CountsOutput",
+        "type": "object"
+      },
+      "CountsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "comparable": {
+            "title": "Comparable",
+            "type": "integer"
+          },
+          "ineligible": {
+            "title": "Ineligible",
+            "type": "integer"
+          },
+          "leaders": {
+            "title": "Leaders",
+            "type": "integer"
+          },
+          "observations": {
+            "title": "Observations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "observations",
+          "comparable",
+          "ineligible",
+          "leaders"
+        ],
+        "title": "CountsResponse",
         "type": "object"
       },
       "CustomerServiceCaseInput": {
@@ -5876,6 +6094,166 @@
         "title": "GovernedExecutionPlanInput",
         "type": "object"
       },
+      "GroupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cohort_ref": {
+            "title": "Cohort Ref",
+            "type": "string"
+          },
+          "comparison_state": {
+            "enum": [
+              "comparable",
+              "partial",
+              "not_comparable",
+              "no_data",
+              "stale",
+              "invalidated"
+            ],
+            "title": "Comparison State",
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/CountsResponse"
+          },
+          "direction": {
+            "enum": [
+              "higher_is_better",
+              "lower_is_better"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "freshness_days": {
+            "title": "Freshness Days",
+            "type": "integer"
+          },
+          "global_top1_claim": {
+            "const": false,
+            "title": "Global Top1 Claim",
+            "type": "boolean"
+          },
+          "group_ref": {
+            "title": "Group Ref",
+            "type": "string"
+          },
+          "group_sha256": {
+            "title": "Group Sha256",
+            "type": "string"
+          },
+          "leader_label": {
+            "anyOf": [
+              {
+                "enum": [
+                  "metric_leader",
+                  "frontier_candidate",
+                  "best_feasible_for_kjds"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leader Label"
+          },
+          "leader_observation_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Leader Observation Refs",
+            "type": "array"
+          },
+          "market": {
+            "title": "Market",
+            "type": "string"
+          },
+          "methodology": {
+            "$ref": "#/components/schemas/MethodologyResponse"
+          },
+          "metric_id": {
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "minimum_confidence_bps": {
+            "title": "Minimum Confidence Bps",
+            "type": "integer"
+          },
+          "minimum_sample_size": {
+            "title": "Minimum Sample Size",
+            "type": "integer"
+          },
+          "minimum_source_grade": {
+            "enum": [
+              "A",
+              "B"
+            ],
+            "title": "Minimum Source Grade",
+            "type": "string"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/ObservationResponse"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "result_sha256": {
+            "title": "Result Sha256",
+            "type": "string"
+          },
+          "source_contract": {
+            "$ref": "#/components/schemas/SourceContractResponse"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/WindowResponse"
+          }
+        },
+        "required": [
+          "group_ref",
+          "ordinal",
+          "domain",
+          "metric_id",
+          "direction",
+          "unit",
+          "minimum_source_grade",
+          "freshness_days",
+          "minimum_confidence_bps",
+          "minimum_sample_size",
+          "cohort_ref",
+          "market",
+          "window",
+          "methodology",
+          "source_contract",
+          "comparison_state",
+          "leader_label",
+          "leader_observation_refs",
+          "reason_code",
+          "counts",
+          "group_sha256",
+          "result_sha256",
+          "observations",
+          "global_top1_claim"
+        ],
+        "title": "GroupResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -6057,6 +6435,31 @@
           "verified_at"
         ],
         "title": "IntegrityInput",
+        "type": "object"
+      },
+      "InternalBandValueProjectionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "lower": {
+            "title": "Lower",
+            "type": "string"
+          },
+          "mode": {
+            "const": "internal_band",
+            "title": "Mode",
+            "type": "string"
+          },
+          "upper": {
+            "title": "Upper",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "lower",
+          "upper"
+        ],
+        "title": "InternalBandValueProjectionResponse",
         "type": "object"
       },
       "KillSwitchInput": {
@@ -7855,6 +8258,35 @@
         "title": "MediaExecutionInput",
         "type": "object"
       },
+      "MethodologyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "sample_definition_sha256": {
+            "title": "Sample Definition Sha256",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256",
+          "sample_definition_sha256"
+        ],
+        "title": "MethodologyResponse",
+        "type": "object"
+      },
       "ObservationInput": {
         "properties": {
           "category": {
@@ -7924,6 +8356,121 @@
           "confidence"
         ],
         "title": "ObservationInput",
+        "type": "object"
+      },
+      "ObservationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationResponse"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "confidence_bps": {
+            "title": "Confidence Bps",
+            "type": "integer"
+          },
+          "eligibility_state": {
+            "enum": [
+              "eligible",
+              "ineligible_grade",
+              "stale",
+              "invalidated_source",
+              "ineligible_confidence",
+              "ineligible_sample"
+            ],
+            "title": "Eligibility State",
+            "type": "string"
+          },
+          "evidence_snapshot_sha256": {
+            "title": "Evidence Snapshot Sha256",
+            "type": "string"
+          },
+          "freshness_due_at": {
+            "format": "date-time",
+            "title": "Freshness Due At",
+            "type": "string"
+          },
+          "observation_ref": {
+            "title": "Observation Ref",
+            "type": "string"
+          },
+          "observation_sha256": {
+            "title": "Observation Sha256",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "sample_size": {
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "source_grade": {
+            "title": "Source Grade",
+            "type": "string"
+          },
+          "subject_class": {
+            "enum": [
+              "kjds_current",
+              "peer",
+              "frontier_candidate"
+            ],
+            "title": "Subject Class",
+            "type": "string"
+          },
+          "subject_token": {
+            "title": "Subject Token",
+            "type": "string"
+          },
+          "value_projection": {
+            "discriminator": {
+              "mapping": {
+                "internal_band": "#/components/schemas/InternalBandValueProjectionResponse",
+                "public_exact": "#/components/schemas/PublicExactValueProjectionResponse",
+                "withheld": "#/components/schemas/WithheldValueProjectionResponse"
+              },
+              "propertyName": "mode"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WithheldValueProjectionResponse"
+              },
+              {
+                "$ref": "#/components/schemas/PublicExactValueProjectionResponse"
+              },
+              {
+                "$ref": "#/components/schemas/InternalBandValueProjectionResponse"
+              }
+            ],
+            "title": "Value Projection"
+          }
+        },
+        "required": [
+          "observation_ref",
+          "ordinal",
+          "subject_token",
+          "subject_class",
+          "value_projection",
+          "confidence_bps",
+          "sample_size",
+          "source_grade",
+          "citations",
+          "evidence_snapshot_sha256",
+          "observed_at",
+          "freshness_due_at",
+          "eligibility_state",
+          "observation_sha256"
+        ],
+        "title": "ObservationResponse",
         "type": "object"
       },
       "OperatingSubjectEventInput": {
@@ -10154,6 +10701,36 @@
         "title": "ProfitScenarioInput",
         "type": "object"
       },
+      "PublicExactValueProjectionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "lower": {
+            "title": "Lower",
+            "type": "string"
+          },
+          "mode": {
+            "const": "public_exact",
+            "title": "Mode",
+            "type": "string"
+          },
+          "upper": {
+            "title": "Upper",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "value",
+          "lower",
+          "upper"
+        ],
+        "title": "PublicExactValueProjectionResponse",
+        "type": "object"
+      },
       "QualityOutput": {
         "properties": {
           "accuracy": {
@@ -11101,6 +11678,136 @@
         "title": "SellerOperatingSystemInput",
         "type": "object"
       },
+      "SnapshotResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_created": {
+            "const": false,
+            "title": "Approval Created",
+            "type": "boolean"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "external_write_allowed": {
+            "const": false,
+            "title": "External Write Allowed",
+            "type": "boolean"
+          },
+          "finance_entry_created": {
+            "const": false,
+            "title": "Finance Entry Created",
+            "type": "boolean"
+          },
+          "formal_fact_created": {
+            "const": false,
+            "title": "Formal Fact Created",
+            "type": "boolean"
+          },
+          "global_top1_claim": {
+            "const": false,
+            "title": "Global Top1 Claim",
+            "type": "boolean"
+          },
+          "group_count": {
+            "title": "Group Count",
+            "type": "integer"
+          },
+          "idempotent_replay": {
+            "title": "Idempotent Replay",
+            "type": "boolean"
+          },
+          "observation_count": {
+            "title": "Observation Count",
+            "type": "integer"
+          },
+          "permit_created": {
+            "const": false,
+            "title": "Permit Created",
+            "type": "boolean"
+          },
+          "registry_schema": {
+            "title": "Registry Schema",
+            "type": "string"
+          },
+          "registry_sha256": {
+            "title": "Registry Sha256",
+            "type": "string"
+          },
+          "request_sha256": {
+            "title": "Request Sha256",
+            "type": "string"
+          },
+          "snapshot_citation": {
+            "$ref": "#/components/schemas/CitationResponse"
+          },
+          "snapshot_ref": {
+            "title": "Snapshot Ref",
+            "type": "string"
+          },
+          "store_ref": {
+            "title": "Store Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_ref",
+          "store_ref",
+          "registry_schema",
+          "registry_sha256",
+          "as_of",
+          "group_count",
+          "observation_count",
+          "snapshot_citation",
+          "request_sha256",
+          "idempotent_replay",
+          "global_top1_claim",
+          "formal_fact_created",
+          "finance_entry_created",
+          "approval_created",
+          "permit_created",
+          "external_write_allowed",
+          "created_at"
+        ],
+        "title": "SnapshotResponse",
+        "type": "object"
+      },
+      "SourceContractResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "sha256",
+          "kind"
+        ],
+        "title": "SourceContractResponse",
+        "type": "object"
+      },
       "SourceEnvelopeInput": {
         "additionalProperties": false,
         "properties": {
@@ -11599,6 +12306,172 @@
           "category_paths"
         ],
         "title": "StoreOperatingProfileInput",
+        "type": "object"
+      },
+      "StrategicBenchmarkComparisonResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_created": {
+            "const": false,
+            "title": "Approval Created",
+            "type": "boolean"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "baseline_snapshot_ref": {
+            "title": "Baseline Snapshot Ref",
+            "type": "string"
+          },
+          "comparisons": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonItemResponse"
+            },
+            "title": "Comparisons",
+            "type": "array"
+          },
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "external_write_allowed": {
+            "const": false,
+            "title": "External Write Allowed",
+            "type": "boolean"
+          },
+          "finance_entry_created": {
+            "const": false,
+            "title": "Finance Entry Created",
+            "type": "boolean"
+          },
+          "formal_fact_created": {
+            "const": false,
+            "title": "Formal Fact Created",
+            "type": "boolean"
+          },
+          "global_top1_claim": {
+            "const": false,
+            "title": "Global Top1 Claim",
+            "type": "boolean"
+          },
+          "permit_created": {
+            "const": false,
+            "title": "Permit Created",
+            "type": "boolean"
+          },
+          "snapshot_ref": {
+            "title": "Snapshot Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_id",
+          "snapshot_ref",
+          "baseline_snapshot_ref",
+          "as_of",
+          "comparisons",
+          "global_top1_claim",
+          "formal_fact_created",
+          "finance_entry_created",
+          "approval_created",
+          "permit_created",
+          "external_write_allowed"
+        ],
+        "title": "StrategicBenchmarkComparisonResponse",
+        "type": "object"
+      },
+      "StrategicBenchmarkListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "contract_id",
+          "items",
+          "next_cursor"
+        ],
+        "title": "StrategicBenchmarkListResponse",
+        "type": "object"
+      },
+      "StrategicBenchmarkResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupResponse"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotResponse"
+          }
+        },
+        "required": [
+          "contract_id",
+          "snapshot",
+          "groups"
+        ],
+        "title": "StrategicBenchmarkResponse",
+        "type": "object"
+      },
+      "StrategicBenchmarkSnapshotInput": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "store_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "store_ref",
+          "as_of",
+          "evidence_refs"
+        ],
+        "title": "StrategicBenchmarkSnapshotInput",
         "type": "object"
       },
       "SupplierInvoiceAuthorityReviewInput": {
@@ -12636,6 +13509,42 @@
           "effective_at"
         ],
         "title": "WarehouseExecutionEventInput",
+        "type": "object"
+      },
+      "WindowResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "WindowResponse",
+        "type": "object"
+      },
+      "WithheldValueProjectionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "const": "withheld",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "WithheldValueProjectionResponse",
         "type": "object"
       }
     },
@@ -32959,6 +33868,348 @@
           }
         ],
         "summary": "Get Supplier Rfq Package"
+      }
+    },
+    "/v1/strategic-benchmark-snapshots": {
+      "get": {
+        "operationId": "list_strategic_benchmark_snapshots_v1_strategic_benchmark_snapshots_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "As Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Domain"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metric Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comparison_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "comparable",
+                    "partial",
+                    "not_comparable",
+                    "no_data",
+                    "stale",
+                    "invalidated"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Comparison State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategicBenchmarkListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "List Strategic Benchmark Snapshots"
+      },
+      "post": {
+        "operationId": "build_strategic_benchmark_snapshot_v1_strategic_benchmark_snapshots_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrategicBenchmarkSnapshotInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategicBenchmarkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Build Strategic Benchmark Snapshot"
+      }
+    },
+    "/v1/strategic-benchmark-snapshots/{snapshot_ref}": {
+      "get": {
+        "operationId": "get_strategic_benchmark_snapshot_v1_strategic_benchmark_snapshots__snapshot_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_ref",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "As Of",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategicBenchmarkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Get Strategic Benchmark Snapshot"
+      }
+    },
+    "/v1/strategic-benchmark-snapshots/{snapshot_ref}/compare": {
+      "get": {
+        "operationId": "compare_strategic_benchmark_snapshots_v1_strategic_benchmark_snapshots__snapshot_ref__compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_ref",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "baseline_snapshot_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Baseline Snapshot Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "As Of",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategicBenchmarkComparisonResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Compare Strategic Benchmark Snapshots"
       }
     },
     "/v1/system/kill-switch": {
