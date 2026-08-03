@@ -23,7 +23,8 @@
 
 - 运行时已经具备 Evidence、`no_data`、精确作用域和外部写关闭等治理基础。
 - Ozon 商品和财务只读链已有真实 Evidence，但不代表订单、结算、到账或盈利闭环完成。
-- 本地 PostgreSQL 恢复演练只证明本地样本可恢复，不代表生产灾备通过。
+- 商业 Pilot 本地预检、计费/权益内核和持久商业事件账本已经形成工程 Evidence，
+  但尚未证明托管生产、真实收退款、税务、合同、SLA 或客户退出闭环。
 - 所有价格仍是 `pricing_hypothesis/internal_preview/not_for_sale`。
 
 关键来源：
@@ -37,6 +38,9 @@
 - [Settlement and Cash Control](../project/evidence/20260729_BAS_149_NATIVE_EXACT_SCOPE_SETTLEMENT_CASH_CONTROL.md)
 - [Channel-account Governance](../project/evidence/20260801_BAS_160_CHANNEL_ACCOUNT_GOVERNANCE.md)
 - [Profit Truth and Full Bundle](../project/evidence/20260802_BAS_161_PROFIT_TRUTH_AND_FULL_BUNDLE.md)
+- [C0-001 Commercial Pilot Deployment Preflight](../project/evidence/20260802_C0_001_COMMERCIAL_PILOT_DEPLOYMENT_PREFLIGHT.md)
+- [C0-002 Billing / Usage / Entitlement Kernel](../project/evidence/20260802_C0_002_BILLING_USAGE_ENTITLEMENT_KERNEL.md)
+- [C0-003 Commercial Lifecycle Ledger](../project/evidence/20260802_C0_003_COMMERCIAL_LIFECYCLE_LEDGER.md)
 
 ## 定价假设
 
@@ -48,8 +52,8 @@
 ## 当前 C0 结论
 
 - `PASS`: 0
-- `PARTIAL`: 3
-- `MISS`: 5
+- `PARTIAL`: 5
+- `MISS`: 4
 - `UNKNOWN`: 0
 
 因此当前结论固定为 `NO-GO / not_for_sale`。

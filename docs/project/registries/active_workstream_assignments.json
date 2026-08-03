@@ -62,11 +62,24 @@
       "id": "D",
       "name": "commercial_platform",
       "accountable_role": "commercial_platform_owner",
-      "current_task": null,
+      "current_task": {
+        "task_id": "COM-002",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "commercial_pilot_deployment",
+          "commercial_lifecycle",
+          "customer_exit_export",
+          "c0_engineering_evidence"
+        ],
+        "blocked_on": [
+          "hosted_target_and_rpo_rto_decision",
+          "payment_invoice_tax_contract_inputs",
+          "contract_dpa_sla_review_authority"
+        ]
+      },
       "next_task_id": null,
       "blocked_on": [
-        "c0_gap_list",
-        "paid_design_partner_evidence"
+        "c0_commercial_pilot_gate"
       ]
     },
     {
