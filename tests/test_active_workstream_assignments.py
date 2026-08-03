@@ -101,33 +101,33 @@ def test_bas180_release_advances_media_lane():
     assert all(value is None for value in registry["shared_write_leases"].values())
 
 
-def test_bas190_release_advances_local_demo_lane():
+def test_bas191_holds_only_the_local_demo_domain_lane():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     demo = lanes["K"]
 
-    assert demo["current_task"] is None
-    assert demo["next_task_id"] == "BAS-191"
+    assert demo["current_task"] == {
+        "task_id": "BAS-191",
+        "state": "in_progress",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "write_scope": [
+            "local_demo_client_manifest",
+            "local_demo_domain_contracts",
+            "local_demo_scenario_pack",
+            "local_demo_domain_tests",
+        ],
+        "blocked_on": [],
+    }
+    assert demo["next_task_id"] == "BAS-192"
     assert all(value is None for value in registry["shared_write_leases"].values())
 
 
-def test_bas197_holds_only_the_strategic_intelligence_contract_lane():
+def test_bas197_release_advances_strategic_intelligence_lane():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     strategic = lanes["L"]
 
-    assert strategic["current_task"] == {
-        "task_id": "BAS-197",
-        "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
-        "write_scope": [
-            "top1_intelligence_adr",
-            "primary_source_intake_registry",
-            "strategic_benchmark_contract_registry",
-            "strategic_intelligence_contract_tests",
-        ],
-        "blocked_on": [],
-    }
+    assert strategic["current_task"] is None
     assert strategic["next_task_id"] == "BAS-198"
     assert all(value is None for value in registry["shared_write_leases"].values())
 

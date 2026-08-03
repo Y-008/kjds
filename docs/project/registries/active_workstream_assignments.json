@@ -189,25 +189,25 @@
       "id": "K",
       "name": "local_demo_client",
       "accountable_role": "local_demo_product_owner",
-      "current_task": null,
-      "next_task_id": "BAS-191"
+      "current_task": {
+        "task_id": "BAS-191",
+        "state": "in_progress",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "write_scope": [
+          "local_demo_client_manifest",
+          "local_demo_domain_contracts",
+          "local_demo_scenario_pack",
+          "local_demo_domain_tests"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": "BAS-192"
     },
     {
       "id": "L",
       "name": "strategic_intelligence",
       "accountable_role": "strategy_and_capital_allocation_owner",
-      "current_task": {
-        "task_id": "BAS-197",
-        "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
-        "write_scope": [
-          "top1_intelligence_adr",
-          "primary_source_intake_registry",
-          "strategic_benchmark_contract_registry",
-          "strategic_intelligence_contract_tests"
-        ],
-        "blocked_on": []
-      },
+      "current_task": null,
       "next_task_id": "BAS-198"
     }
   ],
