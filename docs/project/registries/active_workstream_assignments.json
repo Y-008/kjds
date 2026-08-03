@@ -196,15 +196,31 @@
       "id": "L",
       "name": "strategic_intelligence",
       "accountable_role": "strategy_and_capital_allocation_owner",
-      "current_task": null,
-      "next_task_id": "BAS-199"
+      "current_task": {
+        "task_id": "BAS-199",
+        "state": "in_progress",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "write_scope": [
+          "strategic_benchmark_kernel",
+          "benchmark_snapshot_evidence",
+          "benchmark_comparability_and_leader_projection",
+          "runtime_composition",
+          "strategic_benchmark_api",
+          "alembic_migration_0093",
+          "strategic_benchmark_tests",
+          "outbox_coverage_registration",
+          "openapi_snapshot"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": "BAS-200"
     }
   ],
   "shared_write_leases": {
-    "alembic_migration": null,
-    "api_aggregation_root": null,
+    "alembic_migration": "BAS-199",
+    "api_aggregation_root": "BAS-199",
     "master_spec": null,
-    "openapi_snapshot": null
+    "openapi_snapshot": "BAS-199"
   },
   "control_boundary": {
     "registry_grants_business_authority": false,
