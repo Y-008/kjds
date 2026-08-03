@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from .agent_inference import InferenceAttemptError, ModelInferencePort
 
@@ -157,29 +157,113 @@ class AdapterProfile:
 
 
 @dataclass(frozen=True, slots=True)
-class RuntimeTask:
-    task_type: str
+class AgentRunEvidenceRef:
+    evidence_id: str
+    evidence_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class AgentRunScopeContext:
+    """Server-derived exact scope. Callers cannot supply its individual fields."""
+
     tenant_ref: str
     entity_ref: str
     store_ref: str
+    authority_sha256: str
+    actor_id: str
+    scope_as_of: datetime
+    evidence_refs: tuple[AgentRunEvidenceRef, ...]
+
+    def __post_init__(self) -> None:
+        required = {
+            "tenant_ref": self.tenant_ref,
+            "entity_ref": self.entity_ref,
+            "store_ref": self.store_ref,
+            "actor_id": self.actor_id,
+        }
+        for field_name, value in required.items():
+            if not value.strip():
+                raise ValueError(f"{field_name} is required")
+        if not re.fullmatch(r"[0-9a-f]{64}", self.authority_sha256):
+            raise ValueError("authority_sha256 must be a lowercase SHA-256")
+        if self.scope_as_of.tzinfo is None:
+            raise ValueError("scope_as_of must include a timezone")
+        ids = [item.evidence_id for item in self.evidence_refs]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Duplicate scoped Evidence references are not allowed")
+        for item in self.evidence_refs:
+            if not item.evidence_id.strip() or not re.fullmatch(
+                r"[0-9a-f]{64}", item.evidence_sha256
+            ):
+                raise ValueError("Scoped Evidence identity is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeTaskContract:
+    task_type: str
+    registry_sha256: str
+    contract_version: str
+    prompt_version: str
+    schema_version: str
     prompt: str
-    model_input: dict[str, Any]
     output_schema: dict[str, Any]
     required_capabilities: tuple[str, ...]
+    allowed_input_fields: tuple[str, ...]
+    allowed_tools: tuple[str, ...]
+    min_accuracy: Decimal
+    max_latency_ms: int
+    max_cost_usd: Decimal
+    max_attempts: int
+    max_output_tokens: int
+    timeout_seconds: int
+
+    @classmethod
+    def from_registry(
+        cls,
+        *,
+        task_type: str,
+        registry_sha256: str,
+        registry_payload: Mapping[str, Any],
+        registry_authority: Mapping[str, Any],
+    ) -> RuntimeTaskContract:
+        return cls(
+            task_type=task_type,
+            registry_sha256=registry_sha256,
+            contract_version=str(registry_payload["contract_version"]),
+            prompt_version=str(registry_payload["prompt_version"]),
+            schema_version=str(registry_payload["schema_version"]),
+            prompt=str(registry_payload["prompt"]),
+            output_schema=dict(registry_payload["output_schema"]),
+            required_capabilities=tuple(registry_payload["required_capabilities"]),
+            allowed_input_fields=tuple(registry_payload["allowed_input_fields"]),
+            allowed_tools=tuple(registry_payload.get("allowed_tools", ())),
+            min_accuracy=_decimal(
+                registry_payload.get("minimum_confidence", "0"),
+                "minimum_confidence",
+            ),
+            max_latency_ms=int(registry_payload["timeout_seconds"]) * 1000,
+            max_cost_usd=_decimal(
+                registry_payload["max_cost_usd"], "max_cost_usd"
+            ),
+            max_attempts=int(
+                registry_authority.get("maximum_provider_attempts", 1)
+            ),
+            max_output_tokens=int(registry_payload["max_output_tokens"]),
+            timeout_seconds=int(registry_payload["timeout_seconds"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeTask:
+    task_type: str
+    model_input: dict[str, Any]
     idempotency_key: str
-    requested_by: str
-    min_accuracy: Decimal = Decimal("0")
-    max_latency_ms: int = 30_000
-    max_cost_usd: Decimal = Decimal("1")
     expected_profit_value_usd: Decimal | None = None
     max_cost_to_profit_ratio: Decimal = Decimal("0.10")
-    max_attempts: int = 2
-    max_output_tokens: int = 2_000
-    timeout_seconds: int = 30
-    allowed_tools: tuple[str, ...] = ()
+    max_attempts: int | None = None
+    max_cost_usd: Decimal | None = None
+    max_latency_ms: int | None = None
     requested_tools: tuple[str, ...] = ()
-    agent_actor_id: str = "kjds-agent-runtime"
-    approval_actor_id: str | None = None
     image_inputs: tuple[str, ...] = ()
 
 
@@ -306,6 +390,292 @@ class GovernedRunResult:
 
     def to_dict(self) -> dict[str, Any]:
         return _json_safe(asdict(self))
+
+
+@dataclass(frozen=True, slots=True)
+class GovernedRunReceipt:
+    contract_id: str
+    run_id: str
+    trace_id: str
+    task_type: str
+    status: str
+    input_sha256: str
+    output_sha256: str | None
+    eval_sha256: str | None
+    event_count: int
+    payload_status: str = "not_retained"
+    network_invoked: bool = False
+    proposal_only: bool = True
+    formal_fact: bool = False
+    external_write_allowed: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return _json_safe(asdict(self))
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeAuditEnvelope:
+    run_id: str
+    trace_id: str
+    root_span_id: str
+    scope: AgentRunScopeContext
+    task_type: str
+    registry_sha256: str
+    contract_version: str
+    prompt_version: str
+    schema_version: str
+    routing_policy_version: str
+    prompt_sha256: str
+    output_schema_sha256: str
+    tool_contract_sha256: str
+    idempotency_key: str
+    request_sha256: str
+    input_sha256: str
+    input_field_names: tuple[str, ...]
+    input_bytes: int
+    evidence_snapshot_sha256: str
+    required_capabilities: tuple[str, ...]
+    allowed_tools: tuple[str, ...]
+    max_cost_usd: Decimal
+    max_latency_ms: int
+    max_attempts: int
+    started_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeAuditEvent:
+    event_type: str
+    reason_code: str | None = None
+    adapter_name: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    adapter_config_sha256: str | None = None
+    output_sha256: str | None = None
+    eval_sha256: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: Decimal = Decimal("0")
+    latency_ms: int = 0
+    safe_payload: dict[str, Any] = field(default_factory=dict)
+    occurred_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeAuditPreparation:
+    disposition: Literal["new", "resume", "replay", "unknown_outcome"]
+    receipt: GovernedRunReceipt | None = None
+
+
+class RuntimeAuditLedger(Protocol):
+    def prepare(self, envelope: RuntimeAuditEnvelope) -> RuntimeAuditPreparation: ...
+
+    def append(self, *, run_id: str, event: RuntimeAuditEvent) -> None: ...
+
+    def list_runs(
+        self,
+        *,
+        context: AgentRunScopeContext,
+        status: str | None,
+        task_type: str | None,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]: ...
+
+    def get_run(
+        self,
+        *,
+        context: AgentRunScopeContext,
+        run_id: str,
+    ) -> dict[str, Any]: ...
+
+    def replay(
+        self,
+        *,
+        context: AgentRunScopeContext,
+        run_id: str,
+    ) -> GovernedRunReceipt: ...
+
+
+class RuntimeTaskRegistry(Protocol):
+    registry_sha256: str
+    payload: dict[str, Any]
+
+    def require(self, task_type: str) -> dict[str, Any]: ...
+
+
+class InMemoryRuntimeAuditLedger:
+    """Authoritative contract double; production uses the SQL Evidence ledger."""
+
+    def __init__(self) -> None:
+        self.envelopes: dict[str, RuntimeAuditEnvelope] = {}
+        self.events: dict[str, list[dict[str, Any]]] = {}
+        self._scope_keys: dict[tuple[str, ...], str] = {}
+        self._lock = threading.RLock()
+
+    def prepare(self, envelope: RuntimeAuditEnvelope) -> RuntimeAuditPreparation:
+        key = (
+            envelope.scope.tenant_ref,
+            envelope.scope.entity_ref,
+            envelope.scope.store_ref,
+            envelope.scope.authority_sha256,
+            envelope.idempotency_key,
+        )
+        with self._lock:
+            existing_run_id = self._scope_keys.get(key)
+            if existing_run_id is None:
+                self._scope_keys[key] = envelope.run_id
+                self.envelopes[envelope.run_id] = envelope
+                self.events[envelope.run_id] = []
+                self.append(
+                    run_id=envelope.run_id,
+                    event=RuntimeAuditEvent(
+                        event_type="run_started",
+                        occurred_at=envelope.started_at,
+                    ),
+                )
+                return RuntimeAuditPreparation("new")
+            existing = self.envelopes[existing_run_id]
+            if existing.request_sha256 != envelope.request_sha256:
+                raise AgentRuntimePolicyError(
+                    "idempotency_conflict",
+                    "Idempotency key was already used for different governed input",
+                )
+            events = self.events[existing_run_id]
+            last_type = events[-1]["event_type"] if events else ""
+            if last_type == "run_started":
+                return RuntimeAuditPreparation("resume")
+            if last_type == "attempt_started":
+                self.append(
+                    run_id=existing_run_id,
+                    event=RuntimeAuditEvent(
+                        event_type="unknown_outcome",
+                        reason_code="provider_outcome_not_persisted",
+                        occurred_at=envelope.started_at,
+                    ),
+                )
+                return RuntimeAuditPreparation(
+                    "unknown_outcome", self._receipt(existing_run_id)
+                )
+            return RuntimeAuditPreparation("replay", self._receipt(existing_run_id))
+
+    def append(self, *, run_id: str, event: RuntimeAuditEvent) -> None:
+        with self._lock:
+            if run_id not in self.envelopes:
+                raise KeyError("Unknown governed Agent run")
+            events = self.events[run_id]
+            _assert_event_transition(events, event.event_type)
+            occurred_at = event.occurred_at or datetime.now(UTC)
+            previous_sha256 = events[-1]["event_sha256"] if events else "0" * 64
+            payload = _audit_event_payload(
+                event=event,
+                event_index=len(events) + 1,
+                previous_event_sha256=previous_sha256,
+                occurred_at=occurred_at,
+            )
+            events.append(payload)
+
+    def list_runs(
+        self,
+        *,
+        context: AgentRunScopeContext,
+        status: str | None,
+        task_type: str | None,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]:
+        _validate_page(limit=limit, offset=offset)
+        with self._lock:
+            run_ids = [
+                run_id
+                for run_id, envelope in self.envelopes.items()
+                if _envelope_visible(envelope, context)
+                and (task_type is None or envelope.task_type == task_type)
+                and (
+                    status is None
+                    or _event_status(self.events[run_id][-1]["event_type"]) == status
+                )
+            ]
+            run_ids.sort(
+                key=lambda item: (
+                    self.envelopes[item].started_at,
+                    item,
+                ),
+                reverse=True,
+            )
+            selected = run_ids[offset : offset + limit]
+            rows = [self._projection(run_id, include_events=False) for run_id in selected]
+        return _run_listing(rows=rows, total=len(run_ids), limit=limit, offset=offset)
+
+    def get_run(
+        self,
+        *,
+        context: AgentRunScopeContext,
+        run_id: str,
+    ) -> dict[str, Any]:
+        with self._lock:
+            envelope = self.envelopes.get(run_id)
+            if envelope is None or not _envelope_visible(envelope, context):
+                raise KeyError("Governed Agent run not found")
+            return self._projection(run_id, include_events=True)
+
+    def replay(
+        self,
+        *,
+        context: AgentRunScopeContext,
+        run_id: str,
+    ) -> GovernedRunReceipt:
+        with self._lock:
+            envelope = self.envelopes.get(run_id)
+            if envelope is None or not _envelope_visible(envelope, context):
+                raise KeyError("Governed Agent run not found")
+            return self._receipt(run_id)
+
+    def _receipt(self, run_id: str) -> GovernedRunReceipt:
+        envelope = self.envelopes[run_id]
+        events = self.events[run_id]
+        latest = events[-1]
+        return GovernedRunReceipt(
+            contract_id=RUNTIME_CONTRACT_ID,
+            run_id=run_id,
+            trace_id=envelope.trace_id,
+            task_type=envelope.task_type,
+            status=str(latest["event_type"]).removeprefix("run_"),
+            input_sha256=envelope.input_sha256,
+            output_sha256=next(
+                (
+                    str(item["output_sha256"])
+                    for item in reversed(events)
+                    if item.get("output_sha256")
+                ),
+                None,
+            ),
+            eval_sha256=next(
+                (
+                    str(item["eval_sha256"])
+                    for item in reversed(events)
+                    if item.get("eval_sha256")
+                ),
+                None,
+            ),
+            event_count=len(events),
+        )
+
+    def _projection(
+        self,
+        run_id: str,
+        *,
+        include_events: bool,
+    ) -> dict[str, Any]:
+        envelope = self.envelopes[run_id]
+        events = self.events[run_id]
+        payload = _run_projection(
+            envelope=envelope,
+            events=events,
+            evidence_refs=None,
+        )
+        if not include_events:
+            payload.pop("events")
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,6 +840,8 @@ class GovernedAgentRuntime:
         self,
         adapters: Sequence[RuntimeAdapter],
         *,
+        task_registry: RuntimeTaskRegistry | None = None,
+        audit_ledger: RuntimeAuditLedger | None = None,
         trace_sink: GenAITraceSink | None = None,
         result_store: RuntimeResultStore | None = None,
         allowed_read_tools: frozenset[str] = frozenset(
@@ -477,12 +849,12 @@ class GovernedAgentRuntime:
         ),
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        if not adapters:
-            raise ValueError("Governed runtime requires at least one adapter")
         names = [adapter.profile.name for adapter in adapters]
         if len(names) != len(set(names)):
             raise ValueError("Governed runtime adapter names must be unique")
         self.adapters = tuple(adapters)
+        self.task_registry = task_registry
+        self.audit_ledger = audit_ledger or InMemoryRuntimeAuditLedger()
         self.trace_sink = trace_sink or NullGenAITraceSink()
         self.result_store = result_store or InMemoryRuntimeResultStore()
         self.allowed_read_tools = frozenset(_normalize_tool(item) for item in allowed_read_tools)
@@ -490,31 +862,125 @@ class GovernedAgentRuntime:
         self._lock = threading.RLock()
         self._scope_locks: dict[str, threading.RLock] = {}
 
-    def run(self, task: RuntimeTask) -> GovernedRunResult:
-        with self._scope_lock(_scope_key(task)):
-            admitted = self._admit(task)
-            fingerprint = _task_fingerprint(task)
-            scope_key = _scope_key(task)
+    def run(
+        self,
+        context: AgentRunScopeContext,
+        task: RuntimeTask,
+    ) -> GovernedRunResult | GovernedRunReceipt:
+        contract = self._contract(task.task_type)
+        with self._scope_lock(_scope_key(context, task)):
+            admitted = self._admit(context, task, contract)
+            fingerprint = _task_fingerprint(context, task, contract, admitted)
+            scope_key = _scope_key(context, task)
             existing = self.result_store.get(scope_key)
-            if existing is not None:
-                if existing[0] != fingerprint:
-                    raise AgentRuntimePolicyError(
-                        "idempotency_conflict",
-                        "Idempotency key was already used for different governed input",
-                    )
-                return existing[1]
+            if existing is not None and existing[0] != fingerprint:
+                raise AgentRuntimePolicyError(
+                    "idempotency_conflict",
+                    "Idempotency key was already used for different governed input",
+                )
 
             run_id = _stable_id("agr", {"scope": scope_key, "fingerprint": fingerprint}, 24)
             trace_id = _stable_hex({"run_id": run_id, "kind": "trace"}, 32)
             root_span_id = _stable_hex({"run_id": run_id, "kind": "root"}, 16)
             started_at = self.clock()
-            route = self._route(task, admitted["effective_cost_cap"])
+            input_sha256 = _sha256(admitted["safe_input"])
+            envelope = RuntimeAuditEnvelope(
+                run_id=run_id,
+                trace_id=trace_id,
+                root_span_id=root_span_id,
+                scope=context,
+                task_type=task.task_type,
+                registry_sha256=contract.registry_sha256,
+                contract_version=contract.contract_version,
+                prompt_version=contract.prompt_version,
+                schema_version=contract.schema_version,
+                routing_policy_version=ROUTING_POLICY_VERSION,
+                prompt_sha256=_sha256(contract.prompt),
+                output_schema_sha256=_sha256(contract.output_schema),
+                tool_contract_sha256=_sha256(
+                    {
+                        "allowed": sorted(contract.allowed_tools),
+                        "requested": sorted(admitted["tools"]),
+                    }
+                ),
+                idempotency_key=task.idempotency_key,
+                request_sha256=fingerprint,
+                input_sha256=input_sha256,
+                input_field_names=tuple(sorted(admitted["safe_input"])),
+                input_bytes=len(_canonical(admitted["safe_input"])),
+                evidence_snapshot_sha256=_sha256(
+                    [
+                        {
+                            "evidence_id": item.evidence_id,
+                            "evidence_sha256": item.evidence_sha256,
+                        }
+                        for item in sorted(
+                            context.evidence_refs,
+                            key=lambda value: value.evidence_id,
+                        )
+                    ]
+                ),
+                required_capabilities=contract.required_capabilities,
+                allowed_tools=admitted["tools"],
+                max_cost_usd=admitted["effective_cost_cap"],
+                max_latency_ms=admitted["max_latency_ms"],
+                max_attempts=admitted["max_attempts"],
+                started_at=started_at,
+            )
+            preparation = self.audit_ledger.prepare(envelope)
+            if preparation.disposition in {"replay", "unknown_outcome"}:
+                if preparation.receipt is None:
+                    raise RuntimeError("Durable replay disposition requires a receipt")
+                if (
+                    preparation.disposition == "replay"
+                    and preparation.receipt.status == "succeeded"
+                    and existing is not None
+                ):
+                    return existing[1]
+                return preparation.receipt
+            if existing is not None:
+                raise AgentRuntimePolicyError(
+                    "audit_state_conflict",
+                    "In-memory result exists without a terminal durable audit state",
+                )
+
+            try:
+                route = self._route(
+                    task,
+                    contract,
+                    effective_cost_cap=admitted["effective_cost_cap"],
+                    max_latency_ms=admitted["max_latency_ms"],
+                    max_attempts=admitted["max_attempts"],
+                )
+            except AgentRuntimePolicyError as exc:
+                self.audit_ledger.append(
+                    run_id=run_id,
+                    event=RuntimeAuditEvent(
+                        event_type="run_denied",
+                        reason_code=exc.code,
+                        occurred_at=self.clock(),
+                    ),
+                )
+                raise
+            self.audit_ledger.append(
+                run_id=run_id,
+                event=RuntimeAuditEvent(
+                    event_type="route_selected",
+                    safe_payload={
+                        "adapter_count": len(route),
+                        "adapter_config_sha256": [
+                            item[0].profile.config_sha256 for item in route
+                        ],
+                    },
+                    occurred_at=self.clock(),
+                ),
+            )
             attempts: list[RuntimeAttempt] = []
             total_cost = Decimal("0")
             selected: tuple[RuntimeAdapter, RuntimeAdapterResponse, dict[str, Any]] | None = None
 
             for attempt_number, (adapter, candidate) in enumerate(route, start=1):
-                if attempt_number > task.max_attempts:
+                if attempt_number > admitted["max_attempts"]:
                     break
                 if total_cost + candidate.estimated_cost_usd > admitted["effective_cost_cap"]:
                     continue
@@ -529,12 +995,27 @@ class GovernedAgentRuntime:
                     task_type=task.task_type,
                     prompt=admitted["safe_prompt"],
                     model_input=admitted["safe_input"],
-                    output_schema=task.output_schema,
-                    max_output_tokens=task.max_output_tokens,
-                    timeout_seconds=min(task.timeout_seconds, max(1, task.max_latency_ms // 1000)),
+                    output_schema=contract.output_schema,
+                    max_output_tokens=contract.max_output_tokens,
+                    timeout_seconds=min(
+                        contract.timeout_seconds,
+                        max(1, admitted["max_latency_ms"] // 1000),
+                    ),
                     idempotency_key=f"{task.idempotency_key}:{attempt_number}",
                     image_inputs=task.image_inputs,
                     tools=admitted["tools"],
+                )
+                self.audit_ledger.append(
+                    run_id=run_id,
+                    event=RuntimeAuditEvent(
+                        event_type="attempt_started",
+                        adapter_name=adapter.profile.name,
+                        provider=adapter.profile.provider,
+                        model=adapter.profile.model,
+                        adapter_config_sha256=adapter.profile.config_sha256,
+                        safe_payload={"attempt": attempt_number},
+                        occurred_at=attempt_started,
+                    ),
                 )
                 response: RuntimeAdapterResponse | None = None
                 try:
@@ -545,7 +1026,7 @@ class GovernedAgentRuntime:
                             "actual_cost_budget_exceeded",
                             "Adapter usage exceeded the governed cost budget",
                         )
-                    if response.latency_ms > task.max_latency_ms:
+                    if response.latency_ms > admitted["max_latency_ms"]:
                         raise RuntimeAdapterError(
                             "actual_latency_budget_exceeded",
                             "Adapter exceeded the governed latency budget",
@@ -558,7 +1039,7 @@ class GovernedAgentRuntime:
                             "provider_output_not_object",
                             "Adapter output must be an object",
                         )
-                    _validate_schema(safe_output, task.output_schema, "$output")
+                    _validate_schema(safe_output, contract.output_schema, "$output")
                     _guard_output(safe_output, admitted["tools"])
                     attempt = RuntimeAttempt(
                         attempt=attempt_number,
@@ -575,6 +1056,23 @@ class GovernedAgentRuntime:
                         span_id=attempt_span_id,
                     )
                     attempts.append(attempt)
+                    self._append_after_provider(
+                        run_id=run_id,
+                        event=RuntimeAuditEvent(
+                            event_type="attempt_completed",
+                            adapter_name=adapter.profile.name,
+                            provider=adapter.profile.provider,
+                            model=attempt.model,
+                            adapter_config_sha256=adapter.profile.config_sha256,
+                            output_sha256=_sha256(safe_output),
+                            input_tokens=attempt.input_tokens,
+                            output_tokens=attempt.output_tokens,
+                            cost_usd=attempt.actual_cost_usd,
+                            latency_ms=attempt.latency_ms,
+                            safe_payload={"attempt": attempt_number},
+                            occurred_at=self.clock(),
+                        ),
+                    )
                     self._emit_attempt_span(
                         task=task,
                         run_id=run_id,
@@ -590,6 +1088,8 @@ class GovernedAgentRuntime:
                     selected = (adapter, response, safe_output)
                     break
                 except AgentRuntimePolicyError as exc:
+                    if exc.code == "unknown_outcome":
+                        raise
                     actual_cost = response.cost_usd if response is not None else Decimal("0")
                     attempt = RuntimeAttempt(
                         attempt=attempt_number,
@@ -606,6 +1106,23 @@ class GovernedAgentRuntime:
                         span_id=attempt_span_id,
                     )
                     attempts.append(attempt)
+                    self._append_after_provider(
+                        run_id=run_id,
+                        event=RuntimeAuditEvent(
+                            event_type="attempt_denied",
+                            reason_code=exc.code,
+                            adapter_name=adapter.profile.name,
+                            provider=adapter.profile.provider,
+                            model=attempt.model,
+                            adapter_config_sha256=adapter.profile.config_sha256,
+                            input_tokens=attempt.input_tokens,
+                            output_tokens=attempt.output_tokens,
+                            cost_usd=attempt.actual_cost_usd,
+                            latency_ms=attempt.latency_ms,
+                            safe_payload={"attempt": attempt_number},
+                            occurred_at=self.clock(),
+                        ),
+                    )
                     self._emit_attempt_span(
                         task=task,
                         run_id=run_id,
@@ -626,6 +1143,14 @@ class GovernedAgentRuntime:
                         started_at,
                         attempts,
                         exc.code,
+                    )
+                    self._append_after_provider(
+                        run_id=run_id,
+                        event=RuntimeAuditEvent(
+                            event_type="run_denied",
+                            reason_code=exc.code,
+                            occurred_at=self.clock(),
+                        ),
                     )
                     raise
                 except RuntimeAdapterError as exc:
@@ -657,6 +1182,23 @@ class GovernedAgentRuntime:
                         span_id=attempt_span_id,
                     )
                     attempts.append(attempt)
+                    self._append_after_provider(
+                        run_id=run_id,
+                        event=RuntimeAuditEvent(
+                            event_type="attempt_failed",
+                            reason_code=exc.code,
+                            adapter_name=adapter.profile.name,
+                            provider=adapter.profile.provider,
+                            model=attempt.model,
+                            adapter_config_sha256=adapter.profile.config_sha256,
+                            input_tokens=attempt.input_tokens,
+                            output_tokens=attempt.output_tokens,
+                            cost_usd=attempt.actual_cost_usd,
+                            latency_ms=attempt.latency_ms,
+                            safe_payload={"attempt": attempt_number},
+                            occurred_at=self.clock(),
+                        ),
+                    )
                     self._emit_attempt_span(
                         task=task,
                         run_id=run_id,
@@ -682,6 +1224,15 @@ class GovernedAgentRuntime:
                     attempts,
                     "all_adapters_failed",
                 )
+                self._append_after_provider(
+                    run_id=run_id,
+                    event=RuntimeAuditEvent(
+                        event_type="run_failed",
+                        reason_code="all_adapters_failed",
+                        cost_usd=total_cost,
+                        occurred_at=self.clock(),
+                    ),
+                )
                 raise AgentRuntimeExhaustedError(
                     "all_adapters_failed",
                     "No eligible runtime adapter produced a governed proposal",
@@ -689,10 +1240,12 @@ class GovernedAgentRuntime:
                 )
 
             adapter, response, output = selected
-            input_sha256 = _sha256(admitted["safe_input"])
             output_sha256 = _sha256(output)
             eval_record = self._evaluate(
                 task=task,
+                contract=contract,
+                max_latency_ms=admitted["max_latency_ms"],
+                max_cost_usd=admitted["effective_cost_cap"],
                 run_id=run_id,
                 trace_id=trace_id,
                 span_id=root_span_id,
@@ -701,6 +1254,24 @@ class GovernedAgentRuntime:
                 input_sha256=input_sha256,
                 output_sha256=output_sha256,
                 total_cost=total_cost,
+            )
+            eval_sha256 = _sha256(_json_safe(asdict(eval_record)))
+            self._append_after_provider(
+                run_id=run_id,
+                event=RuntimeAuditEvent(
+                    event_type="eval_completed",
+                    adapter_name=adapter.profile.name,
+                    provider=adapter.profile.provider,
+                    model=response.model or adapter.profile.model,
+                    adapter_config_sha256=adapter.profile.config_sha256,
+                    output_sha256=output_sha256,
+                    eval_sha256=eval_sha256,
+                    safe_payload={
+                        "passed": eval_record.passed,
+                        "assertion_count": len(eval_record.assertions),
+                    },
+                    occurred_at=self.clock(),
+                ),
             )
             result = GovernedRunResult(
                 contract_id=RUNTIME_CONTRACT_ID,
@@ -718,9 +1289,70 @@ class GovernedAgentRuntime:
                 route=tuple(item[1] for item in route),
                 eval_record=eval_record,
             )
+            self._append_after_provider(
+                run_id=run_id,
+                event=RuntimeAuditEvent(
+                    event_type="run_succeeded",
+                    output_sha256=output_sha256,
+                    eval_sha256=eval_sha256,
+                    input_tokens=sum(item.input_tokens for item in attempts),
+                    output_tokens=sum(item.output_tokens for item in attempts),
+                    cost_usd=total_cost,
+                    latency_ms=sum(item.latency_ms for item in attempts),
+                    safe_payload={"attempt_count": len(attempts)},
+                    occurred_at=self.clock(),
+                ),
+            )
             self.result_store.put(scope_key, fingerprint, result)
             self._emit_root_success(task, result, started_at)
             return result
+
+    def list_runs(
+        self,
+        *,
+        context: AgentRunScopeContext,
+        status: str | None = None,
+        task_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return self.audit_ledger.list_runs(
+            context=context,
+            status=status,
+            task_type=task_type,
+            limit=limit,
+            offset=offset,
+        )
+
+    def get_run(
+        self,
+        *,
+        context: AgentRunScopeContext,
+        run_id: str,
+    ) -> dict[str, Any]:
+        return self.audit_ledger.get_run(context=context, run_id=run_id)
+
+    def replay(
+        self,
+        *,
+        context: AgentRunScopeContext,
+        run_id: str,
+    ) -> GovernedRunReceipt:
+        return self.audit_ledger.replay(context=context, run_id=run_id)
+
+    def _append_after_provider(
+        self,
+        *,
+        run_id: str,
+        event: RuntimeAuditEvent,
+    ) -> None:
+        try:
+            self.audit_ledger.append(run_id=run_id, event=event)
+        except Exception as exc:
+            raise AgentRuntimePolicyError(
+                "unknown_outcome",
+                "Provider returned but the durable outcome could not be persisted",
+            ) from exc
 
     @contextmanager
     def _scope_lock(self, scope_key: str) -> Iterator[None]:
@@ -729,46 +1361,92 @@ class GovernedAgentRuntime:
         with lock:
             yield
 
-    def _admit(self, task: RuntimeTask) -> dict[str, Any]:
-        identity = (
-            task.task_type,
-            task.tenant_ref,
-            task.entity_ref,
-            task.store_ref,
-            task.idempotency_key,
-            task.requested_by,
-            task.agent_actor_id,
+    def _contract(self, task_type: str) -> RuntimeTaskContract:
+        if self.task_registry is None:
+            raise AgentRuntimePolicyError(
+                "task_registry_missing",
+                "Governed runtime requires the canonical Agent task registry",
+            )
+        payload = self.task_registry.require(task_type)
+        return RuntimeTaskContract.from_registry(
+            task_type=task_type,
+            registry_sha256=self.task_registry.registry_sha256,
+            registry_payload=payload,
+            registry_authority=self.task_registry.payload.get("authority", {}),
         )
-        if any(not value.strip() for value in identity):
-            raise AgentRuntimePolicyError("scope_incomplete", "Runtime task scope and identity must be complete")
-        min_accuracy = _decimal(task.min_accuracy, "min_accuracy")
-        max_cost = _decimal(task.max_cost_usd, "max_cost_usd")
+
+    def _admit(
+        self,
+        context: AgentRunScopeContext,
+        task: RuntimeTask,
+        contract: RuntimeTaskContract,
+    ) -> dict[str, Any]:
+        if not task.task_type.strip() or not task.idempotency_key.strip():
+            raise AgentRuntimePolicyError(
+                "task_identity_incomplete",
+                "Runtime task type and idempotency key are required",
+            )
+        if task.task_type != contract.task_type:
+            raise AgentRuntimePolicyError(
+                "task_contract_drift", "Runtime task contract does not match task type"
+            )
+        if not context.evidence_refs:
+            raise AgentRuntimePolicyError(
+                "scoped_evidence_missing",
+                "Governed runtime requires current exact-scope Evidence",
+            )
+        unknown_fields = sorted(
+            set(task.model_input) - set(contract.allowed_input_fields)
+        )
+        if unknown_fields:
+            raise AgentRuntimePolicyError(
+                "input_field_not_allowed",
+                f"Model input contains fields outside the task contract: {', '.join(unknown_fields)}",
+            )
+        max_cost = contract.max_cost_usd
+        if task.max_cost_usd is not None:
+            requested_cost = _decimal(task.max_cost_usd, "max_cost_usd")
+            if requested_cost > contract.max_cost_usd:
+                raise AgentRuntimePolicyError(
+                    "cost_budget_exceeds_contract",
+                    "Requested cost budget exceeds the task contract",
+                )
+            max_cost = requested_cost
+        max_latency_ms = contract.max_latency_ms
+        if task.max_latency_ms is not None:
+            if task.max_latency_ms > contract.max_latency_ms:
+                raise AgentRuntimePolicyError(
+                    "latency_budget_exceeds_contract",
+                    "Requested latency budget exceeds the task contract",
+                )
+            max_latency_ms = task.max_latency_ms
+        max_attempts = contract.max_attempts
+        if task.max_attempts is not None:
+            if task.max_attempts > contract.max_attempts:
+                raise AgentRuntimePolicyError(
+                    "attempt_budget_exceeds_contract",
+                    "Requested attempt budget exceeds the task contract",
+                )
+            max_attempts = task.max_attempts
         ratio = _decimal(task.max_cost_to_profit_ratio, "max_cost_to_profit_ratio")
-        if min_accuracy < 0 or min_accuracy > 1:
-            raise AgentRuntimePolicyError("accuracy_budget_invalid", "Minimum accuracy must be between zero and one")
         if max_cost < 0 or ratio < 0:
             raise AgentRuntimePolicyError("cost_budget_invalid", "Runtime cost budgets cannot be negative")
-        if task.max_latency_ms < 1 or task.timeout_seconds < 1:
+        if max_latency_ms < 1 or contract.timeout_seconds < 1:
             raise AgentRuntimePolicyError("latency_budget_invalid", "Runtime latency budget must be positive")
-        if task.max_attempts < 1 or task.max_attempts > 8:
+        if max_attempts < 1 or max_attempts > 8:
             raise AgentRuntimePolicyError("attempt_budget_invalid", "Runtime attempt budget is invalid")
-        if task.max_output_tokens < 1:
+        if contract.max_output_tokens < 1:
             raise AgentRuntimePolicyError("output_budget_invalid", "Runtime output token budget must be positive")
-        if task.approval_actor_id and task.approval_actor_id == task.agent_actor_id:
-            raise AgentRuntimePolicyError(
-                "self_approval_denied",
-                "An agent cannot approve its own proposal",
-            )
-        _guard_schema(task.output_schema)
+        _guard_schema(contract.output_schema)
         tools = tuple(_normalize_tool(item) for item in task.requested_tools)
-        allowed = frozenset(_normalize_tool(item) for item in task.allowed_tools)
+        allowed = frozenset(_normalize_tool(item) for item in contract.allowed_tools)
         for tool in tools:
             if _tool_is_denied(tool) or tool not in allowed or tool not in self.allowed_read_tools:
                 raise AgentRuntimePolicyError(
                     "tool_denied",
                     f"Tool is not admitted as a governed read operation: {_safe_code(tool)}",
                 )
-        safe_prompt = _redact_text(task.prompt)
+        safe_prompt = _redact_text(contract.prompt)
         safe_input = _sanitize(task.model_input)
         profit = (
             None
@@ -785,26 +1463,37 @@ class GovernedAgentRuntime:
             "safe_input": safe_input,
             "tools": tools,
             "effective_cost_cap": effective_cost_cap,
+            "max_latency_ms": max_latency_ms,
+            "max_attempts": max_attempts,
         }
 
     def _route(
         self,
         task: RuntimeTask,
+        contract: RuntimeTaskContract,
+        *,
         effective_cost_cap: Decimal,
+        max_latency_ms: int,
+        max_attempts: int,
     ) -> tuple[tuple[RuntimeAdapter, RouteCandidate], ...]:
-        required = frozenset(task.required_capabilities)
+        required = frozenset(contract.required_capabilities)
         candidates: list[tuple[RuntimeAdapter, RouteCandidate]] = []
         for adapter in self.adapters:
             profile = adapter.profile
             if not required.issubset(profile.capabilities):
                 continue
-            if profile.estimated_accuracy < _decimal(task.min_accuracy, "min_accuracy"):
+            if profile.estimated_accuracy < contract.min_accuracy:
                 continue
-            if profile.p95_latency_ms > task.max_latency_ms:
+            if profile.p95_latency_ms > max_latency_ms:
                 continue
             if profile.estimated_cost_usd > effective_cost_cap:
                 continue
-            score = _route_score(profile, task, effective_cost_cap)
+            score = _route_score(
+                profile,
+                task,
+                effective_cost_cap,
+                max_latency_ms=max_latency_ms,
+            )
             candidates.append(
                 (
                     adapter,
@@ -833,12 +1522,15 @@ class GovernedAgentRuntime:
                 "no_eligible_adapter",
                 "No adapter satisfies capability, accuracy, latency, and profit-aware cost budgets",
             )
-        return tuple(candidates[: task.max_attempts])
+        return tuple(candidates[:max_attempts])
 
     def _evaluate(
         self,
         *,
         task: RuntimeTask,
+        contract: RuntimeTaskContract,
+        max_latency_ms: int,
+        max_cost_usd: Decimal,
         run_id: str,
         trace_id: str,
         span_id: str,
@@ -851,26 +1543,28 @@ class GovernedAgentRuntime:
         assertions = (
             EvalAssertion(
                 "capability_match",
-                frozenset(task.required_capabilities).issubset(adapter.profile.capabilities),
+                frozenset(contract.required_capabilities).issubset(
+                    adapter.profile.capabilities
+                ),
                 Decimal("1"),
                 "capabilities_satisfied",
             ),
             EvalAssertion(
                 "accuracy_threshold",
-                adapter.profile.estimated_accuracy >= task.min_accuracy,
+                adapter.profile.estimated_accuracy >= contract.min_accuracy,
                 adapter.profile.estimated_accuracy,
                 "estimated_accuracy_satisfied",
             ),
             EvalAssertion(
                 "latency_budget",
-                response.latency_ms <= task.max_latency_ms,
-                Decimal("1") if response.latency_ms <= task.max_latency_ms else Decimal("0"),
+                response.latency_ms <= max_latency_ms,
+                Decimal("1") if response.latency_ms <= max_latency_ms else Decimal("0"),
                 "latency_budget_satisfied",
             ),
             EvalAssertion(
                 "cost_budget",
-                total_cost <= task.max_cost_usd,
-                Decimal("1") if total_cost <= task.max_cost_usd else Decimal("0"),
+                total_cost <= max_cost_usd,
+                Decimal("1") if total_cost <= max_cost_usd else Decimal("0"),
                 "cost_budget_satisfied",
             ),
             EvalAssertion("proposal_only", True, Decimal("1"), "governance_envelope_enforced"),
@@ -1050,7 +1744,13 @@ class GovernedAgentRuntime:
             return
 
 
-def _route_score(profile: AdapterProfile, task: RuntimeTask, effective_cost_cap: Decimal) -> Decimal:
+def _route_score(
+    profile: AdapterProfile,
+    task: RuntimeTask,
+    effective_cost_cap: Decimal,
+    *,
+    max_latency_ms: int,
+) -> Decimal:
     profit = (
         Decimal("0")
         if task.expected_profit_value_usd is None
@@ -1061,7 +1761,7 @@ def _route_score(profile: AdapterProfile, task: RuntimeTask, effective_cost_cap:
     cost_weight = Decimal("0.40") - Decimal("0.25") * profit_weight
     latency_weight = Decimal("1") - accuracy_weight - cost_weight
     cost_denominator = max(effective_cost_cap, Decimal("0.000001"))
-    latency_denominator = max(task.max_latency_ms, 1)
+    latency_denominator = max(max_latency_ms, 1)
     cost_score = max(Decimal("0"), Decimal("1") - profile.estimated_cost_usd / cost_denominator)
     latency_score = max(
         Decimal("0"),
@@ -1228,47 +1928,297 @@ def _redact_text(value: str) -> str:
     return _SECRET_ASSIGNMENT.sub(lambda match: f"{match.group(1)}={REDACTED}", value)
 
 
-def _scope_key(task: RuntimeTask) -> str:
+def _scope_key(context: AgentRunScopeContext, task: RuntimeTask) -> str:
     return _sha256(
         {
-            "tenant_ref": task.tenant_ref,
-            "entity_ref": task.entity_ref,
-            "store_ref": task.store_ref,
+            "tenant_ref": context.tenant_ref,
+            "entity_ref": context.entity_ref,
+            "store_ref": context.store_ref,
+            "authority_sha256": context.authority_sha256,
             "task_type": task.task_type,
             "idempotency_key": task.idempotency_key,
         }
     )
 
 
-def _task_fingerprint(task: RuntimeTask) -> str:
+def _task_fingerprint(
+    context: AgentRunScopeContext,
+    task: RuntimeTask,
+    contract: RuntimeTaskContract,
+    admitted: Mapping[str, Any],
+) -> str:
     return _sha256(
         {
             "contract_id": RUNTIME_CONTRACT_ID,
             "routing_policy_version": ROUTING_POLICY_VERSION,
             "task_type": task.task_type,
-            "scope": [task.tenant_ref, task.entity_ref, task.store_ref],
-            "prompt": task.prompt,
-            "model_input": task.model_input,
-            "output_schema": task.output_schema,
-            "required_capabilities": sorted(task.required_capabilities),
-            "requested_by": task.requested_by,
-            "min_accuracy": str(task.min_accuracy),
-            "max_latency_ms": task.max_latency_ms,
-            "max_cost_usd": str(task.max_cost_usd),
+            "scope": [
+                context.tenant_ref,
+                context.entity_ref,
+                context.store_ref,
+                context.authority_sha256,
+                context.actor_id,
+            ],
+            "evidence": [
+                [item.evidence_id, item.evidence_sha256]
+                for item in sorted(
+                    context.evidence_refs,
+                    key=lambda value: value.evidence_id,
+                )
+            ],
+            "registry_sha256": contract.registry_sha256,
+            "contract_version": contract.contract_version,
+            "prompt_version": contract.prompt_version,
+            "schema_version": contract.schema_version,
+            "prompt_sha256": _sha256(contract.prompt),
+            "model_input": admitted["safe_input"],
+            "output_schema_sha256": _sha256(contract.output_schema),
+            "required_capabilities": sorted(contract.required_capabilities),
+            "max_latency_ms": admitted["max_latency_ms"],
+            "max_cost_usd": str(admitted["effective_cost_cap"]),
             "expected_profit_value_usd": (
                 None if task.expected_profit_value_usd is None else str(task.expected_profit_value_usd)
             ),
             "max_cost_to_profit_ratio": str(task.max_cost_to_profit_ratio),
-            "max_attempts": task.max_attempts,
-            "max_output_tokens": task.max_output_tokens,
-            "timeout_seconds": task.timeout_seconds,
-            "allowed_tools": sorted(task.allowed_tools),
+            "max_attempts": admitted["max_attempts"],
+            "max_output_tokens": contract.max_output_tokens,
+            "timeout_seconds": contract.timeout_seconds,
+            "allowed_tools": sorted(contract.allowed_tools),
             "requested_tools": sorted(task.requested_tools),
-            "agent_actor_id": task.agent_actor_id,
-            "approval_actor_id": task.approval_actor_id,
-            "image_inputs": list(task.image_inputs),
+            "image_input_sha256": [_sha256(item) for item in task.image_inputs],
         }
     )
+
+
+_TERMINAL_AUDIT_EVENTS = frozenset(
+    {"run_succeeded", "run_failed", "run_denied", "unknown_outcome"}
+)
+_AUDIT_TRANSITIONS = {
+    None: frozenset({"run_started"}),
+    "run_started": frozenset({"route_selected", "run_denied"}),
+    "route_selected": frozenset({"attempt_started", "run_failed", "unknown_outcome"}),
+    "attempt_started": frozenset(
+        {"attempt_completed", "attempt_denied", "attempt_failed", "unknown_outcome"}
+    ),
+    "attempt_completed": frozenset({"eval_completed", "unknown_outcome"}),
+    "attempt_denied": frozenset({"run_denied", "unknown_outcome"}),
+    "attempt_failed": frozenset({"attempt_started", "run_failed", "unknown_outcome"}),
+    "eval_completed": frozenset({"run_succeeded", "unknown_outcome"}),
+}
+
+
+def _assert_event_transition(
+    events: Sequence[Mapping[str, Any]],
+    event_type: str,
+) -> None:
+    previous = str(events[-1]["event_type"]) if events else None
+    if previous in _TERMINAL_AUDIT_EVENTS:
+        raise AgentRuntimePolicyError(
+            "terminal_event_conflict",
+            "A terminal governed Agent run cannot accept more events",
+        )
+    if event_type not in _AUDIT_TRANSITIONS.get(previous, frozenset()):
+        raise AgentRuntimePolicyError(
+            "event_transition_invalid",
+            "Governed Agent run event transition is invalid",
+        )
+
+
+def _audit_event_payload(
+    *,
+    event: RuntimeAuditEvent,
+    event_index: int,
+    previous_event_sha256: str,
+    occurred_at: datetime,
+) -> dict[str, Any]:
+    if occurred_at.tzinfo is None:
+        raise ValueError("Runtime audit event time must include a timezone")
+    if event_index < 1:
+        raise ValueError("Runtime audit event index must be positive")
+    if not re.fullmatch(r"[0-9a-f]{64}", previous_event_sha256):
+        raise ValueError("Runtime audit previous event hash is invalid")
+    for field_name, value in {
+        "adapter_config_sha256": event.adapter_config_sha256,
+        "output_sha256": event.output_sha256,
+        "eval_sha256": event.eval_sha256,
+    }.items():
+        if value is not None and not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise ValueError(f"{field_name} must be a lowercase SHA-256")
+    payload = {
+        "event_index": event_index,
+        "event_type": event.event_type,
+        "reason_code": _safe_code(event.reason_code) if event.reason_code else None,
+        "adapter_sha256": _sha256(event.adapter_name) if event.adapter_name else None,
+        "provider_sha256": _sha256(event.provider) if event.provider else None,
+        "model_sha256": _sha256(event.model) if event.model else None,
+        "adapter_config_sha256": event.adapter_config_sha256,
+        "output_sha256": event.output_sha256,
+        "eval_sha256": event.eval_sha256,
+        "input_tokens": _non_negative_int(event.input_tokens, "input_tokens"),
+        "output_tokens": _non_negative_int(event.output_tokens, "output_tokens"),
+        "cost_usd": _decimal_string(
+            _non_negative_decimal(event.cost_usd, "cost_usd")
+        ),
+        "latency_ms": _non_negative_int(event.latency_ms, "latency_ms"),
+        "safe_payload": _json_safe(event.safe_payload),
+        "previous_event_sha256": previous_event_sha256,
+        "occurred_at": _iso(occurred_at),
+    }
+    _guard_audit_payload(payload)
+    payload["event_sha256"] = _sha256(payload)
+    return payload
+
+
+def _event_status(event_type: str) -> str:
+    return event_type.removeprefix("run_")
+
+
+def _envelope_visible(
+    envelope: RuntimeAuditEnvelope,
+    context: AgentRunScopeContext,
+) -> bool:
+    return (
+        envelope.scope.tenant_ref == context.tenant_ref
+        and envelope.scope.entity_ref == context.entity_ref
+        and envelope.scope.store_ref == context.store_ref
+        and envelope.scope.authority_sha256 == context.authority_sha256
+        and envelope.started_at <= context.scope_as_of
+    )
+
+
+def _run_projection(
+    *,
+    envelope: RuntimeAuditEnvelope,
+    events: Sequence[Mapping[str, Any]],
+    evidence_refs: Sequence[Mapping[str, str]] | None,
+) -> dict[str, Any]:
+    latest = events[-1]
+    projected_events = []
+    for index, event in enumerate(events):
+        projected = dict(event)
+        if evidence_refs is not None:
+            projected["evidence"] = dict(evidence_refs[index])
+        projected_events.append(projected)
+    return {
+        "contract_id": "kjds-governed-agent-run-audit-v1",
+        "run_id": envelope.run_id,
+        "trace_id": envelope.trace_id,
+        "task_type": envelope.task_type,
+        "status": _event_status(str(latest["event_type"])),
+        "started_at": _iso(envelope.started_at),
+        "last_event_at": str(latest["occurred_at"]),
+        "event_count": len(events),
+        "registry_sha256": envelope.registry_sha256,
+        "contract_version": envelope.contract_version,
+        "prompt_version": envelope.prompt_version,
+        "schema_version": envelope.schema_version,
+        "routing_policy_version": envelope.routing_policy_version,
+        "prompt_sha256": envelope.prompt_sha256,
+        "output_schema_sha256": envelope.output_schema_sha256,
+        "tool_contract_sha256": envelope.tool_contract_sha256,
+        "request_sha256": envelope.request_sha256,
+        "input_sha256": envelope.input_sha256,
+        "input_field_names": list(envelope.input_field_names),
+        "input_bytes": envelope.input_bytes,
+        "evidence_snapshot_sha256": envelope.evidence_snapshot_sha256,
+        "required_capabilities": list(envelope.required_capabilities),
+        "allowed_tools": list(envelope.allowed_tools),
+        "limits": {
+            "max_cost_usd": str(envelope.max_cost_usd),
+            "max_latency_ms": envelope.max_latency_ms,
+            "max_attempts": envelope.max_attempts,
+        },
+        "payload_status": "not_retained",
+        "proposal_only": True,
+        "formal_fact": False,
+        "external_write_allowed": False,
+        "events": projected_events,
+    }
+
+
+def _run_listing(
+    *,
+    rows: list[dict[str, Any]],
+    total: int,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    return {
+        "contract_id": "kjds-governed-agent-run-list-v1",
+        "status": "ready" if rows else "no_data",
+        "runs": rows,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "next_offset": offset + len(rows) if offset + len(rows) < total else None,
+        "snapshot_sha256": _sha256(rows),
+    }
+
+
+def _validate_page(*, limit: int, offset: int) -> None:
+    if limit < 1 or limit > 200:
+        raise ValueError("limit must be between 1 and 200")
+    if offset < 0:
+        raise ValueError("offset cannot be negative")
+
+
+def _non_negative_decimal(value: Any, field_name: str) -> Decimal:
+    result = _decimal(value, field_name)
+    if result < 0:
+        raise ValueError(f"{field_name} cannot be negative")
+    return result
+
+
+def _decimal_string(value: Decimal) -> str:
+    if -value.as_tuple().exponent > 18:
+        raise ValueError("Runtime audit decimal precision exceeds 18 places")
+    rendered = format(value, "f").rstrip("0").rstrip(".")
+    return rendered or "0"
+
+
+def _non_negative_int(value: Any, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be an integer")
+    try:
+        result = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer") from exc
+    if result < 0:
+        raise ValueError(f"{field_name} cannot be negative")
+    return result
+
+
+def _guard_audit_payload(payload: Mapping[str, Any]) -> None:
+    forbidden = {
+        "prompt",
+        "model_input",
+        "output",
+        "tool_arguments",
+        "image_inputs",
+        "provider_request_id",
+        "error_detail",
+        "raw_response",
+    }
+
+    def walk(value: Any) -> None:
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                normalized = str(key).strip().lower()
+                if normalized in forbidden or _SENSITIVE_KEY.search(normalized):
+                    raise ValueError("Runtime audit payload contains forbidden plaintext")
+                walk(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                walk(item)
+        elif (
+            isinstance(value, (float, Decimal))
+            and not Decimal(str(value)).is_finite()
+        ):
+            raise ValueError("Runtime audit payload contains a non-finite number")
+        elif isinstance(value, str) and _SECRET_ASSIGNMENT.search(value):
+            raise ValueError("Runtime audit payload contains secret-like plaintext")
+
+    walk(payload)
 
 
 def _decimal(value: Any, field_name: str) -> Decimal:

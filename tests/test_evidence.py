@@ -73,6 +73,27 @@ def test_execution_evidence_source_ref_rejects_conflicting_content():
         assert session.query(EvidenceRecordRow).count() == 1
 
 
+def test_governed_agent_run_evidence_source_ref_is_globally_immutable():
+    engine, service = make_service()
+    common = {
+        "filename": "event.json",
+        "content_type": "application/json",
+        "source": "governed-agent-run-evidence",
+        "source_ref": "agent-run://agr_1/agev_1",
+        "grade": EvidenceGrade.B,
+        "effective_at": "2026-08-03T00:00:00Z",
+        "effective_until": None,
+        "created_by": "kjds-agent-runtime",
+    }
+    first = service.capture(content=b'{"event_sha256":"first"}', **common)
+
+    assert service.capture(content=b'{"event_sha256":"first"}', **common).id == first.id
+    with pytest.raises(ValueError, match="different immutable content"):
+        service.capture(content=b'{"event_sha256":"second"}', **common)
+    with Session(engine) as session:
+        assert session.query(EvidenceRecordRow).count() == 1
+
+
 def test_other_evidence_sources_keep_bitemporal_source_ref_semantics():
     _, service = make_service()
 

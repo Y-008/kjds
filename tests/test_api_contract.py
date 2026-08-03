@@ -59,6 +59,99 @@ def test_openapi_v1_snapshot_matches_runtime_contract() -> None:
     assert json.loads(snapshot_path.read_text(encoding="utf-8")) == app.openapi()
 
 
+def test_governed_agent_run_api_is_read_only_and_hides_internal_scope_parameters() -> None:
+    paths = app.openapi()["paths"]
+    expected_parameters = {
+        "/v1/agent-control/runs": {
+            "store_ref",
+            "as_of",
+            "status",
+            "task_type",
+            "limit",
+            "offset",
+        },
+        "/v1/agent-control/runs/{run_id}": {"run_id", "store_ref", "as_of"},
+        "/v1/agent-control/runs/{run_id}/replay": {
+            "run_id",
+            "store_ref",
+            "as_of",
+        },
+    }
+
+    for path, parameter_names in expected_parameters.items():
+        assert set(paths[path]) == {"get"}
+        declared = {
+            item["name"] for item in paths[path]["get"].get("parameters", [])
+        }
+        assert declared == parameter_names
+        assert not declared.intersection(
+            {"tenant_ref", "entity_ref", "authority_sha256", "actor_id"}
+        )
+
+
+def test_governed_agent_history_derives_exact_scope_and_hides_cross_store(
+    monkeypatch,
+) -> None:
+    from apps.control_plane.routers.agent_control import governed_agent_runs
+    from apps.control_plane.runtime import runtime
+
+    principal = Principal(
+        actor_id="agent-audit-reader",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "ready",
+            "entity_ref": "entity-a",
+            "authority_sha256": "a" * 64,
+            "evidence_id": "scope-grant-evidence",
+            "evidence_sha256": "b" * 64,
+        },
+    )
+    captured = {}
+
+    def list_runs(**values):
+        captured.update(values)
+        return {"contract_id": "kjds-governed-agent-run-list-v1", "status": "no_data"}
+
+    monkeypatch.setattr(runtime.governed_agent_runtime, "list_runs", list_runs)
+    response = governed_agent_runs(
+        principal=principal,
+        store_ref="store-a",
+        as_of="2026-08-03T12:00:00Z",
+        status="succeeded",
+        task_type="listing_quality_qa",
+        limit=25,
+        offset=0,
+    )
+
+    assert response["status"] == "no_data"
+    context = captured["context"]
+    assert context.tenant_ref == "tenant-a"
+    assert context.entity_ref == "entity-a"
+    assert context.store_ref == "store-a"
+    assert context.authority_sha256 == "a" * 64
+    assert context.actor_id == "agent-audit-reader"
+    assert runtime.governed_agent_runtime is not None
+    assert runtime.agent_runtime_evidence is not None
+
+    with pytest.raises(HTTPException) as hidden:
+        governed_agent_runs(
+            principal=principal,
+            store_ref="store-b",
+            as_of=None,
+            status=None,
+            task_type=None,
+            limit=50,
+            offset=0,
+        )
+    assert hidden.value.status_code == 404
+
+
 def test_generic_evidence_upload_rejects_reserved_execution_source() -> None:
     with pytest.raises(HTTPException) as error:
         asyncio.run(
