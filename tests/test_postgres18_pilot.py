@@ -16,6 +16,12 @@ ROOT = Path(__file__).parents[1]
 POLICY_PATH = ROOT / "docs/project/contracts/postgres18-pilot-policy-v1.json"
 COMPOSE_PATH = ROOT / "compose.yaml"
 RUNNER_PATH = ROOT / "scripts/verify_postgres18_pilot.py"
+EVIDENCE_REPORT_PATH = (
+    ROOT / "docs/project/evidence/20260803_BAS_176_POSTGRES18_PILOT_REPORT.json"
+)
+EVIDENCE_RECEIPT_PATH = (
+    ROOT / "docs/project/evidence/20260803_BAS_176_POSTGRES18_PILOT_VERIFICATION.json"
+)
 SOURCE_COMMIT = "1" * 40
 MIGRATION_HEAD = "20260803_0090"
 SCHEMA_SHA = "c" * 64
@@ -205,6 +211,26 @@ def test_rehearsal_passes_without_promoting_postgres18_or_the_exit_gate():
     assert receipt["productionDependencyAllowed"] is False
     assert receipt["externalWriteAllowed"] is False
     assert receipt["formalFactPromotionAllowed"] is False
+
+
+def test_committed_rehearsal_evidence_reopens_and_reverifies():
+    document = json.loads(EVIDENCE_REPORT_PATH.read_text(encoding="utf-8"))
+    recorded_receipt = json.loads(EVIDENCE_RECEIPT_PATH.read_text(encoding="utf-8"))
+
+    verified = authority().verify(
+        document,
+        source_commit=document["sourceCommit"],
+        migration_head=document["migrationHead"],
+    )
+
+    assert verified == recorded_receipt
+    assert document["sourceCommit"] == "c6220c2b359387cc18ce7d9ae16f34bc45df28c2"
+    assert hashlib.sha256(EVIDENCE_REPORT_PATH.read_bytes()).hexdigest() == (
+        "d34725cbb5a7b3b997d13f9b5ccb00766b3cd281d312785eb18b7b28b894b040"
+    )
+    assert hashlib.sha256(EVIDENCE_RECEIPT_PATH.read_bytes()).hexdigest() == (
+        "8cba72155bcdaa0a01e6901a84d3b9896e68e3ccc66dae70f0dc9b2a95825641"
+    )
 
 
 @pytest.mark.parametrize(
