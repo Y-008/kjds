@@ -197,7 +197,7 @@
 | BAS-190 | G-1 | 本地 DEMO 客户端边界合同冻结 | Product+Web+Risk | 冻结 ScenarioPack、DemoSession、LocalDemoGateway、合成数据/不计费标志和零生产依赖负向合同；本票仅 ADR/registry/test，不修改真实套餐、额度、授权、计费、API 或外写 Gate。 | BAS-176、COM-002、BAS-180 | DONE_ENGINEERING |
 | BAS-191 | G-1 | ScenarioPack 与 DemoSession 领域内核 | Product+Web | 在独立 `clients/local-demo` 建立版本化合成场景、SHA-256、确定性时钟、会话 TTL 和重置；不读取真实业务表或环境凭证。 | BAS-190 | DONE_ENGINEERING |
 | BAS-192 | G-1 | LocalDemoGateway 与内存会话仓 | Product+Web+Risk | 实现唯一 query/apply/reset 接口、幂等、跨会话 404、payload drift 和零生产导入/网络合同；动作只生成 DemoTransition。 | BAS-191 | DONE_ENGINEERING |
-| BAS-193 | G-1 | 独立 DEMO PWA 壳与持续水印 | Product Design+Web | 建立不复用生产根布局的本地 PWA，桌面/390px 均持续显示 LOCAL DEMO/合成数据/不计费，离线首屏且零 `/backend` 请求。 | BAS-192 | QUEUED |
+| BAS-193 | G-1 | 独立 DEMO PWA 壳与持续水印 | Product Design+Web | 建立不复用生产根布局的本地 PWA，桌面/390px 均持续显示 LOCAL DEMO/合成数据/不计费，离线首屏且零 `/backend` 请求。 | BAS-192 | IN_PROGRESS |
 | BAS-194 | G-1 | DEMO 全链路九工作区 | Product+Commerce+Web | 用固定 ScenarioPack 实现驾驶舱、选品、PIM、刊登、OMS、履约、客服、增长和利润的查询/模拟推进/错误重放，不创建任何真实权威对象。 | BAS-193 | QUEUED |
 | BAS-195 | G-1 | DEMO 离线便携包与清理 | Release+Web | 交付 PWA/便携 ZIP、loopback 启动、断网冷启动、显式重置和清理脚本；构建不含账号、Cookie、API Key 或真实数据。 | BAS-194 | QUEUED |
 | BAS-196 | G-1 | DEMO 隔离验收与交付 Evidence | QA+Risk+Release | 验证 Node/Web/E2E、1440/390、零外网、零 `/backend`、零秘密、零生产写、跨会话隔离、构建哈希和可重复清理。 | BAS-195 | QUEUED |
