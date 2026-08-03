@@ -194,6 +194,13 @@
 | BAS-187 | G-1 | TutorialGraph 与 Windows Agent | Media+Desktop Automation+Evidence | 把软件功能节点编译为操作、UI 锚点、截图、说明和讲解产物；每步可回读/恢复，敏感窗口和凭证区域默认遮蔽。 | BAS-184 | QUEUED |
 | BAS-188 | G-1–G6 | 媒体交付包接入社媒平台 | Media+Social Intelligence | 将图片、视频蓝图和教程产物组装为 DeliveryManifest 交给 BAS-178；社媒发布、campaign grant、回读、撤销和 kill switch 仍归 BAS-178。 | BAS-185、BAS-186、BAS-187、BAS-178 | QUEUED |
 | BAS-189 | C0–S1 | 邀请制媒体付费 Pilot | Commercial Platform+Media+Risk | 在 COM-002 Token、计量、收退款、SLA、DPA、退出导出完成后开放邀请制 Pilot；工程状态不得冒充可售、可扣费或生产 SLA。 | BAS-183、BAS-188、COM-002 | QUEUED |
+| BAS-190 | G-1 | 本地 DEMO 客户端边界合同冻结 | Product+Web+Risk | 冻结 ScenarioPack、DemoSession、LocalDemoGateway、合成数据/不计费标志和零生产依赖负向合同；本票仅 ADR/registry/test，不修改真实套餐、额度、授权、计费、API 或外写 Gate。 | BAS-176、COM-002、BAS-180 | IN_PROGRESS |
+| BAS-191 | G-1 | ScenarioPack 与 DemoSession 领域内核 | Product+Web | 在独立 `clients/local-demo` 建立版本化合成场景、SHA-256、确定性时钟、会话 TTL 和重置；不读取真实业务表或环境凭证。 | BAS-190 | QUEUED |
+| BAS-192 | G-1 | LocalDemoGateway 与内存会话仓 | Product+Web+Risk | 实现唯一 query/apply/reset 接口、幂等、跨会话 404、payload drift 和零生产导入/网络合同；动作只生成 DemoTransition。 | BAS-191 | QUEUED |
+| BAS-193 | G-1 | 独立 DEMO PWA 壳与持续水印 | Product Design+Web | 建立不复用生产根布局的本地 PWA，桌面/390px 均持续显示 LOCAL DEMO/合成数据/不计费，离线首屏且零 `/backend` 请求。 | BAS-192 | QUEUED |
+| BAS-194 | G-1 | DEMO 全链路九工作区 | Product+Commerce+Web | 用固定 ScenarioPack 实现驾驶舱、选品、PIM、刊登、OMS、履约、客服、增长和利润的查询/模拟推进/错误重放，不创建任何真实权威对象。 | BAS-193 | QUEUED |
+| BAS-195 | G-1 | DEMO 离线便携包与清理 | Release+Web | 交付 PWA/便携 ZIP、loopback 启动、断网冷启动、显式重置和清理脚本；构建不含账号、Cookie、API Key 或真实数据。 | BAS-194 | QUEUED |
+| BAS-196 | G-1 | DEMO 隔离验收与交付 Evidence | QA+Risk+Release | 验证 Node/Web/E2E、1440/390、零外网、零 `/backend`、零秘密、零生产写、跨会话隔离、构建哈希和可重复清理。 | BAS-195 | QUEUED |
 | COM-001 | C0 | 逆漏斗最小销售包 | 经营+销售+产品+法务 | 形成客户资格/拒绝表、只读诊断交付物、Evidence-backed 案例模板、SOW、价格实验、合同/DPA/SLA 清单和成交页真实文案；C0 通过前仅准备，不报价成交、不收款、不形成应收。 | BAS-171、C0 缺口清单 | IN_PROGRESS_PREP_ONLY |
 | COM-002 | C0–S3 | 单客户交付底座与 C0 关闭包 | Commercial Platform+Release+Finance+Legal | 以 C0 清单为唯一验收源，依次完成发布 provenance、托管双客户负向隔离、真实 TLS/Secrets/备份恢复、商业生命周期与收退款、单位经济、Contract/DPA/SLA、退出导出和删除演练；每项独立晋级，全部 PASS 前不得销售。 | C0-001–003、BAS-175、经营负责人输入 | IN_PROGRESS_PREP_ONLY |
 | DAY0-TRUTH-20260802 | G0–G4 | Ozon 真实经营真源校正 | 工程+经营+财务 | BAS-160 中 `channel-accounts workspace=ready` 只代表渠道账户授权控制面；真实商品只读与真实财务只读已通过，真实订单、平台结算、银行到账和任何 provider 外写仍未通过。因此 BAS-160 整项保持 `IN_PROGRESS`，不得解释为 ready；利润计算与扩量继续失败关闭。 | BAS-160、BAS-161 | PARTIAL_BLOCKED |

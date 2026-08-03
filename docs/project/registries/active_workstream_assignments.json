@@ -195,6 +195,23 @@
         "blocked_on": []
       },
       "next_task_id": "BAS-181"
+    },
+    {
+      "id": "K",
+      "name": "local_demo_client",
+      "accountable_role": "local_demo_product_owner",
+      "current_task": {
+        "task_id": "BAS-190",
+        "state": "in_progress",
+        "owner_thread_id": "019fc654-03dc-7c71-a520-8f85918f3e44",
+        "write_scope": [
+          "local_demo_boundary_adr",
+          "local_demo_contract_registry",
+          "local_demo_contract_tests"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": "BAS-191"
     }
   ],
   "shared_write_leases": {
