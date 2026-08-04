@@ -207,8 +207,22 @@
       "id": "K",
       "name": "local_demo_client",
       "accountable_role": "local_demo_product_owner",
-      "current_task": null,
-      "next_task_id": "BAS-194"
+      "current_task": {
+        "task_id": "BAS-194",
+        "state": "in_progress",
+        "owner_thread_id": "019fc81a-11cc-7653-b0c0-827f87ce0ada",
+        "write_scope": [
+          "browser_compatible_local_demo_gateway",
+          "versioned_synthetic_scenario_pack_v2",
+          "transition_derived_read_model",
+          "nine_workspace_simulated_journeys",
+          "three_deterministic_hero_flows",
+          "error_replay_and_reset",
+          "stop_fix_continue_no_data"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": null
     },
     {
       "id": "L",
