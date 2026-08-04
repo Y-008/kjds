@@ -64,12 +64,14 @@
       "accountable_role": "commercial_platform_owner",
       "current_task": {
         "task_id": "COM-002",
-        "state": "in_progress_preparation_only",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
         "write_scope": [
-          "commercial_pilot_deployment",
-          "commercial_lifecycle",
-          "customer_exit_export",
-          "c0_engineering_evidence"
+          "commercial_entitlement_balance_derivation",
+          "settled_payment_only_entitlement",
+          "refund_reopens_outstanding_balance",
+          "commercial_lifecycle_regression_tests",
+          "com002_entitlement_evidence"
         ],
         "blocked_on": [
           "hosted_target_and_rpo_rto_decision",

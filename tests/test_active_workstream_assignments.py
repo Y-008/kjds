@@ -79,6 +79,32 @@ def test_commercial_lane_cannot_sell_before_c0():
     assert "invoice" not in commercial["write_scope"]
 
 
+def test_com002_holds_entitlement_hardening_lease_without_shared_writes():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+    commercial_platform = lanes["D"]
+
+    assert commercial_platform["current_task"] == {
+        "task_id": "COM-002",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "write_scope": [
+            "commercial_entitlement_balance_derivation",
+            "settled_payment_only_entitlement",
+            "refund_reopens_outstanding_balance",
+            "commercial_lifecycle_regression_tests",
+            "com002_entitlement_evidence",
+        ],
+        "blocked_on": [
+            "hosted_target_and_rpo_rto_decision",
+            "payment_invoice_tax_contract_inputs",
+            "contract_dpa_sla_review_authority",
+        ],
+    }
+    assert commercial_platform["blocked_on"] == ["c0_commercial_pilot_gate"]
+    assert "COM-002" not in registry["shared_write_leases"].values()
+
+
 def test_social_platform_and_channel_operations_have_separate_lanes():
     lanes = {lane["id"]: lane for lane in _registry()["lanes"]}
 
