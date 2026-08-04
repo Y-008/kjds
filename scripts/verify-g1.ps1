@@ -844,7 +844,7 @@ try {
     $env:KJDS_API_URL = "http://127.0.0.1:$ApiPort"
     $WebProcess = Start-Process -FilePath (Get-Command npm.cmd).Source `
         -ArgumentList @("run", "dev", "--", "--webpack", "--hostname", "127.0.0.1", "--port", "$WebPort") `
-        -WorkingDirectory $Web -WindowStyle Hidden -PassThru `
+        -WorkingDirectory $WebSmoke -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $Runtime "g1-web.stdout.log") `
         -RedirectStandardError (Join-Path $Runtime "g1-web.stderr.log")
     Wait-Until -Description "G-1 web UI" -Condition { Test-HttpOk "http://127.0.0.1:$WebPort" }
