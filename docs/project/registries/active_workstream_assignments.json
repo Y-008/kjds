@@ -243,7 +243,9 @@
           "idempotency_and_payload_drift",
           "valid_time_currentness",
           "conservation_failure_page_checkpoint_lineage",
-          "coverage_ledger_postgres_tests"
+          "coverage_ledger_postgres_tests",
+          "reserved_coverage_intake_evidence_authority",
+          "coverage_intake_evidence_authority_contract_tests"
         ],
         "blocked_on": []
       },

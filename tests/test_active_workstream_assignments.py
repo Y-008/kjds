@@ -153,6 +153,8 @@ def test_data_cov_002_holds_append_only_coverage_ledger_migration_lease():
             "valid_time_currentness",
             "conservation_failure_page_checkpoint_lineage",
             "coverage_ledger_postgres_tests",
+            "reserved_coverage_intake_evidence_authority",
+            "coverage_intake_evidence_authority_contract_tests",
         ],
         "blocked_on": [],
     }
