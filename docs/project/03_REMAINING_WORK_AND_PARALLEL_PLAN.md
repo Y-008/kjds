@@ -186,7 +186,7 @@
 | BAS-179 | G-1–G6 | 俄罗斯市场需求与热点事件全量雷达 | Russia Market Intelligence+Commerce+Evidence+Risk | 组合 Ozon/Wildberries/Yandex Market 站内需求、Yandex Wordstat 地区/时间需求、Telegram/VK 公开讨论、平台官方变更与宏观/贸易/物流事件；每源全分页/字段/时间窗、记录 native cap、checkpoint、失败页、守恒与历史回补，按需求/竞争/热点/平台/宏观/供应分层并做可解释跨源评分。当前先完成来源与 fixture，不把公共新闻冒充 SKU 销量或利润。 | BAS-178、BR-139 | IN_PROGRESS_PREP_ONLY |
 | BAS-180 | G-1 | Commander 与媒体子代理合同冻结 | Agent Platform+Media+Evidence+Risk | 冻结 Commander/Tool Gateway、五个媒体 Tool、异步 Job、单租户 Connector、ContentAsset/Evidence 引用和 Source Adoption；本票仅 ADR/registry/contract tests，不实现迁移、API、Worker、MCP 或 Provider。 | BAS-172、BAS-176、BAS-178 | DONE_ENGINEERING |
 | BAS-181 | G-1 | 媒体 Connector Registry 与租户绑定 | Agent Platform+Identity+Media | 实现本地/托管 Connector 注册、exact-tenant 绑定、能力与脱敏健康状态；不保存 OAuth/Cookie 正文，不建立跨身份轮换池。 | BAS-180 | DONE_ENGINEERING |
-| BAS-182 | G-1 | Codex app-server Image Worker | Agent Platform+Media | 以固定协议实现事件解析、产物回收、LOGIN_REQUIRED/LIMITED/UNKNOWN_OUTCOME 停止与回读；不依赖 ChatGPT 网页 DOM 作为生产主通道。 | BAS-181 | IN_PROGRESS |
+| BAS-182 | G-1 | Codex app-server Image Worker | Agent Platform+Media | 以固定协议实现事件解析、产物回收、LOGIN_REQUIRED/LIMITED/UNKNOWN_OUTCOME 停止与回读；不依赖 ChatGPT 网页 DOM 作为生产主通道。 | BAS-181 | DONE_ENGINEERING |
 | BAS-183 | G-1–C0 | 异步图片 API、SSE、幂等与计量接线 | API+Media+Commercial Platform | 提供生成/编辑 Job、状态/SSE/取消与 OpenAI 风格兼容层；同幂等键只执行和计量一次，KJDS Token/套餐/余额仍归 COM-002。 | BAS-182、COM-002 | QUEUED |
 | BAS-184 | G-1 | Commander MCP/Tool Gateway | Agent Platform+Media+Evidence | 复用 AgentHarness 编译 CampaignBrief 并调用版本化媒体 Tool；主模型只见能力、状态、成本和 ContentAsset 引用，不见凭证或 Blob 正文。 | BAS-180、BAS-183 | QUEUED |
 | BAS-185 | G-1 | ComfyUI 商品模板与 8GB 基准 | Media+ML Platform+QA | 仅接受版本化模板和参数，在 8GB GPU 固定 fixture 上评测生成/编辑、显存失败与 Media QA；不接受任意 workflow JSON。 | BAS-180 | QUEUED |
