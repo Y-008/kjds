@@ -217,7 +217,15 @@
           "conservation_failure_page_checkpoint_lineage",
           "coverage_ledger_postgres_tests",
           "reserved_coverage_intake_evidence_authority",
-          "coverage_intake_evidence_authority_contract_tests"
+          "coverage_intake_evidence_authority_contract_tests",
+          "dedicated_coverage_issuer_database_engine",
+          "coverage_issuer_runtime_dependency_injection",
+          "g1_coverage_issuer_principal_lifecycle",
+          "g1_coverage_issuer_secret_injection_and_cleanup",
+          "coverage_issuer_compose_environment_contract",
+          "coverage_issuer_example_environment_contract",
+          "coverage_issuer_runtime_postgres_tests",
+          "coverage_issuer_g1_harness_contract_tests"
         ],
         "blocked_on": []
       },
