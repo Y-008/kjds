@@ -135,29 +135,14 @@ def test_bas199_release_advances_strategic_lane_without_preleasing_bas200():
     assert "BAS-200" not in registry["shared_write_leases"].values()
 
 
-def test_data_cov_001_holds_global_coverage_contract_without_shared_lease():
+def test_data_cov_001_release_advances_global_coverage_lane():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     coverage = lanes["M"]
 
-    assert coverage["current_task"] == {
-        "task_id": "DATA-COV-001",
-        "state": "in_progress",
-        "owner_thread_id": "019fc7d6-d3ec-7e42-bc82-ebdc6c5710e9",
-        "write_scope": [
-            "global_source_domain_registry",
-            "source_coverage_manifest_schema",
-            "native_caps_schema",
-            "bounded_universe_validator",
-            "coverage_completeness_and_conservation",
-            "checkpoint_failure_page_and_freshness",
-            "lineage_conflict_and_claim_gate",
-            "global_data_coverage_contract_tests",
-        ],
-        "blocked_on": [],
-    }
+    assert coverage["current_task"] is None
     assert coverage["next_task_id"] == "DATA-COV-002"
-    assert "DATA-COV-001" not in registry["shared_write_leases"].values()
+    assert "DATA-COV-002" not in registry["shared_write_leases"].values()
     assert registry["shared_write_leases"] == {
         "alembic_migration": "BAS-177",
         "api_aggregation_root": None,
