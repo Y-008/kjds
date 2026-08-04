@@ -151,24 +151,46 @@ Verification on the isolated worktree at base
 
 ```text
 uv run python -m pytest -q -p no:cacheprovider --basetemp=.runtime/pytest-data-cov-001 tests/test_global_data_coverage.py tests/test_global_source_domain_registry.py
-.....................                                                    [100%]
-21 passed in 0.32s
+.................................                                        [100%]
+33 passed in 0.27s
 
 uv run ruff check apps/control_plane/global_data_coverage.py tests/test_global_data_coverage.py tests/test_global_source_domain_registry.py
 All checks passed!
 
 Draft 2020-12 schema + fixture validation
 JSON_FILES=4 PARSE=PASS SCHEMAS=PASS FIXTURE=PASS
-REPLAY_HASH_1=d20f76477241ab3cf0133f99286d08de108e98adb1c77c81aeda01cfb43851a2
-REPLAY_HASH_2=d20f76477241ab3cf0133f99286d08de108e98adb1c77c81aeda01cfb43851a2
+REPLAY_HASH_1=7cf7b5af962983e7fe4d21a7798c77e817d3f0194b9050dd660f853b1a9db995
+REPLAY_HASH_2=7cf7b5af962983e7fe4d21a7798c77e817d3f0194b9050dd660f853b1a9db995
 REPLAY_MATCH=True
 VERDICT=blocked FULL=False
 
 uv run python scripts/verify_secrets.py
-Secret scan passed: 1275 non-ignored worktree files and 1293 historical paths checked
+Secret scan passed: 1275 non-ignored worktree files and 1304 historical paths checked
 
 git diff --check
 exit 0
+```
+
+## Independent-review remediation
+
+The follow-up review identified two trust inversions that are now closed:
+
+- Runtime validation pins the caller-supplied snapshot to the repository-owned
+  canonical registry by exact canonical content and hash. A constructor-injected
+  registry exists only as an explicit trusted test seam and is defensively copied.
+  Registry contract ID and cutoff chronology are fixed, and the selected source
+  contract must equal the frozen trusted contract.
+- A known denominator binds the universe and claim to the same Evidence ID and
+  SHA-256. That ID must resolve exactly once in the manifest Evidence list. Duplicate
+  IDs, conflicting hashes, substituted Evidence, Grade C/D full-claim support,
+  `effective_at > recorded_at`, future recording and expired Evidence all fail closed.
+
+The original independent repro—rehashed caller registry, fabricated implementation
+reference and missing denominator Evidence—now produces:
+
+```text
+REHASHED_REGISTRY_AND_MISSING_DENOMINATOR=REJECTED
+ERROR=registry snapshot is not the trusted canonical registry
 ```
 
 ## Next tickets
