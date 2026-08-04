@@ -112,6 +112,12 @@ def engine() -> Engine:
     admin = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
     with admin.connect() as connection:
         connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        connection.execute(
+            text(
+                f'CREATE TABLE "{schema}".alembic_version '
+                "(version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
+            )
+        )
     url = make_url(DATABASE_URL)
     query = dict(url.query)
     query["options"] = f"-csearch_path={schema}"
