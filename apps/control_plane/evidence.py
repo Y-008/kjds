@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -57,6 +58,17 @@ UNIQUE_SOURCE_REF_SOURCES = {
     "channel_account_official_readback",
     "channel_account_one_time_permit",
     "governed-agent-run-evidence",
+    "governed-team-agent-evolution",
+    "team-agent-baseline-authority",
+    "team-agent-deidentification-authority",
+    "team-agent-eval-set-authority",
+    "team-agent-license-authority",
+    "team-agent-retirement-authority",
+    "team-agent-review-authority",
+    "team-agent-revocation-authority",
+    "team-agent-risk-authority",
+    "team-agent-rollback-authority",
+    "team-agent-shadow-authority",
     "marketplace-observation",
     "ozon-isolated-execution-worker",
     "primary-source-intake",
@@ -96,7 +108,184 @@ CHANNEL_ACCOUNT_RESERVED_CONTRACTS = frozenset(
         "kjds-channel-account-sod-review-v1",
     }
 )
+TEAM_AGENT_RESERVED_SOURCES = frozenset(
+    {
+        "governed-team-agent-evolution",
+        "team-agent-baseline-authority",
+        "team-agent-deidentification-authority",
+        "team-agent-eval-set-authority",
+        "team-agent-license-authority",
+        "team-agent-retirement-authority",
+        "team-agent-review-authority",
+        "team-agent-revocation-authority",
+        "team-agent-risk-authority",
+        "team-agent-rollback-authority",
+        "team-agent-shadow-authority",
+    }
+)
+TEAM_AGENT_RESERVED_CONTRACTS = frozenset(
+    {
+        "kjds-governed-team-agent-evolution-evidence-v1",
+        "kjds-team-agent-baseline-authority-v1",
+        "kjds-team-agent-deidentification-authority-v1",
+        "kjds-team-agent-eval-set-authority-v1",
+        "kjds-team-agent-license-authority-v1",
+        "kjds-team-agent-retirement-authority-v1",
+        "kjds-team-agent-review-authority-v1",
+        "kjds-team-agent-revocation-authority-v1",
+        "kjds-team-agent-risk-authority-v1",
+        "kjds-team-agent-rollback-authority-v1",
+        "kjds-team-agent-shadow-authority-v1",
+    }
+)
 _RESERVED_CAPTURE_AUTHORITY = object()
+
+TEAM_AGENT_AUTHORITY_CONTRACTS: dict[str, dict[str, Any]] = {
+    "eval_set": {
+        "source": "team-agent-eval-set-authority",
+        "contract_id": "kjds-team-agent-eval-set-authority-v1",
+        "grade": EvidenceGrade.A,
+        "payload_field": "eval_set_sha256",
+        "roles": frozenset({"compliance", "admin"}),
+        "fields": frozenset({"eval_set_sha256", "snapshot_sha256"}),
+    },
+    "baseline": {
+        "source": "team-agent-baseline-authority",
+        "contract_id": "kjds-team-agent-baseline-authority-v1",
+        "grade": EvidenceGrade.B,
+        "payload_field": "baseline_snapshot_sha256",
+        "roles": frozenset({"reviewer", "monitor", "compliance", "admin"}),
+        "fields": frozenset(
+            {
+                "baseline_agent_run_ref",
+                "baseline_agent_run_sha256",
+                "baseline_runtime_ref",
+                "baseline_runtime_sha256",
+                "candidate_agent_run_ref",
+                "candidate_agent_run_sha256",
+                "candidate_runtime_ref",
+                "candidate_runtime_sha256",
+                "baseline_snapshot_sha256",
+                "candidate_snapshot_sha256",
+                "eval_baseline_passed",
+                "negative_tests_passed",
+                "scope_tests_passed",
+            }
+        ),
+    },
+    "shadow": {
+        "source": "team-agent-shadow-authority",
+        "contract_id": "kjds-team-agent-shadow-authority-v1",
+        "grade": EvidenceGrade.B,
+        "payload_field": "snapshot_sha256",
+        "roles": frozenset({"reviewer", "monitor", "compliance", "admin"}),
+        "fields": frozenset(
+            {
+                "agent_run_ref",
+                "runtime_sha256",
+                "snapshot_sha256",
+                "shadow_passed",
+                "zero_external_writes",
+                "cost_usd",
+                "latency_ms",
+                "token_count",
+            }
+        ),
+    },
+    "review": {
+        "source": "team-agent-review-authority",
+        "contract_id": "kjds-team-agent-review-authority-v1",
+        "grade": EvidenceGrade.A,
+        "payload_field": "snapshot_sha256",
+        "roles": frozenset({"reviewer", "compliance", "admin"}),
+        "fields": frozenset({"review_verdict", "snapshot_sha256"}),
+    },
+    "risk_authority": {
+        "source": "team-agent-risk-authority",
+        "contract_id": "kjds-team-agent-risk-authority-v1",
+        "grade": EvidenceGrade.A,
+        "payload_field": "snapshot_sha256",
+        "roles": frozenset({"risk", "compliance", "admin"}),
+        "fields": frozenset(
+            {"risk_authority_sha256", "current", "snapshot_sha256"}
+        ),
+    },
+    "rollback": {
+        "source": "team-agent-rollback-authority",
+        "contract_id": "kjds-team-agent-rollback-authority-v1",
+        "grade": EvidenceGrade.A,
+        "payload_field": "rollback_artifact_sha256",
+        "roles": frozenset({"risk", "compliance", "admin"}),
+        "fields": frozenset(
+            {
+                "rollback_target_ref",
+                "rollback_version",
+                "rollback_target_content_sha256",
+                "rollback_target_runtime_sha256",
+                "rollback_artifact_sha256",
+                "snapshot_sha256",
+            }
+        ),
+    },
+    "license": {
+        "source": "team-agent-license-authority",
+        "contract_id": "kjds-team-agent-license-authority-v1",
+        "grade": EvidenceGrade.A,
+        "payload_field": "license_sha256",
+        "roles": frozenset({"compliance", "admin"}),
+        "fields": frozenset(
+            {
+                "license_sha256",
+                "authority_subject_sha256",
+                "authority_epoch",
+                "current",
+                "snapshot_sha256",
+            }
+        ),
+    },
+    "deidentification": {
+        "source": "team-agent-deidentification-authority",
+        "contract_id": "kjds-team-agent-deidentification-authority-v1",
+        "grade": EvidenceGrade.A,
+        "payload_field": "deidentification_sha256",
+        "roles": frozenset({"compliance", "admin"}),
+        "fields": frozenset(
+            {
+                "deidentification_sha256",
+                "authority_subject_sha256",
+                "authority_epoch",
+                "current",
+                "nonreversible",
+                "snapshot_sha256",
+            }
+        ),
+    },
+    "revocation": {
+        "source": "team-agent-revocation-authority",
+        "contract_id": "kjds-team-agent-revocation-authority-v1",
+        "grade": EvidenceGrade.A,
+        "payload_field": "revocation_contract_sha256",
+        "roles": frozenset({"compliance", "admin"}),
+        "fields": frozenset(
+            {
+                "revocation_contract_sha256",
+                "authority_subject_sha256",
+                "authority_epoch",
+                "current",
+                "revoked",
+                "snapshot_sha256",
+            }
+        ),
+    },
+    "retirement": {
+        "source": "team-agent-retirement-authority",
+        "contract_id": "kjds-team-agent-retirement-authority-v1",
+        "grade": EvidenceGrade.A,
+        "payload_field": "retirement_sha256",
+        "roles": frozenset({"risk", "compliance", "admin"}),
+        "fields": frozenset({"retirement_sha256", "snapshot_sha256"}),
+    },
+}
 
 RETENTION_REVIEW_DAYS = {
     RetentionClass.OPERATIONAL: 365,
@@ -144,6 +333,44 @@ class EvidenceRecordRow(Base):
             unique=True,
             postgresql_where=text("source = 'governed-agent-run-evidence'"),
             sqlite_where=text("source = 'governed-agent-run-evidence'"),
+        ),
+        Index(
+            "uq_team_agent_evolution_evidence_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source = 'governed-team-agent-evolution'"),
+            sqlite_where=text("source = 'governed-team-agent-evolution'"),
+        ),
+        Index(
+            "uq_team_agent_authority_evidence_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text(
+                "source IN ('team-agent-baseline-authority',"
+                "'team-agent-deidentification-authority',"
+                "'team-agent-eval-set-authority',"
+                "'team-agent-license-authority',"
+                "'team-agent-retirement-authority',"
+                "'team-agent-review-authority',"
+                "'team-agent-revocation-authority',"
+                "'team-agent-risk-authority',"
+                "'team-agent-rollback-authority',"
+                "'team-agent-shadow-authority')"
+            ),
+            sqlite_where=text(
+                "source IN ('team-agent-baseline-authority',"
+                "'team-agent-deidentification-authority',"
+                "'team-agent-eval-set-authority',"
+                "'team-agent-license-authority',"
+                "'team-agent-retirement-authority',"
+                "'team-agent-review-authority',"
+                "'team-agent-revocation-authority',"
+                "'team-agent-risk-authority',"
+                "'team-agent-rollback-authority',"
+                "'team-agent-shadow-authority')"
+            ),
         ),
         Index(
             "uq_primary_source_intake_evidence_source_ref",
@@ -346,6 +573,50 @@ class EvidenceService:
         with Session(self.engine) as session, session.begin():
             yield session
 
+    def capture_team_agent_evolution_event(
+        self,
+        *,
+        content: bytes,
+        source_ref: str,
+        effective_at: str,
+        metadata: dict[str, Any],
+        session: Session,
+    ) -> EvidenceRecord:
+        """Persist the module-owned Grade-D event receipt.
+
+        Supporting review, risk, license, and evaluation Evidence remains
+        reserved to its independent authority adapter.  This narrow method
+        only admits the hash-and-code-only audit receipt emitted by the
+        governed evolution ledger itself.
+        """
+
+        candidate_ref = str(metadata.get("candidate_ref") or "").strip()
+        event_ref = str(metadata.get("event_ref") or "").strip()
+        expected_ref = f"team-agent-evolution://{candidate_ref}/{event_ref}"
+        if (
+            metadata.get("contract_id")
+            != "kjds-governed-team-agent-evolution-evidence-v1"
+            or metadata.get("evolution_purpose") != "event_audit"
+            or source_ref != expected_ref
+            or not candidate_ref
+            or not event_ref
+        ):
+            raise ValueError("Invalid governed team-agent event Evidence contract")
+        return self.capture(
+            content=content,
+            filename=f"{event_ref}.json",
+            content_type="application/json",
+            source="governed-team-agent-evolution",
+            source_ref=source_ref,
+            grade=EvidenceGrade.D,
+            effective_at=effective_at,
+            effective_until=None,
+            created_by="kjds-team-agent-evolution",
+            metadata=metadata,
+            _reserved_authority=_RESERVED_CAPTURE_AUTHORITY,
+            _session=session,
+        )
+
     def capture(
         self,
         *,
@@ -383,6 +654,19 @@ class EvidenceService:
             == "kjds-channel-account-sod-review-v1"
         ) and _reserved_authority is not _RESERVED_CAPTURE_AUTHORITY:
             raise ValueError("Reserved channel account Evidence requires the dedicated separation-of-duties workflow")
+        if (
+            source.strip().lower() in TEAM_AGENT_RESERVED_SOURCES
+            or str(metadata.get("source_contract_id") or "").strip()
+            in TEAM_AGENT_RESERVED_CONTRACTS
+            or (
+                source.strip().lower() == "governed-team-agent-evolution"
+                and str(metadata.get("contract_id") or "").strip()
+                == "kjds-governed-team-agent-evolution-evidence-v1"
+            )
+        ) and _reserved_authority is not _RESERVED_CAPTURE_AUTHORITY:
+            raise ValueError(
+                "Reserved team-agent Evidence requires its dedicated authority adapter"
+            )
         retention_class = metadata.get("retention_class")
         if retention_class is not None:
             try:
@@ -971,3 +1255,125 @@ class EvidenceService:
 
 def hmac_compare(left: str, right: str) -> bool:
     return hmac.compare_digest(left, right)
+
+
+class TeamAgentEvidenceAuthorityAdapter:
+    """Purpose-specific signer for reserved TeamAgent governance Evidence."""
+
+    def __init__(self, evidence: EvidenceService) -> None:
+        self.evidence = evidence
+
+    def capture(
+        self,
+        *,
+        principal: Any,
+        purpose: str,
+        claims: dict[str, Any],
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        scope_authority_sha256: str,
+        candidate_author_actor_id: str,
+        human_owner_actor_id: str,
+        effective_at: str,
+        effective_until: str | None,
+        session: Session | None = None,
+    ) -> EvidenceRecord:
+        contract = TEAM_AGENT_AUTHORITY_CONTRACTS.get(purpose)
+        if contract is None or set(claims) != contract["fields"]:
+            raise ValueError("Team-agent authority claims contract drifted")
+        actor_id = str(getattr(principal, "actor_id", "") or "").strip()
+        roles = frozenset(getattr(principal, "roles", ()))
+        if not actor_id or not roles.intersection(contract["roles"]):
+            raise PermissionError("Team-agent authority signer role is not admitted")
+        if actor_id in {candidate_author_actor_id, human_owner_actor_id}:
+            raise PermissionError(
+                "Team-agent authority signer must differ from author and owner"
+            )
+        if getattr(principal, "tenant_ref", None) != tenant_ref:
+            raise PermissionError("Team-agent authority signer tenant differs")
+        can_access = getattr(principal, "can_access_store", None)
+        if not callable(can_access) or not can_access(store_ref):
+            raise PermissionError("Team-agent authority signer cannot access store")
+        payload_sha256 = str(claims[contract["payload_field"]]).strip().lower()
+        if (
+            len(payload_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in payload_sha256)
+            or payload_sha256 == "0" * 64
+        ):
+            raise ValueError("Team-agent authority payload hash is invalid")
+        scope = {
+            "tenant_ref": tenant_ref,
+            "entity_ref": entity_ref,
+            "store_ref": store_ref,
+            "scope_authority_sha256": scope_authority_sha256,
+        }
+        binding = {
+            "purpose": purpose,
+            "actor_id": actor_id,
+            "scope": scope,
+            "payload_sha256": payload_sha256,
+            "claims": claims,
+        }
+        binding_sha256 = hashlib.sha256(
+            json.dumps(
+                binding,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        source = str(contract["source"])
+        source_ref = f"{source}://{binding_sha256}"
+        grade = contract["grade"]
+        payload = {
+            "contract_id": "kjds-governed-team-agent-evolution-evidence-v1",
+            "source_contract_id": contract["contract_id"],
+            "scope": scope,
+            "purpose": purpose,
+            "claims": claims,
+            "payload_sha256": payload_sha256,
+            "source": source,
+            "source_ref": source_ref,
+            "grade": grade.value,
+            "payload_status": "hash_and_code_only",
+            "contains_customer_data": False,
+            "external_write_allowed": False,
+        }
+        content = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        return self.evidence.capture(
+            content=content,
+            filename=f"{binding_sha256}.json",
+            content_type="application/json",
+            source=source,
+            source_ref=source_ref,
+            grade=grade,
+            effective_at=effective_at,
+            effective_until=effective_until,
+            created_by=actor_id,
+            metadata={
+                "contract_id": "kjds-governed-team-agent-evolution-evidence-v1",
+                "source_contract_id": contract["contract_id"],
+                **scope,
+                "evolution_purpose": purpose,
+                "payload_sha256": payload_sha256,
+                "claims_sha256": hashlib.sha256(
+                    json.dumps(
+                        claims,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode()
+                ).hexdigest(),
+                **claims,
+                "retention_class": "security",
+                "legal_hold": False,
+            },
+            _reserved_authority=_RESERVED_CAPTURE_AUTHORITY,
+            _session=session,
+        )
