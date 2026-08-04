@@ -5,7 +5,7 @@
 | status | internal review only |
 | commercial_gate | `C0 Commercial Pilot Gate` 未通过 |
 | sale_state | `not_for_sale` |
-| customer_scope | 1 个主体、1 个 Ozon 店铺、最多 500 个活跃 SKU、3 个用户 |
+| customer_scope | 1 个主体、1 个 Ozon 店铺、50–500 个活跃 SKU、最多 3 个用户 |
 | execution_scope | 纯只读；全部外部写 `out_of_scope` |
 
 本目录是“俄罗斯 Ozon 利润真相与止损 Pilot”的最小内部评审包，不是公开要约、
@@ -18,6 +18,11 @@
 - [C0 商业放行清单](COM-001_C0_Checklist.md)
 - [销售访谈与异议边界](COM-001_Sales_Interviews_and_Objections.md)
 - [Evidence 案例模板](templates/COM-001_Evidence_Case_Template.md)
+- [五工作日利润真相诊断 SOW](templates/COM-001_5_Day_Diagnostic_SOW.md)
+- [90 天设计伙伴 Pilot SOW](templates/COM-001_90_Day_Design_Partner_SOW.md)
+- [条件设计伙伴意向书](templates/COM-001_Conditional_LOI.md)
+- [定价与转化实验](COM-001_Pricing_Experiment.md)
+- [验收、数据返还与退出模板](templates/COM-001_Acceptance_and_Exit.md)
 
 ## 已有事实基础
 
@@ -44,10 +49,17 @@
 
 ## 定价假设
 
+- `4,800 RMB / store / five-working-day diagnosis`
 - `19,800 RMB / store / 90 days`
 - `39,900 RMB / store / year`
 
-两项均不得在 C0 通过前用于报价成交、收款或形成应收。
+诊断价格为未税、启动前 100% 支付。同一客户主体、同一店铺在诊断验收后 10 个自然日
+内签署 90 天设计伙伴 Pilot 时，已付 `4,800 RMB`全额抵扣 `19,800 RMB`，Pilot 开工
+前支付余额 `15,000 RMB`。抵扣只使用一次，不兑换现金、不跨主体或店铺、不与其他优惠
+叠加。
+
+以上价格均保持 `pricing_hypothesis/internal_preview/not_for_sale`，C0 通过并完成财务、
+法务及正式 Order Form 批准后才进入交易。
 
 ## 当前 C0 结论
 
