@@ -235,22 +235,7 @@
       "id": "M",
       "name": "global_data_coverage",
       "accountable_role": "global_data_coverage_owner",
-      "current_task": {
-        "task_id": "DATA-COV-001",
-        "state": "in_progress",
-        "owner_thread_id": "019fc7d6-d3ec-7e42-bc82-ebdc6c5710e9",
-        "write_scope": [
-          "global_source_domain_registry",
-          "source_coverage_manifest_schema",
-          "native_caps_schema",
-          "bounded_universe_validator",
-          "coverage_completeness_and_conservation",
-          "checkpoint_failure_page_and_freshness",
-          "lineage_conflict_and_claim_gate",
-          "global_data_coverage_contract_tests"
-        ],
-        "blocked_on": []
-      },
+      "current_task": null,
       "next_task_id": "DATA-COV-002"
     }
   ],
