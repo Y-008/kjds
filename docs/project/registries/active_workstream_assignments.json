@@ -55,7 +55,21 @@
       "id": "C",
       "name": "product_engineering",
       "accountable_role": "engineering_owner",
-      "current_task": null,
+      "current_task": {
+        "task_id": "BAS-202",
+        "state": "in_progress",
+        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
+        "write_scope": [
+          "constraint_breaker_attack_registry",
+          "prompt_and_indirect_injection_fixtures",
+          "cross_scope_and_idempotency_red_team",
+          "tool_poisoning_and_unknown_outcome_replay",
+          "best_solution_license_data_cost_rollback_gate",
+          "agent_run_retrieval_evolution_read_only_links",
+          "constraint_breaker_contract_tests"
+        ],
+        "blocked_on": []
+      },
       "next_task_id": null
     },
     {
@@ -217,12 +231,27 @@
       "id": "M",
       "name": "global_data_coverage",
       "accountable_role": "global_data_coverage_owner",
-      "current_task": null,
-      "next_task_id": "DATA-COV-002"
+      "current_task": {
+        "task_id": "DATA-COV-002",
+        "state": "in_progress",
+        "owner_thread_id": "019fc7d6-d3ec-7e42-bc82-ebdc6c5710e9",
+        "write_scope": [
+          "coverage_ledger_migration_0095",
+          "exact_scope_coverage_ledger",
+          "immutable_coverage_observation_events",
+          "manifest_native_caps_hash_binding",
+          "idempotency_and_payload_drift",
+          "valid_time_currentness",
+          "conservation_failure_page_checkpoint_lineage",
+          "coverage_ledger_postgres_tests"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": null
     }
   ],
   "shared_write_leases": {
-    "alembic_migration": null,
+    "alembic_migration": "DATA-COV-002",
     "api_aggregation_root": null,
     "master_spec": null,
     "openapi_snapshot": null
