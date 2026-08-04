@@ -210,8 +210,23 @@
       "id": "L",
       "name": "strategic_intelligence",
       "accountable_role": "strategy_and_capital_allocation_owner",
-      "current_task": null,
-      "next_task_id": "BAS-200"
+      "current_task": {
+        "task_id": "BAS-200",
+        "state": "in_progress",
+        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
+        "write_scope": [
+          "gap_graph_contract",
+          "strategic_opportunity_portfolio",
+          "evidence_benchmark_capability_problem_mapping",
+          "dependency_max_loss_alternative_invalidation",
+          "bas173_retrieval_read_only_link",
+          "bas199_benchmark_read_only_link",
+          "observation_only_zero_authority",
+          "gap_graph_contract_tests"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": null
     },
     {
       "id": "M",
