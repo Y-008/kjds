@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kjds.local/contracts/source-native-caps-v1.schema.json",
+  "title": "KJDS Source Native Capabilities v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_id",
+    "source_family",
+    "adapter_id",
+    "adapter_version",
+    "capability_version",
+    "content_sha256",
+    "source_status",
+    "universe_kind",
+    "capabilities",
+    "access_contract",
+    "lineage_refs"
+  ],
+  "properties": {
+    "schema_version": {"const": "kjds-source-native-caps-v1"},
+    "source_id": {"$ref": "#/$defs/token"},
+    "source_family": {"$ref": "#/$defs/source_family"},
+    "adapter_id": {"$ref": "#/$defs/token"},
+    "adapter_version": {"$ref": "#/$defs/token"},
+    "capability_version": {"$ref": "#/$defs/token"},
+    "content_sha256": {"$ref": "#/$defs/sha256"},
+    "source_status": {
+      "enum": ["implemented", "contract_only", "blocked", "unsupported"]
+    },
+    "universe_kind": {
+      "enum": ["bounded", "enumerable", "query_bounded", "sample_only"]
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fields",
+        "dimensions",
+        "pagination",
+        "window",
+        "identity",
+        "export_search",
+        "rate_limit",
+        "authentication_mode",
+        "unsupported_fields"
+      ],
+      "properties": {
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5000,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/token"}
+        },
+        "dimensions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 9,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/dimension"}
+        },
+        "pagination": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "page_limit",
+            "checkpoint_supported",
+            "stable_order",
+            "total_count_exposed"
+          ],
+          "properties": {
+            "mode": {
+              "enum": ["none", "page", "cursor", "delta", "export", "bounded_search"]
+            },
+            "page_limit": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "checkpoint_supported": {"type": "boolean"},
+            "stable_order": {"type": "boolean"},
+            "total_count_exposed": {"type": "boolean"}
+          }
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_days",
+            "historical_depth_days",
+            "timezone_semantics",
+            "late_arrival_supported"
+          ],
+          "properties": {
+            "max_days": {"type": ["integer", "null"], "minimum": 1},
+            "historical_depth_days": {"type": ["integer", "null"], "minimum": 0},
+            "timezone_semantics": {
+              "enum": ["utc", "source_local", "declared_per_manifest"]
+            },
+            "late_arrival_supported": {"type": "boolean"}
+          }
+        },
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stable_ids", "tombstones", "delta_supported"],
+          "properties": {
+            "stable_ids": {"type": "boolean"},
+            "tombstones": {"type": "boolean"},
+            "delta_supported": {"type": "boolean"}
+          }
+        },
+        "export_search": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["export_available", "search_available", "search_boundable"],
+          "properties": {
+            "export_available": {"type": "boolean"},
+            "search_available": {"type": "boolean"},
+            "search_boundable": {"type": "boolean"}
+          }
+        },
+        "rate_limit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["known", "requests_per_window", "window_seconds"],
+          "properties": {
+            "known": {"type": "boolean"},
+            "requests_per_window": {"type": ["integer", "null"], "minimum": 1},
+            "window_seconds": {"type": ["integer", "null"], "minimum": 1}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"known": {"const": true}}},
+              "then": {
+                "properties": {
+                  "requests_per_window": {"type": "integer"},
+                  "window_seconds": {"type": "integer"}
+                }
+              },
+              "else": {
+                "properties": {
+                  "requests_per_window": {"const": null},
+                  "window_seconds": {"const": null}
+                }
+              }
+            }
+          ]
+        },
+        "authentication_mode": {
+          "enum": ["none", "oauth", "api_key", "account_session", "export", "manual"]
+        },
+        "unsupported_fields": {
+          "type": "array",
+          "maxItems": 5000,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/token"}
+        }
+      }
+    },
+    "access_contract": {"$ref": "#/$defs/access_contract"},
+    "lineage_refs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/token"}
+    }
+  },
+  "$defs": {
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source_family": {
+      "enum": [
+        "marketplace",
+        "customs_trade",
+        "company_registry",
+        "web_search",
+        "social_content",
+        "ads_traffic",
+        "supplier_catalog",
+        "logistics",
+        "payments_fx_macro",
+        "regulation_standards",
+        "ip_patents_research",
+        "talent_jobs",
+        "crm_erp_finance_operations"
+      ]
+    },
+    "dimension": {
+      "enum": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ]
+    },
+    "access_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "terms_ref_sha256",
+        "allowed_purpose",
+        "retention_class",
+        "secrets_allowed",
+        "raw_personal_data_allowed"
+      ],
+      "properties": {
+        "terms_ref_sha256": {"$ref": "#/$defs/sha256"},
+        "allowed_purpose": {"$ref": "#/$defs/token"},
+        "retention_class": {
+          "enum": ["operational", "financial", "compliance", "experiment", "security"]
+        },
+        "secrets_allowed": {"const": false},
+        "raw_personal_data_allowed": {"const": false}
+      }
+    }
+  }
+}
