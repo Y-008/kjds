@@ -7,7 +7,17 @@
     "node": ">=24.0.0"
   },
   "scripts": {
+    "build": "vite build && node --test tests/build/*.test.ts",
+    "dev": "vite --host 127.0.0.1 --port 43190",
+    "preview": "vite preview --host 127.0.0.1 --port 43190 --strictPort",
     "test": "node --test tests/*.test.ts",
-    "typecheck": "node ../../web/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit"
+    "test:browser:offline": "vite build && node tests/browser/offline-shell.test.cjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "24.4.0",
+    "playwright": "1.58.2",
+    "typescript": "5.9.3",
+    "vite": "8.2.0"
   }
 }
