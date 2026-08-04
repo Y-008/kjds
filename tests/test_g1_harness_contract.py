@@ -50,6 +50,8 @@ def test_g1_harness_keeps_infrastructure_seams_without_domain_scenarios():
     assert "scripts/seed_g1_operating_gate.py" in source
     assert 'actor = "g1-operating-subject"' in source
     assert 'result.migration = "20' not in source
+    assert "-WorkingDirectory $WebSmoke -WindowStyle Hidden -PassThru" in source
+    assert "-WorkingDirectory $Web -WindowStyle Hidden -PassThru" not in source
 
 
 def run_cleanup_contract(tmp_path: Path, report_path: Path):
