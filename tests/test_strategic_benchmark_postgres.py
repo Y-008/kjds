@@ -100,6 +100,12 @@ def engine():
     admin = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
     with admin.connect() as connection:
         connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+        connection.execute(
+            text(
+                f'CREATE TABLE "{schema}".alembic_version '
+                "(version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
+            )
+        )
     url = make_url(DATABASE_URL)
     query = dict(url.query)
     query["options"] = f"-csearch_path={schema}"
@@ -110,9 +116,9 @@ def engine():
     ).replace("%", "%%")
     config = migration_config(target)
     try:
-        command.upgrade(config, "head")
+        command.upgrade(config, "20260803_0093")
         command.downgrade(config, "20260803_0092")
-        command.upgrade(config, "head")
+        command.upgrade(config, "20260803_0093")
         yield target
     finally:
         if original_database_url is None:
@@ -277,7 +283,12 @@ def test_00_migration_replay_creates_five_exact_tables_and_single_head(engine):
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == ("20260803_0093")
         conservation = connection.scalar(
-            text("SELECT count(*) FROM pg_proc WHERE proname='kjds_check_strategic_benchmark_conservation'")
+            text(
+                "SELECT count(*) FROM pg_proc AS procedure "
+                "JOIN pg_namespace AS namespace ON namespace.oid=procedure.pronamespace "
+                "WHERE procedure.proname='kjds_check_strategic_benchmark_conservation' "
+                "AND namespace.nspname=current_schema()"
+            )
         )
     assert conservation == 1
 
