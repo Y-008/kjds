@@ -236,11 +236,12 @@ window.addEventListener("hashchange", () => {
 
 render();
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
+  const startOfflineShell = () => {
     void registerAndVerifyOfflineShell()
       .then(() => setServiceWorkerState(APP_SHELL_READY_LABEL))
       .catch(() => setServiceWorkerState("离线壳缓存待重试"));
-  });
+  };
+  startOfflineShell();
 } else {
   setServiceWorkerState("当前浏览器不支持离线缓存");
 }
