@@ -144,39 +144,21 @@ def test_data_cov_001_release_advances_global_coverage_lane():
     assert coverage["next_task_id"] == "DATA-COV-002"
     assert "DATA-COV-002" not in registry["shared_write_leases"].values()
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-177",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
         "openapi_snapshot": None,
     }
 
 
-def test_bas177_holds_product_engineering_team_agent_evolution_lease():
+def test_bas177_release_clears_product_engineering_and_migration_leases():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] == {
-        "task_id": "BAS-177",
-        "state": "in_progress",
-        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
-        "write_scope": [
-            "governed_team_agent_evolution",
-            "versioned_skill_candidate",
-            "frozen_eval_set_contract",
-            "baseline_negative_scope_evaluation",
-            "governed_shadow_evaluation",
-            "independent_review_promotion",
-            "rollback_retirement",
-            "canonical_graph_learning_observation",
-            "evolution_evidence_ledger",
-            "alembic_migration_0094",
-            "evolution_test_contracts",
-        ],
-        "blocked_on": [],
-    }
+    assert engineering["current_task"] is None
     assert engineering["next_task_id"] is None
-    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-177"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
@@ -204,7 +186,7 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "master_spec",
         "openapi_snapshot",
     }
-    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-177"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
