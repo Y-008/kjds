@@ -1,0 +1,315 @@
+{
+  "contract_id": "kjds-gap-graph-portfolio-fixture-v1",
+  "fixture_id": "bas200-gap-graph",
+  "version": "1.1.0",
+  "registry_sha256": "a7b44b0aa59b198827581341a3d2663af6321e64563fe80d7f001fde8f6242ec",
+  "license_class": "repository_owned_synthetic_contract_fixture",
+  "data_classification": "synthetic_public",
+  "source_bindings": [
+    {
+      "source_id": "primary_sources",
+      "contract_id": "kjds-primary-source-intake-v1",
+      "contract_version": "1",
+      "source_ref": "psi_bas200_primary_v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "evidence_binding": {
+        "citation_ref": "cit-primary_sources-root",
+        "evidence_id": "evd-synthetic-primary_sources-v1",
+        "evidence_sha256": "69c3ab47b43a9153c8d78a569ba5e4b93750ad148140a7cccf6bbf005cdf7b99",
+        "source": "primary-source-intake",
+        "source_ref": "primary-source-intake://psi_bas200_primary_v1",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00",
+        "claims_sha256": "b649c265c1b51bbe5df70ba0be029618b03c29552ad7afd41ecf331f6e44ef9e"
+      }
+    },
+    {
+      "source_id": "strategic_benchmark",
+      "contract_id": "kjds-strategic-benchmark-kernel-v1",
+      "contract_version": "1",
+      "source_ref": "sbs_bas200_v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "evidence_binding": {
+        "citation_ref": "cit-strategic_benchmark-root",
+        "evidence_id": "evd-synthetic-strategic_benchmark-v1",
+        "evidence_sha256": "88b99cbcb646a5885628e7a8ee8219b8a717b1e1ba4ac4594891e1783d525c60",
+        "source": "strategic-benchmark-snapshot",
+        "source_ref": "strategic-benchmark-snapshot://sbs_bas200_v1",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00",
+        "claims_sha256": "c54445221cce1c551dbe3725dc2a526279f62519870a9059ec5bfc2572fd7027"
+      }
+    },
+    {
+      "source_id": "retrieval",
+      "contract_id": "kjds-retrieval-benchmark-observation-v1",
+      "contract_version": "1",
+      "source_ref": "rbr_bas200_v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "evidence_binding": {
+        "citation_ref": "cit-retrieval-root",
+        "evidence_id": "evd-synthetic-retrieval-v1",
+        "evidence_sha256": "871b0fd2c50ef1cc8fb02f82086a0c87f49540fcde57a818d06c600556aec702",
+        "source": "retrieval-benchmark-observation",
+        "source_ref": "retrieval-benchmark-observation://rbr_bas200_v1",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00",
+        "claims_sha256": "d37f967c4e43bf6df1637d0fc6e47176fc93f4d728e226a7ac09b04e550921aa"
+      }
+    },
+    {
+      "source_id": "canonical_graph",
+      "contract_id": "kjds-canonical-graph-temporal-read-v1",
+      "contract_version": "1",
+      "source_ref": "graph_bas200_v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "evidence_binding": {
+        "citation_ref": "cit-canonical_graph-root",
+        "evidence_id": "evd-synthetic-canonical_graph-v1",
+        "evidence_sha256": "bed8cd20e73136b004afa6d9ea1779ec54e4304b6b17a70a17dd66bfce371a72",
+        "source": "canonical-graph-read-projection",
+        "source_ref": "canonical-graph-read-projection://graph_bas200_v1",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00",
+        "claims_sha256": "1f29cbbcf532f3112ef709facc6d4a959c3e34b7c6f596cbf3a9b29a9e4db199"
+      }
+    },
+    {
+      "source_id": "profit_truth",
+      "contract_id": "kjds-profit-truth-readiness-v1",
+      "contract_version": "1",
+      "source_ref": "ptr_bas200_v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "evidence_binding": {
+        "citation_ref": "cit-profit_truth-root",
+        "evidence_id": "evd-synthetic-profit_truth-v1",
+        "evidence_sha256": "bae1969928e267d7786e52396208c819615a4d3354f14a7153fcaceeb8453d3e",
+        "source": "profit-truth-readiness",
+        "source_ref": "profit-truth-readiness://ptr_bas200_v1",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00",
+        "claims_sha256": "0ac2859a8cf0c050bbbb13ef7d2d7ca6013a2cc08c36854af51cb56691942d01"
+      }
+    }
+  ],
+  "node_specs": [
+    {
+      "node_spec_id": "node_problem_checkout_latency",
+      "node_kind": "customer_problem",
+      "source_id": "primary_sources",
+      "source_item_ref": "primary-problem-checkout-latency"
+    },
+    {
+      "node_spec_id": "node_capability_current_routing",
+      "node_kind": "current_capability",
+      "source_id": "canonical_graph",
+      "source_item_ref": "graph-current-routing"
+    },
+    {
+      "node_spec_id": "node_capability_frontier_routing",
+      "node_kind": "frontier_capability",
+      "source_id": "canonical_graph",
+      "source_item_ref": "graph-frontier-routing"
+    },
+    {
+      "node_spec_id": "node_profit_constraint_return_cost",
+      "node_kind": "unit_economics_constraint",
+      "source_id": "profit_truth",
+      "source_item_ref": "profit-return-cost"
+    }
+  ],
+  "edge_specs": [
+    {
+      "edge_spec_id": "edge_problem_supports_current_gap",
+      "source_node_spec_id": "node_problem_checkout_latency",
+      "target_node_spec_id": "node_capability_current_routing",
+      "relation": "supports",
+      "derivation": "observed",
+      "source_id": "canonical_graph",
+      "source_item_ref": "graph-edge-problem-current",
+      "causal_claim": false,
+      "causal_authority": null
+    },
+    {
+      "edge_spec_id": "edge_current_compared_frontier",
+      "source_node_spec_id": "node_capability_current_routing",
+      "target_node_spec_id": "node_capability_frontier_routing",
+      "relation": "compared_with",
+      "derivation": "observed",
+      "source_id": "strategic_benchmark",
+      "source_item_ref": "benchmark-routing-quality",
+      "causal_claim": false,
+      "causal_authority": null
+    },
+    {
+      "edge_spec_id": "edge_retrieval_supports_problem",
+      "source_node_spec_id": "node_problem_checkout_latency",
+      "target_node_spec_id": "node_capability_frontier_routing",
+      "relation": "supports",
+      "derivation": "observed",
+      "source_id": "retrieval",
+      "source_item_ref": "retrieval-problem-support",
+      "causal_claim": false,
+      "causal_authority": null
+    }
+  ],
+  "gap_specs": [
+    {
+      "gap_spec_id": "gap-routing-quality",
+      "gap_kind": "dimension_gap",
+      "benchmark_source_id": "strategic_benchmark",
+      "benchmark_item_ref": "benchmark-routing-quality",
+      "current_node_spec_id": "node_capability_current_routing",
+      "target_node_spec_id": "node_capability_frontier_routing",
+      "problem_node_spec_id": "node_problem_checkout_latency",
+      "required_edge_spec_ids": [
+        "edge_problem_supports_current_gap",
+        "edge_current_compared_frontier",
+        "edge_retrieval_supports_problem"
+      ],
+      "expected_metric_id": "routing_quality_index",
+      "expected_cohort_ref": "ru-marketplace-sellers",
+      "expected_market": "RU",
+      "expected_window_start": "2026-07-01T00:00:00+00:00",
+      "expected_window_end": "2026-08-01T00:00:00+00:00",
+      "expected_comparison_state": "comparable",
+      "expected_leader_label": "metric_leader"
+    }
+  ],
+  "opportunity_specs": [
+    {
+      "opportunity_spec_id": "opportunity-build-routing-guard",
+      "proposed_action": "build",
+      "gap_spec_ids": [
+        "gap-routing-quality"
+      ],
+      "dependency_opportunity_ids": [],
+      "alternatives": [
+        {
+          "action": "build",
+          "status": "ready",
+          "disposition": "selected",
+          "reason_code": "bounded_local_capability_gap"
+        },
+        {
+          "action": "buy",
+          "status": "ready",
+          "disposition": "rejected",
+          "reason_code": "scope_fit_not_proven"
+        },
+        {
+          "action": "partner",
+          "status": "ready",
+          "disposition": "rejected",
+          "reason_code": "dependency_control_not_proven"
+        },
+        {
+          "action": "defer",
+          "status": "ready",
+          "disposition": "rejected",
+          "reason_code": "verified_gap_current"
+        },
+        {
+          "action": "no_action",
+          "status": "ready",
+          "disposition": "rejected",
+          "reason_code": "verified_problem_persists"
+        }
+      ],
+      "decision_policy": {
+        "status": "verified",
+        "policy_id": "strategic-action-policy",
+        "policy_version": "1",
+        "policy_sha256": "4f6ef33b834490e34e149734b7da44e4e033f5b8b843ad239d50c572267194bc",
+        "source_id": "retrieval",
+        "source_item_ref": "retrieval-problem-support",
+        "citation_refs": [
+          "cit-retrieval-problem-support"
+        ]
+      },
+      "maximum_loss": {
+        "status": "bounded",
+        "value": "1.000000",
+        "unit": "synthetic_loss_point",
+        "policy_id": "maximum-loss-policy",
+        "policy_version": "1",
+        "policy_sha256": "4584daa24b622572c9f3913c483a3362077e76658c99c521a4c034132ca8d7ec",
+        "source_id": "profit_truth",
+        "source_item_ref": "profit-return-cost",
+        "citation_refs": [
+          "cit-profit-return-cost"
+        ]
+      },
+      "downside": {
+        "status": "bounded",
+        "value": "0.250000",
+        "unit": "synthetic_downside_point",
+        "policy_id": "downside-policy",
+        "policy_version": "1",
+        "policy_sha256": "02286206a89d68790fbbaa7dcffca08d94c88fc0ade92ca5fb1b5321e6b20fe0",
+        "source_id": "profit_truth",
+        "source_item_ref": "profit-return-cost",
+        "citation_refs": [
+          "cit-profit-return-cost"
+        ]
+      },
+      "invalidation_conditions": [
+        "benchmark_cohort_changed",
+        "profit_truth_stale",
+        "supporting_edge_revoked"
+      ],
+      "rollback": {
+        "status": "verified",
+        "artifact_sha256": "3d2cbfa036c0afffd1a045103120b206441a884891c75e3004a95293b9a9bd31",
+        "policy_id": "rollback-policy",
+        "policy_version": "1",
+        "policy_sha256": "154cc98591f33c9d5d521d8ff917f66c813909f2d216bde83bd07d8ff788ab58",
+        "source_id": "profit_truth",
+        "source_item_ref": "profit-return-cost",
+        "citation_refs": [
+          "cit-profit-return-cost"
+        ],
+        "trigger_codes": [
+          "maximum_loss_reached",
+          "benchmark_invalidated"
+        ]
+      }
+    }
+  ],
+  "content_sha256": "5c71926c384967862c929170913ad5c9c52c5e3014090d60d5a284c787921e9f"
+}

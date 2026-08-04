@@ -1,0 +1,153 @@
+{
+  "schema_version": "kjds-gap-graph-contracts-v1",
+  "contract_id": "kjds-governed-gap-graph-observation-v1",
+  "version": "1.1.0",
+  "read_bundle_contract_id": "kjds-gap-graph-read-bundle-v1",
+  "citation_authority_contract_id": "kjds-gap-graph-citation-authority-v1",
+  "allowed_states": [
+    "ready",
+    "no_data",
+    "UNKNOWN",
+    "blocked",
+    "not_visible",
+    "partial",
+    "stale"
+  ],
+  "eligible_derivations": [
+    "observed",
+    "causal"
+  ],
+  "observation_only_derivations": [
+    "generated",
+    "inferred"
+  ],
+  "node_kinds": [
+    "customer_problem",
+    "current_capability",
+    "frontier_capability",
+    "unit_economics_constraint"
+  ],
+  "edge_relations": [
+    "causes",
+    "supports",
+    "compared_with",
+    "depends_on"
+  ],
+  "causal_relations": [
+    "causes"
+  ],
+  "opportunity_actions": [
+    "build",
+    "buy",
+    "partner",
+    "defer",
+    "no_action"
+  ],
+  "hard_gate_ids": [
+    "exact_scope",
+    "citation_currentness",
+    "citation_integrity",
+    "source_contract",
+    "benchmark_comparability",
+    "causal_validity",
+    "dependency_acyclic",
+    "decision_policy",
+    "maximum_loss",
+    "downside",
+    "alternatives",
+    "invalidation",
+    "rollback",
+    "zero_authority"
+  ],
+  "source_contracts": [
+    {
+      "source_id": "primary_sources",
+      "contract_id": "kjds-primary-source-intake-v1",
+      "version": "1",
+      "evidence_source": "primary-source-intake",
+      "contract_sha256": "e8cb435951903bd0e883c12732488db4e9716c391e13600768d53c8a850793fa"
+    },
+    {
+      "source_id": "strategic_benchmark",
+      "contract_id": "kjds-strategic-benchmark-kernel-v1",
+      "version": "1",
+      "evidence_source": "strategic-benchmark-snapshot",
+      "contract_sha256": "490127baabe6a248e353640a3d991a2ab9e24e73e032aa1826e7bf8da3062ee5"
+    },
+    {
+      "source_id": "retrieval",
+      "contract_id": "kjds-retrieval-benchmark-observation-v1",
+      "version": "1",
+      "evidence_source": "retrieval-benchmark-observation",
+      "contract_sha256": "36919b143068017e33ca882d71c73652f68696cc406fdb6a7023b91da02cb20e"
+    },
+    {
+      "source_id": "canonical_graph",
+      "contract_id": "kjds-canonical-graph-temporal-read-v1",
+      "version": "1",
+      "evidence_source": "canonical-graph-read-projection",
+      "contract_sha256": "2a172a1ac6006b29c79900aecd23407aace85f1c8af67378b937b7b8c791388f"
+    },
+    {
+      "source_id": "profit_truth",
+      "contract_id": "kjds-profit-truth-readiness-v1",
+      "version": "1",
+      "evidence_source": "profit-truth-readiness",
+      "contract_sha256": "d5c3dbbbee477a9df0479105d83e2f8a82b696d628c34be77489f75033593491"
+    }
+  ],
+  "derivation_eligibility_matrix": [
+    {
+      "relation": "supports",
+      "derivation": "observed",
+      "source_ids": [
+        "canonical_graph",
+        "primary_sources",
+        "retrieval"
+      ],
+      "required_authority_contract_id": null,
+      "gate_eligible": true
+    },
+    {
+      "relation": "compared_with",
+      "derivation": "observed",
+      "source_ids": [
+        "strategic_benchmark"
+      ],
+      "required_authority_contract_id": null,
+      "gate_eligible": true
+    },
+    {
+      "relation": "depends_on",
+      "derivation": "observed",
+      "source_ids": [
+        "canonical_graph",
+        "profit_truth"
+      ],
+      "required_authority_contract_id": null,
+      "gate_eligible": true
+    },
+    {
+      "relation": "causes",
+      "derivation": "causal",
+      "source_ids": [
+        "canonical_graph"
+      ],
+      "required_authority_contract_id": "kjds-independent-causal-edge-authority-v1",
+      "gate_eligible": true
+    }
+  ],
+  "zero_authority_flags": {
+    "formal_fact": false,
+    "finance_entry": false,
+    "approval": false,
+    "permit": false,
+    "pilot": false,
+    "outbox": false,
+    "canonical_graph_write": false,
+    "dependency_install": false,
+    "network": false,
+    "external_write": false
+  },
+  "content_sha256": "a7b44b0aa59b198827581341a3d2663af6321e64563fe80d7f001fde8f6242ec"
+}
