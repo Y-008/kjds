@@ -47,6 +47,7 @@ test("built text has no external URL, backend route, secret or production import
     "client_secret",
     "access_token",
     'style="',
+    "node:crypto",
   ]) {
     assert.equal(text.includes(forbidden), false, forbidden);
   }

@@ -20,7 +20,7 @@ export interface WorkspaceShellDefinition {
   readonly shortTitle: string;
   readonly summary: string;
   readonly shellState: "shell_ready";
-  readonly scenarioState: "queued";
+  readonly scenarioState: "ready";
   readonly capabilities: readonly [string, string, string];
 }
 
@@ -33,7 +33,7 @@ export const WORKSPACES: readonly WorkspaceShellDefinition[] = Object.freeze([
     shortTitle: "驾驶舱",
     summary: "在一个本地视图中组织店铺、商品、订单与利润工作区。",
     shellState: "shell_ready",
-    scenarioState: "queued",
+    scenarioState: "ready",
     capabilities: ["经营总览", "异常聚合", "工作区下钻"],
   },
   {
@@ -42,9 +42,9 @@ export const WORKSPACES: readonly WorkspaceShellDefinition[] = Object.freeze([
     eyebrow: "OPPORTUNITY",
     title: "选品机会台",
     shortTitle: "选品",
-    summary: "承载合成机会发现、候选比较与商品建档入口。",
+    summary: "查询合成机会并确定性推进至商品建档。",
     shellState: "shell_ready",
-    scenarioState: "queued",
+    scenarioState: "ready",
     capabilities: ["机会发现", "候选对比", "建档交接"],
   },
   {
@@ -55,7 +55,7 @@ export const WORKSPACES: readonly WorkspaceShellDefinition[] = Object.freeze([
     shortTitle: "PIM",
     summary: "展示合成商品身份、内容完整度与本地预览准备度。",
     shellState: "shell_ready",
-    scenarioState: "queued",
+    scenarioState: "ready",
     capabilities: ["商品身份", "内容资产", "就绪检查"],
   },
   {
@@ -64,9 +64,9 @@ export const WORKSPACES: readonly WorkspaceShellDefinition[] = Object.freeze([
     eyebrow: "LISTING STUDIO",
     title: "刊登预览台",
     shortTitle: "刊登",
-    summary: "仅生成本地刊登预览，不连接店铺或执行平台发布。",
+    summary: "由合成商品状态生成本地 Listing 预览，不执行平台发布。",
     shellState: "shell_ready",
-    scenarioState: "queued",
+    scenarioState: "ready",
     capabilities: ["字段差异", "俄语预览", "本地模拟"],
   },
   {
@@ -77,7 +77,7 @@ export const WORKSPACES: readonly WorkspaceShellDefinition[] = Object.freeze([
     shortTitle: "OMS",
     summary: "组织合成订单时间线、状态推进和异常演示入口。",
     shellState: "shell_ready",
-    scenarioState: "queued",
+    scenarioState: "ready",
     capabilities: ["订单时间线", "状态筛选", "异常回放"],
   },
   {
@@ -88,7 +88,7 @@ export const WORKSPACES: readonly WorkspaceShellDefinition[] = Object.freeze([
     shortTitle: "履约",
     summary: "展示合成库存覆盖、履约推进与退货异常位置。",
     shellState: "shell_ready",
-    scenarioState: "queued",
+    scenarioState: "ready",
     capabilities: ["库存覆盖", "履约进度", "退货异常"],
   },
   {
@@ -99,7 +99,7 @@ export const WORKSPACES: readonly WorkspaceShellDefinition[] = Object.freeze([
     shortTitle: "客服",
     summary: "为合成售后事件保留回复草稿与处理轨迹入口。",
     shellState: "shell_ready",
-    scenarioState: "queued",
+    scenarioState: "ready",
     capabilities: ["工单视图", "回复草稿", "处理轨迹"],
   },
   {
@@ -110,7 +110,7 @@ export const WORKSPACES: readonly WorkspaceShellDefinition[] = Object.freeze([
     shortTitle: "增长",
     summary: "以合成场景展示活动假设、预算边界和结果占位。",
     shellState: "shell_ready",
-    scenarioState: "queued",
+    scenarioState: "ready",
     capabilities: ["活动假设", "预算边界", "结果占位"],
   },
   {
@@ -121,7 +121,7 @@ export const WORKSPACES: readonly WorkspaceShellDefinition[] = Object.freeze([
     shortTitle: "利润",
     summary: "组织结算、费用、到账与决策状态的演示入口。",
     shellState: "shell_ready",
-    scenarioState: "queued",
+    scenarioState: "ready",
     capabilities: ["结算结构", "费用归集", "决策状态"],
   },
 ]);

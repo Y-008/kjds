@@ -465,13 +465,70 @@ h1 {
   border-radius: 9px;
   background: color-mix(in srgb, var(--workspace-accent) 10%, #101b36);
   color: color-mix(in srgb, var(--workspace-accent) 70%, white);
-  cursor: not-allowed;
+  cursor: pointer;
+}
+
+.hero-actions button:hover,
+.journey-card button:hover {
+  border-color: color-mix(in srgb, var(--workspace-accent, #61d7c8) 68%, transparent);
+  transform: translateY(-1px);
 }
 
 .hero-actions span {
   color: #64758d;
   font-size: 10px;
   letter-spacing: 0.04em;
+}
+
+.operation-state {
+  min-height: 18px;
+  margin: 16px 0 0 !important;
+  color: #83dcca !important;
+  font-size: 10px !important;
+  line-height: 1.4 !important;
+}
+
+.operation-state.is-error {
+  color: #ff9f9f !important;
+}
+
+.runtime-strip {
+  display: grid;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-top: 20px;
+  overflow: hidden;
+  background: var(--line);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.runtime-strip > div {
+  min-width: 0;
+  padding: 12px 14px;
+  background: #0d1930;
+}
+
+.runtime-strip span,
+.runtime-strip strong {
+  display: block;
+}
+
+.runtime-strip span {
+  color: #60728e;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+}
+
+.runtime-strip strong {
+  margin-top: 5px;
+  overflow: hidden;
+  color: #b9cadf;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .signal-orbit {
@@ -529,7 +586,8 @@ h1 {
 
 .capability-panel,
 .boundary-panel,
-.matrix-panel {
+.matrix-panel,
+.journey-panel {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: var(--surface);
@@ -575,6 +633,64 @@ h1 {
   display: grid;
   gap: 10px;
   margin-top: 21px;
+}
+
+.query-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.query-item {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(178, 203, 239, 0.08);
+  border-radius: 10px;
+  background: rgba(8, 19, 40, 0.38);
+  grid-template-columns: 26px minmax(0, 1fr);
+}
+
+.query-index {
+  color: #4f617b;
+  font-size: 9px;
+}
+
+.query-item > div {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.query-item p,
+.query-item small,
+.query-item strong {
+  display: block;
+  min-width: 0;
+  margin: 0;
+}
+
+.query-item small {
+  color: #687c98;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.query-item strong {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #bdcbe0;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-state {
+  margin-top: 18px;
+  color: #8494aa;
+  font-size: 11px;
 }
 
 .capability-item {
@@ -635,6 +751,10 @@ h1 {
   color: #ffcd80;
 }
 
+.boundary-panel .ready {
+  color: #8de6c8;
+}
+
 .boundary-panel p {
   margin: 0;
   color: #64748b;
@@ -644,6 +764,63 @@ h1 {
 
 .matrix-panel {
   padding: 22px;
+}
+
+.journey-panel {
+  margin-bottom: 18px;
+  padding: 22px;
+}
+
+.journey-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.journey-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(178, 203, 239, 0.09);
+  border-radius: 12px;
+  background: rgba(8, 19, 40, 0.42);
+}
+
+.journey-card > span {
+  color: #6edbce;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+}
+
+.journey-card h3 {
+  min-height: 38px;
+  margin: 8px 0 6px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.journey-card p,
+.journey-card li {
+  color: #7f90aa;
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.journey-card ol {
+  min-height: 58px;
+  margin: 10px 0;
+  padding-left: 18px;
+}
+
+.journey-card button {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(97, 215, 200, 0.25);
+  border-radius: 8px;
+  background: rgba(97, 215, 200, 0.08);
+  color: #a7eee4;
+  cursor: pointer;
+  font-size: 9px;
 }
 
 .workspace-matrix {
@@ -869,9 +1046,22 @@ footer {
     grid-template-columns: 1fr;
   }
 
+  .runtime-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .journey-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .query-item > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .capability-panel,
   .boundary-panel,
-  .matrix-panel {
+  .matrix-panel,
+  .journey-panel {
     padding: 17px;
     border-radius: 14px;
   }

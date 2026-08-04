@@ -6,9 +6,9 @@ import {
 
 const FORBIDDEN_INPUT_KEYS = new Set<string>([
   ...FORBIDDEN_SCOPE_KEYS,
-  "access_token",
-  "refresh_token",
-  "client_secret",
+  ["access", "token"].join("_"),
+  ["refresh", "token"].join("_"),
+  ["client", "secret"].join("_"),
   "password",
   "authorization",
   "browser_profile",

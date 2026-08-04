@@ -1,7 +1,9 @@
-import { createHash } from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 
 import {
   DEMO_MARKERS,
+  DEMO_ACTION_CONTRACTS,
   FORBIDDEN_SCOPE_KEYS,
   LocalDemoDomainError,
   type JsonValue,
@@ -53,7 +55,7 @@ export function canonicalJson(value: JsonValue): string {
 }
 
 export function sha256Hex(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("hex");
+  return bytesToHex(sha256(utf8ToBytes(value)));
 }
 
 export function computeScenarioSha256(raw: unknown): string {
@@ -195,6 +197,58 @@ function assertScenarioShape(raw: Record<string, unknown>): asserts raw is Recor
       throw new LocalDemoDomainError("demo_scenario_reference_invalid", 400);
     }
     orderIds.add(order.order_id);
+  }
+
+  if (raw.scenario_version === "v2") {
+    if (!Array.isArray(raw.hero_flows) || raw.hero_flows.length !== 3) {
+      throw new LocalDemoDomainError("demo_hero_flows_invalid", 400);
+    }
+    const flowIds = new Set<string>();
+    for (const flow of raw.hero_flows) {
+      if (
+        !isRecord(flow) ||
+        typeof flow.flow_id !== "string" ||
+        !SYNTHETIC_ID_PATTERN.test(flow.flow_id) ||
+        flowIds.has(flow.flow_id) ||
+        typeof flow.title !== "string" ||
+        typeof flow.outcome !== "string" ||
+        !Array.isArray(flow.steps) ||
+        flow.steps.length === 0
+      ) {
+        throw new LocalDemoDomainError("demo_hero_flows_invalid", 400);
+      }
+      flowIds.add(flow.flow_id);
+      const stepIds = new Set<string>();
+      for (const step of flow.steps) {
+        if (
+          !isRecord(step) ||
+          typeof step.step_id !== "string" ||
+          !SYNTHETIC_ID_PATTERN.test(step.step_id) ||
+          stepIds.has(step.step_id) ||
+          typeof step.label !== "string" ||
+          typeof step.workspace !== "string" ||
+          typeof step.action !== "string" ||
+          !(step.action in DEMO_ACTION_CONTRACTS) ||
+          typeof step.subject_ref !== "string" ||
+          !SYNTHETIC_ID_PATTERN.test(step.subject_ref) ||
+          !("payload" in step)
+        ) {
+          throw new LocalDemoDomainError("demo_hero_flows_invalid", 400);
+        }
+        stepIds.add(step.step_id);
+        const action = step.action as keyof typeof DEMO_ACTION_CONTRACTS;
+        const contract = DEMO_ACTION_CONTRACTS[action];
+        const subjectMatches =
+          (contract.subject_kind === "store" && storeIds.has(step.subject_ref)) ||
+          (contract.subject_kind === "sku" && skuStoreIds.has(step.subject_ref)) ||
+          (contract.subject_kind === "order" && orderIds.has(step.subject_ref));
+        if (contract.workspace !== step.workspace || !subjectMatches) {
+          throw new LocalDemoDomainError("demo_scenario_reference_invalid", 400);
+        }
+      }
+    }
+  } else if (raw.hero_flows !== undefined) {
+    throw new LocalDemoDomainError("demo_hero_flows_version_invalid", 400);
   }
 }
 

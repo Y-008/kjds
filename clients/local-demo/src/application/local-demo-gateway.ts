@@ -1,10 +1,11 @@
-import { randomUUID } from "node:crypto";
-
 import {
+  DEMO_ACTION_CONTRACTS,
   DEMO_CONTRACT_VERSION,
   DEMO_MARKERS,
   LocalDemoDomainError,
   type DemoSessionSnapshot,
+  type DemoAction,
+  type DemoSubjectKind,
   type DemoTransition,
   type DemoWorkspace,
   type JsonValue,
@@ -21,6 +22,10 @@ import {
   assertExactInputKeys,
   assertOfflineJsonPayload,
 } from "./network-policy.ts";
+import {
+  deriveWorkspaceReadModel,
+  latestActionForSubject,
+} from "./transition-read-model.ts";
 
 const WORKSPACES = new Set<DemoWorkspace>([
   "dashboard",
@@ -34,19 +39,8 @@ const WORKSPACES = new Set<DemoWorkspace>([
   "profit",
 ]);
 
-const ACTION_WORKSPACE = Object.freeze({
-  refresh_dashboard: "dashboard",
-  advance_sourcing: "sourcing",
-  prepare_product_content: "pim",
-  generate_listing_preview: "listings",
-  advance_order_timeline: "oms",
-  advance_fulfillment: "fulfillment",
-  draft_customer_reply: "customer_service",
-  simulate_campaign: "growth",
-  recalculate_synthetic_profit: "profit",
-} satisfies Record<string, DemoWorkspace>);
-
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const CURSOR_PATTERN = /^demo-cursor-(\d+)$/;
 const PAGE_SIZE = 20;
 
@@ -82,16 +76,18 @@ interface GatewayDependencies {
   readonly store?: InMemorySessionStore;
   readonly gateway_scope_token?: string;
   readonly session_id_factory?: () => string;
+  readonly uuid_factory?: () => string;
 }
 
-interface WorkspaceQueryView {
+export interface WorkspaceQueryView {
   readonly workspace: DemoWorkspace;
   readonly items: readonly JsonValue[];
   readonly summary: JsonValue;
   readonly next_cursor: string | null;
+  readonly read_model_sha256: string;
 }
 
-interface ApplyView {
+export interface ApplyView {
   readonly transition: DemoTransition;
   readonly replayed: boolean;
 }
@@ -123,25 +119,40 @@ function domainError(operation: () => void): LocalDemoDomainError | null {
   }
 }
 
+function defaultUuidFactory(): string {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  if (typeof randomUuid !== "function") {
+    throw new LocalDemoDomainError("demo_uuid_factory_unavailable", 500);
+  }
+  return randomUuid.call(globalThis.crypto);
+}
+
+function jsonObject(value: JsonValue): Record<string, JsonValue> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value
+    : {};
+}
+
 export class LocalDemoGateway {
   readonly #pack: ScenarioPack;
   readonly #store: InMemorySessionStore;
   readonly #ownerScopeSha256: string;
   readonly #sessionIdFactory: () => string;
-  readonly #knownSubjectRefs: Set<string>;
+  readonly #knownSubjectKinds: Map<string, DemoSubjectKind>;
 
   constructor(pack: ScenarioPack, dependencies: GatewayDependencies = {}) {
     this.#pack = pack;
     this.#store = dependencies.store ?? new InMemorySessionStore();
-    const scopeToken = dependencies.gateway_scope_token ?? randomUUID();
+    const uuidFactory = dependencies.uuid_factory ?? defaultUuidFactory;
+    const scopeToken = dependencies.gateway_scope_token ?? uuidFactory();
     this.#ownerScopeSha256 = sha256Hex(`local-demo-gateway:${scopeToken}`);
     this.#sessionIdFactory =
       dependencies.session_id_factory ??
-      (() => `demo-session-${randomUUID().toLowerCase()}`);
-    this.#knownSubjectRefs = new Set([
-      ...pack.workspace_projections.stores.map((item) => item.store_id),
-      ...pack.workspace_projections.skus.map((item) => item.sku_id),
-      ...pack.workspace_projections.orders.map((item) => item.order_id),
+      (() => `demo-session-${uuidFactory().toLowerCase()}`);
+    this.#knownSubjectKinds = new Map([
+      ...pack.workspace_projections.stores.map((item) => [item.store_id, "store"] as const),
+      ...pack.workspace_projections.skus.map((item) => [item.sku_id, "sku"] as const),
+      ...pack.workspace_projections.orders.map((item) => [item.order_id, "order"] as const),
     ]);
   }
 
@@ -196,7 +207,11 @@ export class LocalDemoGateway {
     if (cursorResult instanceof LocalDemoDomainError) {
       return this.#errorEnvelope(snapshot, request.session_id, cursorResult);
     }
-    const projection = this.#workspaceProjection(request.workspace);
+    const projection = deriveWorkspaceReadModel(
+      this.#pack,
+      snapshot.transition_log,
+      request.workspace,
+    );
     const page = projection.items.slice(cursorResult, cursorResult + PAGE_SIZE);
     const nextOffset = cursorResult + page.length;
     const view: WorkspaceQueryView = deepFreeze({
@@ -205,6 +220,7 @@ export class LocalDemoGateway {
       summary: structuredClone(projection.summary),
       next_cursor:
         nextOffset < projection.items.length ? `demo-cursor-${nextOffset}` : null,
+      read_model_sha256: sha256Hex(canonicalJson(projection.read_model_sha256_input)),
     });
     return this.#successEnvelope(snapshot, view);
   }
@@ -217,15 +233,22 @@ export class LocalDemoGateway {
         "subject_ref",
         "payload",
         "idempotency_key",
+        "expected_state_sha256",
       ]);
       if (
         typeof input.session_id !== "string" ||
         typeof input.action !== "string" ||
-        !(input.action in ACTION_WORKSPACE) ||
+        !(input.action in DEMO_ACTION_CONTRACTS) ||
         typeof input.subject_ref !== "string" ||
-        !this.#knownSubjectRefs.has(input.subject_ref) ||
+        this.#knownSubjectKinds.get(input.subject_ref) !==
+          DEMO_ACTION_CONTRACTS[input.action as DemoAction].subject_kind ||
         typeof input.idempotency_key !== "string" ||
-        !IDEMPOTENCY_KEY_PATTERN.test(input.idempotency_key)
+        !IDEMPOTENCY_KEY_PATTERN.test(input.idempotency_key) ||
+        !(
+          input.expected_state_sha256 === undefined ||
+          (typeof input.expected_state_sha256 === "string" &&
+            SHA256_PATTERN.test(input.expected_state_sha256))
+        )
       ) {
         throw new LocalDemoDomainError("demo_request_invalid", 400);
       }
@@ -236,10 +259,11 @@ export class LocalDemoGateway {
     }
     const request = input as {
       session_id: string;
-      action: keyof typeof ACTION_WORKSPACE;
+      action: DemoAction;
       subject_ref: string;
       payload: JsonValue;
       idempotency_key: string;
+      expected_state_sha256?: string;
     };
     const session = this.#store.find(this.#ownerScopeSha256, request.session_id);
     if (!session) {
@@ -248,6 +272,7 @@ export class LocalDemoGateway {
     const fingerprintSha256 = sha256Hex(
       canonicalJson({
         action: request.action,
+        expected_state_sha256: request.expected_state_sha256 ?? null,
         payload: request.payload,
         subject_ref: request.subject_ref,
       }),
@@ -268,14 +293,42 @@ export class LocalDemoGateway {
       }
       return replay.response;
     }
-    const nextSequence = session.snapshot().sequence + 1;
+    const before = session.snapshot();
+    if (this.#pack.scenario_version === "v2" && request.expected_state_sha256 === undefined) {
+      return this.#errorEnvelope(
+        before,
+        request.session_id,
+        new LocalDemoDomainError("demo_expected_state_required", 400),
+      );
+    }
+    if (
+      request.expected_state_sha256 !== undefined &&
+      request.expected_state_sha256 !== before.state_sha256
+    ) {
+      return this.#errorEnvelope(
+        before,
+        request.session_id,
+        new LocalDemoDomainError("demo_expected_state_mismatch", 409),
+      );
+    }
+    const preconditionError = this.#transitionPrecondition(
+      before,
+      request.action,
+      request.subject_ref,
+      request.payload,
+    );
+    if (preconditionError) {
+      return this.#errorEnvelope(before, request.session_id, preconditionError);
+    }
+    const nextSequence = before.sequence + 1;
     let transition: DemoTransition;
     try {
       transition = session.appendTransition({
-        workspace: ACTION_WORKSPACE[request.action],
+        workspace: DEMO_ACTION_CONTRACTS[request.action].workspace,
         action: request.action,
         subject_ref: request.subject_ref,
         canonical_payload_sha256: fingerprintSha256,
+        canonical_payload: request.payload,
         occurred_at: deterministicTimestamp(this.#pack, nextSequence),
       });
     } catch (error) {
@@ -315,33 +368,39 @@ export class LocalDemoGateway {
     return this.#successEnvelope(snapshot, { reset: true });
   }
 
-  #workspaceProjection(workspace: DemoWorkspace): {
-    items: readonly JsonValue[];
-    summary: JsonValue;
-  } {
-    const projections = this.#pack.workspace_projections;
-    if (["sourcing", "pim", "listings"].includes(workspace)) {
-      return {
-        items: projections.skus as unknown as readonly JsonValue[],
-        summary: projections.summary as unknown as JsonValue,
-      };
-    }
-    if (["oms", "fulfillment", "profit"].includes(workspace)) {
-      return {
-        items: projections.orders as unknown as readonly JsonValue[],
-        summary: projections.summary as unknown as JsonValue,
-      };
-    }
-    if (workspace === "dashboard") {
-      return {
-        items: projections.stores as unknown as readonly JsonValue[],
-        summary: projections.summary as unknown as JsonValue,
-      };
-    }
-    return {
-      items: [],
-      summary: projections.summary as unknown as JsonValue,
+  #transitionPrecondition(
+    snapshot: DemoSessionSnapshot,
+    action: DemoAction,
+    subjectRef: string,
+    payload: JsonValue,
+  ): LocalDemoDomainError | null {
+    if (this.#pack.scenario_version !== "v2") return null;
+    const previousBySubject: Partial<Record<DemoAction, DemoAction>> = {
+      prepare_product_content: "advance_sourcing",
+      generate_listing_preview: "prepare_product_content",
+      advance_fulfillment: "advance_order_timeline",
+      simulate_return_exception: "advance_fulfillment",
+      assign_synthetic_fee: "allocate_settlement",
+      recalculate_synthetic_profit: "assign_synthetic_fee",
     };
+    const expectedAction = previousBySubject[action];
+    if (expectedAction && latestActionForSubject(snapshot.transition_log, subjectRef) !== expectedAction) {
+      return new LocalDemoDomainError("demo_action_precondition_failed", 409);
+    }
+    if (action === "reserve_inventory") {
+      const orderRef = jsonObject(payload).order_ref;
+      const order = this.#pack.workspace_projections.orders.find(
+        (item) => item.order_id === orderRef && item.sku_id === subjectRef,
+      );
+      if (
+        !order ||
+        latestActionForSubject(snapshot.transition_log, order.order_id) !==
+          "advance_order_timeline"
+      ) {
+        return new LocalDemoDomainError("demo_action_precondition_failed", 409);
+      }
+    }
+    return null;
   }
 
   #decodeCursor(cursor: string | null | undefined): number | LocalDemoDomainError {
