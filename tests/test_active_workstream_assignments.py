@@ -167,27 +167,13 @@ def test_data_cov_002_holds_append_only_coverage_ledger_migration_lease():
     }
 
 
-def test_bas202_holds_constraint_breaker_red_team_lease_without_shared_writes():
+def test_bas202_release_advances_product_engineering_lane_without_shared_writes():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] == {
-        "task_id": "BAS-202",
-        "state": "in_progress",
-        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
-        "write_scope": [
-            "constraint_breaker_attack_registry",
-            "prompt_and_indirect_injection_fixtures",
-            "cross_scope_and_idempotency_red_team",
-            "tool_poisoning_and_unknown_outcome_replay",
-            "best_solution_license_data_cost_rollback_gate",
-            "agent_run_retrieval_evolution_read_only_links",
-            "constraint_breaker_contract_tests",
-        ],
-        "blocked_on": [],
-    }
-    assert engineering["next_task_id"] is None
+    assert engineering["current_task"] is None
+    assert engineering["next_task_id"] == "BAS-203"
     assert "BAS-202" not in registry["shared_write_leases"].values()
     assert registry["shared_write_leases"]["alembic_migration"] == "DATA-COV-002"
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
