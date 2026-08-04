@@ -189,21 +189,7 @@
       "id": "K",
       "name": "local_demo_client",
       "accountable_role": "local_demo_product_owner",
-      "current_task": {
-        "task_id": "BAS-196",
-        "state": "in_progress",
-        "owner_thread_id": "019fc81a-11cc-7653-b0c0-827f87ce0ada",
-        "write_scope": [
-          "isolated_delivery_harness",
-          "node_web_e2e_evidence",
-          "dual_viewport_geometry",
-          "zero_network_backend_secret_production",
-          "cross_session_isolation",
-          "artifact_hash_manifest",
-          "repeatable_cleanup"
-        ],
-        "blocked_on": []
-      },
+      "current_task": null,
       "next_task_id": null
     },
     {
