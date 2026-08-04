@@ -13,8 +13,10 @@
     "preview": "vite preview --host 127.0.0.1 --port 43190 --strictPort",
     "test": "node --test tests/*.test.ts",
     "test:browser:offline": "vite build && node tests/browser/offline-shell.test.cjs",
+    "test:delivery": "vite build && node --test tests/delivery/*.test.cjs",
     "test:portable": "vite build && node --test tests/portable/*.test.cjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:delivery": "vite build && node scripts/verify-delivery.mjs"
   },
   "devDependencies": {
     "@types/node": "24.4.0",
