@@ -101,13 +101,27 @@ def test_bas181_release_advances_media_lane():
     assert media["next_task_id"] == "BAS-182"
 
 
-def test_bas195_release_advances_local_demo_lane():
+def test_bas196_holds_local_demo_delivery_verification_lease():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     demo = lanes["K"]
 
-    assert demo["current_task"] is None
-    assert demo["next_task_id"] == "BAS-196"
+    assert demo["current_task"] == {
+        "task_id": "BAS-196",
+        "state": "in_progress",
+        "owner_thread_id": "019fc81a-11cc-7653-b0c0-827f87ce0ada",
+        "write_scope": [
+            "isolated_delivery_harness",
+            "node_web_e2e_evidence",
+            "dual_viewport_geometry",
+            "zero_network_backend_secret_production",
+            "cross_session_isolation",
+            "artifact_hash_manifest",
+            "repeatable_cleanup",
+        ],
+        "blocked_on": [],
+    }
+    assert demo["next_task_id"] is None
     assert "BAS-196" not in registry["shared_write_leases"].values()
 
 
