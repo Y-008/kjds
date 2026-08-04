@@ -200,7 +200,7 @@
 | BAS-193 | G-1 | 独立 DEMO PWA 壳与持续水印 | Product Design+Web | 建立不复用生产根布局的本地 PWA，桌面/390px 均持续显示 LOCAL DEMO/合成数据/不计费，离线首屏且零 `/backend` 请求。 | BAS-192 | DONE_ENGINEERING |
 | BAS-194 | G-1 | DEMO 全链路九工作区 | Product+Commerce+Web | 用固定 ScenarioPack 实现驾驶舱、选品、PIM、刊登、OMS、履约、客服、增长和利润的查询/模拟推进/错误重放，不创建任何真实权威对象。 | BAS-193 | DONE_ENGINEERING |
 | BAS-195 | G-1 | DEMO 离线便携包与清理 | Release+Web | 交付 PWA/便携 ZIP、loopback 启动、断网冷启动、显式重置和清理脚本；构建不含账号、Cookie、API Key 或真实数据。 | BAS-194 | DONE_ENGINEERING |
-| BAS-196 | G-1 | DEMO 隔离验收与交付 Evidence | QA+Risk+Release | 验证 Node/Web/E2E、1440/390、零外网、零 `/backend`、零秘密、零生产写、跨会话隔离、构建哈希和可重复清理。 | BAS-195 | QUEUED |
+| BAS-196 | G-1 | DEMO 隔离验收与交付 Evidence | QA+Risk+Release | 验证 Node/Web/E2E、1440/390、零外网、零 `/backend`、零秘密、零生产写、跨会话隔离、构建哈希和可重复清理。 | BAS-195 | IN_PROGRESS |
 | BAS-197 | G-1 | 一手资料、Top1 对标与资本经营闭环合同冻结 | Strategy+Product+Data+Capital+Risk | 冻结 StrategicBenchmarkKernel、PrimarySourceEnvelope、分维度/队列/时窗 Top1 语义、差距图、实验组合、资本配置提案与约束破甲评测；只接受可复验证据晋级事实，本票仅 ADR/registry/tests。 | BAS-172、BAS-176、BAS-180、BAS-190 | DONE_ENGINEERING |
 | BAS-198 | G-1 | PrimarySource Intake 与证据化标准化 | Data+Evidence+Finance+Market Intelligence | 复用 Evidence/Lineage 接收经营原件、平台官方数据、供应商/物流/银行/结算及技术一手基准；保存原件哈希、合同、许可、作用域、时间和守恒报告，不在 Git 保存秘密、PII 或原始经营数据。 | BAS-197 | DONE_ENGINEERING |
 | BAS-199 | G-1 | 多维 Top1 Benchmark 与可比队列 | Strategy+Product+Data | 按技术、AI、产品、商业、运营、资本、组织、韧性和合规冻结 metric/cohort/window/source contract；Top1 只代表当前可验证维度领先者，不产生全局营销排名。 | BAS-198 | DONE_ENGINEERING |
