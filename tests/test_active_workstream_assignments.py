@@ -101,28 +101,14 @@ def test_bas181_release_advances_media_lane():
     assert media["next_task_id"] == "BAS-182"
 
 
-def test_bas195_holds_local_demo_portable_package_lease():
+def test_bas195_release_advances_local_demo_lane():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     demo = lanes["K"]
 
-    assert demo["current_task"] == {
-        "task_id": "BAS-195",
-        "state": "in_progress",
-        "owner_thread_id": "019fc81a-11cc-7653-b0c0-827f87ce0ada",
-        "write_scope": [
-            "portable_pwa_zip",
-            "loopback_launcher",
-            "offline_cold_start",
-            "explicit_reset_and_cleanup",
-            "deterministic_package_manifest",
-            "secret_and_real_data_exclusion",
-            "repeatable_build_hash",
-        ],
-        "blocked_on": [],
-    }
-    assert demo["next_task_id"] is None
-    assert "BAS-195" not in registry["shared_write_leases"].values()
+    assert demo["current_task"] is None
+    assert demo["next_task_id"] == "BAS-196"
+    assert "BAS-196" not in registry["shared_write_leases"].values()
 
 
 def test_bas199_release_advances_strategic_lane_without_preleasing_bas200():
