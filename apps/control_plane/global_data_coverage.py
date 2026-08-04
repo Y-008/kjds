@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
 import re
@@ -13,8 +14,10 @@ from jsonschema import Draft202012Validator
 
 CONTRACT_ID = "kjds-global-data-coverage-observation-v1"
 REGISTRY_SCHEMA = "kjds-global-source-domain-registry-v1"
+REGISTRY_CONTRACT_ID = "kjds-global-source-domain-coverage-v1"
 MANIFEST_SCHEMA = "kjds-source-coverage-manifest-v1"
 NATIVE_CAPS_SCHEMA = "kjds-source-native-caps-v1"
+FULL_CLAIM_EVIDENCE_GRADES = frozenset({"A", "B"})
 
 SOURCE_FAMILIES = frozenset(
     {
@@ -112,16 +115,34 @@ class GlobalDataCoverageWorkspace:
 
     CONTRACT_ID = CONTRACT_ID
 
-    def __init__(self, *, contract_root: Path | None = None) -> None:
-        root = contract_root or (
-            Path(__file__).resolve().parents[2] / "docs" / "project" / "contracts"
-        )
+    def __init__(
+        self,
+        *,
+        contract_root: Path | None = None,
+        trusted_registry: dict[str, Any] | None = None,
+    ) -> None:
+        repository_root = Path(__file__).resolve().parents[2]
+        root = contract_root or repository_root / "docs" / "project" / "contracts"
         self._manifest_validator = Draft202012Validator(
             json.loads((root / "source-coverage-manifest-v1.schema.json").read_text("utf-8"))
         )
         self._caps_validator = Draft202012Validator(
             json.loads((root / "source-native-caps-v1.schema.json").read_text("utf-8"))
         )
+        registry = trusted_registry
+        if registry is None:
+            registry = json.loads(
+                (
+                    repository_root
+                    / "docs"
+                    / "project"
+                    / "registries"
+                    / "global_source_domain_registry.json"
+                ).read_text("utf-8")
+            )
+        self._trusted_registry = json.loads(canonical_json(registry))
+        self._validate_registry(self._trusted_registry)
+        self._trusted_registry_bytes = canonical_json(self._trusted_registry)
 
     def validate(
         self,
@@ -139,6 +160,7 @@ class GlobalDataCoverageWorkspace:
         self._verify_content_hash(manifest, "manifest")
         self._verify_content_hash(native_caps, "native_caps")
         self._validate_registry(registry_snapshot)
+        self._validate_registry_authority(registry_snapshot, cutoff)
 
         if manifest["as_of"] != cutoff.isoformat():
             raise ValueError("manifest as_of must equal the requested as_of")
@@ -154,11 +176,20 @@ class GlobalDataCoverageWorkspace:
             or source["source_status"] != native_caps["source_status"]
         ):
             raise ValueError("source and native capability binding drift")
-        source_contract = self._registry_source(
+        supplied_source_contract = self._registry_source(
             registry_snapshot,
             source_id=source["source_id"],
             source_family=source["source_family"],
         )
+        source_contract = self._registry_source(
+            self._trusted_registry,
+            source_id=source["source_id"],
+            source_family=source["source_family"],
+        )
+        if not hmac.compare_digest(
+            canonical_json(supplied_source_contract), canonical_json(source_contract)
+        ):
+            raise ValueError("selected source contract drift from trusted registry")
         if source_contract["status"] != source["source_status"]:
             raise ValueError("source status drift from registry")
         if source["source_status"] == "implemented" and not source_contract[
@@ -174,6 +205,7 @@ class GlobalDataCoverageWorkspace:
 
         self._validate_times(manifest, cutoff)
         self._validate_universe(manifest)
+        self._validate_denominator_evidence(manifest)
         self._validate_conservation(manifest)
         self._validate_pages(manifest, native_caps)
         self._validate_fields(manifest, native_caps)
@@ -239,6 +271,9 @@ class GlobalDataCoverageWorkspace:
             raise ValueError("global source registry fields do not match")
         if registry["schema_version"] != REGISTRY_SCHEMA:
             raise ValueError("global source registry schema mismatch")
+        if registry["contract_id"] != REGISTRY_CONTRACT_ID:
+            raise ValueError("global source registry contract ID mismatch")
+        GlobalDataCoverageWorkspace._registry_as_of(registry["as_of"])
         if set(registry["status_vocabulary"]) != SOURCE_STATUSES:
             raise ValueError("global source registry status vocabulary mismatch")
         if set(registry["completeness_vocabulary"]) != COMPLETENESS_STATES:
@@ -282,6 +317,16 @@ class GlobalDataCoverageWorkspace:
         if any(policy.get(item) is not False for item in required_false):
             raise ValueError("global source registry control boundary drift")
 
+    def _validate_registry_authority(
+        self, registry: dict[str, Any], as_of: datetime
+    ) -> None:
+        if not hmac.compare_digest(
+            canonical_json(registry), self._trusted_registry_bytes
+        ):
+            raise ValueError("registry snapshot is not the trusted canonical registry")
+        if self._registry_as_of(registry["as_of"]) > as_of:
+            raise ValueError("registry snapshot is newer than the requested as_of")
+
     @staticmethod
     def _registry_source(
         registry: dict[str, Any], *, source_id: str, source_family: str
@@ -314,14 +359,18 @@ class GlobalDataCoverageWorkspace:
             evidence_recorded = GlobalDataCoverageWorkspace._timestamp(
                 evidence["recorded_at"], "evidence.recorded_at"
             )
-            if effective > as_of or evidence_recorded > as_of:
+            if effective > evidence_recorded or evidence_recorded > as_of:
+                raise ValueError("Evidence chronology is invalid")
+            if effective > as_of:
                 raise ValueError("future Evidence cannot support a coverage snapshot")
-            if evidence["effective_until"] is not None and as_of >= (
-                GlobalDataCoverageWorkspace._timestamp(
+            if evidence["effective_until"] is not None:
+                effective_until = GlobalDataCoverageWorkspace._timestamp(
                     evidence["effective_until"], "evidence.effective_until"
                 )
-            ):
-                raise ValueError("expired Evidence cannot support a coverage snapshot")
+                if effective_until <= effective:
+                    raise ValueError("Evidence effective interval is invalid")
+                if as_of >= effective_until:
+                    raise ValueError("expired Evidence cannot support a coverage snapshot")
 
     @staticmethod
     def _validate_universe(manifest: dict[str, Any]) -> None:
@@ -337,6 +386,40 @@ class GlobalDataCoverageWorkspace:
             "requested_full_coverage"
         ]:
             raise ValueError("sample-only coverage cannot request a full claim")
+
+    @staticmethod
+    def _validate_denominator_evidence(manifest: dict[str, Any]) -> None:
+        evidence_refs = manifest["evidence_refs"]
+        evidence_ids = [item["id"] for item in evidence_refs]
+        if len(evidence_ids) != len(set(evidence_ids)):
+            raise ValueError("manifest Evidence IDs must be unique")
+
+        universe = manifest["universe"]
+        claim = manifest["coverage_claim"]
+        universe_ref = universe["expected_count_evidence_ref"]
+        universe_sha256 = universe["expected_count_evidence_sha256"]
+        claim_ref = claim["denominator_evidence_ref"]
+        claim_sha256 = claim["denominator_evidence_sha256"]
+        if not universe["denominator_known"]:
+            if any(
+                item is not None
+                for item in (universe_ref, universe_sha256, claim_ref, claim_sha256)
+            ):
+                raise ValueError("unknown universe cannot bind denominator Evidence")
+            return
+        if universe_ref != claim_ref or universe_sha256 != claim_sha256:
+            raise ValueError("denominator Evidence reference or hash drift")
+        matches = [item for item in evidence_refs if item["id"] == universe_ref]
+        if len(matches) != 1:
+            raise ValueError("denominator Evidence must resolve exactly once")
+        denominator_evidence = matches[0]
+        if not hmac.compare_digest(denominator_evidence["sha256"], universe_sha256):
+            raise ValueError("denominator Evidence content hash drift")
+        if (
+            claim["requested_full_coverage"]
+            and denominator_evidence["grade"] not in FULL_CLAIM_EVIDENCE_GRADES
+        ):
+            raise ValueError("full coverage requires admissible denominator Evidence")
 
     @staticmethod
     def _validate_conservation(manifest: dict[str, Any]) -> None:
@@ -526,6 +609,20 @@ class GlobalDataCoverageWorkspace:
         except ValueError as exc:
             raise ValueError(f"{field} must be an ISO-8601 timestamp") from exc
         return GlobalDataCoverageWorkspace._aware(parsed, field)
+
+    @staticmethod
+    def _registry_as_of(value: Any) -> datetime:
+        if not isinstance(value, str):
+            raise ValueError("registry as_of must be an ISO-8601 date or timestamp")
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(
+                "registry as_of must be an ISO-8601 date or timestamp"
+            ) from exc
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
 
 
 def canonical_json(value: Any) -> bytes:

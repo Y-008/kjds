@@ -75,7 +75,7 @@
     "schema_version": "kjds-source-coverage-manifest-v1",
     "manifest_ref": "coverage://fixture/marketplace/bounded-v1",
     "manifest_version": "1.0.0",
-    "content_sha256": "e7759240e68ccd165ff411097b23c02643193bb5588b107b704ad08d281737f0",
+    "content_sha256": "bace9c8f52966ded34eea2deea9ad59403911b7e2d8dc82cd7db15e1416cccbd",
     "registry_sha256": "5ee7ddc61c97c398a3b2fa8cff654e0803f419185dfce52ba4a389aad2cd48c3",
     "native_caps_sha256": "bcf43b6052def94358b1b56c1eac062476ab468145a120622c06eb41b26f5a79",
     "source": {
@@ -101,6 +101,7 @@
       "denominator_known": true,
       "expected_count": 100,
       "expected_count_evidence_ref": "evd_fixture_denominator_v1",
+      "expected_count_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "query_bounds": {
         "partition": "fixture-partition",
         "window": "2026-07-01/2026-08-01"
@@ -123,7 +124,7 @@
       {
         "id": "evd_fixture_denominator_v1",
         "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "grade": "D",
+        "grade": "A",
         "effective_at": "2026-08-03T22:00:00+00:00",
         "effective_until": "2026-08-05T00:00:00+00:00",
         "recorded_at": "2026-08-03T23:00:00+00:00"
@@ -187,6 +188,7 @@
       "requested_full_coverage": true,
       "claim_scope": "fixture-source-partition-window",
       "denominator_evidence_ref": "evd_fixture_denominator_v1",
+      "denominator_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "invalidation_conditions": [
         "denominator_drift",
         "page_failure",

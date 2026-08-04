@@ -88,6 +88,7 @@
         "denominator_known",
         "expected_count",
         "expected_count_evidence_ref",
+        "expected_count_evidence_sha256",
         "query_bounds"
       ],
       "properties": {
@@ -98,6 +99,9 @@
         "expected_count": {"type": ["integer", "null"], "minimum": 0},
         "expected_count_evidence_ref": {
           "oneOf": [{"$ref": "#/$defs/token"}, {"type": "null"}]
+        },
+        "expected_count_evidence_sha256": {
+          "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
         },
         "query_bounds": {
           "type": "object",
@@ -279,6 +283,7 @@
         "requested_full_coverage",
         "claim_scope",
         "denominator_evidence_ref",
+        "denominator_evidence_sha256",
         "invalidation_conditions"
       ],
       "properties": {
@@ -286,6 +291,9 @@
         "claim_scope": {"$ref": "#/$defs/token"},
         "denominator_evidence_ref": {
           "oneOf": [{"$ref": "#/$defs/token"}, {"type": "null"}]
+        },
+        "denominator_evidence_sha256": {
+          "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
         },
         "invalidation_conditions": {
           "type": "array",

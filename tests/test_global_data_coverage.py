@@ -68,8 +68,11 @@ def _implemented(fixture, registry):
     _rehash(fixture, registry)
 
 
-def _workspace():
-    return GlobalDataCoverageWorkspace(contract_root=CONTRACT_ROOT)
+def _workspace(*, trusted_registry=None):
+    return GlobalDataCoverageWorkspace(
+        contract_root=CONTRACT_ROOT,
+        trusted_registry=trusted_registry,
+    )
 
 
 def test_contract_only_source_cannot_be_presented_as_full_coverage():
@@ -102,7 +105,7 @@ def test_evidenced_bounded_universe_can_make_only_its_exact_scoped_claim():
     registry = _registry()
     _implemented(fixture, registry)
 
-    observation = _workspace().validate(
+    observation = _workspace(trusted_registry=registry).validate(
         fixture["manifest"],
         fixture["native_caps"],
         registry,
@@ -131,13 +134,15 @@ def test_unknown_denominator_is_unknown_and_never_full():
             "denominator_known": False,
             "expected_count": None,
             "expected_count_evidence_ref": None,
+            "expected_count_evidence_sha256": None,
         }
     )
     fixture["manifest"]["conservation"]["expected_count"] = None
     fixture["manifest"]["coverage_claim"]["denominator_evidence_ref"] = None
+    fixture["manifest"]["coverage_claim"]["denominator_evidence_sha256"] = None
     _rehash(fixture, registry)
 
-    observation = _workspace().validate(
+    observation = _workspace(trusted_registry=registry).validate(
         fixture["manifest"],
         fixture["native_caps"],
         registry,
@@ -175,10 +180,185 @@ def test_candidate_cannot_masquerade_as_implemented_without_evidence():
     _rehash(fixture, registry)
 
     with pytest.raises(ValueError, match="implementation Evidence"):
+        _workspace(trusted_registry=registry).validate(
+            fixture["manifest"],
+            fixture["native_caps"],
+            registry,
+            _as_of(fixture),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["status", "evidence", "source_contract", "contract_id"],
+)
+def test_rehashed_caller_registry_mutation_never_establishes_authority(mutation):
+    fixture = _fixture()
+    registry = _registry()
+    source = registry["source_families"][0]["source_contracts"][0]
+    if mutation == "status":
+        source["status"] = "implemented"
+        source["implementation_evidence_refs"] = [
+            "fixture://untrusted/adapter-verification"
+        ]
+        fixture["manifest"]["source"]["source_status"] = "implemented"
+        fixture["native_caps"]["source_status"] = "implemented"
+    elif mutation == "evidence":
+        source["evidence_urls"].append("fixture://untrusted/source-evidence")
+    elif mutation == "source_contract":
+        source["regions"] = ["UNTRUSTED_REGION"]
+    else:
+        registry["contract_id"] = "untrusted-global-source-contract-v1"
+    _rehash(fixture, registry)
+
+    expected = (
+        "contract ID mismatch"
+        if mutation == "contract_id"
+        else "trusted canonical registry"
+    )
+    with pytest.raises(ValueError, match=expected):
         _workspace().validate(
             fixture["manifest"],
             fixture["native_caps"],
             registry,
+            _as_of(fixture),
+        )
+
+
+def test_selected_source_contract_must_equal_constructor_frozen_registry():
+    fixture = _fixture()
+    trusted_registry = _registry()
+    workspace = _workspace(trusted_registry=trusted_registry)
+    supplied_registry = copy.deepcopy(trusted_registry)
+    supplied_registry["source_families"][0]["source_contracts"][0][
+        "adapter_kind"
+    ] = "untrusted_adapter"
+    _rehash(fixture, supplied_registry)
+
+    with pytest.raises(ValueError, match="trusted canonical registry"):
+        workspace.validate(
+            fixture["manifest"],
+            fixture["native_caps"],
+            supplied_registry,
+            _as_of(fixture),
+        )
+
+
+def test_registry_snapshot_cannot_be_newer_than_requested_as_of():
+    fixture = _fixture()
+    registry = _registry()
+    registry["as_of"] = "2026-08-05"
+    _rehash(fixture, registry)
+
+    with pytest.raises(ValueError, match="newer than the requested as_of"):
+        _workspace(trusted_registry=registry).validate(
+            fixture["manifest"],
+            fixture["native_caps"],
+            registry,
+            _as_of(fixture),
+        )
+
+
+def test_denominator_evidence_refs_and_hashes_must_match():
+    fixture = _fixture()
+    fixture["manifest"]["coverage_claim"][
+        "denominator_evidence_ref"
+    ] = "evd_fixture_other_denominator_v1"
+    fixture["manifest"]["content_sha256"] = content_sha256(fixture["manifest"])
+
+    with pytest.raises(ValueError, match="reference or hash drift"):
+        _workspace().validate(
+            fixture["manifest"],
+            fixture["native_caps"],
+            _registry(),
+            _as_of(fixture),
+        )
+
+
+def test_denominator_evidence_must_resolve_exactly_once():
+    fixture = _fixture()
+    missing_ref = "evd_fixture_missing_denominator_v1"
+    missing_sha256 = "c" * 64
+    fixture["manifest"]["universe"]["expected_count_evidence_ref"] = missing_ref
+    fixture["manifest"]["universe"][
+        "expected_count_evidence_sha256"
+    ] = missing_sha256
+    fixture["manifest"]["coverage_claim"]["denominator_evidence_ref"] = missing_ref
+    fixture["manifest"]["coverage_claim"][
+        "denominator_evidence_sha256"
+    ] = missing_sha256
+    fixture["manifest"]["content_sha256"] = content_sha256(fixture["manifest"])
+
+    with pytest.raises(ValueError, match="resolve exactly once"):
+        _workspace().validate(
+            fixture["manifest"],
+            fixture["native_caps"],
+            _registry(),
+            _as_of(fixture),
+        )
+
+
+def test_duplicate_or_substituted_denominator_evidence_is_rejected():
+    duplicate = _fixture()
+    conflicting = copy.deepcopy(duplicate["manifest"]["evidence_refs"][0])
+    conflicting["sha256"] = "c" * 64
+    duplicate["manifest"]["evidence_refs"].append(conflicting)
+    duplicate["manifest"]["content_sha256"] = content_sha256(duplicate["manifest"])
+    with pytest.raises(ValueError, match="Evidence IDs must be unique"):
+        _workspace().validate(
+            duplicate["manifest"],
+            duplicate["native_caps"],
+            _registry(),
+            _as_of(duplicate),
+        )
+
+    substituted = _fixture()
+    substituted["manifest"]["evidence_refs"][0]["sha256"] = "c" * 64
+    substituted["manifest"]["content_sha256"] = content_sha256(
+        substituted["manifest"]
+    )
+    with pytest.raises(ValueError, match="Evidence content hash drift"):
+        _workspace().validate(
+            substituted["manifest"],
+            substituted["native_caps"],
+            _registry(),
+            _as_of(substituted),
+        )
+
+
+def test_full_claim_requires_admissible_current_denominator_evidence():
+    fixture = _fixture()
+    registry = _registry()
+    _implemented(fixture, registry)
+    fixture["manifest"]["evidence_refs"][0]["grade"] = "D"
+    fixture["manifest"]["content_sha256"] = content_sha256(fixture["manifest"])
+
+    with pytest.raises(ValueError, match="admissible denominator Evidence"):
+        _workspace(trusted_registry=registry).validate(
+            fixture["manifest"],
+            fixture["native_caps"],
+            registry,
+            _as_of(fixture),
+        )
+
+
+@pytest.mark.parametrize("chronology", ["effective_after_recorded", "expired"])
+def test_denominator_evidence_chronology_and_currentness_are_enforced(chronology):
+    fixture = _fixture()
+    evidence = fixture["manifest"]["evidence_refs"][0]
+    if chronology == "effective_after_recorded":
+        evidence["effective_at"] = "2026-08-03T23:30:00+00:00"
+        expected = "Evidence chronology is invalid"
+    else:
+        evidence["effective_until"] = fixture["as_of"]
+        expected = "expired Evidence"
+    fixture["manifest"]["content_sha256"] = content_sha256(fixture["manifest"])
+
+    with pytest.raises(ValueError, match=expected):
+        _workspace().validate(
+            fixture["manifest"],
+            fixture["native_caps"],
+            _registry(),
             _as_of(fixture),
         )
 
@@ -248,7 +428,7 @@ def test_known_page_field_window_and_conflict_gaps_downgrade_claim(
         ]
     _rehash(fixture, registry)
 
-    observation = _workspace().validate(
+    observation = _workspace(trusted_registry=registry).validate(
         manifest,
         fixture["native_caps"],
         registry,
@@ -267,7 +447,7 @@ def test_stale_snapshot_blocks_claim():
     fixture["manifest"]["freshness"]["status"] = "stale"
     _rehash(fixture, registry)
 
-    observation = _workspace().validate(
+    observation = _workspace(trusted_registry=registry).validate(
         fixture["manifest"],
         fixture["native_caps"],
         registry,
