@@ -92,14 +92,28 @@ def test_social_platform_and_channel_operations_have_separate_lanes():
     assert lanes["I"]["name"] == "russia_market_intelligence"
 
 
-def test_bas182_release_frees_media_agent_lane_without_shared_writes():
+def test_bas185_holds_comfy_template_benchmark_lease_without_shared_writes():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     media = lanes["J"]
 
-    assert media["current_task"] is None
-    assert media["next_task_id"] == "BAS-183"
-    assert "BAS-182" not in registry["shared_write_leases"].values()
+    assert media["current_task"] == {
+        "task_id": "BAS-185",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "write_scope": [
+            "governed_comfy_template_benchmark",
+            "canonical_comfy_template_registry",
+            "synthetic_8gb_runtime_receipt_contract",
+            "typed_workflow_parameter_compiler",
+            "media_qa_and_license_gate_projection",
+            "benchmark_replay_and_zero_write_tests",
+            "bas185_evidence",
+        ],
+        "blocked_on": [],
+    }
+    assert media["next_task_id"] is None
+    assert "BAS-185" not in registry["shared_write_leases"].values()
 
 
 def test_bas196_release_frees_local_demo_lane():
