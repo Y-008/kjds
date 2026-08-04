@@ -26,7 +26,7 @@ test("PWA shell exposes exactly nine stable hash workspaces", () => {
   for (const workspace of WORKSPACES) {
     assert.equal(workspaceFromHash(`#/${workspace.route}`), workspace);
     assert.equal(workspace.shellState, "shell_ready");
-    assert.equal(workspace.scenarioState, "queued");
+    assert.equal(workspace.scenarioState, "ready");
   }
   assert.equal(workspaceFromHash("#/not-a-workspace").id, "dashboard");
 });
@@ -40,7 +40,9 @@ test("every shell route keeps all demo markers and all workspace links visible",
     assert.equal((html.match(/class="workspace-link/g) ?? []).length, 9);
     assert.equal((html.match(/class="matrix-card/g) ?? []).length, 9);
     assert.ok(html.includes('aria-current="page"'));
-    assert.ok(html.includes("场景接入待续"));
+    assert.ok(html.includes("模拟推进"));
+    assert.ok(html.includes("错误重放"));
+    assert.ok(html.includes("重置场景"));
     assert.equal(html.includes("本地模拟完成"), false);
     assert.equal(/\sstyle=/u.test(html), false);
   }
@@ -79,7 +81,7 @@ test("manifest, service worker and CSP freeze the local-only shell boundary", ()
   assert.ok(worker.includes("all_cached: cachedCount === urls.length"));
 });
 
-test("BAS-193 shell source does not import production or scenario modules", () => {
+test("BAS-194 UI imports only its local gateway/domain/scenario and no production modules", () => {
   const ui = [
     source("src/ui/main.ts"),
     source("src/ui/app-shell.ts"),
@@ -92,7 +94,8 @@ test("BAS-193 shell source does not import production or scenario modules", () =
   ]) {
     assert.equal(ui.includes(forbiddenImport), false, forbiddenImport);
   }
-  assert.equal(/from\s+["'][^"']*\/(?:application|domain|scenarios)\//u.test(ui), false);
+  assert.ok(ui.includes("local-demo-gateway.ts"));
+  assert.ok(ui.includes("enterprise-overview.zh-CN.v2.json"));
   assert.equal(ui.includes("process.env"), false);
   assert.equal(ui.includes("XMLHttpRequest"), false);
 });

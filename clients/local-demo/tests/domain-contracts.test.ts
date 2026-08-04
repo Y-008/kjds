@@ -245,6 +245,7 @@ test("domain package source has no production imports, backend calls or credenti
     "SUPABASE_KEY",
     "process.env",
     "dotenv",
+    "node:crypto",
   ]) {
     assert.equal(source.includes(forbidden), false, forbidden);
   }

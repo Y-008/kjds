@@ -293,6 +293,7 @@ test("network policy rejects every request and source has no network or producti
     "dotenv",
     "SUPABASE_URL",
     "KJDS_API_KEY",
+    "node:crypto",
   ]) {
     assert.equal(source.includes(forbidden), false, forbidden);
   }

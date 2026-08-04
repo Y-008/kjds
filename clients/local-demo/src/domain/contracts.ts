@@ -35,6 +35,25 @@ export type DemoWorkspace =
   | "growth"
   | "profit";
 
+export const DEMO_ACTION_CONTRACTS = Object.freeze({
+  refresh_dashboard: { workspace: "dashboard", subject_kind: "store" },
+  advance_sourcing: { workspace: "sourcing", subject_kind: "sku" },
+  prepare_product_content: { workspace: "pim", subject_kind: "sku" },
+  generate_listing_preview: { workspace: "listings", subject_kind: "sku" },
+  advance_order_timeline: { workspace: "oms", subject_kind: "order" },
+  reserve_inventory: { workspace: "fulfillment", subject_kind: "sku" },
+  advance_fulfillment: { workspace: "fulfillment", subject_kind: "order" },
+  simulate_return_exception: { workspace: "fulfillment", subject_kind: "order" },
+  draft_customer_reply: { workspace: "customer_service", subject_kind: "order" },
+  simulate_campaign: { workspace: "growth", subject_kind: "store" },
+  allocate_settlement: { workspace: "profit", subject_kind: "order" },
+  assign_synthetic_fee: { workspace: "profit", subject_kind: "order" },
+  recalculate_synthetic_profit: { workspace: "profit", subject_kind: "order" },
+} as const);
+
+export type DemoAction = keyof typeof DEMO_ACTION_CONTRACTS;
+export type DemoSubjectKind = (typeof DEMO_ACTION_CONTRACTS)[DemoAction]["subject_kind"];
+
 export interface DemoStoreProjection {
   readonly store_id: string;
   readonly display_name: string;
@@ -84,6 +103,23 @@ export interface ScenarioPackContent {
   };
   readonly synthetic_declaration: typeof DEMO_MARKERS;
   readonly workspace_projections: ScenarioWorkspaceProjections;
+  readonly hero_flows?: readonly ScenarioHeroFlow[];
+}
+
+export interface ScenarioHeroStep {
+  readonly step_id: string;
+  readonly label: string;
+  readonly workspace: DemoWorkspace;
+  readonly action: string;
+  readonly subject_ref: string;
+  readonly payload: JsonValue;
+}
+
+export interface ScenarioHeroFlow {
+  readonly flow_id: string;
+  readonly title: string;
+  readonly outcome: string;
+  readonly steps: readonly ScenarioHeroStep[];
 }
 
 export interface ScenarioPack extends ScenarioPackContent {
@@ -97,6 +133,7 @@ export interface DemoTransition {
   readonly action: string;
   readonly subject_ref: string;
   readonly canonical_payload_sha256: string;
+  readonly canonical_payload: JsonValue;
   readonly previous_state_sha256: string;
   readonly state_sha256: string;
   readonly occurred_at: string;

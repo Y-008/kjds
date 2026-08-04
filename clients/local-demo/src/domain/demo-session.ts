@@ -4,6 +4,7 @@ import {
   type DemoSessionSnapshot,
   type DemoTransition,
   type DemoWorkspace,
+  type JsonValue,
   type ScenarioPack,
 } from "./contracts.ts";
 import {
@@ -22,6 +23,7 @@ export interface DemoTransitionDraft {
   readonly action: string;
   readonly subject_ref: string;
   readonly canonical_payload_sha256: string;
+  readonly canonical_payload?: JsonValue;
   readonly occurred_at: string;
 }
 
@@ -114,6 +116,7 @@ export class DemoSession {
       action: draft.action,
       subject_ref: draft.subject_ref,
       canonical_payload_sha256: draft.canonical_payload_sha256,
+      canonical_payload: draft.canonical_payload ?? null,
       previous_state_sha256: previousStateSha256,
       state_sha256: nextStateSha256,
       occurred_at: draft.occurred_at,
