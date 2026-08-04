@@ -55,22 +55,8 @@
       "id": "C",
       "name": "product_engineering",
       "accountable_role": "engineering_owner",
-      "current_task": {
-        "task_id": "BAS-202",
-        "state": "in_progress",
-        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
-        "write_scope": [
-          "constraint_breaker_attack_registry",
-          "prompt_and_indirect_injection_fixtures",
-          "cross_scope_and_idempotency_red_team",
-          "tool_poisoning_and_unknown_outcome_replay",
-          "best_solution_license_data_cost_rollback_gate",
-          "agent_run_retrieval_evolution_read_only_links",
-          "constraint_breaker_contract_tests"
-        ],
-        "blocked_on": []
-      },
-      "next_task_id": null
+      "current_task": null,
+      "next_task_id": "BAS-203"
     },
     {
       "id": "D",
