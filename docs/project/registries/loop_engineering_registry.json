@@ -1,6 +1,6 @@
 {
   "registry_id": "KJDS-LOOP-001",
-  "version": "2.0",
+  "version": "2.1",
   "status": "active",
   "updated_at": "2026-08-03",
   "principle": "automation must produce evidence, skills must be versioned, integrations must be least-privilege, subagents must be bounded, worktrees must be isolated, and memory must preserve provenance",
@@ -98,6 +98,8 @@
   },
   "evolution_loop": {
     "contract_id": "kjds-governed-team-agent-evolution-v1",
+    "evidence_source": "governed-team-agent-evolution",
+    "evidence_contract_id": "kjds-governed-team-agent-evolution-evidence-v1",
     "states": [
       "observation",
       "skill_candidate",
@@ -140,7 +142,6 @@
       "promoted->rolled_back",
       "active->rolled_back",
       "active->retired",
-      "rolled_back->skill_candidate",
       "rolled_back->retired"
     ],
     "transition_controls": {
@@ -153,6 +154,50 @@
       "candidate_author_may_promote": false,
       "reviewer_must_differ_from_candidate_author": true,
       "active_requires_human_owner_and_risk_authority": true
+    },
+    "gate_contract": {
+      "evaluation_to_shadow_requires": [
+        "baseline_comparison_passed",
+        "negative_tests_passed",
+        "exact_scope_tests_passed"
+      ],
+      "shadow_to_independent_review_requires": [
+        "shadow_passed",
+        "zero_external_writes",
+        "finite_nonnegative_cost_latency_tokens"
+      ],
+      "independent_review_to_promoted_requires": [
+        "reviewer_is_not_candidate_author",
+        "reviewer_role_is_independent",
+        "all_prior_gates_are_valid"
+      ],
+      "promoted_to_active_requires": [
+        "human_owner_is_current_actor",
+        "risk_authority_sha256",
+        "all_supporting_evidence_is_current"
+      ]
+    },
+    "cross_tenant_contract": {
+      "default_mode": "same_tenant",
+      "allowed_modes": [
+        "same_tenant",
+        "licensed_deidentified_nonreversible"
+      ],
+      "raw_cross_tenant_allowed": false,
+      "licensed_mode_requires": [
+        "license_sha256",
+        "deidentification_sha256",
+        "nonreversible_projection",
+        "revocation_contract_sha256"
+      ]
+    },
+    "persistence_contract": {
+      "candidate_state_is_derived_from_events": true,
+      "candidate_and_events_are_append_only": true,
+      "exact_scope_includes_current_authority": true,
+      "authority_clock": "server_current_utc",
+      "data_as_of_is_separate": true,
+      "runtime_activation_is_not_performed": true
     },
     "automatic_promotion_allowed": false,
     "runtime_code_self_modification_allowed": false,

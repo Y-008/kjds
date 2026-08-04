@@ -27,7 +27,7 @@ def test_team_agent_roles_are_bounded_and_independently_verified():
     registry = json.loads(path.read_text(encoding="utf-8"))
     team = registry["team_agent_contract"]
 
-    assert registry["version"] == "2.0"
+    assert registry["version"] == "2.1"
     assert team["architecture"] == (
         "coordinator_plus_bounded_specialists_plus_independent_verifier"
     )
@@ -76,7 +76,6 @@ def test_self_learning_requires_eval_shadow_review_and_rollback():
         "promoted->rolled_back",
         "active->rolled_back",
         "active->retired",
-        "rolled_back->skill_candidate",
         "rolled_back->retired",
     }
     assert "observation->active" not in allowed_transitions
