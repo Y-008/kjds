@@ -1,0 +1,1188 @@
+{
+  "schema_version": "kjds-global-source-domain-registry-v1",
+  "contract_id": "kjds-global-source-domain-coverage-v1",
+  "as_of": "2026-08-04",
+  "content_sha256": "5ee7ddc61c97c398a3b2fa8cff654e0803f419185dfce52ba4a389aad2cd48c3",
+  "status_vocabulary": [
+    "implemented",
+    "contract_only",
+    "blocked",
+    "unsupported"
+  ],
+  "completeness_vocabulary": [
+    "complete",
+    "partial",
+    "unknown",
+    "missing",
+    "blocked",
+    "unsupported",
+    "not_applicable"
+  ],
+  "dimensions": [
+    "region",
+    "country",
+    "language",
+    "industry",
+    "platform",
+    "subject",
+    "event",
+    "time",
+    "data_level"
+  ],
+  "policy": {
+    "registry_proves_collection": false,
+    "url_proves_implementation": false,
+    "connector_candidate_proves_implementation": false,
+    "global_label_proves_full_coverage": false,
+    "formal_fact_promotion_allowed": false,
+    "canonical_graph_write_allowed": false,
+    "external_write_allowed": false,
+    "full_coverage_requires_bounded_denominator": true,
+    "unknown_denominator_completeness": "unknown",
+    "source_conflict_default": "preserve_all_observations",
+    "raw_customer_data_retained": false
+  },
+  "source_families": [
+    {
+      "id": "marketplace",
+      "title": "Marketplace catalog, demand, order and settlement source contracts",
+      "owner_role": "market_intelligence_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "seller_authorized_store",
+        "catalog",
+        "demand",
+        "order",
+        "fulfillment",
+        "finance"
+      ],
+      "source_contracts": [
+        {
+          "id": "marketplace.amazon_sp_api_reports",
+          "family": "marketplace",
+          "status": "contract_only",
+          "adapter_kind": "official_api_report",
+          "universe_kind": "bounded",
+          "regions": [
+            "NA",
+            "EU",
+            "FE"
+          ],
+          "evidence_urls": [
+            "https://developer-docs.amazon.com/sp-api/docs/reports-api-v2021-06-30-reference/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.ebay_sell_feed",
+          "family": "marketplace",
+          "status": "contract_only",
+          "adapter_kind": "official_feed",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL_MARKETS"
+          ],
+          "evidence_urls": [
+            "https://developer.ebay.com/api-docs/sell/static/feed/sell-feed.html"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.walmart_marketplace",
+          "family": "marketplace",
+          "status": "contract_only",
+          "adapter_kind": "official_api_report",
+          "universe_kind": "bounded",
+          "regions": [
+            "US"
+          ],
+          "evidence_urls": [
+            "https://developer.walmart.com/us-marketplace/docs/limit-and-pagination"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.mercado_libre",
+          "family": "marketplace",
+          "status": "contract_only",
+          "adapter_kind": "official_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "LATAM"
+          ],
+          "evidence_urls": [
+            "https://global-selling.mercadolibre.com/devsite/en_us/receive-notifications/limits-on-pagination-and-bulk-extraction-in-searches"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.tiktok_shop",
+          "family": "marketplace",
+          "status": "contract_only",
+          "adapter_kind": "official_partner_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "US",
+            "UK",
+            "SEA",
+            "EMEA",
+            "LATAM",
+            "JP"
+          ],
+          "evidence_urls": [
+            "https://partner.tiktokshop.com/docv2/page/tts-developer-guide"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.ozon_seller",
+          "family": "marketplace",
+          "status": "contract_only",
+          "adapter_kind": "official_seller_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "RU",
+            "CIS"
+          ],
+          "evidence_urls": [
+            "https://docs.ozon.ru/api/seller/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.wildberries_seller",
+          "family": "marketplace",
+          "status": "contract_only",
+          "adapter_kind": "official_seller_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "RU",
+            "CIS"
+          ],
+          "evidence_urls": [
+            "https://dev.wildberries.ru/en/openapi/analytics"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.yandex_market_partner",
+          "family": "marketplace",
+          "status": "contract_only",
+          "adapter_kind": "official_partner_api_report",
+          "universe_kind": "bounded",
+          "regions": [
+            "RU"
+          ],
+          "evidence_urls": [
+            "https://yandex.ru/dev/market/partner-api/doc/en/overview/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.alibaba_com",
+          "family": "marketplace",
+          "status": "blocked",
+          "adapter_kind": "official_partner_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL_MARKETS"
+          ],
+          "evidence_urls": [
+            "https://developer.alibaba.com/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.temu_partner",
+          "family": "marketplace",
+          "status": "blocked",
+          "adapter_kind": "official_partner_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL_MARKETS"
+          ],
+          "evidence_urls": [
+            "https://partner.temu.com/documentation"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.shopee_open_platform",
+          "family": "marketplace",
+          "status": "blocked",
+          "adapter_kind": "official_partner_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "SEA",
+            "LATAM"
+          ],
+          "evidence_urls": [
+            "https://open.shopee.com/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "marketplace.lazada_open_platform",
+          "family": "marketplace",
+          "status": "blocked",
+          "adapter_kind": "official_partner_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "SEA"
+          ],
+          "evidence_urls": [
+            "https://open.lazada.com/"
+          ],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "customs_trade",
+      "title": "Customs, tariff and international trade statistics",
+      "owner_role": "trade_intelligence_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "trade_flow",
+        "tariff",
+        "commodity",
+        "reporter",
+        "partner",
+        "period"
+      ],
+      "source_contracts": [
+        {
+          "id": "customs_trade.un_comtrade",
+          "family": "customs_trade",
+          "status": "contract_only",
+          "adapter_kind": "official_api_bulk",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://uncomtrade.org/docs/un-comtrade-api/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "customs_trade.wto_tariff_trade_data",
+          "family": "customs_trade",
+          "status": "contract_only",
+          "adapter_kind": "official_dataset",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://data.wto.org/en/dataset/wto_ttd"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "customs_trade.eurostat_comext",
+          "family": "customs_trade",
+          "status": "contract_only",
+          "adapter_kind": "official_sdmx",
+          "universe_kind": "enumerable",
+          "regions": [
+            "EU"
+          ],
+          "evidence_urls": [
+            "https://ec.europa.eu/eurostat/web/user-guides/data-browser/api-data-access/api-introduction"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "customs_trade.us_census_international_trade",
+          "family": "customs_trade",
+          "status": "contract_only",
+          "adapter_kind": "official_api",
+          "universe_kind": "enumerable",
+          "regions": [
+            "US"
+          ],
+          "evidence_urls": [
+            "https://www.census.gov/data/developers/data-sets/international-trade.html"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "customs_trade.uk_hmrc_trade_info",
+          "family": "customs_trade",
+          "status": "contract_only",
+          "adapter_kind": "official_odata",
+          "universe_kind": "enumerable",
+          "regions": [
+            "UK"
+          ],
+          "evidence_urls": [
+            "https://www.uktradeinfo.com/api-documentation"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "customs_trade.usitc_dataweb",
+          "family": "customs_trade",
+          "status": "contract_only",
+          "adapter_kind": "official_api_export",
+          "universe_kind": "query_bounded",
+          "regions": [
+            "US"
+          ],
+          "evidence_urls": [
+            "https://www.usitc.gov/applications/dataweb/api/dataweb_query_api.html"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "customs_trade.eu_taric",
+          "family": "customs_trade",
+          "status": "contract_only",
+          "adapter_kind": "official_export",
+          "universe_kind": "enumerable",
+          "regions": [
+            "EU"
+          ],
+          "evidence_urls": [
+            "https://taxation-customs.ec.europa.eu/customs/common-customs-tariff-cct/tariff-classification-goods/eu-customs-tariff-taric_en"
+          ],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "company_registry",
+      "title": "Company, legal entity and filing registries",
+      "owner_role": "enterprise_intelligence_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "legal_entity",
+        "filing",
+        "ownership_relationship",
+        "registration_event",
+        "verification"
+      ],
+      "source_contracts": [
+        {
+          "id": "company_registry.gleif_golden_copy",
+          "family": "company_registry",
+          "status": "contract_only",
+          "adapter_kind": "official_golden_copy_delta",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://www.gleif.org/en/lei-data/gleif-golden-copy/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "company_registry.uk_companies_house",
+          "family": "company_registry",
+          "status": "contract_only",
+          "adapter_kind": "official_api_stream_bulk",
+          "universe_kind": "enumerable",
+          "regions": [
+            "UK"
+          ],
+          "evidence_urls": [
+            "https://developer.company-information.service.gov.uk/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "company_registry.us_sec_edgar",
+          "family": "company_registry",
+          "status": "contract_only",
+          "adapter_kind": "official_api_filing",
+          "universe_kind": "enumerable",
+          "regions": [
+            "US"
+          ],
+          "evidence_urls": [
+            "https://www.sec.gov/search-filings/edgar-application-programming-interfaces"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "company_registry.sam_gov_entity",
+          "family": "company_registry",
+          "status": "contract_only",
+          "adapter_kind": "official_api_export",
+          "universe_kind": "query_bounded",
+          "regions": [
+            "US"
+          ],
+          "evidence_urls": [
+            "https://open.gsa.gov/api/entity-api/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "company_registry.eu_vies",
+          "family": "company_registry",
+          "status": "contract_only",
+          "adapter_kind": "official_verify_only",
+          "universe_kind": "query_bounded",
+          "regions": [
+            "EU"
+          ],
+          "evidence_urls": [
+            "https://ec.europa.eu/taxation_customs/vies/technicalInformation.html"
+          ],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "web_search",
+      "title": "Versioned public web and search observations",
+      "owner_role": "web_intelligence_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "bounded_query",
+        "public_page",
+        "domain_snapshot",
+        "search_result_observation",
+        "change_detection"
+      ],
+      "source_contracts": [
+        {
+          "id": "web_search.bounded_query_observation",
+          "family": "web_search",
+          "status": "contract_only",
+          "adapter_kind": "terms_permitted_public_observation",
+          "universe_kind": "query_bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "web_search.owner_domain_export",
+          "family": "web_search",
+          "status": "contract_only",
+          "adapter_kind": "owner_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "social_content",
+      "title": "Public or account-authorized social and content observations",
+      "owner_role": "social_intelligence_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "content",
+        "comment",
+        "creator",
+        "topic",
+        "engagement",
+        "account_metric"
+      ],
+      "source_contracts": [
+        {
+          "id": "social_content.official_account_api",
+          "family": "social_content",
+          "status": "contract_only",
+          "adapter_kind": "official_account_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "social_content.public_bounded_observation",
+          "family": "social_content",
+          "status": "contract_only",
+          "adapter_kind": "terms_permitted_public_observation",
+          "universe_kind": "query_bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "social_content.owner_export",
+          "family": "social_content",
+          "status": "contract_only",
+          "adapter_kind": "owner_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "ads_traffic",
+      "title": "Advertising, attribution and owned traffic measurements",
+      "owner_role": "growth_analytics_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "campaign",
+        "creative",
+        "impression",
+        "click",
+        "conversion",
+        "spend",
+        "owned_traffic"
+      ],
+      "source_contracts": [
+        {
+          "id": "ads_traffic.official_ads_reporting",
+          "family": "ads_traffic",
+          "status": "contract_only",
+          "adapter_kind": "official_reporting_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "ads_traffic.owner_analytics_export",
+          "family": "ads_traffic",
+          "status": "contract_only",
+          "adapter_kind": "owner_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "supplier_catalog",
+      "title": "Supplier, catalog, RFQ and product identity sources",
+      "owner_role": "supply_intelligence_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "supplier",
+        "catalog",
+        "offer",
+        "rfq",
+        "product_identity",
+        "verification"
+      ],
+      "source_contracts": [
+        {
+          "id": "supplier_catalog.authorized_b2b_api_export",
+          "family": "supplier_catalog",
+          "status": "contract_only",
+          "adapter_kind": "official_api_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "supplier_catalog.gs1_verified",
+          "family": "supplier_catalog",
+          "status": "contract_only",
+          "adapter_kind": "official_verify_only",
+          "universe_kind": "query_bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://www.gs1.org/services/verified-by-gs1"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "supplier_catalog.owner_quote_export",
+          "family": "supplier_catalog",
+          "status": "contract_only",
+          "adapter_kind": "owner_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "logistics",
+      "title": "Shipment, carrier, route and milestone sources",
+      "owner_role": "logistics_intelligence_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "shipment",
+        "package",
+        "route",
+        "milestone",
+        "carrier",
+        "delivery_exception"
+      ],
+      "source_contracts": [
+        {
+          "id": "logistics.dhl_global_forwarding",
+          "family": "logistics",
+          "status": "contract_only",
+          "adapter_kind": "official_tracking_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://developer.dhl.com/api-reference/shipment-tracking-v2-dhl-global-forwarding"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "logistics.fedex_visibility",
+          "family": "logistics",
+          "status": "contract_only",
+          "adapter_kind": "official_tracking_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://developer.fedex.com/api/en-us/catalog/track/v1/docs.html"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "logistics.maersk_ocean",
+          "family": "logistics",
+          "status": "blocked",
+          "adapter_kind": "official_customer_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://developer.maersk.com/api-catalogue"
+          ],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "payments_fx_macro",
+      "title": "Payment, settlement, FX and macroeconomic sources",
+      "owner_role": "finance_data_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "payment",
+        "settlement",
+        "balance",
+        "fx",
+        "macro_series",
+        "revision"
+      ],
+      "source_contracts": [
+        {
+          "id": "payments_fx_macro.stripe_balance_transactions",
+          "family": "payments_fx_macro",
+          "status": "contract_only",
+          "adapter_kind": "official_api_report",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://docs.stripe.com/api/balance_transactions/list"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "payments_fx_macro.paypal_transaction_search",
+          "family": "payments_fx_macro",
+          "status": "contract_only",
+          "adapter_kind": "official_api",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://developer.paypal.com/docs/transaction-search/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "payments_fx_macro.adyen_settlement",
+          "family": "payments_fx_macro",
+          "status": "contract_only",
+          "adapter_kind": "official_report",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://docs.adyen.com/reporting/settlement-reconciliation/transaction-level/settlement-details-report"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "payments_fx_macro.wise_balance_statement",
+          "family": "payments_fx_macro",
+          "status": "contract_only",
+          "adapter_kind": "official_api_report",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://docs.wise.com/api-reference/balance-statement/balancestatementget"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "payments_fx_macro.ecb_exchange_rates",
+          "family": "payments_fx_macro",
+          "status": "contract_only",
+          "adapter_kind": "official_sdmx_bulk",
+          "universe_kind": "enumerable",
+          "regions": [
+            "EU",
+            "GLOBAL_CURRENCIES"
+          ],
+          "evidence_urls": [
+            "https://data.ecb.europa.eu/help/api/data"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "payments_fx_macro.bank_of_russia_rates",
+          "family": "payments_fx_macro",
+          "status": "contract_only",
+          "adapter_kind": "official_xml",
+          "universe_kind": "enumerable",
+          "regions": [
+            "RU"
+          ],
+          "evidence_urls": [
+            "https://www.cbr.ru/development/SXML/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "payments_fx_macro.bis_eer",
+          "family": "payments_fx_macro",
+          "status": "contract_only",
+          "adapter_kind": "official_dataset",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://data.bis.org/topics/EER"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "payments_fx_macro.world_bank_indicators",
+          "family": "payments_fx_macro",
+          "status": "contract_only",
+          "adapter_kind": "official_api",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://datahelpdesk.worldbank.org/knowledgebase/articles/889392-about-the-indicators-api-documentation"
+          ],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "regulation_standards",
+      "title": "Regulation, tariff measures, standards and official change sources",
+      "owner_role": "risk_compliance_data_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "law",
+        "regulation",
+        "standard",
+        "measure",
+        "effective_interval",
+        "revision"
+      ],
+      "source_contracts": [
+        {
+          "id": "regulation_standards.official_publication",
+          "family": "regulation_standards",
+          "status": "contract_only",
+          "adapter_kind": "official_publication_export",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL_JURISDICTIONS"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "regulation_standards.wto_documents",
+          "family": "regulation_standards",
+          "status": "contract_only",
+          "adapter_kind": "official_dataset",
+          "universe_kind": "query_bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://docs.wto.org/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "regulation_standards.eu_taric_measures",
+          "family": "regulation_standards",
+          "status": "contract_only",
+          "adapter_kind": "official_export",
+          "universe_kind": "enumerable",
+          "regions": [
+            "EU"
+          ],
+          "evidence_urls": [
+            "https://taxation-customs.ec.europa.eu/customs/common-customs-tariff-cct/tariff-classification-goods/eu-customs-tariff-taric_en"
+          ],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "ip_patents_research",
+      "title": "Patents, trademarks, standards research and scholarly sources",
+      "owner_role": "research_intelligence_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "patent",
+        "trademark",
+        "publication",
+        "citation",
+        "research_dataset",
+        "technology_signal"
+      ],
+      "source_contracts": [
+        {
+          "id": "ip_patents_research.wipo_ip_statistics",
+          "family": "ip_patents_research",
+          "status": "contract_only",
+          "adapter_kind": "official_dataset",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://www.wipo.int/ipstats/en/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "ip_patents_research.uspto_open_data",
+          "family": "ip_patents_research",
+          "status": "contract_only",
+          "adapter_kind": "official_api_bulk",
+          "universe_kind": "enumerable",
+          "regions": [
+            "US"
+          ],
+          "evidence_urls": [
+            "https://developer.uspto.gov/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "ip_patents_research.openalex",
+          "family": "ip_patents_research",
+          "status": "contract_only",
+          "adapter_kind": "open_research_api_snapshot",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://docs.openalex.org/"
+          ],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "ip_patents_research.crossref",
+          "family": "ip_patents_research",
+          "status": "contract_only",
+          "adapter_kind": "member_metadata_api",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [
+            "https://www.crossref.org/documentation/retrieve-metadata/rest-api/"
+          ],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "talent_jobs",
+      "title": "Public job demand, occupation and workforce statistics",
+      "owner_role": "talent_intelligence_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "occupation",
+        "job_posting",
+        "skill",
+        "wage",
+        "employment",
+        "workforce_signal"
+      ],
+      "source_contracts": [
+        {
+          "id": "talent_jobs.official_labor_statistics",
+          "family": "talent_jobs",
+          "status": "contract_only",
+          "adapter_kind": "official_dataset_api",
+          "universe_kind": "enumerable",
+          "regions": [
+            "GLOBAL_JURISDICTIONS"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "talent_jobs.public_job_board_observation",
+          "family": "talent_jobs",
+          "status": "contract_only",
+          "adapter_kind": "terms_permitted_public_observation",
+          "universe_kind": "query_bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "talent_jobs.owner_recruiting_export",
+          "family": "talent_jobs",
+          "status": "contract_only",
+          "adapter_kind": "owner_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "GLOBAL"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        }
+      ]
+    },
+    {
+      "id": "crm_erp_finance_operations",
+      "title": "First-party CRM, ERP, finance and operations sources",
+      "owner_role": "operating_truth_owner",
+      "required_dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "coverage_intent": [
+        "customer_lifecycle",
+        "product",
+        "order",
+        "inventory",
+        "finance",
+        "service",
+        "operation"
+      ],
+      "source_contracts": [
+        {
+          "id": "crm_erp_finance_operations.owner_crm_export",
+          "family": "crm_erp_finance_operations",
+          "status": "contract_only",
+          "adapter_kind": "owner_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "OPERATING_SCOPE"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "crm_erp_finance_operations.owner_erp_export",
+          "family": "crm_erp_finance_operations",
+          "status": "contract_only",
+          "adapter_kind": "owner_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "OPERATING_SCOPE"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "crm_erp_finance_operations.owner_finance_export",
+          "family": "crm_erp_finance_operations",
+          "status": "contract_only",
+          "adapter_kind": "owner_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "OPERATING_SCOPE"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        },
+        {
+          "id": "crm_erp_finance_operations.owner_operations_export",
+          "family": "crm_erp_finance_operations",
+          "status": "contract_only",
+          "adapter_kind": "owner_export",
+          "universe_kind": "bounded",
+          "regions": [
+            "OPERATING_SCOPE"
+          ],
+          "evidence_urls": [],
+          "implementation_evidence_refs": []
+        }
+      ]
+    }
+  ]
+}
