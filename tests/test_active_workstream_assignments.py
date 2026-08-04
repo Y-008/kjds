@@ -125,13 +125,28 @@ def test_bas196_holds_local_demo_delivery_verification_lease():
     assert "BAS-196" not in registry["shared_write_leases"].values()
 
 
-def test_bas199_release_advances_strategic_lane_without_preleasing_bas200():
+def test_bas200_holds_gap_graph_lease_without_shared_writes():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     strategic = lanes["L"]
 
-    assert strategic["current_task"] is None
-    assert strategic["next_task_id"] == "BAS-200"
+    assert strategic["current_task"] == {
+        "task_id": "BAS-200",
+        "state": "in_progress",
+        "owner_thread_id": "019fc104-db84-7fc2-b1de-08a51fc4e462",
+        "write_scope": [
+            "gap_graph_contract",
+            "strategic_opportunity_portfolio",
+            "evidence_benchmark_capability_problem_mapping",
+            "dependency_max_loss_alternative_invalidation",
+            "bas173_retrieval_read_only_link",
+            "bas199_benchmark_read_only_link",
+            "observation_only_zero_authority",
+            "gap_graph_contract_tests",
+        ],
+        "blocked_on": [],
+    }
+    assert strategic["next_task_id"] is None
     assert "BAS-200" not in registry["shared_write_leases"].values()
 
 
@@ -179,11 +194,6 @@ def test_bas202_release_advances_product_engineering_lane_without_shared_writes(
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
-    assert all(
-        lane["current_task"] is None
-        or lane["current_task"]["task_id"] != "BAS-200"
-        for lane in registry["lanes"]
-    )
 
 
 def test_bas176_holds_only_the_disposable_postgres_rehearsal_lane():
