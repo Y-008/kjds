@@ -58,6 +58,10 @@ UNIQUE_SOURCE_REF_SOURCES = {
     "channel_account_official_readback",
     "channel_account_one_time_permit",
     "governed-agent-run-evidence",
+    "global-data-coverage-denominator",
+    "global-data-coverage-ledger",
+    "global-data-coverage-manifest",
+    "global-data-coverage-native-caps",
     "governed-team-agent-evolution",
     "team-agent-baseline-authority",
     "team-agent-deidentification-authority",
@@ -138,6 +142,39 @@ TEAM_AGENT_RESERVED_CONTRACTS = frozenset(
         "kjds-team-agent-shadow-authority-v1",
     }
 )
+COVERAGE_RESERVED_SOURCES = frozenset(
+    {
+        "global-data-coverage-manifest",
+        "global-data-coverage-native-caps",
+        "global-data-coverage-denominator",
+        "global-data-coverage-ledger",
+    }
+)
+COVERAGE_RESERVED_CONTRACTS = frozenset(
+    {
+        "kjds-global-data-coverage-manifest-evidence-v1",
+        "kjds-global-data-coverage-native-caps-evidence-v1",
+        "kjds-global-data-coverage-denominator-evidence-v1",
+        "kjds-global-data-coverage-ledger-evidence-v1",
+    }
+)
+COVERAGE_INTAKE_CONTRACTS: dict[str, dict[str, str]] = {
+    "manifest": {
+        "source": "global-data-coverage-manifest",
+        "contract_id": "kjds-global-data-coverage-manifest-evidence-v1",
+        "schema_version": "kjds-source-coverage-manifest-v1",
+    },
+    "native_caps": {
+        "source": "global-data-coverage-native-caps",
+        "contract_id": "kjds-global-data-coverage-native-caps-evidence-v1",
+        "schema_version": "kjds-source-native-caps-v1",
+    },
+    "denominator": {
+        "source": "global-data-coverage-denominator",
+        "contract_id": "kjds-global-data-coverage-denominator-evidence-v1",
+        "schema_version": "kjds-global-data-coverage-denominator-v1",
+    },
+}
 _RESERVED_CAPTURE_AUTHORITY = object()
 
 TEAM_AGENT_AUTHORITY_CONTRACTS: dict[str, dict[str, Any]] = {
@@ -460,6 +497,47 @@ class EvidenceRecordRow(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
 
+class GlobalDataCoverageIssuanceAuthorityRow(Base):
+    __tablename__ = "global_data_coverage_issuance_authorities"
+
+    authority_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    signing_key_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    signing_key_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class GlobalDataCoverageEvidenceIssuanceRow(Base):
+    __tablename__ = "global_data_coverage_evidence_issuances"
+    __table_args__ = (
+        UniqueConstraint(
+            "evidence_id",
+            "issuance_sha256",
+            "issuance_signature_sha256",
+            name="uq_gdc_issuance_exact_binding",
+        ),
+    )
+
+    evidence_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence_records.id", ondelete="RESTRICT"), primary_key=True
+    )
+    authority_id: Mapped[str] = mapped_column(
+        ForeignKey(
+            "global_data_coverage_issuance_authorities.authority_id",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    evidence_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(160), nullable=False)
+    source_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    issuance_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    issuance_signature_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    authority_checked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class LineageEdgeRow(Base):
     __tablename__ = "lineage_edges"
     __table_args__ = (
@@ -617,6 +695,60 @@ class EvidenceService:
             _session=session,
         )
 
+    def capture_global_data_coverage_ledger_event(
+        self,
+        *,
+        content: bytes,
+        source_ref: str,
+        effective_at: str,
+        metadata: dict[str, Any],
+        session: Session,
+    ) -> EvidenceRecord:
+        """Persist one module-owned hash-and-code-only coverage ledger event."""
+
+        snapshot_id = str(metadata.get("snapshot_id") or "").strip()
+        event_id = str(metadata.get("event_id") or "").strip()
+        expected_ref = f"coverage-ledger://{snapshot_id}/{event_id}"
+        try:
+            payload = json.loads(content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Coverage ledger event must be canonical JSON") from exc
+        canonical = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+        if (
+            not isinstance(payload, dict)
+            or canonical != content
+            or metadata.get("contract_id")
+            != "kjds-global-data-coverage-ledger-evidence-v1"
+            or payload.get("contract_id")
+            != "kjds-global-data-coverage-ledger-evidence-v1"
+            or payload.get("snapshot_id") != snapshot_id
+            or payload.get("event_sha256") != metadata.get("event_sha256")
+            or source_ref != expected_ref
+            or not snapshot_id
+            or not event_id
+        ):
+            raise ValueError("Invalid global data coverage ledger event contract")
+        return self.capture(
+            content=content,
+            filename=f"{event_id}.json",
+            content_type="application/json",
+            source="global-data-coverage-ledger",
+            source_ref=source_ref,
+            grade=EvidenceGrade.D,
+            effective_at=effective_at,
+            effective_until=None,
+            created_by="kjds-global-data-coverage-ledger",
+            metadata=metadata,
+            _reserved_authority=_RESERVED_CAPTURE_AUTHORITY,
+            _session=session,
+        )
+
     def capture(
         self,
         *,
@@ -666,6 +798,14 @@ class EvidenceService:
         ) and _reserved_authority is not _RESERVED_CAPTURE_AUTHORITY:
             raise ValueError(
                 "Reserved team-agent Evidence requires its dedicated authority adapter"
+            )
+        if (
+            source.strip().lower() in COVERAGE_RESERVED_SOURCES
+            or str(metadata.get("contract_id") or "").strip()
+            in COVERAGE_RESERVED_CONTRACTS
+        ) and _reserved_authority is not _RESERVED_CAPTURE_AUTHORITY:
+            raise ValueError(
+                "Reserved coverage Evidence requires its dedicated authority adapter"
             )
         retention_class = metadata.get("retention_class")
         if retention_class is not None:
@@ -812,6 +952,19 @@ class EvidenceService:
             if row is None:
                 raise KeyError(f"Unknown evidence: {evidence_id}")
             return self._record(row, 0)
+
+    def get_metadata_in_session(
+        self, evidence_id: str, *, session: Session
+    ) -> EvidenceRecord:
+        """Load Evidence metadata through the caller's governed transaction."""
+
+        row = session.get(EvidenceRecordRow, evidence_id)
+        if row is None:
+            raise KeyError(f"Unknown evidence: {evidence_id}")
+        blob = session.get(EvidenceBlobRow, row.blob_sha256)
+        if blob is None:
+            raise RuntimeError(f"Evidence blob is missing: {row.blob_sha256}")
+        return self._record(row, blob.byte_size)
 
     def list(self, limit: int = 100) -> list[EvidenceRecord]:
         with Session(self.engine) as session:
@@ -1009,6 +1162,58 @@ class EvidenceService:
             hmac_compare(record.sha256, actual),
         )
         return record, verification
+
+    def inspect_integrity_in_session(
+        self, evidence_id: str, *, session: Session
+    ) -> tuple[EvidenceRecord, EvidenceVerification]:
+        """Verify Evidence through the same transaction as its owning ledger."""
+
+        row = session.get(EvidenceRecordRow, evidence_id)
+        if row is None:
+            raise KeyError(f"Unknown evidence: {evidence_id}")
+        blob = session.get(EvidenceBlobRow, row.blob_sha256)
+        if blob is None:
+            raise RuntimeError(f"Evidence blob is missing: {row.blob_sha256}")
+        content = bytes(blob.content_bytes)
+        record = self._record(row, blob.byte_size)
+        actual = hashlib.sha256(content).hexdigest()
+        return record, EvidenceVerification(
+            record.id,
+            record.sha256,
+            actual,
+            len(content),
+            hmac_compare(record.sha256, actual),
+        )
+
+    def require_current_in_session(
+        self,
+        evidence_ids: list[str],
+        *,
+        as_of: datetime,
+        session: Session,
+    ) -> None:
+        """Apply currentness and integrity gates inside the owning transaction."""
+
+        normalized = self._normalized_evidence_ids(evidence_ids)
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must include a timezone")
+        current = as_of.astimezone(UTC)
+        for evidence_id in normalized:
+            record, verification = self.inspect_integrity_in_session(
+                evidence_id, session=session
+            )
+            if not verification.valid:
+                raise ValueError(f"Evidence failed hash verification: {evidence_id}")
+            effective_at = self._stored_timestamp(record.effective_at)
+            effective_until = (
+                self._stored_timestamp(record.effective_until)
+                if record.effective_until
+                else None
+            )
+            if effective_at > current:
+                raise ValueError(f"Evidence is not yet effective: {evidence_id}")
+            if effective_until is not None and current >= effective_until:
+                raise ValueError(f"Evidence is no longer effective: {evidence_id}")
 
     def retention(self, evidence_id: str, *, as_of: datetime | None = None) -> RetentionAssessment:
         record = self.get(evidence_id)
@@ -1377,3 +1582,403 @@ class TeamAgentEvidenceAuthorityAdapter:
             _reserved_authority=_RESERVED_CAPTURE_AUTHORITY,
             _session=session,
         )
+
+
+class GlobalDataCoverageEvidenceAuthorityAdapter:
+    """Server-only projector for independently attested coverage intake Evidence."""
+
+    def __init__(
+        self,
+        evidence: EvidenceService,
+        *,
+        scope_grants: Any,
+        intake_authority: Any,
+        issuance_signing_key: bytes | str | None = None,
+        issuer_port: Any | None = None,
+        clock: Any | None = None,
+    ) -> None:
+        self.evidence = evidence
+        self.scope_grants = scope_grants
+        self.intake_authority = intake_authority
+        self._issuer_port = issuer_port
+        is_postgres = evidence.engine.dialect.name == "postgresql"
+        if is_postgres:
+            if issuance_signing_key is not None:
+                raise ValueError("PostgreSQL coverage issuer must not hold an application signing key")
+            if self._issuer_port is None or not callable(
+                getattr(self._issuer_port, "issue_evidence", None)
+            ):
+                raise RuntimeError("Dedicated PostgreSQL coverage issuer port is required")
+            self.issuance_signing_key = None
+            self.issuance_signing_key_sha256 = None
+        else:
+            key = (
+                issuance_signing_key.encode()
+                if isinstance(issuance_signing_key, str)
+                else issuance_signing_key
+            )
+            if not isinstance(key, bytes) or len(key) < 32:
+                raise ValueError(
+                    "SQLite coverage intake signing key must be at least 32 bytes"
+                )
+            self.issuance_signing_key = key.hex()
+            self.issuance_signing_key_sha256 = hashlib.sha256(
+                self.issuance_signing_key.encode()
+            ).hexdigest()
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    def capture_manifest(
+        self,
+        *,
+        principal: Any,
+        store_ref: str,
+        data_as_of: datetime,
+        attestation_ref: str,
+        session: Session | None = None,
+    ) -> EvidenceRecord:
+        return self._capture(
+            purpose="manifest",
+            principal=principal,
+            store_ref=store_ref,
+            data_as_of=data_as_of,
+            attestation_ref=attestation_ref,
+            session=session,
+        )
+
+    def capture_native_caps(
+        self,
+        *,
+        principal: Any,
+        store_ref: str,
+        data_as_of: datetime,
+        attestation_ref: str,
+        session: Session | None = None,
+    ) -> EvidenceRecord:
+        return self._capture(
+            purpose="native_caps",
+            principal=principal,
+            store_ref=store_ref,
+            data_as_of=data_as_of,
+            attestation_ref=attestation_ref,
+            session=session,
+        )
+
+    def capture_denominator(
+        self,
+        *,
+        principal: Any,
+        store_ref: str,
+        data_as_of: datetime,
+        attestation_ref: str,
+        session: Session | None = None,
+    ) -> EvidenceRecord:
+        return self._capture(
+            purpose="denominator",
+            principal=principal,
+            store_ref=store_ref,
+            data_as_of=data_as_of,
+            attestation_ref=attestation_ref,
+            session=session,
+        )
+
+    def _capture(
+        self,
+        *,
+        purpose: str,
+        principal: Any,
+        store_ref: str,
+        data_as_of: datetime,
+        attestation_ref: str,
+        session: Session | None,
+    ) -> EvidenceRecord:
+        contract = COVERAGE_INTAKE_CONTRACTS[purpose]
+        actor_id = str(getattr(principal, "actor_id", "") or "").strip()
+        roles = frozenset(getattr(principal, "roles", ()))
+        store = str(store_ref or "").strip()
+        reference = str(attestation_ref or "").strip()
+        if not actor_id or not roles.intersection({"operator", "compliance", "admin"}):
+            raise PermissionError("Coverage intake issuer role is not admitted")
+        can_access = getattr(principal, "can_access_store", None)
+        if not callable(can_access) or not can_access(store):
+            raise PermissionError("Coverage intake issuer cannot access store")
+        checked_at = self.clock()
+        if not isinstance(checked_at, datetime) or checked_at.tzinfo is None:
+            raise ValueError("Coverage intake authority clock must include a timezone")
+        checked_at = checked_at.astimezone(UTC)
+        if not isinstance(data_as_of, datetime) or data_as_of.tzinfo is None:
+            raise ValueError("Coverage intake data_as_of must include a timezone")
+        cutoff = data_as_of.astimezone(UTC)
+        if cutoff > checked_at or not reference:
+            raise ValueError("Coverage intake cutoff or attestation reference is invalid")
+        authority = self.scope_grants.current(
+            principal=principal,
+            store_ref=store,
+            as_of=checked_at,
+        )
+        if authority.get("status") != "ready":
+            raise PermissionError("Coverage intake exact scope authority is not ready")
+        tenant_ref = str(getattr(principal, "tenant_ref", "") or "").strip()
+        entity_ref = str(authority.get("entity_ref") or "").strip()
+        authority_store = str(authority.get("store_ref") or "").strip()
+        authority_tenant = str(authority.get("tenant_ref") or "").strip()
+        authority_sha256 = str(authority.get("authority_sha256") or "").strip().lower()
+        if (
+            not tenant_ref
+            or not entity_ref
+            or authority_store != store
+            or authority_tenant != tenant_ref
+            or len(authority_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in authority_sha256)
+        ):
+            raise PermissionError("Coverage intake exact scope authority binding is invalid")
+        scope = {
+            "tenant_ref": tenant_ref,
+            "entity_ref": entity_ref,
+            "store_ref": store,
+            "scope_grant_authority_sha256": authority_sha256,
+        }
+        projection = self.intake_authority.project(
+            purpose=purpose,
+            attestation_ref=reference,
+            exact_scope=scope,
+            data_as_of=cutoff,
+            checked_at=checked_at,
+        )
+        payload = projection.get("payload")
+        source_contract_id = str(projection.get("source_contract_id") or "").strip()
+        source_contract_version = str(
+            projection.get("source_contract_version") or ""
+        ).strip()
+        attestation_contract_id = str(
+            projection.get("attestation_contract_id") or ""
+        ).strip()
+        attestation_contract_version = str(
+            projection.get("attestation_contract_version") or ""
+        ).strip()
+        attestation_sha256 = str(projection.get("attestation_sha256") or "").strip().lower()
+        issuer_ref_sha256 = str(projection.get("issuer_ref_sha256") or "").strip().lower()
+        if (
+            projection.get("status") != "ready"
+            or projection.get("purpose") != purpose
+            or projection.get("attestation_ref") != reference
+            or not isinstance(payload, dict)
+            or payload.get("schema_version") != contract["schema_version"]
+            or not source_contract_id
+            or not source_contract_version
+            or not attestation_contract_id
+            or not attestation_contract_version
+            or len(attestation_sha256) != 64
+            or len(issuer_ref_sha256) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for value in (attestation_sha256, issuer_ref_sha256)
+                for character in value
+            )
+        ):
+            raise PermissionError("Coverage intake upstream attestation is invalid")
+        effective_at = parse_timestamp(str(projection.get("effective_at") or ""), "effective_at")
+        recorded_at = parse_timestamp(str(projection.get("recorded_at") or ""), "recorded_at")
+        effective_until_raw = projection.get("effective_until")
+        effective_until = (
+            parse_timestamp(str(effective_until_raw), "effective_until")
+            if effective_until_raw
+            else None
+        )
+        if (
+            effective_at > recorded_at
+            or recorded_at > cutoff
+            or effective_at > cutoff
+            or (effective_until is not None and cutoff >= effective_until)
+            or (effective_until is not None and checked_at >= effective_until)
+        ):
+            raise PermissionError("Coverage intake attestation chronology is invalid")
+        content = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+        content_sha256 = hashlib.sha256(content).hexdigest()
+        if projection.get("payload_sha256") != content_sha256:
+            raise PermissionError("Coverage intake attested payload hash drifted")
+        if purpose != "denominator":
+            unsigned = {key: value for key, value in payload.items() if key != "content_sha256"}
+            payload_sha256 = hashlib.sha256(
+                json.dumps(
+                    unsigned,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode()
+            ).hexdigest()
+            if payload.get("content_sha256") != payload_sha256:
+                raise ValueError("Coverage intake payload content hash drifted")
+        issuance = {
+            "purpose": purpose,
+            "source": contract["source"],
+            "contract_id": contract["contract_id"],
+            "schema_version": contract["schema_version"],
+            "content_sha256": content_sha256,
+            "source_contract_id": source_contract_id,
+            "source_contract_version": source_contract_version,
+            "attestation_contract_id": attestation_contract_id,
+            "attestation_contract_version": attestation_contract_version,
+            "attestation_sha256": attestation_sha256,
+            "issuer_ref_sha256": issuer_ref_sha256,
+            "upstream_effective_at": effective_at.isoformat(),
+            "upstream_recorded_at": recorded_at.isoformat(),
+            "upstream_effective_until": (
+                effective_until.isoformat() if effective_until else None
+            ),
+            "scope": scope,
+        }
+        issuance_sha256 = hashlib.sha256(
+            json.dumps(
+                issuance,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        issuance_signature_sha256 = (
+            hashlib.sha256(
+                f"{self.issuance_signing_key}:{issuance_sha256}".encode()
+            ).hexdigest()
+            if self.issuance_signing_key is not None
+            else None
+        )
+        source = str(contract["source"])
+        source_ref = (
+            f"{source}://{authority_sha256}/{content_sha256}/{issuance_sha256}"
+        )
+        metadata = {
+                "contract_id": contract["contract_id"],
+                "schema_version": contract["schema_version"],
+                "coverage_intake_purpose": purpose,
+                "coverage_intake_issuance_sha256": issuance_sha256,
+                "coverage_intake_source_contract_id": source_contract_id,
+                "coverage_intake_source_contract_version": source_contract_version,
+                "coverage_intake_attestation_contract_id": attestation_contract_id,
+                "coverage_intake_attestation_contract_version": attestation_contract_version,
+                "coverage_intake_attestation_sha256": attestation_sha256,
+                "coverage_intake_issuer_ref_sha256": issuer_ref_sha256,
+                "coverage_intake_authority_checked_at": checked_at.isoformat(),
+                "coverage_intake_data_as_of": cutoff.isoformat(),
+                "coverage_intake_upstream_recorded_at": recorded_at.isoformat(),
+                "coverage_intake_upstream_effective_at": effective_at.isoformat(),
+                "coverage_intake_upstream_effective_until": (
+                    effective_until.isoformat() if effective_until else None
+                ),
+                "payload_content_sha256": payload.get("content_sha256"),
+                **scope,
+                "retention_class": "compliance",
+                "legal_hold": False,
+            }
+        if issuance_signature_sha256 is not None:
+            metadata["coverage_intake_issuance_signature_sha256"] = (
+                issuance_signature_sha256
+            )
+
+        def persist_local(target_session: Session) -> EvidenceRecord:
+            authority_row = target_session.get(
+                GlobalDataCoverageIssuanceAuthorityRow,
+                "coverage-intake-v1",
+            )
+            if authority_row is None:
+                target_session.add(
+                    GlobalDataCoverageIssuanceAuthorityRow(
+                        authority_id="coverage-intake-v1",
+                        signing_key_secret=self.issuance_signing_key,
+                        signing_key_sha256=self.issuance_signing_key_sha256,
+                        created_at=checked_at,
+                    )
+                )
+                target_session.flush()
+            elif (
+                authority_row.signing_key_secret != self.issuance_signing_key
+                or authority_row.signing_key_sha256
+                != self.issuance_signing_key_sha256
+            ):
+                raise PermissionError("Coverage issuance authority key drifted")
+            record = self.evidence.capture(
+                content=content,
+                filename=f"{purpose}-{content_sha256}.json",
+                content_type="application/json",
+                source=source,
+                source_ref=source_ref,
+                grade=EvidenceGrade.A,
+                effective_at=effective_at.isoformat(),
+                effective_until=(
+                    effective_until.isoformat() if effective_until else None
+                ),
+                created_by="kjds-global-data-coverage-intake-authority",
+                metadata=metadata,
+                _reserved_authority=_RESERVED_CAPTURE_AUTHORITY,
+                _session=target_session,
+            )
+            existing = target_session.get(
+                GlobalDataCoverageEvidenceIssuanceRow, record.id
+            )
+            if existing is None:
+                target_session.add(
+                    GlobalDataCoverageEvidenceIssuanceRow(
+                        evidence_id=record.id,
+                        authority_id="coverage-intake-v1",
+                        evidence_sha256=record.sha256,
+                        source=record.source,
+                        source_ref=record.source_ref,
+                        issuance_sha256=issuance_sha256,
+                        issuance_signature_sha256=issuance_signature_sha256,
+                        authority_checked_at=checked_at,
+                        created_at=checked_at,
+                    )
+                )
+                target_session.flush()
+            elif existing is None or (
+                existing.evidence_sha256 != record.sha256
+                or existing.source != record.source
+                or existing.source_ref != record.source_ref
+                or existing.issuance_sha256 != issuance_sha256
+                or existing.issuance_signature_sha256
+                != issuance_signature_sha256
+            ):
+                raise ValueError("Coverage intake issuance replay drifted")
+            return record
+
+        if self.evidence.engine.dialect.name != "postgresql":
+            if session is not None:
+                return persist_local(session)
+            with self.evidence.transaction() as target_session:
+                return persist_local(target_session)
+
+        if session is not None:
+            raise RuntimeError(
+                "PostgreSQL coverage issuance uses its isolated issuer transaction"
+            )
+        evidence_id = new_id("evd")
+        assert self._issuer_port is not None
+        returned_evidence_id = self._issuer_port.issue_evidence(
+            evidence_id=evidence_id,
+            content=content,
+            source=source,
+            source_ref=source_ref,
+            effective_at=effective_at,
+            effective_until=effective_until,
+            metadata=metadata,
+            issuance_sha256=issuance_sha256,
+            authority_checked_at=checked_at,
+        )
+        record = self.evidence.get(returned_evidence_id)
+        if (
+            record.sha256 != content_sha256
+            or record.source != source
+            or record.source_ref != source_ref
+            or record.metadata.get("coverage_intake_issuance_sha256")
+            != issuance_sha256
+            or not record.metadata.get("coverage_intake_issuance_signature_sha256")
+        ):
+            raise PermissionError("Coverage issuer receipt binding drifted")
+        self.evidence.require_current([record.id], as_of=checked_at)
+        return record

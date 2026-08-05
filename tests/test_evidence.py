@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -10,7 +12,9 @@ from apps.control_plane.evidence import (
     EvidenceGrade,
     EvidenceRecordRow,
     EvidenceService,
+    GlobalDataCoverageEvidenceAuthorityAdapter,
 )
+from apps.control_plane.security import Principal
 from apps.control_plane.sql_repository import Base
 
 
@@ -336,3 +340,120 @@ def test_lineage_links_evidence_to_fact_and_other_evidence():
     assert fact_edge.to_id == "ord_1001"
     assert {edge.id for edge in service.lineage(source.id)} == {fact_edge.id, derived_edge.id}
     assert service.target_evidence_ids(target_type="order", target_id="ord_1001") == [source.id]
+
+
+def test_global_coverage_intake_sources_and_contracts_are_reserved():
+    _, service = make_service()
+    contracts = (
+        (
+            "global-data-coverage-manifest",
+            "kjds-global-data-coverage-manifest-evidence-v1",
+        ),
+        (
+            "global-data-coverage-native-caps",
+            "kjds-global-data-coverage-native-caps-evidence-v1",
+        ),
+        (
+            "global-data-coverage-denominator",
+            "kjds-global-data-coverage-denominator-evidence-v1",
+        ),
+        (
+            "global-data-coverage-ledger",
+            "kjds-global-data-coverage-ledger-evidence-v1",
+        ),
+    )
+    for source, contract_id in contracts:
+        with pytest.raises(ValueError, match="dedicated authority adapter"):
+            service.capture(
+                content=b'{"schema_version":"forged"}',
+                filename="forged.json",
+                content_type="application/json",
+                source=source,
+                source_ref=f"{source}://sha256/{'f' * 64}",
+                grade=EvidenceGrade.A,
+                effective_at="2026-08-04T00:00:00Z",
+                effective_until="2026-08-05T00:00:00Z",
+                created_by="operator-forgery",
+                metadata={"contract_id": contract_id},
+            )
+
+
+def test_global_coverage_intake_authority_is_the_only_issuance_path():
+    _, service = make_service()
+    principal = Principal(
+        actor_id="coverage-issuer",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    payload = {
+        "schema_version": "kjds-source-native-caps-v1",
+        "source_id": "fixture-source",
+    }
+    unsigned = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
+    payload["content_sha256"] = hashlib.sha256(unsigned).hexdigest()
+    now = datetime(2026, 8, 4, 12, tzinfo=UTC)
+
+    class ScopeGrants:
+        @staticmethod
+        def current(*, principal, store_ref, as_of):
+            assert as_of == now
+            return {
+                "status": "ready",
+                "tenant_ref": principal.tenant_ref,
+                "entity_ref": "entity-a",
+                "store_ref": store_ref,
+                "authority_sha256": "a" * 64,
+            }
+
+    class IntakeAuthority:
+        @staticmethod
+        def project(**kwargs):
+            assert kwargs["attestation_ref"] == "attestation://native/1"
+            content_sha256 = hashlib.sha256(
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
+            return {
+                "status": "ready",
+                "purpose": "native_caps",
+                "attestation_ref": "attestation://native/1",
+                "payload": payload,
+                "payload_sha256": content_sha256,
+                    "source_contract_id": "fixture-source-contract-v1",
+                    "source_contract_version": "1.0.0",
+                "attestation_contract_id": "fixture-attestation-v1",
+                "attestation_contract_version": "1.0.0",
+                "attestation_sha256": "b" * 64,
+                "issuer_ref_sha256": "c" * 64,
+                "effective_at": "2026-08-04T08:00:00Z",
+                "recorded_at": "2026-08-04T09:00:00Z",
+                "effective_until": "2026-08-05T00:00:00Z",
+            }
+
+    authority = GlobalDataCoverageEvidenceAuthorityAdapter(
+        service,
+        scope_grants=ScopeGrants(),
+        intake_authority=IntakeAuthority(),
+        issuance_signing_key=b"data-cov-002-test-issuance-signing-key-v1",
+        clock=lambda: now,
+    )
+    record = authority.capture_native_caps(
+        principal=principal,
+        store_ref="store-a",
+        data_as_of=datetime(2026, 8, 4, 10, tzinfo=UTC),
+        attestation_ref="attestation://native/1",
+    )
+    assert record.source == "global-data-coverage-native-caps"
+    assert record.source_ref == (
+        f"{record.source}://{'a' * 64}/{record.sha256}/"
+        f"{record.metadata['coverage_intake_issuance_sha256']}"
+    )
+    assert record.metadata["coverage_intake_purpose"] == "native_caps"
+    assert len(record.metadata["coverage_intake_issuance_sha256"]) == 64

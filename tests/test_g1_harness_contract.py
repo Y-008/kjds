@@ -7,6 +7,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / "scripts" / "verify-g1.ps1"
+DATABASE_MANAGER = ROOT / "scripts" / "manage_g1_database.py"
 DOCKERFILE = ROOT / "Dockerfile"
 DOCKERIGNORE = ROOT / ".dockerignore"
 PWSH = shutil.which("pwsh")
@@ -180,3 +181,44 @@ def test_production_image_packages_machine_readable_registries():
 
     assert "COPY docs/project/registries ./docs/project/registries" in dockerfile
     assert "!docs/project/registries/*.json" in dockerignore
+
+
+def test_g1_coverage_issuer_principals_are_ephemeral_and_secrets_are_scrubbed():
+    harness = HARNESS.read_text(encoding="utf-8")
+    manager = DATABASE_MANAGER.read_text(encoding="utf-8")
+
+    assert "KJDS_G1_COVERAGE_ISSUER_PASSWORD" in harness
+    assert "KJDS_G1_RUNTIME_PASSWORD" in harness
+    assert "KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL" in harness
+    assert "KJDS_RUNTIME_DATABASE_URL" in harness
+    assert '"grant-runtime"' in harness
+    assert "Remove-Item Env:KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL" in harness
+    assert "Remove-Item Env:KJDS_RUNTIME_DATABASE_URL" in harness
+    assert "Remove-Item Env:KJDS_G1_COVERAGE_ISSUER_PASSWORD" in harness
+    assert "Remove-Item Env:KJDS_G1_RUNTIME_PASSWORD" in harness
+    assert "Remove-Item Env:KJDS_G1_RUN_TOKEN" in harness
+    assert harness.index('"scripts/manage_g1_database.py", "acquire"') < harness.index(
+        '"scripts/manage_g1_database.py", "recreate"'
+    )
+    assert "if ($DatabaseLeaseAcquired)" in harness
+    assert "ISSUANCE_SIGNING_KEY" not in harness
+
+    assert "KJDS_G1_RUN_TOKEN" in manager
+    assert "run_token_sha256" in manager
+    assert "roles_owned" in manager
+    assert "database_owned" in manager
+    assert "fixed-resource lease is not owned by this run" in manager
+    assert "shobj_description" in manager
+    assert "kjds_gdc_issuance_owner NOLOGIN NOINHERIT" in manager
+    assert "kjds_gdc_issuance_runtime LOGIN NOINHERIT" in manager
+    assert "kjds_g1_runtime LOGIN NOINHERIT" in manager
+    assert "DROP ROLE IF EXISTS" in manager
+    assert "REVOKE EXECUTE ON FUNCTION kjds_gdc_issue_evidence" in manager
+    assert "print({" in manager
+    assert "issuer_password" not in manager.split("print({", 1)[1]
+
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    assert sum(
+        line.strip().startswith("KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL:")
+        for line in compose.splitlines()
+    ) == 1

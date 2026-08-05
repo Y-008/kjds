@@ -43,11 +43,15 @@ from .content_growth import ContentGrowthService
 from .cost_evidence_review import CostEvidenceAuthorityService
 from .cross_border_capability_atlas import CrossBorderCapabilityAtlas
 from .customer_service import CustomerServiceAuthorityService
-from .database import create_database_engine
+from .database import (
+    create_database_engine,
+    create_global_data_coverage_evidence_authority,
+    runtime_database_url,
+)
 from .decision_contracts import DecisionContractService
 from .decision_lifecycle import DecisionLifecycleService
 from .demand_report_gate import DemandReportGateService
-from .evidence import EvidenceService
+from .evidence import EvidenceService, GlobalDataCoverageEvidenceAuthorityAdapter
 from .evidence_integrity import EvidenceIntegrityMonitorService
 from .evidence_scope import ScopedEvidenceAuthority
 from .evidence_scope_binding import EvidenceScopeBindingService
@@ -235,6 +239,7 @@ class RuntimeServices:
     demand_reports: Any
     engine: Any
     evidence: Any
+    global_data_coverage_evidence_authority_factory: Any
     evidence_scope_binding: Any
     evidence_integrity: Any
     evidenceops_copilot: Any
@@ -316,7 +321,7 @@ class RuntimeServices:
 def build_repository():
     if os.getenv("KJDS_REPOSITORY", "postgres").lower() == "memory":
         return InMemoryRepository()
-    return SqlAlchemyRepository()
+    return SqlAlchemyRepository(engine=create_database_engine(runtime_database_url()))
 
 
 def _build_worker_grant_issuer(engine):
@@ -358,6 +363,22 @@ def _build_worker_grant_issuer(engine):
     )
 
 
+def build_global_data_coverage_evidence_authority(
+    *,
+    evidence: EvidenceService,
+    scope_grants: ScopeGrantAuthority,
+    intake_authority: Any,
+    clock: Any | None = None,
+) -> GlobalDataCoverageEvidenceAuthorityAdapter:
+    """Compose the issuer only into its purpose-specific intake authority."""
+    return create_global_data_coverage_evidence_authority(
+        evidence=evidence,
+        scope_grants=scope_grants,
+        intake_authority=intake_authority,
+        clock=clock,
+    )
+
+
 def build_runtime() -> RuntimeServices:
     repo = build_repository()
     engine = getattr(repo, "engine", None) or create_database_engine()
@@ -369,6 +390,15 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
     )
     scope_grants = ScopeGrantAuthority(engine=engine, evidence=evidence)
+
+    def coverage_intake_authority_factory(*, intake_authority, clock=None):
+        return build_global_data_coverage_evidence_authority(
+            evidence=evidence,
+            scope_grants=scope_grants,
+            intake_authority=intake_authority,
+            clock=clock,
+        )
+
     scoped_evidence = ScopedEvidenceAuthority(evidence=evidence)
     primary_source_intake = PrimarySourceIntake(
         engine=engine,
@@ -1168,6 +1198,9 @@ def build_runtime() -> RuntimeServices:
         demand_reports=demand_reports,
         engine=engine,
         evidence=evidence,
+        global_data_coverage_evidence_authority_factory=(
+            coverage_intake_authority_factory
+        ),
         evidence_scope_binding=evidence_scope_binding,
         evidence_integrity=evidence_integrity,
         evidenceops_copilot=evidenceops_copilot,
