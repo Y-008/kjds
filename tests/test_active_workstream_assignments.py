@@ -153,18 +153,31 @@ def test_data_cov_002_release_frees_coverage_and_migration_leases():
 
     assert coverage["current_task"] is None
     assert coverage["next_task_id"] is None
-    assert registry["shared_write_leases"]["alembic_migration"] is None
     assert "DATA-COV-002" not in registry["shared_write_leases"].values()
 
 
-def test_bas203_release_frees_strategic_capital_dashboard_and_api_leases():
+def test_bas204_holds_closed_loop_evolution_and_migration_leases():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] is None
-    assert engineering["next_task_id"] == "BAS-204"
-    assert registry["shared_write_leases"]["alembic_migration"] is None
+    assert engineering["current_task"] == {
+        "task_id": "BAS-204",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "write_scope": [
+            "closed_loop_outcome_evidence_ledger",
+            "exact_scope_outcome_bundle_authority",
+            "freshness_invalidation_review_projection",
+            "bas177_evolution_observation_handoff",
+            "strategic_dashboard_verified_outcome_adapters",
+            "alembic_migration_0096",
+            "closed_loop_tests_and_evidence",
+        ],
+        "blocked_on": [],
+    }
+    assert engineering["next_task_id"] is None
+    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-204"
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
@@ -188,7 +201,7 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "master_spec",
         "openapi_snapshot",
     }
-    assert registry["shared_write_leases"]["alembic_migration"] is None
+    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-204"
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
