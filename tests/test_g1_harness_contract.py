@@ -222,3 +222,17 @@ def test_g1_coverage_issuer_principals_are_ephemeral_and_secrets_are_scrubbed():
         line.strip().startswith("KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL:")
         for line in compose.splitlines()
     ) == 1
+
+
+def test_g1_strategic_benchmark_sealing_key_is_ephemeral_and_scrubbed():
+    harness = HARNESS.read_text(encoding="utf-8")
+
+    key_assignment = "$env:KJDS_STRATEGIC_BENCHMARK_SEALING_KEY = $StrategicBenchmarkSealingKey"
+    test_invocation = '"python", "-m", "pytest"'
+    cleanup = "Remove-Item Env:KJDS_STRATEGIC_BENCHMARK_SEALING_KEY"
+
+    assert "RandomNumberGenerator]::GetBytes(32)" in harness
+    assert key_assignment in harness
+    assert cleanup in harness
+    assert harness.index(key_assignment) < harness.index(test_invocation)
+    assert harness.index(test_invocation) < harness.index(cleanup)
