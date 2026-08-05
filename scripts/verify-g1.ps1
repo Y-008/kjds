@@ -18,7 +18,19 @@ $ApiProcess = $null
 $WebProcess = $null
 $PostgresContainer = $null
 $WebContainer = $null
-$Python = Join-Path $Root ".venv\Scripts\python.exe"
+$Python = if ($env:KJDS_G1_PYTHON) {
+    $env:KJDS_G1_PYTHON
+} else {
+    Join-Path $Root ".venv\Scripts\python.exe"
+}
+$MigrationDatabaseUrl = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/$DatabaseName"
+$CoverageIssuerPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$RuntimeDatabasePassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$RunToken = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$DatabaseLeaseAcquired = $false
+$DatabaseLeaseEverAcquired = $false
+$CoverageIssuerDatabaseUrl = "postgresql+psycopg://kjds_gdc_issuance_runtime:$CoverageIssuerPassword@127.0.0.1:5432/$DatabaseName"
+$RuntimeDatabaseUrl = "postgresql+psycopg://kjds_g1_runtime:$RuntimeDatabasePassword@127.0.0.1:5432/$DatabaseName"
 
 New-Item -ItemType Directory -Force $Runtime | Out-Null
 Set-Location $Root
@@ -343,7 +355,7 @@ $result = [ordered]@{
     cleanup_file_errors = @()
     error = $null
     report_error = $null
-    report = (Join-Path $Runtime "G1_VERIFICATION.json")
+    report = (Join-Path $Runtime ("G1_VERIFICATION-" + $RunToken + ".json"))
 }
 
 try {
@@ -361,7 +373,11 @@ try {
     Invoke-External -Command git -Arguments @("rev-parse", "--verify", "HEAD")
     $result.git_commit = (git rev-parse HEAD).Trim()
 
-    $env:KJDS_DATABASE_URL = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/$DatabaseName"
+    $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
+    $env:KJDS_G1_COVERAGE_ISSUER_PASSWORD = $CoverageIssuerPassword
+    $env:KJDS_G1_RUNTIME_PASSWORD = $RuntimeDatabasePassword
+    $env:KJDS_G1_RUN_TOKEN = $RunToken
+    $env:KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL = $CoverageIssuerDatabaseUrl
     $env:KJDS_DATABASE_PROVIDER = "local-postgres"
     # The gate must not inherit a machine-level cache path that a managed
     # runner cannot access. This override is scoped to this process only.
@@ -369,6 +385,10 @@ try {
 
     if ($UseExistingPostgres) {
         Write-Output "[G-1] Using reachable PostgreSQL without Docker control-plane access"
+        Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "acquire")
+        $DatabaseLeaseAcquired = $true
+        $DatabaseLeaseEverAcquired = $true
+        $result.report = (Join-Path $Runtime "G1_VERIFICATION.json")
         Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "recreate")
     } else {
         Write-Output "[G-1] Starting PostgreSQL"
@@ -378,8 +398,11 @@ try {
         Wait-Until -Description "PostgreSQL health" -Condition {
             (docker inspect --format "{{.State.Health.Status}}" $PostgresContainer 2>$null).Trim() -eq "healthy"
         }
-        Invoke-External -Command docker -Arguments @("exec", $PostgresContainer, "dropdb", "--if-exists", "-U", "hermes", $DatabaseName)
-        Invoke-External -Command docker -Arguments @("exec", $PostgresContainer, "createdb", "-U", "hermes", $DatabaseName)
+        Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "acquire")
+        $DatabaseLeaseAcquired = $true
+        $DatabaseLeaseEverAcquired = $true
+        $result.report = (Join-Path $Runtime "G1_VERIFICATION.json")
+        Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "recreate")
     }
     Write-Output "[G-1] Replaying migrations in disposable database"
     $env:KJDS_REPOSITORY = "postgres"
@@ -424,6 +447,8 @@ try {
     }
     Invoke-External -Command uv -Arguments @("run", "python", "-m", "alembic", "upgrade", "head")
     $result.migration_replay = $true
+    Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "grant-runtime")
+    $env:KJDS_RUNTIME_DATABASE_URL = $RuntimeDatabaseUrl
 
     Write-Output "[G-1] Seeding the disposable operating Gate observation graph"
     Invoke-External -Command uv -Arguments @(
@@ -905,11 +930,17 @@ try {
         },
         @{
             Name = "smoke processes"
-            Action = { Stop-SmokeProcesses }
+            Action = {
+                if ($DatabaseLeaseEverAcquired) { Stop-SmokeProcesses }
+            }
         },
         @{
             Name = "process verification"
             Action = {
+                if (-not $DatabaseLeaseEverAcquired) {
+                    $result.cleanup_processes = $true
+                    return
+                }
                 $remainingListeners = Get-NetTCPConnection `
                     -LocalPort $ApiPort, $WebPort `
                     -State Listen `
@@ -923,22 +954,20 @@ try {
         @{
             Name = "primary database"
             Action = {
-                if ($PostgresContainer) {
-                    Invoke-External -Command docker -Arguments @(
-                        "exec", $PostgresContainer, "dropdb", "--if-exists",
-                        "--force", "-U", "hermes", $DatabaseName
-                    ) | Out-Null
-                } elseif ($UseExistingPostgres) {
+                if ($DatabaseLeaseAcquired) {
+                    $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
                     Invoke-External -Command $Python -Arguments @(
                         "scripts/manage_g1_database.py", "drop"
                     ) | Out-Null
+                    $script:DatabaseLeaseAcquired = $false
+                    $result.cleanup_database = $true
                 }
             }
         },
         @{
             Name = "restore database"
             Action = {
-                if ($PostgresContainer) {
+                if ($DatabaseLeaseEverAcquired -and $PostgresContainer) {
                     Invoke-External -Command docker -Arguments @(
                         "exec", $PostgresContainer, "dropdb", "--if-exists",
                         "--force", "-U", "hermes", $RestoreDatabaseName
@@ -949,21 +978,22 @@ try {
         @{
             Name = "database verification"
             Action = {
-                if ($PostgresContainer) {
-                    $remainingDatabase = docker exec $PostgresContainer `
-                        psql -U hermes -d postgres -Atc `
-                        "SELECT datname FROM pg_database WHERE datname IN ('$DatabaseName','$RestoreDatabaseName');" `
-                        2>$null
-                    if ($LASTEXITCODE -ne 0) {
-                        throw "Database cleanup verification failed with exit code $LASTEXITCODE"
-                    }
-                    $result.cleanup_database = -not $remainingDatabase
-                } else {
+                if (-not $DatabaseLeaseEverAcquired) {
                     $result.cleanup_database = $true
                 }
                 if (-not $result.cleanup_database) {
-                    throw "Disposable databases remain after cleanup"
+                    throw "Owned disposable database cleanup was not confirmed"
                 }
+            }
+        },
+        @{
+            Name = "coverage issuer credential environment"
+            Action = {
+                Remove-Item Env:KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_RUNTIME_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_COVERAGE_ISSUER_PASSWORD -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_RUNTIME_PASSWORD -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_RUN_TOKEN -ErrorAction SilentlyContinue
             }
         },
         @{
