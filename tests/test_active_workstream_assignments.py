@@ -178,7 +178,7 @@ def test_bas203_holds_strategic_capital_dashboard_and_api_leases():
         ],
         "blocked_on": [],
     }
-    assert engineering["next_task_id"] is None
+    assert engineering["next_task_id"] == "BAS-204"
     assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-203"
     assert registry["shared_write_leases"]["master_spec"] is None
