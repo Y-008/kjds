@@ -136,26 +136,12 @@ def test_bas196_release_frees_local_demo_lane():
     assert "BAS-196" not in registry["shared_write_leases"].values()
 
 
-def test_bas201_holds_capital_allocation_contract_lease_without_shared_writes():
+def test_bas201_release_frees_capital_allocation_lane_without_shared_writes():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     strategic = lanes["L"]
 
-    assert strategic["current_task"] == {
-        "task_id": "BAS-201",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-            "governed_capital_allocation_workspace",
-            "capital_allocation_contract_registry",
-            "current_scope_and_read_authority_projection",
-            "noncompensatory_five_option_hard_gate",
-            "deterministic_proposal_only_observation",
-            "synthetic_fixture_and_focused_tests",
-            "bas201_evidence",
-        ],
-        "blocked_on": [],
-    }
+    assert strategic["current_task"] is None
     assert strategic["next_task_id"] is None
     assert "BAS-201" not in registry["shared_write_leases"].values()
 
