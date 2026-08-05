@@ -205,7 +205,7 @@
 | BAS-198 | G-1 | PrimarySource Intake 与证据化标准化 | Data+Evidence+Finance+Market Intelligence | 复用 Evidence/Lineage 接收经营原件、平台官方数据、供应商/物流/银行/结算及技术一手基准；保存原件哈希、合同、许可、作用域、时间和守恒报告，不在 Git 保存秘密、PII 或原始经营数据。 | BAS-197 | DONE_ENGINEERING |
 | BAS-199 | G-1 | 多维 Top1 Benchmark 与可比队列 | Strategy+Product+Data | 按技术、AI、产品、商业、运营、资本、组织、韧性和合规冻结 metric/cohort/window/source contract；Top1 只代表当前可验证维度领先者，不产生全局营销排名。 | BAS-198 | DONE_ENGINEERING |
 | BAS-200 | G-1 | GapGraph 与战略机会组合 | Strategy+Graph+Product | 将当前 Evidence、Top1 基准、能力图谱、客户问题和单位经济映射为可解释差距、机会、依赖、最大损失、替代方案与失效条件；不复制 BAS-173 的检索真源。 | BAS-199、BAS-173 | DONE_ENGINEERING |
-| BAS-201 | C0–S1 | 实验组合与资本配置提案 | Capital+Finance+Growth+Risk | 在现金底线、runway、最大损失、回收期、downside CM3、证据覆盖和停止条件下比较 build/buy/partner/defer；输出提案，不自批预算、不付款、不投资证券。 | BAS-200、COM-002 | IN_PROGRESS |
+| BAS-201 | C0–S1 | 实验组合与资本配置提案 | Capital+Finance+Growth+Risk | 以仓库自有合成 fixture 验证 exact-scope 只读投影、完整 Money、非补偿式硬门与 build/buy/partner/defer/no_action 五项比较；真实 treasury、runway、FIN 阈值与生产准入保持 UNKNOWN/not_admitted，仅输出 no_action 提案，不自批预算、不付款、不投资证券。 | BAS-200、COM-002 | DONE_ENGINEERING |
 | BAS-202 | G-1 | Constraint Breaker 红队与技术搬运 Gate | AI+Security+Architecture+QA | 用本地合成 fixture 对提示注入、跨作用域、幂等漂移、工具投毒、间接注入和 unknown outcome 做可复现攻击评测；技术候选必须经 best_solution、许可证、数据边界、成本、回滚和真实样本 Gate 后才进入依赖。 | BAS-197、BAS-177 | DONE_ENGINEERING |
 | BAS-203 | G-1–C0 | 战略情报与资本经营驾驶舱 | Product+Web+Strategy+Finance | 展示一手资料覆盖、Top1 对标、差距、机会组合、实验、资本提案、结果和失效条件；客户端只读，不重算事实、排名、Gate 或预算权限。 | BAS-198、BAS-199、BAS-200、BAS-201 | QUEUED |
 | BAS-204 | G-1 | 闭环回写、时效复审与可验证进化 | Agent Platform+Evidence+Strategy+QA | 结果回写必须绑定 AgentRun/Evidence/实验/成本/经营 Outcome，按时效自动降级并触发复审；模型、Skill、技术或策略晋级继续由 BAS-177 评测、Shadow、批准和回滚控制。 | BAS-177、BAS-201、BAS-202、BAS-203 | QUEUED |
