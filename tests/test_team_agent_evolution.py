@@ -45,7 +45,9 @@ from apps.control_plane.team_agent_evolution import (
     _digest,
 )
 
-NOW = datetime.now(UTC) + timedelta(minutes=5)
+# The complete repository Gate collects this module before a multi-minute suite.
+# Keep one frozen valid-time horizon that cannot expire during that run.
+NOW = datetime.now(UTC) + timedelta(days=1)
 AUTHORITY_A = "a" * 64
 
 

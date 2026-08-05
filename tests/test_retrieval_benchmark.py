@@ -41,7 +41,9 @@ FIXTURE = Path(
     "tests/fixtures/retrieval_benchmark/bas173_gold_questions_v1.json"
 )
 AUTHORITY_A = "a" * 64
-DATA_AS_OF = datetime.now(UTC) + timedelta(minutes=5)
+# The complete repository Gate collects this module before a multi-minute suite.
+# Keep one frozen data cutoff inside the fixture's one-day effective interval.
+DATA_AS_OF = datetime.now(UTC) + timedelta(days=1)
 
 
 class FakeScopeGrants:

@@ -11,6 +11,7 @@ $BackupSmokeDirectory = Join-Path $Runtime ("backup-g1-" + [guid]::NewGuid().ToS
 $ReleaseEvidenceDirectory = Join-Path $Runtime ("release-g1-" + [guid]::NewGuid().ToString("N"))
 $DatabaseName = "kjds_g1_smoke"
 $RestoreDatabaseName = "kjds_g1_restore"
+$DataCoveragePostgresContract = "tests\test_global_data_coverage_ledger_postgres.py"
 $ApiPort = 8010
 $WebPort = 3010
 $EvidenceSmokeFile = Join-Path $Runtime ("g1-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
@@ -18,22 +19,95 @@ $ApiProcess = $null
 $WebProcess = $null
 $PostgresContainer = $null
 $WebContainer = $null
+$G1ControlMutex = $null
+$G1ControlMutexAcquired = $false
 $Python = if ($env:KJDS_G1_PYTHON) {
     $env:KJDS_G1_PYTHON
 } else {
     Join-Path $Root ".venv\Scripts\python.exe"
 }
 $MigrationDatabaseUrl = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/$DatabaseName"
+$AdminDatabaseUrl = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/hermes"
 $CoverageIssuerPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
 $RuntimeDatabasePassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
 $RunToken = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$RunTokenSha256 = [Convert]::ToHexString(
+    [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($RunToken))
+).ToLowerInvariant()
+$ContractDatabaseName = "kjds_g1_contract_" + $RunTokenSha256.Substring(0, 24)
+$PerRunReportPath = Join-Path $Runtime ("G1_VERIFICATION-" + $RunTokenSha256 + ".json")
+$AuthoritativeReportPath = Join-Path $Runtime "G1_VERIFICATION.json"
+$G1ControlMutexReleaseReceipt = Join-Path $Runtime ("G1_MUTEX_RELEASE-" + $RunTokenSha256 + ".json")
 $StrategicBenchmarkSealingKey = [Convert]::ToBase64String(
     [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 )
 $DatabaseLeaseAcquired = $false
 $DatabaseLeaseEverAcquired = $false
+$ContractDatabaseCreated = $false
 $CoverageIssuerDatabaseUrl = "postgresql+psycopg://kjds_gdc_issuance_runtime:$CoverageIssuerPassword@127.0.0.1:5432/$DatabaseName"
 $RuntimeDatabaseUrl = "postgresql+psycopg://kjds_g1_runtime:$RuntimeDatabasePassword@127.0.0.1:5432/$DatabaseName"
+$ContractDatabaseUrl = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/$ContractDatabaseName"
+$ContractDatabaseManager = @'
+import os
+import re
+import sys
+
+from sqlalchemy import create_engine, text
+
+name = os.environ["KJDS_G1_CONTRACT_DATABASE_NAME"]
+token_sha256 = os.environ["KJDS_G1_RUN_TOKEN_SHA256"]
+admin_url = os.environ["KJDS_G1_ADMIN_DATABASE_URL"]
+if not re.fullmatch(r"kjds_g1_contract_[0-9a-f]{24}", name):
+    raise RuntimeError("invalid G-1 contract database name")
+if not re.fullmatch(r"[0-9a-f]{64}", token_sha256):
+    raise RuntimeError("invalid G-1 contract database owner digest")
+owner_comment = f"kjds-g1-contract:{token_sha256}"
+quoted_name = f'"{name}"'
+engine = create_engine(admin_url, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+try:
+    with engine.connect() as connection:
+        action = sys.argv[1]
+        if action == "create":
+            exists = connection.scalar(
+                text("SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname=:name)"),
+                {"name": name},
+            )
+            if exists:
+                raise RuntimeError("run-scoped G-1 contract database already exists")
+            created = False
+            try:
+                connection.execute(text(f"CREATE DATABASE {quoted_name}"))
+                created = True
+                connection.execute(
+                    text(f"COMMENT ON DATABASE {quoted_name} IS '{owner_comment}'")
+                )
+            except BaseException:
+                if created:
+                    connection.execute(text(f"DROP DATABASE IF EXISTS {quoted_name}"))
+                raise
+        elif action == "drop":
+            comment = connection.scalar(
+                text(
+                    "SELECT shobj_description(oid,'pg_database') FROM pg_database "
+                    "WHERE datname=:name"
+                ),
+                {"name": name},
+            )
+            if comment != owner_comment:
+                raise RuntimeError("G-1 contract database is not owned by this run")
+            connection.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname=:name AND pid<>pg_backend_pid()"
+                ),
+                {"name": name},
+            )
+            connection.execute(text(f"DROP DATABASE {quoted_name}"))
+        else:
+            raise RuntimeError("unsupported G-1 contract database action")
+finally:
+    engine.dispose()
+'@
 
 New-Item -ItemType Directory -Force $Runtime | Out-Null
 Set-Location $Root
@@ -297,6 +371,30 @@ function Complete-G1Verification {
     }
 }
 
+function Test-G1ControlMutexReleaseReceipt {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$RunTokenSha256,
+        [AllowNull()][string]$GitCommit,
+        [Parameter(Mandatory = $true)][string]$ReportPath,
+        [Parameter(Mandatory = $true)][string]$ReportSha256
+    )
+
+    try {
+        $receipt = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        return (
+            $receipt.gate -ceq "G-1-control-mutex-release" -and
+            $receipt.state -ceq "release_prepared" -and
+            $receipt.run_token_sha256 -ceq $RunTokenSha256 -and
+            $receipt.git_commit -ceq $GitCommit -and
+            $receipt.report -ceq $ReportPath -and
+            $receipt.report_sha256 -ceq $ReportSha256
+        )
+    } catch {
+        return $false
+    }
+}
+
 $startedAt = (Get-Date).ToUniversalTime()
 $result = [ordered]@{
     gate = "G-1"
@@ -307,6 +405,11 @@ $result = [ordered]@{
     database_control_mode = $(if ($UseExistingPostgres) { "existing-postgres" } else { "docker-compose" })
     migration = $null
     migration_replay = $false
+    g1_control_mutex_acquired = $false
+    g1_control_mutex_finalization_required = $true
+    g1_control_mutex_release_receipt = $null
+    global_data_coverage_postgres_contract = $false
+    generic_postgres_contract_database = $false
     transactional_outbox = $false
     sourcing_numeric_integrity = $false
     finance_numeric_integrity = $false
@@ -353,15 +456,25 @@ $result = [ordered]@{
     web_proxy_auth = $false
     cleanup_processes = $false
     cleanup_database = $false
+    cleanup_contract_database = $false
     cleanup_files = $false
     cleanup_error = $null
     cleanup_file_errors = @()
     error = $null
     report_error = $null
-    report = (Join-Path $Runtime ("G1_VERIFICATION-" + $RunToken + ".json"))
+    report = $PerRunReportPath
 }
 
 try {
+    $G1ControlMutex = [Threading.Mutex]::new($false, "Global\KJDS-G1-Verification")
+    if (-not $G1ControlMutex.WaitOne(0)) {
+        throw "Another G-1 verification process holds the global control mutex"
+    }
+    $G1ControlMutexAcquired = $true
+    $result.g1_control_mutex_acquired = $true
+    $result.g1_control_mutex_release_receipt = $G1ControlMutexReleaseReceipt
+    $result.report = $AuthoritativeReportPath
+
     Write-Output "[G-1] Checking required commands and Git revision"
     if ($PSVersionTable.PSVersion.Major -lt 7) {
         throw "G-1 requires PowerShell 7 or newer because multipart smoke tests use -Form"
@@ -389,11 +502,6 @@ try {
 
     if ($UseExistingPostgres) {
         Write-Output "[G-1] Using reachable PostgreSQL without Docker control-plane access"
-        Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "acquire")
-        $DatabaseLeaseAcquired = $true
-        $DatabaseLeaseEverAcquired = $true
-        $result.report = (Join-Path $Runtime "G1_VERIFICATION.json")
-        Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "recreate")
     } else {
         Write-Output "[G-1] Starting PostgreSQL"
         Invoke-External -Command docker -Arguments @("compose", "up", "-d", "postgres")
@@ -402,12 +510,36 @@ try {
         Wait-Until -Description "PostgreSQL health" -Condition {
             (docker inspect --format "{{.State.Health.Status}}" $PostgresContainer 2>$null).Trim() -eq "healthy"
         }
-        Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "acquire")
-        $DatabaseLeaseAcquired = $true
-        $DatabaseLeaseEverAcquired = $true
-        $result.report = (Join-Path $Runtime "G1_VERIFICATION.json")
-        Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "recreate")
     }
+
+    # This contract owns and mutates cluster-global fixed issuer roles. Run it
+    # on the clean admin database before the G-1 lease creates those roles, and
+    # exclude only this exact file from the later generic test phase.
+    Write-Output "[G-1] Verifying isolated global data coverage PostgreSQL contracts"
+    $env:KJDS_DATABASE_URL = $AdminDatabaseUrl
+    Invoke-External -Command uv -Arguments @(
+        "run", "python", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+        "--basetemp=$PytestTemp", $DataCoveragePostgresContract
+    )
+    $result.global_data_coverage_postgres_contract = $true
+
+    Write-Output "[G-1] Creating run-scoped generic PostgreSQL contract database"
+    $env:KJDS_G1_ADMIN_DATABASE_URL = $AdminDatabaseUrl
+    $env:KJDS_G1_CONTRACT_DATABASE_NAME = $ContractDatabaseName
+    $env:KJDS_G1_RUN_TOKEN_SHA256 = $RunTokenSha256
+    Invoke-External -Command $Python -Arguments @("-c", $ContractDatabaseManager, "create")
+    $ContractDatabaseCreated = $true
+    $env:KJDS_DATABASE_URL = $ContractDatabaseUrl
+    Invoke-External -Command uv -Arguments @(
+        "run", "alembic", "-c", "alembic.ini", "upgrade", "20260803_0092"
+    )
+    $result.generic_postgres_contract_database = $true
+
+    $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
+    Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "acquire")
+    $DatabaseLeaseAcquired = $true
+    $DatabaseLeaseEverAcquired = $true
+    Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "recreate")
     Write-Output "[G-1] Replaying migrations in disposable database"
     $env:KJDS_REPOSITORY = "postgres"
     $env:KJDS_SHADOW_MODE = "true"
@@ -515,9 +647,13 @@ try {
     $result.lint = $true
     $testFiles = @(
         Get-ChildItem (Join-Path $Root "tests") -Filter "test_*.py" -File |
-            ForEach-Object { $_.FullName.Substring($Root.Length + 1) }
+            ForEach-Object { $_.FullName.Substring($Root.Length + 1) } |
+            Where-Object { $_ -ne $DataCoveragePostgresContract }
     ) | Sort-Object
+    Write-Output "[G-1] Running generic tests against isolated contract database"
+    $env:KJDS_DATABASE_URL = $ContractDatabaseUrl
     Invoke-External -Command uv -Arguments (@("run", "python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--basetemp=$PytestTemp") + $testFiles)
+    $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
     $result.tests = $true
     $result.domain_contracts = $true
     $result.ozon_worker_contract_test = $true
@@ -956,6 +1092,21 @@ try {
             }
         },
         @{
+            Name = "run-scoped generic PostgreSQL contract database"
+            Action = {
+                if ($ContractDatabaseCreated) {
+                    $env:KJDS_G1_ADMIN_DATABASE_URL = $AdminDatabaseUrl
+                    $env:KJDS_G1_CONTRACT_DATABASE_NAME = $ContractDatabaseName
+                    $env:KJDS_G1_RUN_TOKEN_SHA256 = $RunTokenSha256
+                    Invoke-External -Command $Python -Arguments @(
+                        "-c", $ContractDatabaseManager, "drop"
+                    ) | Out-Null
+                    $script:ContractDatabaseCreated = $false
+                }
+                $result.cleanup_contract_database = -not $ContractDatabaseCreated
+            }
+        },
+        @{
             Name = "primary database"
             Action = {
                 if ($DatabaseLeaseAcquired) {
@@ -985,7 +1136,10 @@ try {
                 if (-not $DatabaseLeaseEverAcquired) {
                     $result.cleanup_database = $true
                 }
-                if (-not $result.cleanup_database) {
+                if (
+                    -not $result.cleanup_database -or
+                    -not $result.cleanup_contract_database
+                ) {
                     throw "Owned disposable database cleanup was not confirmed"
                 }
             }
@@ -998,6 +1152,9 @@ try {
                 Remove-Item Env:KJDS_G1_COVERAGE_ISSUER_PASSWORD -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUNTIME_PASSWORD -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUN_TOKEN -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_RUN_TOKEN_SHA256 -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_ADMIN_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_NAME -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_STRATEGIC_BENCHMARK_SEALING_KEY -ErrorAction SilentlyContinue
             }
         },
@@ -1074,9 +1231,88 @@ try {
             }
         }
     )
-    $completion = Complete-G1Verification `
-        -Result $result `
-        -CleanupSteps $cleanupSteps `
-        -ReportPath (Join-Path $Runtime "G1_VERIFICATION.json")
+    $completion = $null
+    $mutexReleaseError = $null
+    $completionReportPath = if ($G1ControlMutexAcquired) {
+        $AuthoritativeReportPath
+    } else {
+        $PerRunReportPath
+    }
+    try {
+        $completion = Complete-G1Verification `
+            -Result $result `
+            -CleanupSteps $cleanupSteps `
+            -ReportPath $completionReportPath
+        $publishedReportSha256 = if (Test-Path -LiteralPath $completionReportPath) {
+            (Get-FileHash -LiteralPath $completionReportPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        } else {
+            $null
+        }
+    } finally {
+        if ($G1ControlMutex) {
+            try {
+                if ($G1ControlMutexAcquired) {
+                    $releaseReceipt = [ordered]@{
+                        gate = "G-1-control-mutex-release"
+                        state = "release_prepared"
+                        run_token_sha256 = $RunTokenSha256
+                        git_commit = $result.git_commit
+                        report = $AuthoritativeReportPath
+                        report_sha256 = $publishedReportSha256
+                        prepared_at = (Get-Date).ToUniversalTime().ToString("o")
+                    } | ConvertTo-Json -Depth 2
+                    $releaseReceiptTemporaryPath = "$G1ControlMutexReleaseReceipt.tmp-$([guid]::NewGuid().ToString('N'))"
+                    $releaseReceipt | Set-Content `
+                        -LiteralPath $releaseReceiptTemporaryPath `
+                        -Encoding UTF8 `
+                        -NoNewline
+                    Move-Item `
+                        -LiteralPath $releaseReceiptTemporaryPath `
+                        -Destination $G1ControlMutexReleaseReceipt `
+                        -Force
+                }
+            } catch {
+                $mutexReleaseError = "G-1 control mutex finalization receipt publication failed"
+                $result.status = "FAIL"
+                $result.report_error = $mutexReleaseError
+                $result.finished_at = (Get-Date).ToUniversalTime().ToString("o")
+                [void](Write-G1Report -Result $result -Path $completionReportPath)
+            }
+            if (
+                -not $mutexReleaseError -and
+                $G1ControlMutexAcquired -and
+                -not (Test-G1ControlMutexReleaseReceipt `
+                    -Path $G1ControlMutexReleaseReceipt `
+                    -RunTokenSha256 $RunTokenSha256 `
+                    -GitCommit $result.git_commit `
+                    -ReportPath $AuthoritativeReportPath `
+                    -ReportSha256 $publishedReportSha256)
+            ) {
+                $mutexReleaseError = "G-1 control mutex finalization receipt validation failed"
+                $result.status = "FAIL"
+                $result.report_error = $mutexReleaseError
+                $result.finished_at = (Get-Date).ToUniversalTime().ToString("o")
+                [void](Write-G1Report -Result $result -Path $completionReportPath)
+            }
+            try {
+                if ($G1ControlMutexAcquired) {
+                    $G1ControlMutex.ReleaseMutex()
+                    $script:G1ControlMutexAcquired = $false
+                }
+            } catch {
+                $mutexReleaseError = "G-1 control mutex explicit release failed"
+                $result.status = "FAIL"
+                $result.report_error = $mutexReleaseError
+                $result.finished_at = (Get-Date).ToUniversalTime().ToString("o")
+                [void](Write-G1Report -Result $result -Path $completionReportPath)
+            } finally {
+                $G1ControlMutex.Dispose()
+            }
+        }
+    }
+    if ($mutexReleaseError) {
+        [Console]::Error.WriteLine($mutexReleaseError)
+        exit 1
+    }
     if ($completion.failed) { exit 1 }
 }

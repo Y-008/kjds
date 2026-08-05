@@ -60,7 +60,8 @@ def intake(engine):
 
 
 def unique(prefix: str) -> str:
-    return f"{prefix}-{uuid4().hex}"
+    suffix = uuid4().hex.translate(str.maketrans("0123456789abcdef", "abcdefghijklmnop"))
+    return f"{prefix}-{suffix}"
 
 
 def principal(tenant: str) -> Principal:
