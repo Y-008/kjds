@@ -4,7 +4,7 @@ import hashlib
 import json
 import string
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
@@ -16,7 +16,9 @@ from sqlalchemy import (
     Index,
     Numeric,
     String,
+    func,
     select,
+    text,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -76,7 +78,15 @@ SUBSCRIPTION_STATE_ORDER = {"pending": 0, "active": 1, "past_due": 2, "canceled"
 INVOICE_STATE_ORDER = {"draft": 0, "issued": 1, "partially_paid": 2, "paid": 3, "void": 4, "closed": 5}
 PAYMENT_STATE_ORDER = {"pending": 0, "submitted": 1, "succeeded": 2, "failed": 3, "settled": 4}
 REFUND_STATE_ORDER = {"requested": 0, "approved": 1, "paid": 2, "rejected": 3, "reversed": 4}
+REFUND_STATE_TRANSITIONS = {
+    "requested": frozenset({"approved", "paid", "rejected"}),
+    "approved": frozenset({"paid", "rejected"}),
+    "paid": frozenset({"reversed"}),
+    "rejected": frozenset(),
+    "reversed": frozenset(),
+}
 TAX_STATE_ORDER = {"recorded": 0, "verified": 1, "rejected": 2}
+COLLECTIBLE_INVOICE_STATES = frozenset({"issued", "partially_paid", "paid"})
 
 STATE_ORDER: dict[CommercialState, int] = {
     "active": 0,
@@ -133,6 +143,10 @@ def _decimal(value: Any, field: str) -> Decimal:
     if not parsed.is_finite():
         raise ValueError(f"{field} must be finite")
     return parsed
+
+
+def _decimal_text(value: Decimal) -> str:
+    return format(value.normalize(), "f")
 
 
 def _timestamp(value: Any, field: str) -> datetime:
@@ -924,6 +938,7 @@ class CommercialLifecycleService:
         try:
             with Session(self.engine) as session, session.begin():
                 scoped = self._scope(**scope)
+                self._lock_scope_write(session, scope=scoped)
                 response = self._record_plan(
                     session,
                     scope=scoped,
@@ -960,6 +975,7 @@ class CommercialLifecycleService:
         try:
             with Session(self.engine) as session, session.begin():
                 scoped = self._scope(**scope)
+                self._lock_scope_write(session, scope=scoped)
                 response = self._record_subscription(
                     session,
                     scope=scoped,
@@ -997,6 +1013,7 @@ class CommercialLifecycleService:
         try:
             with Session(self.engine) as session, session.begin():
                 scoped = self._scope(**scope)
+                self._lock_scope_write(session, scope=scoped)
                 response = self._record_invoice(
                     session,
                     scope=scoped,
@@ -1032,6 +1049,7 @@ class CommercialLifecycleService:
         try:
             with Session(self.engine) as session, session.begin():
                 scoped = self._scope(**scope)
+                self._lock_scope_write(session, scope=scoped)
                 response = self._record_payment_attempt(
                     session,
                     scope=scoped,
@@ -1065,6 +1083,7 @@ class CommercialLifecycleService:
         try:
             with Session(self.engine) as session, session.begin():
                 scoped = self._scope(**scope)
+                self._lock_scope_write(session, scope=scoped)
                 response = self._record_refund(
                     session,
                     scope=scoped,
@@ -1099,6 +1118,7 @@ class CommercialLifecycleService:
         try:
             with Session(self.engine) as session, session.begin():
                 scoped = self._scope(**scope)
+                self._lock_scope_write(session, scope=scoped)
                 response = self._record_tax_evidence(
                     session,
                     scope=scoped,
@@ -1299,33 +1319,69 @@ class CommercialLifecycleService:
         due_at = _timestamp(due_at, "due_at")
         if due_at < issued_at:
             raise ValueError("due_at must be on or after issued_at")
-        subscription = self._latest_event(session, scope=scope, lifecycle_kind="subscription", record_ref=subscription_ref)
+        normalized_invoice_ref = _text(invoice_ref, "invoice_ref", maximum=240)
+        normalized_subscription_ref = _text(subscription_ref, "subscription_ref", maximum=240)
+        payload = {
+            "invoice_ref": normalized_invoice_ref,
+            "subscription_ref": normalized_subscription_ref,
+            "state": state,
+            "currency": currency,
+            "net_amount": str(net_amount),
+            "tax_amount": str(tax_amount),
+            "gross_amount": str(gross_amount),
+            "issued_at": issued_at.isoformat(),
+            "due_at": due_at.isoformat(),
+            "evidence": _copy(evidence),
+            "kind": self.INVOICE_EVENT_KIND,
+        }
+        replay = self._idempotent_replay(
+            session,
+            scope=scope,
+            lifecycle_kind="invoice",
+            event_kind=self.INVOICE_EVENT_KIND,
+            payload=payload,
+            idempotency_key=idempotency_key,
+        )
+        if replay is not None:
+            return replay
+        self._preflight_existing_record(
+            session,
+            scope=scope,
+            lifecycle_kind="invoice",
+            state=state,
+            record_ref=normalized_invoice_ref,
+            parent_ref=normalized_subscription_ref,
+            currency=currency,
+            amount=gross_amount,
+            payload={
+                "subscription_ref": normalized_subscription_ref,
+                "net_amount": str(net_amount),
+                "tax_amount": str(tax_amount),
+                "gross_amount": str(gross_amount),
+            },
+        )
+        subscription = self._latest_event(
+            session,
+            scope=scope,
+            lifecycle_kind="subscription",
+            record_ref=normalized_subscription_ref,
+        )
         if subscription is None:
             raise KeyError("invoice requires an existing subscription")
+        if subscription.currency is None or subscription.currency != currency:
+            raise ValueError("invoice currency must match the subscription currency")
         return self._append_event(
             session,
             scope=scope,
             lifecycle_kind="invoice",
             event_kind=self.INVOICE_EVENT_KIND,
             state=state,
-            record_ref=_text(invoice_ref, "invoice_ref", maximum=240),
-            parent_ref=_text(subscription_ref, "subscription_ref", maximum=240),
+            record_ref=normalized_invoice_ref,
+            parent_ref=normalized_subscription_ref,
             currency=currency,
             amount=gross_amount,
             occurred_at=issued_at,
-            payload={
-                "invoice_ref": invoice_ref,
-                "subscription_ref": subscription_ref,
-                "state": state,
-                "currency": currency,
-                "net_amount": str(net_amount),
-                "tax_amount": str(tax_amount),
-                "gross_amount": str(gross_amount),
-                "issued_at": issued_at.isoformat(),
-                "due_at": due_at.isoformat(),
-                "evidence": _copy(evidence),
-                "kind": self.INVOICE_EVENT_KIND,
-            },
+            payload=payload,
             evidence_inputs=[evidence],
             idempotency_key=idempotency_key,
         )
@@ -1351,31 +1407,67 @@ class CommercialLifecycleService:
         if amount <= 0:
             raise ValueError("payment attempt amount must be positive")
         occurred_at = _timestamp(occurred_at, "occurred_at")
-        invoice = self._latest_event(session, scope=scope, lifecycle_kind="invoice", record_ref=invoice_ref)
+        normalized_payment_ref = _text(payment_attempt_ref, "payment_attempt_ref", maximum=240)
+        normalized_invoice_ref = _text(invoice_ref, "invoice_ref", maximum=240)
+        payload = {
+            "payment_attempt_ref": normalized_payment_ref,
+            "invoice_ref": normalized_invoice_ref,
+            "state": state,
+            "currency": currency,
+            "amount": str(amount),
+            "occurred_at": occurred_at.isoformat(),
+            "evidence": _copy(evidence),
+            "kind": self.PAYMENT_EVENT_KIND,
+        }
+        replay = self._idempotent_replay(
+            session,
+            scope=scope,
+            lifecycle_kind="payment_attempt",
+            event_kind=self.PAYMENT_EVENT_KIND,
+            payload=payload,
+            idempotency_key=idempotency_key,
+        )
+        if replay is not None:
+            return replay
+        self._preflight_existing_record(
+            session,
+            scope=scope,
+            lifecycle_kind="payment_attempt",
+            state=state,
+            record_ref=normalized_payment_ref,
+            parent_ref=normalized_invoice_ref,
+            currency=currency,
+            amount=amount,
+            payload={"invoice_ref": normalized_invoice_ref, "amount": str(amount)},
+        )
+        invoice = self._latest_event(
+            session,
+            scope=scope,
+            lifecycle_kind="invoice",
+            record_ref=normalized_invoice_ref,
+        )
         if invoice is None:
             raise KeyError("payment attempt requires an existing invoice")
-        self._ensure_payment_capacity(session, scope=scope, invoice_ref=invoice_ref, amount=amount)
+        self._require_collectible_invoice(invoice)
+        self._require_invoice_money(invoice, expected_currency=currency)
+        self._ensure_payment_capacity(
+            session,
+            scope=scope,
+            invoice_ref=normalized_invoice_ref,
+            amount=amount,
+        )
         return self._append_event(
             session,
             scope=scope,
             lifecycle_kind="payment_attempt",
             event_kind=self.PAYMENT_EVENT_KIND,
             state=state,
-            record_ref=_text(payment_attempt_ref, "payment_attempt_ref", maximum=240),
-            parent_ref=_text(invoice_ref, "invoice_ref", maximum=240),
+            record_ref=normalized_payment_ref,
+            parent_ref=normalized_invoice_ref,
             currency=currency,
             amount=amount,
             occurred_at=occurred_at,
-            payload={
-                "payment_attempt_ref": payment_attempt_ref,
-                "invoice_ref": invoice_ref,
-                "state": state,
-                "currency": currency,
-                "amount": str(amount),
-                "occurred_at": occurred_at.isoformat(),
-                "evidence": _copy(evidence),
-                "kind": self.PAYMENT_EVENT_KIND,
-            },
+            payload=payload,
             evidence_inputs=[evidence],
             idempotency_key=idempotency_key,
         )
@@ -1402,35 +1494,112 @@ class CommercialLifecycleService:
         if amount <= 0:
             raise ValueError("refund amount must be positive")
         occurred_at = _timestamp(occurred_at, "occurred_at")
-        invoice = self._latest_event(session, scope=scope, lifecycle_kind="invoice", record_ref=invoice_ref)
+        normalized_refund_ref = _text(refund_ref, "refund_ref", maximum=240)
+        normalized_invoice_ref = _text(invoice_ref, "invoice_ref", maximum=240)
+        normalized_payment_ref = (
+            _text(payment_attempt_ref, "payment_attempt_ref", maximum=240)
+            if payment_attempt_ref is not None
+            else None
+        )
+        refund_parent_ref = normalized_payment_ref or normalized_invoice_ref
+        payload = {
+            "refund_ref": normalized_refund_ref,
+            "invoice_ref": normalized_invoice_ref,
+            "payment_attempt_ref": normalized_payment_ref,
+            "state": state,
+            "currency": currency,
+            "amount": str(amount),
+            "occurred_at": occurred_at.isoformat(),
+            "evidence": _copy(evidence),
+            "kind": self.REFUND_EVENT_KIND,
+        }
+        replay = self._idempotent_replay(
+            session,
+            scope=scope,
+            lifecycle_kind="refund",
+            event_kind=self.REFUND_EVENT_KIND,
+            payload=payload,
+            idempotency_key=idempotency_key,
+        )
+        if replay is not None:
+            return replay
+        self._preflight_existing_record(
+            session,
+            scope=scope,
+            lifecycle_kind="refund",
+            state=state,
+            record_ref=normalized_refund_ref,
+            parent_ref=refund_parent_ref,
+            currency=currency,
+            amount=amount,
+            payload={
+                "invoice_ref": normalized_invoice_ref,
+                "payment_attempt_ref": normalized_payment_ref,
+                "amount": str(amount),
+            },
+        )
+        invoice = self._latest_event(
+            session,
+            scope=scope,
+            lifecycle_kind="invoice",
+            record_ref=normalized_invoice_ref,
+        )
         if invoice is None:
             raise KeyError("refund requires an existing invoice")
-        settled = self._payment_total(session, scope=scope, invoice_ref=invoice_ref)
-        refunded = self._refund_total(session, scope=scope, invoice_ref=invoice_ref)
-        if refunded + amount > settled:
-            raise ValueError("refund amount must not exceed collected payment")
+        self._require_collectible_invoice(invoice)
+        self._require_invoice_money(invoice, expected_currency=currency)
+        payment: CommercialLifecycleEventRow | None = None
+        if payment_attempt_ref is not None:
+            payment = self._latest_event(
+                session,
+                scope=scope,
+                lifecycle_kind="payment_attempt",
+                record_ref=normalized_payment_ref,
+            )
+            if payment is None or payment.parent_ref != normalized_invoice_ref:
+                raise ValueError("refund payment_attempt_ref must match the exact-scope invoice")
+            if payment.currency != currency:
+                raise ValueError("refund currency must match the settled payment currency")
+        if state == "paid":
+            if payment is None or payment.state != "settled":
+                raise ValueError("paid refund requires an exact settled payment attempt")
+            if payment.amount is None or payment.amount <= 0:
+                raise ValueError("settled payment amount must be positive")
+            payment_refunded = self._refund_total_for_payment(
+                session,
+                scope=scope,
+                payment_attempt_ref=payment.record_ref,
+                expected_currency=currency,
+            )
+            if payment_refunded + amount > payment.amount:
+                raise ValueError("paid refunds must not exceed the exact settled payment")
+        if state == "paid":
+            settled = self._payment_total(
+                session,
+                scope=scope,
+                invoice_ref=normalized_invoice_ref,
+                expected_currency=currency,
+            )
+            refunded = self._refund_total(
+                session,
+                scope=scope,
+                invoice_ref=normalized_invoice_ref,
+                expected_currency=currency,
+            )
+            if refunded + amount > settled:
+                raise ValueError("refund amount must not exceed collected payment")
         return self._append_event(
             session,
             scope=scope,
             lifecycle_kind="refund",
             event_kind=self.REFUND_EVENT_KIND,
             state=state,
-            record_ref=_text(refund_ref, "refund_ref", maximum=240),
-            parent_ref=_text(payment_attempt_ref, "payment_attempt_ref", maximum=240) if payment_attempt_ref else _text(invoice_ref, "invoice_ref", maximum=240),
+            record_ref=normalized_refund_ref,
+            parent_ref=refund_parent_ref,
             currency=currency,
             amount=amount,
             occurred_at=occurred_at,
-            payload={
-                "refund_ref": refund_ref,
-                "invoice_ref": invoice_ref,
-                "payment_attempt_ref": payment_attempt_ref,
-                "state": state,
-                "currency": currency,
-                "amount": str(amount),
-                "occurred_at": occurred_at.isoformat(),
-                "evidence": _copy(evidence),
-                "kind": self.REFUND_EVENT_KIND,
-            },
+            payload=payload,
             evidence_inputs=[evidence],
             idempotency_key=idempotency_key,
         )
@@ -1522,12 +1691,20 @@ class CommercialLifecycleService:
             return response
 
         previous = self._latest_event(session, scope=scope, lifecycle_kind=lifecycle_kind, record_ref=record_ref)
+        self._require_record_identity(
+            lifecycle_kind=lifecycle_kind,
+            previous=previous,
+            parent_ref=parent_ref,
+            currency=currency,
+            amount=amount,
+            payload=payload,
+        )
         self._enforce_forward_transition(lifecycle_kind=lifecycle_kind, previous=previous.state if previous else None, current=state)
 
         if lifecycle_kind == "subscription":
             self._require_settlement_evidence(evidence_inputs)
 
-        now = datetime.now(UTC)
+        now = self._next_recorded_at(session, scope=scope)
         event_id = new_id("commercial_event")
         response = self._make_response(
             scope=scope,
@@ -1581,6 +1758,35 @@ class CommercialLifecycleService:
         session.flush()
         return response
 
+    def _next_recorded_at(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+    ) -> datetime:
+        latest = session.scalar(
+            select(func.max(CommercialLifecycleEventRow.recorded_at)).where(
+                CommercialLifecycleEventRow.customer_ref == scope.customer_ref,
+                CommercialLifecycleEventRow.deployment_ref == scope.deployment_ref,
+                CommercialLifecycleEventRow.tenant_ref == scope.tenant_ref,
+                CommercialLifecycleEventRow.entity_ref == scope.entity_ref,
+                CommercialLifecycleEventRow.store_ref == scope.store_ref,
+            )
+        )
+        now = datetime.now(UTC)
+        if latest is None:
+            return now
+        latest_utc = latest.replace(tzinfo=UTC) if latest.tzinfo is None else latest.astimezone(UTC)
+        return max(now, latest_utc + timedelta(microseconds=1))
+
+    @staticmethod
+    def _lock_scope_write(session: Session, *, scope: CommercialScope) -> None:
+        if session.bind is not None and session.bind.dialect.name == "postgresql":
+            session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:scope_hash))"),
+                {"scope_hash": scope.scope_hash},
+            )
+
     def _recompute_entitlement(
         self,
         session: Session,
@@ -1592,7 +1798,8 @@ class CommercialLifecycleService:
     ) -> CommercialLifecycleEventRow | None:
         state, reason, derived = self._derive_entitlement(session, scope=scope, as_of=trigger_event.recorded_at)
         latest = self._latest_event(session, scope=scope, lifecycle_kind="entitlement", record_ref="entitlement")
-        if latest is not None and latest.state == state and latest.payload_json.get("reason") == reason:
+        entitlement_payload = {"reason": reason, **derived}
+        if latest is not None and latest.state == state and latest.payload_json == entitlement_payload:
             return None
         response = self._make_response(
             scope=scope,
@@ -1632,10 +1839,7 @@ class CommercialLifecycleService:
             parent_ref=trigger_event.record_ref,
             currency=derived.get("currency"),
             amount=derived.get("outstanding_total"),
-            payload_json={
-                "reason": reason,
-                **derived,
-            },
+            payload_json=entitlement_payload,
             response_json=response,
             request_sha256=response["request_sha256"],
             decision_sha256=response["decision_sha256"],
@@ -1653,7 +1857,7 @@ class CommercialLifecycleService:
     ) -> tuple[str, str, dict[str, Any]]:
         subscription = self._latest_event(session, scope=scope, lifecycle_kind="subscription")
         if subscription is None:
-            return "closed", "missing_subscription", {"subscription_ref": None, "plan_ref": None, "invoice_refs": [], "payment_total": "0", "refund_total": "0", "outstanding_total": "0", "currency": None}
+            return "closed", "missing_subscription", {"subscription_ref": None, "plan_ref": None, "invoice_refs": [], "invoice_total": "0", "payment_total": "0", "refund_total": "0", "outstanding_total": "0", "currency": None}
         if subscription.state in {"canceled", "closed"}:
             return "closed", "subscription_closed", self._entitlement_payload(session, scope=scope, subscription=subscription)
         if subscription.payload_json.get("settlement_evidence") is None:
@@ -1677,29 +1881,57 @@ class CommercialLifecycleService:
         subscription: CommercialLifecycleEventRow,
     ) -> dict[str, Any]:
         invoice_refs = []
+        invoice_total = Decimal("0")
         payment_total = Decimal("0")
         refund_total = Decimal("0")
         invoice_due: datetime | None = None
         currency = subscription.currency
-        for invoice in self._events(session, scope=scope, as_of=None, lifecycle_kind="invoice"):
+        if currency is None:
+            raise ValueError("subscription currency is required for entitlement settlement")
+        invoices = self._latest_events_by_record_ref(
+            session,
+            scope=scope,
+            lifecycle_kind="invoice",
+        )
+        for invoice in invoices:
+            if invoice.parent_ref != subscription.record_ref:
+                continue
+            if invoice.state not in COLLECTIBLE_INVOICE_STATES:
+                continue
+            gross_amount = self._require_invoice_money(invoice, expected_currency=currency)
             invoice_refs.append(invoice.record_ref)
+            settled = self._payment_total(
+                session,
+                scope=scope,
+                invoice_ref=invoice.record_ref,
+                expected_currency=currency,
+            )
+            refunded = self._refund_total(
+                session,
+                scope=scope,
+                invoice_ref=invoice.record_ref,
+                expected_currency=currency,
+            )
+            invoice_outstanding = gross_amount - settled + refunded
+            if invoice_outstanding < 0:
+                raise ValueError("invoice settlement conservation failed")
+            invoice_total += gross_amount
+            payment_total += settled
+            refund_total += refunded
             due_raw = invoice.payload_json.get("due_at")
-            if due_raw:
+            if invoice_outstanding > 0 and due_raw:
                 due_at = _timestamp(due_raw, "due_at")
-                if invoice_due is None or due_at > invoice_due:
+                if invoice_due is None or due_at < invoice_due:
                     invoice_due = due_at
-            if currency is None:
-                currency = invoice.currency
-            payment_total += self._payment_total(session, scope=scope, invoice_ref=invoice.record_ref)
-            refund_total += self._refund_total(session, scope=scope, invoice_ref=invoice.record_ref)
-        outstanding = max(payment_total - refund_total, Decimal("0"))
+        outstanding = invoice_total - payment_total + refund_total
         return {
             "subscription_ref": subscription.record_ref,
             "plan_ref": subscription.parent_ref,
             "invoice_refs": invoice_refs,
-            "payment_total": str(payment_total),
-            "refund_total": str(refund_total),
-            "outstanding_total": str(outstanding),
+            "invoice_total": _decimal_text(invoice_total),
+            "payment_total": _decimal_text(payment_total),
+            "refund_total": _decimal_text(refund_total),
+            "outstanding_total": _decimal_text(outstanding),
             "currency": currency,
             "invoice_due": invoice_due.isoformat() if invoice_due else None,
         }
@@ -1875,23 +2107,133 @@ class CommercialLifecycleService:
         )
         return session.scalars(query).first()
 
-    def _payment_total(self, session: Session, *, scope: CommercialScope, invoice_ref: str) -> Decimal:
+    def _idempotent_replay(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        lifecycle_kind: str,
+        event_kind: str,
+        payload: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any] | None:
+        request_hash = _request_hash(
+            event_kind,
+            payload | {"scope": scope.as_dict(), "idempotency_key": idempotency_key},
+        )
+        existing = self._idempotent_event(
+            session,
+            scope=scope,
+            lifecycle_kind=lifecycle_kind,
+            idempotency_key=idempotency_key,
+        )
+        if existing is None:
+            return None
+        if existing.request_sha256 != request_hash:
+            raise ValueError("idempotency key conflicts with a different commercial request")
+        response = _copy(existing.response_json)
+        response["idempotent"] = True
+        return response
+
+    def _latest_events_by_record_ref(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        lifecycle_kind: str,
+    ) -> list[CommercialLifecycleEventRow]:
+        latest: dict[str, CommercialLifecycleEventRow] = {}
+        for row in self._events(session, scope=scope, as_of=None, lifecycle_kind=lifecycle_kind):
+            latest[row.record_ref] = row
+        return [latest[record_ref] for record_ref in sorted(latest)]
+
+    def _payment_total(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        invoice_ref: str,
+        expected_currency: str,
+    ) -> Decimal:
         total = Decimal("0")
-        for row in self._events(session, scope=scope, as_of=None, lifecycle_kind="payment_attempt"):
+        for row in self._latest_events_by_record_ref(
+            session,
+            scope=scope,
+            lifecycle_kind="payment_attempt",
+        ):
             if row.parent_ref != invoice_ref:
                 continue
-            if row.state in {"succeeded", "settled"}:
-                total += row.amount or Decimal("0")
+            if row.currency != expected_currency:
+                raise ValueError("payment currency must match the invoice currency")
+            if row.state == "settled":
+                if row.amount is None or row.amount <= 0:
+                    raise ValueError("settled payment amount must be positive")
+                total += row.amount
         return total
 
-    def _refund_total(self, session: Session, *, scope: CommercialScope, invoice_ref: str) -> Decimal:
+    def _refund_total(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        invoice_ref: str,
+        expected_currency: str,
+    ) -> Decimal:
         total = Decimal("0")
-        for row in self._events(session, scope=scope, as_of=None, lifecycle_kind="refund"):
+        for row in self._latest_events_by_record_ref(
+            session,
+            scope=scope,
+            lifecycle_kind="refund",
+        ):
             if row.payload_json.get("invoice_ref") != invoice_ref:
                 continue
-            if row.state in {"approved", "paid"}:
-                total += row.amount or Decimal("0")
+            if row.currency != expected_currency:
+                raise ValueError("refund currency must match the invoice currency")
+            if row.state == "paid":
+                if row.amount is None or row.amount <= 0:
+                    raise ValueError("paid refund amount must be positive")
+                total += row.amount
         return total
+
+    def _refund_total_for_payment(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        payment_attempt_ref: str,
+        expected_currency: str,
+    ) -> Decimal:
+        total = Decimal("0")
+        for row in self._latest_events_by_record_ref(
+            session,
+            scope=scope,
+            lifecycle_kind="refund",
+        ):
+            if row.payload_json.get("payment_attempt_ref") != payment_attempt_ref:
+                continue
+            if row.currency != expected_currency:
+                raise ValueError("refund currency must match the settled payment currency")
+            if row.state == "paid":
+                if row.amount is None or row.amount <= 0:
+                    raise ValueError("paid refund amount must be positive")
+                total += row.amount
+        return total
+
+    def _require_collectible_invoice(self, invoice: CommercialLifecycleEventRow) -> None:
+        if invoice.state not in COLLECTIBLE_INVOICE_STATES:
+            raise ValueError("invoice state is not collectible")
+
+    def _require_invoice_money(
+        self,
+        invoice: CommercialLifecycleEventRow,
+        *,
+        expected_currency: str,
+    ) -> Decimal:
+        if invoice.currency is None or invoice.currency != expected_currency:
+            raise ValueError("invoice currency does not match the settlement currency")
+        if invoice.amount is None or invoice.amount <= 0:
+            raise ValueError("invoice gross amount must be positive")
+        return invoice.amount
 
     def _ensure_payment_capacity(
         self,
@@ -1904,9 +2246,23 @@ class CommercialLifecycleService:
         invoice = self._latest_event(session, scope=scope, lifecycle_kind="invoice", record_ref=invoice_ref)
         if invoice is None:
             raise KeyError("invoice not found for exact scope")
-        payment_total = self._payment_total(session, scope=scope, invoice_ref=invoice_ref)
-        refund_total = self._refund_total(session, scope=scope, invoice_ref=invoice_ref)
-        outstanding = (invoice.amount or Decimal("0")) - payment_total + refund_total
+        self._require_collectible_invoice(invoice)
+        if invoice.currency is None:
+            raise ValueError("invoice currency is required")
+        invoice_amount = self._require_invoice_money(invoice, expected_currency=invoice.currency)
+        payment_total = self._payment_total(
+            session,
+            scope=scope,
+            invoice_ref=invoice_ref,
+            expected_currency=invoice.currency,
+        )
+        refund_total = self._refund_total(
+            session,
+            scope=scope,
+            invoice_ref=invoice_ref,
+            expected_currency=invoice.currency,
+        )
+        outstanding = invoice_amount - payment_total + refund_total
         if amount > max(outstanding, Decimal("0")):
             raise ValueError("payment attempt amount must not exceed the outstanding invoice balance")
 
@@ -1920,6 +2276,12 @@ class CommercialLifecycleService:
 
     def _enforce_forward_transition(self, *, lifecycle_kind: str, previous: str | None, current: str) -> None:
         if previous is None:
+            return
+        if lifecycle_kind in {"invoice", "payment_attempt", "refund"} and current == previous:
+            raise ValueError(f"{lifecycle_kind} state replay requires the original idempotency key")
+        if lifecycle_kind == "refund":
+            if current not in REFUND_STATE_TRANSITIONS[previous]:
+                raise ValueError("refund state transition is not allowed")
             return
         if lifecycle_kind == "plan":
             order = PLAN_STATE_ORDER
@@ -1937,6 +2299,65 @@ class CommercialLifecycleService:
             return
         if order[current] < order[previous]:
             raise ValueError(f"{lifecycle_kind} state cannot move backwards")
+
+    def _preflight_existing_record(
+        self,
+        session: Session,
+        *,
+        scope: CommercialScope,
+        lifecycle_kind: str,
+        state: str,
+        record_ref: str,
+        parent_ref: str | None,
+        currency: str | None,
+        amount: Decimal | None,
+        payload: dict[str, Any],
+    ) -> None:
+        previous = self._latest_event(
+            session,
+            scope=scope,
+            lifecycle_kind=lifecycle_kind,
+            record_ref=record_ref,
+        )
+        self._require_record_identity(
+            lifecycle_kind=lifecycle_kind,
+            previous=previous,
+            parent_ref=parent_ref,
+            currency=currency,
+            amount=amount,
+            payload=payload,
+        )
+        self._enforce_forward_transition(
+            lifecycle_kind=lifecycle_kind,
+            previous=previous.state if previous else None,
+            current=state,
+        )
+
+    def _require_record_identity(
+        self,
+        *,
+        lifecycle_kind: str,
+        previous: CommercialLifecycleEventRow | None,
+        parent_ref: str | None,
+        currency: str | None,
+        amount: Decimal | None,
+        payload: dict[str, Any],
+    ) -> None:
+        if previous is None or lifecycle_kind not in {"invoice", "payment_attempt", "refund"}:
+            return
+        if (
+            previous.parent_ref != parent_ref
+            or previous.currency != currency
+            or previous.amount != amount
+        ):
+            raise ValueError(f"{lifecycle_kind} record identity and money tuple are immutable")
+        stable_payload_fields = {
+            "invoice": ("subscription_ref", "net_amount", "tax_amount", "gross_amount"),
+            "payment_attempt": ("invoice_ref", "amount"),
+            "refund": ("invoice_ref", "payment_attempt_ref", "amount"),
+        }[lifecycle_kind]
+        if any(previous.payload_json.get(field) != payload.get(field) for field in stable_payload_fields):
+            raise ValueError(f"{lifecycle_kind} record identity and money tuple are immutable")
 
     def _event_dict(self, row: CommercialLifecycleEventRow) -> dict[str, Any]:
         reason = row.payload_json.get("reason")
