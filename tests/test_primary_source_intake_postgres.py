@@ -19,7 +19,9 @@ from apps.control_plane.primary_source_intake import (
 )
 from apps.control_plane.security import Principal
 
-DATABASE_URL = os.getenv("KJDS_DATABASE_URL", "")
+DATABASE_URL = os.getenv("KJDS_G1_CONTRACT_DATABASE_URL") or os.getenv(
+    "KJDS_DATABASE_URL", ""
+)
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL.startswith("postgresql"),
     reason="PostgreSQL contract tests require KJDS_DATABASE_URL",
@@ -150,17 +152,24 @@ def admit(intake: PrimarySourceIntake, tenant: str, key: str):
 def test_00_migration_replays_0091_to_0092_to_0091_to_0092(engine):
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", DATABASE_URL)
-
-    command.upgrade(config, "20260803_0092")
-    command.downgrade(config, "20260803_0091")
-    assert "primary_source_intake_envelopes" not in inspect(engine).get_table_names()
-    command.upgrade(config, "20260803_0092")
-    assert {
-        "primary_source_intake_envelopes",
-        "primary_source_intake_records",
-    }.issubset(inspect(engine).get_table_names())
-    command.downgrade(config, "20260803_0091")
-    command.upgrade(config, "20260803_0092")
+    original_database_url = os.environ.get("KJDS_DATABASE_URL")
+    os.environ["KJDS_DATABASE_URL"] = DATABASE_URL
+    try:
+        command.upgrade(config, "20260803_0092")
+        command.downgrade(config, "20260803_0091")
+        assert "primary_source_intake_envelopes" not in inspect(engine).get_table_names()
+        command.upgrade(config, "20260803_0092")
+        assert {
+            "primary_source_intake_envelopes",
+            "primary_source_intake_records",
+        }.issubset(inspect(engine).get_table_names())
+        command.downgrade(config, "20260803_0091")
+        command.upgrade(config, "20260803_0092")
+    finally:
+        if original_database_url is None:
+            os.environ.pop("KJDS_DATABASE_URL", None)
+        else:
+            os.environ["KJDS_DATABASE_URL"] = original_database_url
 
     with engine.connect() as connection:
         assert connection.scalar(
@@ -290,8 +299,16 @@ def test_database_schema_has_no_raw_contact_or_credential_columns(engine):
 def test_99_data_bearing_downgrade_fails_closed(engine):
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", DATABASE_URL)
-    with pytest.raises(DBAPIError, match="BAS-198 downgrade blocked"):
-        command.downgrade(config, "20260803_0091")
+    original_database_url = os.environ.get("KJDS_DATABASE_URL")
+    os.environ["KJDS_DATABASE_URL"] = DATABASE_URL
+    try:
+        with pytest.raises(DBAPIError, match="BAS-198 downgrade blocked"):
+            command.downgrade(config, "20260803_0091")
+    finally:
+        if original_database_url is None:
+            os.environ.pop("KJDS_DATABASE_URL", None)
+        else:
+            os.environ["KJDS_DATABASE_URL"] = original_database_url
     with engine.connect() as connection:
         assert connection.scalar(
             text("SELECT version_num FROM alembic_version")

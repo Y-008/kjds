@@ -20,7 +20,9 @@ from apps.control_plane.media_connectors import (
 )
 from apps.control_plane.security import Principal
 
-DATABASE_URL = os.getenv("KJDS_DATABASE_URL", "")
+DATABASE_URL = os.getenv("KJDS_G1_CONTRACT_DATABASE_URL") or os.getenv(
+    "KJDS_DATABASE_URL", ""
+)
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL.startswith("postgresql"),
     reason="PostgreSQL contract tests require KJDS_DATABASE_URL",
@@ -67,16 +69,23 @@ def register(registry, tenant: str, key: str):
 def test_00_migration_replays_0090_to_0091_to_0090_to_0091(engine):
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", DATABASE_URL)
-
-    command.downgrade(config, "20260803_0090")
-    assert "media_connectors" not in inspect(engine).get_table_names()
-    command.upgrade(config, "20260803_0091")
-    assert {"media_connectors", "media_connector_events"}.issubset(
-        inspect(engine).get_table_names()
-    )
-    command.downgrade(config, "20260803_0090")
-    assert "media_connectors" not in inspect(engine).get_table_names()
-    command.upgrade(config, "20260803_0091")
+    original_database_url = os.environ.get("KJDS_DATABASE_URL")
+    os.environ["KJDS_DATABASE_URL"] = DATABASE_URL
+    try:
+        command.downgrade(config, "20260803_0090")
+        assert "media_connectors" not in inspect(engine).get_table_names()
+        command.upgrade(config, "20260803_0091")
+        assert {"media_connectors", "media_connector_events"}.issubset(
+            inspect(engine).get_table_names()
+        )
+        command.downgrade(config, "20260803_0090")
+        assert "media_connectors" not in inspect(engine).get_table_names()
+        command.upgrade(config, "20260803_0091")
+    finally:
+        if original_database_url is None:
+            os.environ.pop("KJDS_DATABASE_URL", None)
+        else:
+            os.environ["KJDS_DATABASE_URL"] = original_database_url
 
     with engine.connect() as connection:
         assert connection.scalar(

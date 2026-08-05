@@ -45,7 +45,7 @@ LEADERS = "strategic_benchmark_leaders"
 EVIDENCE_LINKS = "strategic_benchmark_evidence_links"
 TABLES = (SNAPSHOTS, GROUPS, OBSERVATIONS, LEADERS, EVIDENCE_LINKS)
 RECORDED_AT = datetime.now(UTC) - timedelta(minutes=1)
-NOW = datetime.now(UTC) + timedelta(minutes=5)
+NOW = datetime.now(UTC) + timedelta(days=1)
 STORE = "store-a"
 
 
