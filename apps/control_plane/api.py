@@ -44,6 +44,7 @@ from .routers import (
     seller_strategy,
     sourcing_intelligence,
     strategic_benchmark,
+    strategic_capital_dashboard,
     system,
     warehouse_fulfillment,
 )
@@ -250,6 +251,7 @@ _ROUTE_MODULES = (
     product_content,
     primary_source_intake,
     strategic_benchmark,
+    strategic_capital_dashboard,
     profit_command,
     returns_aftersales,
     warehouse_fulfillment,

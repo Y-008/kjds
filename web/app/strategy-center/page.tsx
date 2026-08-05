@@ -1,5 +1,5 @@
-import { SellerOsConsole } from "../../features/seller-os/seller-os-console";
+import { StrategicCapitalDashboard } from "../../features/strategic-capital-dashboard/strategic-capital-dashboard";
 
 export default function StrategyCenterPage() {
-  return <SellerOsConsole surface="strategy-center" />;
+  return <StrategicCapitalDashboard surface="strategy-center" />;
 }

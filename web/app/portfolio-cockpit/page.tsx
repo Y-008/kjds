@@ -1,5 +1,5 @@
-import { SellerOsConsole } from "../../features/seller-os/seller-os-console";
+import { StrategicCapitalDashboard } from "../../features/strategic-capital-dashboard/strategic-capital-dashboard";
 
 export default function PortfolioCockpitPage() {
-  return <SellerOsConsole surface="portfolio-cockpit" />;
+  return <StrategicCapitalDashboard surface="portfolio-cockpit" />;
 }

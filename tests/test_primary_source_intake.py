@@ -27,6 +27,13 @@ from apps.control_plane.primary_source_intake import (
 )
 from apps.control_plane.security import Principal
 from apps.control_plane.sql_repository import Base
+from apps.control_plane.strategic_capital_dashboard import (
+    PrimarySourceCoverageReadPort,
+    RuntimeCurrentScopeAuthority,
+    ScopedDashboardCitationAuthority,
+    StrategicCapitalDashboardRegistry,
+    StrategicCapitalDashboardService,
+)
 
 NOW = datetime(2026, 8, 3, 12, tzinfo=UTC)
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,8 +44,10 @@ class FakeScopeGrants:
         self.ready = True
         self.entity_suffix = "entity"
         self.authority_suffix = "v1"
+        self.calls = []
 
     def current(self, *, principal, store_ref, as_of):
+        self.calls.append(as_of)
         assert as_of.tzinfo is not None
         if not self.ready:
             return {
@@ -187,6 +196,46 @@ def admit(service, records, *, key="lead-batch-a", body=None, actor=None):
     )
 
 
+@pytest.mark.parametrize(
+    "read_role", ["operator", "reviewer", "compliance", "monitor", "admin"]
+)
+def test_real_primary_projection_uses_scope_bound_safe_citation(
+    intake_runtime, read_role: str
+):
+    service, _engine, scope, _scoped = intake_runtime
+    admitted = admit(service, [record()])
+    raw_evidence_id = admitted["intake"]["evidence"]["id"]
+    registry = StrategicCapitalDashboardRegistry.load()
+    citation_authority = ScopedDashboardCitationAuthority(sealing_key=b"k" * 32)
+    dashboard = StrategicCapitalDashboardService(
+        scope_authority=RuntimeCurrentScopeAuthority(scope_grants=scope),
+        section_ports={
+            "primary_source_coverage": PrimarySourceCoverageReadPort(
+                service=service,
+                source_contract=registry.payload["source_contracts"][
+                    "primary_source_coverage"
+                ],
+                citation_authority=citation_authority,
+            )
+        },
+        clock=lambda: NOW,
+    )
+
+    result = dashboard.read(
+        principal=principal("tenant-a", "operator-a", read_role),
+        store_ref="store-a",
+        as_of=NOW,
+    )
+    serialized = json.dumps(result, sort_keys=True)
+
+    assert result["sections"][0]["status"] == "ready"
+    assert result["sections"][0]["citations"][0]["token"].startswith("psc_")
+    assert result["sections"][0]["citations"][0]["summary_sha256"] == (
+        admitted["intake"]["evidence"]["sha256"]
+    )
+    assert raw_evidence_id not in serialized
+
+
 def test_runtime_source_families_and_aliases_match_machine_registry():
     registry = json.loads(
         (ROOT / "docs/project/registries/primary_source_intake.json").read_text(
@@ -330,6 +379,13 @@ def test_cross_scope_and_authority_drift_are_non_enumerable(intake_runtime):
             as_of=NOW,
             intake_ref=ref,
         )
+    historical = service.list(
+        principal=principal(),
+        store_ref="store-a",
+        as_of=NOW - timedelta(minutes=1),
+    )
+    assert historical["items"] == []
+    assert scope.calls[-1] == NOW
     scope.authority_suffix = "v2"
     with pytest.raises(KeyError, match="authorized scope"):
         service.get(

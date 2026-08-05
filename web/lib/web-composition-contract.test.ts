@@ -108,13 +108,11 @@ test("batch opportunity workbench uses only server-owned scans and safety contra
   );
 });
 
-test("seller operating system exposes six real routes over one fact kernel", () => {
+test("seller operating system retains four operating routes over one fact kernel", () => {
   const consoleSource = read("../features/seller-os/seller-os-console.tsx");
   const routes = [
     ["seller-os", "seller-os"],
-    ["strategy-center", "strategy-center"],
     ["rule-advantage", "rule-advantage"],
-    ["portfolio-cockpit", "portfolio-cockpit"],
     ["store-matrix", "store-matrix"],
     ["growth-command", "growth-command"],
   ];
@@ -135,6 +133,48 @@ test("seller operating system exposes six real routes over one fact kernel", () 
   assert.doesNotMatch(
     consoleSource,
     /Math\.random|\/commands|\/write-attempt|\/receipt/,
+  );
+});
+
+test("strategic surfaces use one read-only server-owned dashboard projection", () => {
+  const source = read(
+    "../features/strategic-capital-dashboard/strategic-capital-dashboard.tsx",
+  );
+  const strategy = read("../app/strategy-center/page.tsx");
+  const portfolio = read("../app/portfolio-cockpit/page.tsx");
+  const sessionRoute = read("../app/auth/session/route.ts");
+  const identity = read("./web-identity.ts");
+  const contract = read(
+    "../features/strategic-capital-dashboard/contract.ts",
+  );
+
+  assert.match(strategy, /StrategicCapitalDashboard surface="strategy-center"/);
+  assert.match(portfolio, /StrategicCapitalDashboard surface="portfolio-cockpit"/);
+  assert.doesNotMatch(strategy, /SellerOsConsole/);
+  assert.doesNotMatch(portfolio, /SellerOsConsole/);
+  assert.match(source, /fetchJson<WebSession[^>]*>\(\s*["']\/auth\/session/);
+  assert.match(source, /session\.default_store_ref/);
+  assert.match(source, /session\.store_refs\.includes\(storeRef\)/);
+  assert.match(source, /encodeURIComponent\(storeRef\)/);
+  assert.match(source, /isStrategicCapitalDashboardProjection\(payload, storeRef\)/);
+  assert.match(source, /status === 401/);
+  assert.match(source, /status === 428/);
+  assert.doesNotMatch(source, /store_ref=ozon-primary/);
+  assert.match(sessionRoute, /store_refs:\s*identity\.storeRefs/);
+  assert.match(sessionRoute, /default_store_ref:\s*identity\.storeRefs\[0\]/);
+  assert.match(identity, /storeRefs:\s*credential\.storeRefs/);
+  assert.match(source, /dashboard\.sections\.map/);
+  assert.match(source, /section\.display_order/);
+  assert.match(source, /section\.display_items\.map/);
+  assert.match(contract, /not_connected/);
+  assert.match(contract, /no_data/);
+  assert.match(contract, /UNKNOWN/);
+  assert.match(source, /global_top1=false/);
+  assert.match(source, /production_admission=false/);
+  assert.match(source, /budget_authority=false/);
+  assert.doesNotMatch(
+    source,
+    /method:\s*["']POST|\/impact|\.sort\(|\.reduce\(|\bsum\b|\bNumber\b|\bMath\b|\bFX\b|percentage|\?\?\s*0|candidates\[0\]/,
   );
 });
 
