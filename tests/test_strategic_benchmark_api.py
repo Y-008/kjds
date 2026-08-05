@@ -209,6 +209,7 @@ def test_list_get_compare_dispatch_filters_cursor_and_scope(api_client):
         f"/v1/strategic-benchmark-snapshots/{current}?" + query()
     )
     assert fetched.status_code == 200
+    assert "scope_authority_sha256" not in fetched.text
     compared = client.get(
         f"/v1/strategic-benchmark-snapshots/{current}/compare?"
         + query(baseline_snapshot_ref=baseline)
@@ -293,6 +294,10 @@ def test_main_openapi_has_explicit_whitelists_and_api_key_security():
     serialized = str(operations)
     assert "dict[str, Any]" not in serialized
     assert "raw_evidence_ids" not in serialized
+    assert "expected_scope_authority_sha256" not in serialized
+    assert "scope_authority_sha256" not in schema["components"]["schemas"][
+        "SnapshotResponse"
+    ]["properties"]
     projection_schemas = {
         name: value
         for name, value in schema["components"]["schemas"].items()

@@ -17,6 +17,8 @@ export type ResolvedWebIdentity = {
   email: string | null;
   actorId: string;
   roles: string[];
+  tenantRef: string;
+  storeRefs: string[];
 };
 
 export async function resolveWebIdentity(
@@ -32,6 +34,8 @@ export async function resolveWebIdentity(
       email: null,
       actorId: credential.actorId,
       roles: credential.roles,
+      tenantRef: credential.tenantRef,
+      storeRefs: credential.storeRefs,
     };
   }
 
@@ -61,6 +65,8 @@ export async function resolveWebIdentity(
     email: data.user.email ?? null,
     actorId: credential.actorId,
     roles: credential.roles,
+    tenantRef: credential.tenantRef,
+    storeRefs: credential.storeRefs,
   };
 }
 

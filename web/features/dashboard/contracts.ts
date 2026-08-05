@@ -5,6 +5,9 @@ export type WebSession = {
   email: string | null;
   actor_id: string;
   roles: string[];
+  tenant_ref: string;
+  store_refs: string[];
+  default_store_ref: string;
 };
 export type OzonImportResult = {
   id: string;

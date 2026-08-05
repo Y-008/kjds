@@ -36,6 +36,12 @@ from apps.control_plane.strategic_benchmark import (
     StrategicBenchmarkObservationRow,
     StrategicBenchmarkSnapshotRow,
 )
+from apps.control_plane.strategic_capital_dashboard import (
+    AvailableSectionProjection,
+    DashboardReadContext,
+    StrategicBenchmarkReadPort,
+    StrategicCapitalDashboardRegistry,
+)
 
 RECORDED_AT = datetime.now(UTC) - timedelta(minutes=1)
 # The complete repository Gate collects this module before a multi-minute suite.
@@ -49,8 +55,10 @@ class FakeScopeGrants:
     def __init__(self) -> None:
         self.entity_suffix = "entity"
         self.authority_version = "v1"
+        self.calls = []
 
     def current(self, *, principal, store_ref, as_of):
+        self.calls.append(as_of)
         entity_ref = f"{self.entity_suffix}-{principal.tenant_ref}"
         authority = hashlib.sha256(
             (
@@ -88,10 +96,12 @@ class FakeScopedEvidence:
         }
 
 
-def principal(tenant: str = "tenant-a", actor: str = "operator-a") -> Principal:
+def principal(
+    tenant: str = "tenant-a", actor: str = "operator-a", *roles: str
+) -> Principal:
     return Principal(
         actor_id=actor,
-        roles=frozenset({"operator"}),
+        roles=frozenset(roles or ("operator",)),
         tenant_ref=tenant,
         store_refs=frozenset({"store-a"}),
     )
@@ -315,6 +325,52 @@ def test_registry_hash_and_all_9_domains_41_metrics_are_frozen():
 
 
 @pytest.mark.parametrize(
+    "read_role", ["operator", "reviewer", "compliance", "monitor", "admin"]
+)
+def test_real_kernel_projection_binds_dashboard_to_current_authority(
+    benchmark_runtime, read_role: str
+):
+    service, _engine, scope, _scoped = benchmark_runtime
+    built = build(service, [group()])
+    current = scope.current(
+        principal=principal(),
+        store_ref="store-a",
+        as_of=NOW,
+    )
+    assert "scope_authority_sha256" not in built["snapshot"]
+    contract = StrategicCapitalDashboardRegistry.load().payload[
+        "source_contracts"
+    ]["strategic_benchmark"]
+    projection = StrategicBenchmarkReadPort(
+        service=service,
+        source_contract=contract,
+    ).read(
+        principal=principal("tenant-a", "operator-a", read_role),
+        context=DashboardReadContext(
+            tenant_ref=current["tenant_ref"],
+            entity_ref=current["entity_ref"],
+            store_ref=current["store_ref"],
+            scope_grant_authority_sha256=current["authority_sha256"],
+            data_as_of=NOW,
+            authority_checked_at=NOW,
+        ),
+    )
+
+    assert isinstance(projection, AvailableSectionProjection)
+    assert projection.status == "ready"
+    assert projection.scope_grant_authority_sha256 == current["authority_sha256"]
+
+    with pytest.raises(KeyError, match="authorized scope"):
+        service.get(
+            principal=principal(),
+            store_ref="store-a",
+            as_of=NOW,
+            snapshot_ref=built["snapshot"]["snapshot_ref"],
+            expected_scope_authority_sha256="f" * 64,
+        )
+
+
+@pytest.mark.parametrize(
     ("domain", "metric_id", "values", "expected_subject"),
     [
         (
@@ -441,6 +497,31 @@ def test_scope_and_authority_drift_are_non_enumerable(benchmark_runtime):
         )
     scope.authority_version = "v2"
     with pytest.raises(KeyError):
+        service.get(
+            principal=principal(),
+            store_ref="store-a",
+            as_of=NOW,
+            snapshot_ref=snapshot_ref,
+        )
+
+
+def test_recorded_after_cutoff_snapshot_is_not_historically_visible(
+    benchmark_runtime,
+):
+    service, engine, _scope, _scoped = benchmark_runtime
+    built = build(service, [group()], key="recorded-after-cutoff")
+    snapshot_ref = built["snapshot"]["snapshot_ref"]
+    with Session(engine) as session, session.begin():
+        session.execute(
+            update(StrategicBenchmarkSnapshotRow)
+            .where(StrategicBenchmarkSnapshotRow.snapshot_ref == snapshot_ref)
+            .values(created_at=NOW + timedelta(seconds=1))
+        )
+
+    assert service.list(
+        principal=principal(), store_ref="store-a", as_of=NOW, limit=100
+    )["items"] == []
+    with pytest.raises(KeyError, match="authorized scope"):
         service.get(
             principal=principal(),
             store_ref="store-a",
@@ -740,6 +821,14 @@ def test_authority_rotation_allows_new_exact_scope_same_key_without_old_visibili
             as_of=NOW,
             snapshot_ref=first["snapshot"]["snapshot_ref"],
         )
+    historical = service.list(
+        principal=principal(),
+        store_ref="store-a",
+        as_of=NOW - timedelta(minutes=1),
+        limit=100,
+    )
+    assert historical["items"] == []
+    assert scope.calls[-1] == NOW
 
 
 @pytest.mark.parametrize(

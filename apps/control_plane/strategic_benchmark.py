@@ -8,6 +8,7 @@ import json
 import math
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation, localcontext
@@ -965,12 +966,17 @@ class StrategicBenchmarkKernel:
         store_ref: str,
         as_of: datetime,
         snapshot_ref: str,
+        expected_scope_authority_sha256: str | None = None,
     ) -> dict[str, Any]:
         self._require_role(
             principal, "operator", "reviewer", "compliance", "monitor", "admin"
         )
         cutoff = self._aware(as_of, "as_of")
         scope = self._scope(principal, store_ref, cutoff)
+        self._require_expected_scope_authority(
+            scope=scope,
+            expected_scope_authority_sha256=expected_scope_authority_sha256,
+        )
         with Session(self.engine) as session:
             row = self._find(
                 session,
@@ -993,12 +999,17 @@ class StrategicBenchmarkKernel:
         comparison_state: str | None = None,
         limit: int = 100,
         cursor: str | None = None,
+        expected_scope_authority_sha256: str | None = None,
     ) -> dict[str, Any]:
         self._require_role(
             principal, "operator", "reviewer", "compliance", "monitor", "admin"
         )
         cutoff = self._aware(as_of, "as_of")
         scope = self._scope(principal, store_ref, cutoff)
+        self._require_expected_scope_authority(
+            scope=scope,
+            expected_scope_authority_sha256=expected_scope_authority_sha256,
+        )
         if isinstance(limit, bool) or not 1 <= int(limit) <= 100:
             raise ValueError("limit must be between 1 and 100")
         filters = {
@@ -1035,6 +1046,7 @@ class StrategicBenchmarkKernel:
                 StrategicBenchmarkSnapshotRow.scope_authority_sha256
                 == scope["scope_authority_sha256"],
                 StrategicBenchmarkSnapshotRow.as_of <= cutoff,
+                StrategicBenchmarkSnapshotRow.created_at <= cutoff,
             )
             if cursor_position is not None:
                 last_created, last_ref = cursor_position
@@ -2424,6 +2436,7 @@ class StrategicBenchmarkKernel:
                 StrategicBenchmarkSnapshotRow.scope_authority_sha256
                 == scope["scope_authority_sha256"],
                 StrategicBenchmarkSnapshotRow.as_of <= as_of,
+                StrategicBenchmarkSnapshotRow.created_at <= as_of,
             )
         )
         if row is None:
@@ -2434,10 +2447,14 @@ class StrategicBenchmarkKernel:
         self, principal: Principal, store_ref: str, as_of: datetime
     ) -> dict[str, str]:
         store = self._token(store_ref, "store_ref")
+        data_as_of = self._aware(as_of, "as_of")
+        authority_checked_at = self._aware(self.clock(), "clock")
+        if data_as_of > authority_checked_at:
+            raise ValueError("as_of cannot be in the future")
         authority = self.scope_grants.current(
             principal=principal,
             store_ref=store,
-            as_of=as_of,
+            as_of=authority_checked_at,
         )
         if authority.get("status") != "ready":
             raise PermissionError(
@@ -2459,6 +2476,28 @@ class StrategicBenchmarkKernel:
             "store_ref": store,
             "scope_authority_sha256": digest,
         }
+
+    def _require_expected_scope_authority(
+        self,
+        *,
+        scope: Mapping[str, str],
+        expected_scope_authority_sha256: str | None,
+    ) -> None:
+        """Bind trusted internal readers without extending the HTTP projection."""
+
+        if expected_scope_authority_sha256 is None:
+            return
+        try:
+            expected = self._sha256(
+                expected_scope_authority_sha256,
+                "expected_scope_authority_sha256",
+            )
+        except ValueError as exc:
+            raise KeyError("Strategic benchmark not found in authorized scope") from exc
+        if not hmac.compare_digest(
+            scope["scope_authority_sha256"], expected
+        ):
+            raise KeyError("Strategic benchmark not found in authorized scope")
 
     @staticmethod
     def _manifest(

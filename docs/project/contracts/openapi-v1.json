@@ -4267,6 +4267,157 @@
         "title": "CountsResponse",
         "type": "object"
       },
+      "CurrentDashboardSectionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actionable_proposal": {
+            "const": false,
+            "title": "Actionable Proposal",
+            "type": "boolean"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardCitationResponse"
+            },
+            "minItems": 1,
+            "title": "Citations",
+            "type": "array"
+          },
+          "data_as_of": {
+            "format": "date-time",
+            "title": "Data As Of",
+            "type": "string"
+          },
+          "display_items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardDisplayItemResponse"
+            },
+            "minItems": 1,
+            "title": "Display Items",
+            "type": "array"
+          },
+          "display_order": {
+            "maximum": 7.0,
+            "minimum": 0.0,
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "global_top1_claim": {
+            "const": false,
+            "title": "Global Top1 Claim",
+            "type": "boolean"
+          },
+          "invalidation_conditions": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Invalidation Conditions",
+            "type": "array"
+          },
+          "production_admission": {
+            "const": false,
+            "title": "Production Admission",
+            "type": "boolean"
+          },
+          "projection_ref": {
+            "title": "Projection Ref",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "review_due_at": {
+            "format": "date-time",
+            "title": "Review Due At",
+            "type": "string"
+          },
+          "scope_binding_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Scope Binding Sha256",
+            "type": "string"
+          },
+          "section_id": {
+            "enum": [
+              "primary_source_coverage",
+              "strategic_benchmark",
+              "strategic_gaps",
+              "opportunity_portfolio",
+              "experiment_portfolio",
+              "capital_proposals",
+              "verified_outcomes",
+              "invalidation_review"
+            ],
+            "title": "Section Id",
+            "type": "string"
+          },
+          "source_contract_id": {
+            "title": "Source Contract Id",
+            "type": "string"
+          },
+          "source_contract_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Contract Sha256",
+            "type": "string"
+          },
+          "source_contract_version": {
+            "title": "Source Contract Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "partial"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_id",
+          "display_order",
+          "scope_binding_sha256",
+          "source_contract_id",
+          "source_contract_version",
+          "source_contract_sha256",
+          "reason_codes",
+          "global_top1_claim",
+          "production_admission",
+          "actionable_proposal",
+          "status",
+          "projection_ref",
+          "projection_sha256",
+          "data_as_of",
+          "recorded_at",
+          "effective_at",
+          "review_due_at",
+          "citations",
+          "display_items",
+          "invalidation_conditions"
+        ],
+        "title": "CurrentDashboardSectionResponse",
+        "type": "object"
+      },
       "CustomerServiceCaseInput": {
         "additionalProperties": false,
         "properties": {
@@ -4506,6 +4657,120 @@
           "effective_at"
         ],
         "title": "CustomerServiceEventInput",
+        "type": "object"
+      },
+      "DashboardCitationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "summary_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Summary Sha256",
+            "type": "string"
+          },
+          "token": {
+            "pattern": "^(?:sbc|psc|gdc|gapc|capc|expc|outc|invc)_[A-Za-z0-9_-]{16,256}$",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "summary_sha256"
+        ],
+        "title": "DashboardCitationResponse",
+        "type": "object"
+      },
+      "DashboardDisplayItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "display_text": {
+            "title": "Display Text",
+            "type": "string"
+          },
+          "item_ref": {
+            "title": "Item Ref",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_ref",
+          "label",
+          "display_text"
+        ],
+        "title": "DashboardDisplayItemResponse",
+        "type": "object"
+      },
+      "DashboardSideEffectsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_writes": {
+            "const": 0,
+            "title": "Approval Writes",
+            "type": "integer"
+          },
+          "evidence_writes": {
+            "const": 0,
+            "title": "Evidence Writes",
+            "type": "integer"
+          },
+          "external_writes": {
+            "const": 0,
+            "title": "External Writes",
+            "type": "integer"
+          },
+          "fact_writes": {
+            "const": 0,
+            "title": "Fact Writes",
+            "type": "integer"
+          },
+          "finance_entry_writes": {
+            "const": 0,
+            "title": "Finance Entry Writes",
+            "type": "integer"
+          },
+          "graph_writes": {
+            "const": 0,
+            "title": "Graph Writes",
+            "type": "integer"
+          },
+          "network_writes": {
+            "const": 0,
+            "title": "Network Writes",
+            "type": "integer"
+          },
+          "outbox_writes": {
+            "const": 0,
+            "title": "Outbox Writes",
+            "type": "integer"
+          },
+          "permit_writes": {
+            "const": 0,
+            "title": "Permit Writes",
+            "type": "integer"
+          },
+          "pilot_writes": {
+            "const": 0,
+            "title": "Pilot Writes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evidence_writes",
+          "fact_writes",
+          "finance_entry_writes",
+          "graph_writes",
+          "approval_writes",
+          "permit_writes",
+          "pilot_writes",
+          "outbox_writes",
+          "external_writes",
+          "network_writes"
+        ],
+        "title": "DashboardSideEffectsResponse",
         "type": "object"
       },
       "DecisionAnalysisInput": {
@@ -8285,6 +8550,157 @@
           "sample_definition_sha256"
         ],
         "title": "MethodologyResponse",
+        "type": "object"
+      },
+      "NonCurrentDashboardSectionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actionable_proposal": {
+            "const": false,
+            "title": "Actionable Proposal",
+            "type": "boolean"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardCitationResponse"
+            },
+            "minItems": 1,
+            "title": "Citations",
+            "type": "array"
+          },
+          "data_as_of": {
+            "format": "date-time",
+            "title": "Data As Of",
+            "type": "string"
+          },
+          "display_items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardDisplayItemResponse"
+            },
+            "maxItems": 0,
+            "title": "Display Items",
+            "type": "array"
+          },
+          "display_order": {
+            "maximum": 7.0,
+            "minimum": 0.0,
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "global_top1_claim": {
+            "const": false,
+            "title": "Global Top1 Claim",
+            "type": "boolean"
+          },
+          "invalidation_conditions": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Invalidation Conditions",
+            "type": "array"
+          },
+          "production_admission": {
+            "const": false,
+            "title": "Production Admission",
+            "type": "boolean"
+          },
+          "projection_ref": {
+            "title": "Projection Ref",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "review_due_at": {
+            "format": "date-time",
+            "title": "Review Due At",
+            "type": "string"
+          },
+          "scope_binding_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Scope Binding Sha256",
+            "type": "string"
+          },
+          "section_id": {
+            "enum": [
+              "primary_source_coverage",
+              "strategic_benchmark",
+              "strategic_gaps",
+              "opportunity_portfolio",
+              "experiment_portfolio",
+              "capital_proposals",
+              "verified_outcomes",
+              "invalidation_review"
+            ],
+            "title": "Section Id",
+            "type": "string"
+          },
+          "source_contract_id": {
+            "title": "Source Contract Id",
+            "type": "string"
+          },
+          "source_contract_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Contract Sha256",
+            "type": "string"
+          },
+          "source_contract_version": {
+            "title": "Source Contract Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "stale",
+              "invalidated"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_id",
+          "display_order",
+          "scope_binding_sha256",
+          "source_contract_id",
+          "source_contract_version",
+          "source_contract_sha256",
+          "reason_codes",
+          "global_top1_claim",
+          "production_admission",
+          "actionable_proposal",
+          "status",
+          "projection_ref",
+          "projection_sha256",
+          "data_as_of",
+          "recorded_at",
+          "effective_at",
+          "review_due_at",
+          "citations",
+          "display_items",
+          "invalidation_conditions"
+        ],
+        "title": "NonCurrentDashboardSectionResponse",
         "type": "object"
       },
       "ObservationInput": {
@@ -12474,6 +12890,142 @@
         "title": "StrategicBenchmarkSnapshotInput",
         "type": "object"
       },
+      "StrategicCapitalDashboardResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authority_checked_at": {
+            "format": "date-time",
+            "title": "Authority Checked At",
+            "type": "string"
+          },
+          "budget_authority": {
+            "const": false,
+            "title": "Budget Authority",
+            "type": "boolean"
+          },
+          "contract_id": {
+            "const": "kjds-strategic-capital-dashboard-v1",
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "contract_version": {
+            "const": "1.0.0",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "dashboard_ref": {
+            "title": "Dashboard Ref",
+            "type": "string"
+          },
+          "data_as_of": {
+            "format": "date-time",
+            "title": "Data As Of",
+            "type": "string"
+          },
+          "global_top1_claim": {
+            "const": false,
+            "title": "Global Top1 Claim",
+            "type": "boolean"
+          },
+          "observation_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Observation Sha256",
+            "type": "string"
+          },
+          "overall_state": {
+            "enum": [
+              "ready",
+              "partial",
+              "no_data",
+              "stale",
+              "invalidated",
+              "UNKNOWN"
+            ],
+            "title": "Overall State",
+            "type": "string"
+          },
+          "production_admission": {
+            "const": false,
+            "title": "Production Admission",
+            "type": "boolean"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "registry_content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Registry Content Sha256",
+            "type": "string"
+          },
+          "scope_binding_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Scope Binding Sha256",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "UNKNOWN": "#/components/schemas/UnavailableDashboardSectionResponse",
+                  "invalidated": "#/components/schemas/NonCurrentDashboardSectionResponse",
+                  "no_data": "#/components/schemas/UnavailableDashboardSectionResponse",
+                  "not_connected": "#/components/schemas/UnavailableDashboardSectionResponse",
+                  "partial": "#/components/schemas/CurrentDashboardSectionResponse",
+                  "ready": "#/components/schemas/CurrentDashboardSectionResponse",
+                  "stale": "#/components/schemas/NonCurrentDashboardSectionResponse"
+                },
+                "propertyName": "status"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/CurrentDashboardSectionResponse"
+                },
+                {
+                  "$ref": "#/components/schemas/NonCurrentDashboardSectionResponse"
+                },
+                {
+                  "$ref": "#/components/schemas/UnavailableDashboardSectionResponse"
+                }
+              ]
+            },
+            "maxItems": 8,
+            "minItems": 8,
+            "title": "Sections",
+            "type": "array"
+          },
+          "side_effects": {
+            "$ref": "#/components/schemas/DashboardSideEffectsResponse"
+          },
+          "store_ref": {
+            "title": "Store Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_id",
+          "contract_version",
+          "registry_content_sha256",
+          "dashboard_ref",
+          "scope_binding_sha256",
+          "store_ref",
+          "data_as_of",
+          "authority_checked_at",
+          "overall_state",
+          "reason_codes",
+          "sections",
+          "global_top1_claim",
+          "production_admission",
+          "budget_authority",
+          "side_effects",
+          "observation_sha256"
+        ],
+        "title": "StrategicCapitalDashboardResponse",
+        "type": "object"
+      },
       "SupplierInvoiceAuthorityReviewInput": {
         "additionalProperties": false,
         "properties": {
@@ -13142,6 +13694,147 @@
           "required_value"
         ],
         "title": "SupplierRfqSpecificationInput",
+        "type": "object"
+      },
+      "UnavailableDashboardSectionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "actionable_proposal": {
+            "const": false,
+            "title": "Actionable Proposal",
+            "type": "boolean"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardCitationResponse"
+            },
+            "maxItems": 0,
+            "title": "Citations",
+            "type": "array"
+          },
+          "data_as_of": {
+            "title": "Data As Of",
+            "type": "null"
+          },
+          "display_items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardDisplayItemResponse"
+            },
+            "maxItems": 0,
+            "title": "Display Items",
+            "type": "array"
+          },
+          "display_order": {
+            "maximum": 7.0,
+            "minimum": 0.0,
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "effective_at": {
+            "title": "Effective At",
+            "type": "null"
+          },
+          "global_top1_claim": {
+            "const": false,
+            "title": "Global Top1 Claim",
+            "type": "boolean"
+          },
+          "invalidation_conditions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 0,
+            "title": "Invalidation Conditions",
+            "type": "array"
+          },
+          "production_admission": {
+            "const": false,
+            "title": "Production Admission",
+            "type": "boolean"
+          },
+          "projection_ref": {
+            "title": "Projection Ref",
+            "type": "null"
+          },
+          "projection_sha256": {
+            "title": "Projection Sha256",
+            "type": "null"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "null"
+          },
+          "review_due_at": {
+            "title": "Review Due At",
+            "type": "null"
+          },
+          "scope_binding_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Scope Binding Sha256",
+            "type": "string"
+          },
+          "section_id": {
+            "enum": [
+              "primary_source_coverage",
+              "strategic_benchmark",
+              "strategic_gaps",
+              "opportunity_portfolio",
+              "experiment_portfolio",
+              "capital_proposals",
+              "verified_outcomes",
+              "invalidation_review"
+            ],
+            "title": "Section Id",
+            "type": "string"
+          },
+          "source_contract_id": {
+            "title": "Source Contract Id",
+            "type": "string"
+          },
+          "source_contract_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Contract Sha256",
+            "type": "string"
+          },
+          "source_contract_version": {
+            "title": "Source Contract Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "no_data",
+              "not_connected",
+              "UNKNOWN"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_id",
+          "display_order",
+          "scope_binding_sha256",
+          "source_contract_id",
+          "source_contract_version",
+          "source_contract_sha256",
+          "reason_codes",
+          "global_top1_claim",
+          "production_admission",
+          "actionable_proposal",
+          "status",
+          "citations",
+          "display_items",
+          "invalidation_conditions"
+        ],
+        "title": "UnavailableDashboardSectionResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -34210,6 +34903,69 @@
           }
         ],
         "summary": "Compare Strategic Benchmark Snapshots"
+      }
+    },
+    "/v1/strategic-capital-dashboard": {
+      "get": {
+        "operationId": "get_strategic_capital_dashboard_v1_strategic_capital_dashboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategicCapitalDashboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Get Strategic Capital Dashboard"
       }
     },
     "/v1/system/kill-switch": {

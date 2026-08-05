@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -179,6 +180,14 @@ from .sql_repository import SqlAlchemyRepository
 from .store_category_strategy import StoreCategoryStrategyWorkspace
 from .store_profile_intake import StoreProfileIntake
 from .strategic_benchmark import StrategicBenchmarkKernel
+from .strategic_capital_dashboard import (
+    PrimarySourceCoverageReadPort,
+    RuntimeCurrentScopeAuthority,
+    ScopedDashboardCitationAuthority,
+    StrategicBenchmarkReadPort,
+    StrategicCapitalDashboardRegistry,
+    StrategicCapitalDashboardService,
+)
 from .supplier_quote_authority import SupplierQuoteAuthorityService
 from .supplier_rfq import SupplierRfqWorkspace
 from .supplier_rfq_dispatch import SupplierRfqDispatchWorkspace
@@ -300,6 +309,7 @@ class RuntimeServices:
     product_media: Any
     primary_source_intake: Any
     strategic_benchmark: Any
+    strategic_capital_dashboard: Any
     providers: Any
     read_only_claims: Any
     readiness: Any
@@ -411,6 +421,29 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
         scope_grants=scope_grants,
         scoped_evidence=scoped_evidence,
+    )
+    strategic_dashboard_registry = StrategicCapitalDashboardRegistry.load()
+    strategic_dashboard_citation_authority = ScopedDashboardCitationAuthority(
+        sealing_key=os.getenv("KJDS_STRATEGIC_BENCHMARK_SEALING_KEY", "").encode()
+    )
+    strategic_capital_dashboard = StrategicCapitalDashboardService(
+        scope_authority=RuntimeCurrentScopeAuthority(scope_grants=scope_grants),
+        section_ports={
+            "primary_source_coverage": PrimarySourceCoverageReadPort(
+                service=primary_source_intake,
+                source_contract=strategic_dashboard_registry.payload[
+                    "source_contracts"
+                ]["primary_source_coverage"],
+                citation_authority=strategic_dashboard_citation_authority,
+            ),
+            "strategic_benchmark": StrategicBenchmarkReadPort(
+                service=strategic_benchmark,
+                source_contract=strategic_dashboard_registry.payload[
+                    "source_contracts"
+                ]["strategic_benchmark"],
+            ),
+        },
+        clock=lambda: datetime.now(UTC),
     )
     evidence_scope_binding = EvidenceScopeBindingService(
         evidence=evidence,
@@ -1261,6 +1294,7 @@ def build_runtime() -> RuntimeServices:
         product_media=product_media,
         primary_source_intake=primary_source_intake,
         strategic_benchmark=strategic_benchmark,
+        strategic_capital_dashboard=strategic_capital_dashboard,
         providers=providers,
         read_only_claims=read_only_claims,
         readiness=readiness,

@@ -9,6 +9,9 @@ export async function GET() {
       email: identity.email,
       actor_id: identity.actorId,
       roles: identity.roles,
+      tenant_ref: identity.tenantRef,
+      store_refs: identity.storeRefs,
+      default_store_ref: identity.storeRefs[0],
     });
   } catch (error) {
     const status = error instanceof WebIdentityError ? error.status : 503;

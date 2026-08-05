@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -552,12 +553,17 @@ class PrimarySourceIntake:
         store_ref: str,
         as_of: datetime,
         intake_ref: str,
+        expected_scope_authority_sha256: str | None = None,
     ) -> dict[str, Any]:
         self._require_role(
             principal, "operator", "reviewer", "compliance", "monitor", "admin"
         )
         cutoff = self._aware(as_of, "as_of")
         scope = self._scope(principal, store_ref, cutoff)
+        self._require_expected_scope_authority(
+            scope=scope,
+            expected_scope_authority_sha256=expected_scope_authority_sha256,
+        )
         ref = self._intake_ref(intake_ref)
         with Session(self.engine) as session:
             row = self._find(session, scope=scope, intake_ref=ref, as_of=cutoff)
@@ -573,12 +579,17 @@ class PrimarySourceIntake:
         status: str | None = None,
         limit: int = 100,
         cursor: str | None = None,
+        expected_scope_authority_sha256: str | None = None,
     ) -> dict[str, Any]:
         self._require_role(
             principal, "operator", "reviewer", "compliance", "monitor", "admin"
         )
         cutoff = self._aware(as_of, "as_of")
         scope = self._scope(principal, store_ref, cutoff)
+        self._require_expected_scope_authority(
+            scope=scope,
+            expected_scope_authority_sha256=expected_scope_authority_sha256,
+        )
         if isinstance(limit, bool) or not 1 <= int(limit) <= 100:
             raise ValueError("limit must be between 1 and 100")
         pack = self._source_pack(source_pack_id) if source_pack_id else None
@@ -589,7 +600,10 @@ class PrimarySourceIntake:
                 PrimarySourceIntakeRow.tenant_ref == scope["tenant_ref"],
                 PrimarySourceIntakeRow.entity_ref == scope["entity_ref"],
                 PrimarySourceIntakeRow.store_ref == scope["store_ref"],
+                PrimarySourceIntakeRow.scope_authority_sha256
+                == scope["scope_authority_sha256"],
                 PrimarySourceIntakeRow.as_of <= cutoff,
+                PrimarySourceIntakeRow.created_at <= cutoff,
             )
             if pack:
                 query = query.where(PrimarySourceIntakeRow.source_pack_id == pack)
@@ -915,10 +929,14 @@ class PrimarySourceIntake:
         self, principal: Principal, store_ref: str, as_of: datetime
     ) -> dict[str, str]:
         store = self._safe_token(store_ref, "store_ref", 160)
+        data_as_of = self._aware(as_of, "as_of")
+        authority_checked_at = self._aware(self.clock(), "clock")
+        if data_as_of > authority_checked_at:
+            raise ValueError("as_of cannot be in the future")
         authority = self.scope_grants.current(
             principal=principal,
             store_ref=store,
-            as_of=as_of,
+            as_of=authority_checked_at,
         )
         if authority.get("status") != "ready":
             raise PermissionError(
@@ -940,6 +958,30 @@ class PrimarySourceIntake:
             "store_ref": store,
             "scope_authority_sha256": digest,
         }
+
+    def _require_expected_scope_authority(
+        self,
+        *,
+        scope: Mapping[str, str],
+        expected_scope_authority_sha256: str | None,
+    ) -> None:
+        """Bind trusted internal readers without adding a router parameter."""
+
+        if expected_scope_authority_sha256 is None:
+            return
+        try:
+            expected = self._sha256(
+                expected_scope_authority_sha256,
+                "expected_scope_authority_sha256",
+            )
+        except ValueError as exc:
+            raise KeyError(
+                "Primary Source Intake not found in the authorized scope"
+            ) from exc
+        if not hmac.compare_digest(
+            scope["scope_authority_sha256"], expected
+        ):
+            raise KeyError("Primary Source Intake not found in the authorized scope")
 
     def _row(
         self,
@@ -1063,6 +1105,7 @@ class PrimarySourceIntake:
                 PrimarySourceIntakeRow.entity_ref == scope["entity_ref"],
                 PrimarySourceIntakeRow.store_ref == scope["store_ref"],
                 PrimarySourceIntakeRow.as_of <= as_of,
+                PrimarySourceIntakeRow.created_at <= as_of,
             )
         )
         if row is None:
@@ -1108,12 +1151,12 @@ class PrimarySourceIntake:
                 "id": row.verifier_id,
                 "version": row.verifier_version,
                 "raw_blob_reverified": True,
-                "verified_at": row.verified_at,
+                "verified_at": self._database_time(row.verified_at),
             },
-            "captured_at": row.captured_at,
-            "effective_at": row.effective_at,
-            "as_of": row.as_of,
-            "review_due_at": row.review_due_at,
+            "captured_at": self._database_time(row.captured_at),
+            "effective_at": self._database_time(row.effective_at),
+            "as_of": self._database_time(row.as_of),
+            "review_due_at": self._database_time(row.review_due_at),
             "counts": {
                 "source_total": row.source_total,
                 "accepted": row.accepted_count,
@@ -1149,7 +1192,7 @@ class PrimarySourceIntake:
             "permit_created": False,
             "external_write_allowed": False,
             "created_by": row.created_by,
-            "created_at": row.created_at,
+            "created_at": self._database_time(row.created_at),
         }
         records: list[dict[str, Any]] = []
         if include_records:
@@ -1193,6 +1236,12 @@ class PrimarySourceIntake:
             "disposition": row.disposition,
             "lead_stage": row.lead_stage,
         }
+
+    @staticmethod
+    def _database_time(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     def _manifest(
         self,
