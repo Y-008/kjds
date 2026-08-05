@@ -189,7 +189,7 @@
 | BAS-182 | G-1 | Codex app-server Image Worker | Agent Platform+Media | 以固定协议实现事件解析、产物回收、LOGIN_REQUIRED/LIMITED/UNKNOWN_OUTCOME 停止与回读；不依赖 ChatGPT 网页 DOM 作为生产主通道。 | BAS-181 | DONE_ENGINEERING |
 | BAS-183 | G-1–C0 | 异步图片 API、SSE、幂等与计量接线 | API+Media+Commercial Platform | 提供生成/编辑 Job、状态/SSE/取消与 OpenAI 风格兼容层；同幂等键只执行和计量一次，KJDS Token/套餐/余额仍归 COM-002。 | BAS-182、COM-002 | QUEUED |
 | BAS-184 | G-1 | Commander MCP/Tool Gateway | Agent Platform+Media+Evidence | 复用 AgentHarness 编译 CampaignBrief 并调用版本化媒体 Tool；主模型只见能力、状态、成本和 ContentAsset 引用，不见凭证或 Blob 正文。 | BAS-180、BAS-183 | QUEUED |
-| BAS-185 | G-1 | ComfyUI 商品模板与 8GB 基准 | Media+ML Platform+QA | 仅接受版本化模板和参数，在 8GB GPU 固定 fixture 上评测生成/编辑、显存失败与 Media QA；不接受任意 workflow JSON。 | BAS-180 | IN_PROGRESS |
+| BAS-185 | G-1 | ComfyUI 商品模板与 8GB 基准 | Media+ML Platform+QA | 仅接受版本化模板和参数；仓库自有合成固定 fixture 只验证编译、资源与 Media QA 合同形状，不接受任意 workflow JSON；真实 8GB 样本、独立 authority 与生产准入仍为 UNKNOWN/not_admitted。 | BAS-180 | DONE_ENGINEERING |
 | BAS-186 | G-1 | EditingBlueprint 与视频执行 | Media+Agent Platform | 将参考视频转为可审计镜头/节奏/字幕/转场/特效蓝图，再由 FFmpeg/Remotion 执行；不复制来源素材或把视觉推断升级为 Fact。 | BAS-184、BAS-185 | QUEUED |
 | BAS-187 | G-1 | TutorialGraph 与 Windows Agent | Media+Desktop Automation+Evidence | 把软件功能节点编译为操作、UI 锚点、截图、说明和讲解产物；每步可回读/恢复，敏感窗口和凭证区域默认遮蔽。 | BAS-184 | QUEUED |
 | BAS-188 | G-1–G6 | 媒体交付包接入社媒平台 | Media+Social Intelligence | 将图片、视频蓝图和教程产物组装为 DeliveryManifest 交给 BAS-178；社媒发布、campaign grant、回读、撤销和 kill switch 仍归 BAS-178。 | BAS-185、BAS-186、BAS-187、BAS-178 | QUEUED |
