@@ -157,32 +157,18 @@ def test_data_cov_002_release_frees_coverage_and_migration_leases():
     assert "DATA-COV-002" not in registry["shared_write_leases"].values()
 
 
-def test_bas203_holds_strategic_capital_dashboard_and_api_leases():
+def test_bas203_release_frees_strategic_capital_dashboard_and_api_leases():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] == {
-        "task_id": "BAS-203",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-            "strategic_capital_dashboard_read_projection",
-            "exact_scope_source_citation_aggregation",
-            "strategic_capital_dashboard_router",
-            "runtime_dashboard_composition",
-            "openapi_snapshot",
-            "read_only_web_strategy_center",
-            "dashboard_contract_and_e2e_tests",
-            "bas203_evidence",
-        ],
-        "blocked_on": [],
-    }
+    assert engineering["current_task"] is None
     assert engineering["next_task_id"] == "BAS-204"
     assert registry["shared_write_leases"]["alembic_migration"] is None
-    assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-203"
+    assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
-    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-203"
+    assert registry["shared_write_leases"]["openapi_snapshot"] is None
+    assert "BAS-203" not in registry["shared_write_leases"].values()
 
 
 def test_bas176_holds_only_the_disposable_postgres_rehearsal_lane():
@@ -203,8 +189,8 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "openapi_snapshot",
     }
     assert registry["shared_write_leases"]["alembic_migration"] is None
-    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-203"
-    assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-203"
+    assert registry["shared_write_leases"]["openapi_snapshot"] is None
+    assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["policy"]["legacy_in_progress_is_execution_lease"] is False
     assert registry["policy"]["current_task_is_execution_lease"] is True
