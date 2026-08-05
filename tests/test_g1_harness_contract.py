@@ -256,27 +256,52 @@ def test_g1_isolates_cluster_global_coverage_postgres_contracts_before_lease():
     assert "$result.global_data_coverage_postgres_contract = $true" in harness
 
 
-def test_g1_generic_tests_use_contract_database_not_live_runtime_target():
+def test_g1_generic_tests_keep_owned_runtime_target_and_isolate_lifecycle_modules():
     harness = HARNESS.read_text(encoding="utf-8")
 
-    marker = "Running generic tests against isolated contract database"
+    marker = "Running generic tests with isolated migration-lifecycle database"
     invocation = 'Invoke-External -Command uv -Arguments (@("run", "python", "-m", "pytest"'
-    restore = "$env:KJDS_DATABASE_URL = $MigrationDatabaseUrl"
     marker_offset = harness.index(marker)
+    migration_offset = harness.index(
+        "$env:KJDS_DATABASE_URL = $MigrationDatabaseUrl", marker_offset
+    )
+    runtime_offset = harness.index(
+        "$env:KJDS_RUNTIME_DATABASE_URL = $RuntimeDatabaseUrl", marker_offset
+    )
+    seam_offset = harness.index(
+        "$env:KJDS_G1_CONTRACT_DATABASE_URL = $ContractDatabaseUrl", marker_offset
+    )
     invocation_offset = harness.index(invocation, marker_offset)
-    restore_offset = harness.index(restore, invocation_offset)
+    seam_cleanup_offset = harness.index(
+        "Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL", invocation_offset
+    )
 
     assert harness.count("$env:KJDS_DATABASE_URL = $AdminDatabaseUrl") == 1
-    assert "$env:KJDS_DATABASE_URL = $ContractDatabaseUrl" in harness
-    assert marker_offset < invocation_offset < restore_offset
-    assert "$env:KJDS_RUNTIME_DATABASE_URL = $RuntimeDatabaseUrl" in harness
+    assert (
+        "$env:KJDS_DATABASE_URL = $ContractDatabaseUrl"
+        not in harness[marker_offset:invocation_offset]
+    )
+    assert (
+        marker_offset
+        < migration_offset
+        < runtime_offset
+        < seam_offset
+        < invocation_offset
+        < seam_cleanup_offset
+    )
 
 
 def test_g1_generic_contract_database_has_run_scoped_ownership_and_cleanup():
     harness = HARNESS.read_text(encoding="utf-8")
+    media_postgres = (ROOT / "tests" / "test_media_connectors_postgres.py").read_text(
+        encoding="utf-8"
+    )
+    primary_postgres = (
+        ROOT / "tests" / "test_primary_source_intake_postgres.py"
+    ).read_text(encoding="utf-8")
 
     create_marker = "Creating run-scoped generic PostgreSQL contract database"
-    generic_marker = "Running generic tests against isolated contract database"
+    generic_marker = "Running generic tests with isolated migration-lifecycle database"
     cleanup_name = 'Name = "run-scoped generic PostgreSQL contract database"'
 
     assert "kjds_g1_contract_" in harness
@@ -284,10 +309,26 @@ def test_g1_generic_contract_database_has_run_scoped_ownership_and_cleanup():
     assert "shobj_description(oid,'pg_database')" in harness
     assert "G-1 contract database is not owned by this run" in harness
     assert '"upgrade", "20260803_0092"' in harness
+    assert "$env:KJDS_G1_CONTRACT_DATABASE_URL = $ContractDatabaseUrl" in harness
+    assert "Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL" in harness
     assert harness.index(create_marker) < harness.index(generic_marker)
     assert harness.index(generic_marker) < harness.index(cleanup_name)
     assert "$result.cleanup_contract_database = -not $ContractDatabaseCreated" in harness
     assert "Remove-Item Env:KJDS_G1_RUN_TOKEN_SHA256" in harness
+    seam_consumers = {
+        path.name
+        for path in (ROOT / "tests").glob("test_*.py")
+        if path.name != Path(__file__).name
+        and "KJDS_G1_CONTRACT_DATABASE_URL" in path.read_text(encoding="utf-8")
+    }
+    assert seam_consumers == {
+        "test_media_connectors_postgres.py",
+        "test_primary_source_intake_postgres.py",
+    }
+    for module in (media_postgres, primary_postgres):
+        assert 'os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")' in module
+        assert 'os.environ["KJDS_DATABASE_URL"] = DATABASE_URL' in module
+        assert 'os.environ["KJDS_DATABASE_URL"] = original_database_url' in module
 
 
 def test_g1_global_mutex_precedes_fixed_database_and_role_contracts():

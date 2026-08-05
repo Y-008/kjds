@@ -55,7 +55,7 @@ CANDIDATES = "team_agent_evolution_candidates"
 EVENTS = "team_agent_evolution_events"
 EVIDENCE_LINKS = "team_agent_evolution_evidence_links"
 TABLES = (CANDIDATES, EVENTS, EVIDENCE_LINKS)
-NOW = datetime.now(UTC) + timedelta(minutes=5)
+NOW = datetime.now(UTC) + timedelta(days=1)
 AUTHORITY_A = "a" * 64
 
 

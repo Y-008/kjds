@@ -650,9 +650,15 @@ try {
             ForEach-Object { $_.FullName.Substring($Root.Length + 1) } |
             Where-Object { $_ -ne $DataCoveragePostgresContract }
     ) | Sort-Object
-    Write-Output "[G-1] Running generic tests against isolated contract database"
-    $env:KJDS_DATABASE_URL = $ContractDatabaseUrl
+    Write-Output "[G-1] Running generic tests with isolated migration-lifecycle database"
+    # Keep application/runtime collection on the fully migrated owned G-1
+    # endpoint.  Only the two migration-lifecycle modules consume the
+    # run-scoped contract database through their server-owned test seam.
+    $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
+    $env:KJDS_RUNTIME_DATABASE_URL = $RuntimeDatabaseUrl
+    $env:KJDS_G1_CONTRACT_DATABASE_URL = $ContractDatabaseUrl
     Invoke-External -Command uv -Arguments (@("run", "python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--basetemp=$PytestTemp") + $testFiles)
+    Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL -ErrorAction SilentlyContinue
     $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
     $result.tests = $true
     $result.domain_contracts = $true
@@ -1149,6 +1155,7 @@ try {
             Action = {
                 Remove-Item Env:KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_RUNTIME_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_COVERAGE_ISSUER_PASSWORD -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUNTIME_PASSWORD -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUN_TOKEN -ErrorAction SilentlyContinue
