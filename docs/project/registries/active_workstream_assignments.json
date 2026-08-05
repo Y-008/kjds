@@ -196,8 +196,22 @@
       "id": "L",
       "name": "strategic_intelligence",
       "accountable_role": "strategy_and_capital_allocation_owner",
-      "current_task": null,
-      "next_task_id": "BAS-201"
+      "current_task": {
+        "task_id": "BAS-201",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "write_scope": [
+          "governed_capital_allocation_workspace",
+          "capital_allocation_contract_registry",
+          "current_scope_and_read_authority_projection",
+          "noncompensatory_five_option_hard_gate",
+          "deterministic_proposal_only_observation",
+          "synthetic_fixture_and_focused_tests",
+          "bas201_evidence"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": null
     },
     {
       "id": "M",
