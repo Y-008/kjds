@@ -148,40 +148,15 @@ def test_bas200_release_frees_gap_graph_lane_without_shared_writes():
     assert "BAS-200" not in registry["shared_write_leases"].values()
 
 
-def test_data_cov_002_holds_append_only_coverage_ledger_migration_lease():
+def test_data_cov_002_release_frees_coverage_and_migration_leases():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     coverage = lanes["M"]
 
-    assert coverage["current_task"] == {
-        "task_id": "DATA-COV-002",
-        "state": "in_progress",
-        "owner_thread_id": "019fc7d6-d3ec-7e42-bc82-ebdc6c5710e9",
-        "write_scope": [
-            "coverage_ledger_migration_0095",
-            "exact_scope_coverage_ledger",
-            "immutable_coverage_observation_events",
-            "manifest_native_caps_hash_binding",
-            "idempotency_and_payload_drift",
-            "valid_time_currentness",
-            "conservation_failure_page_checkpoint_lineage",
-            "coverage_ledger_postgres_tests",
-            "reserved_coverage_intake_evidence_authority",
-            "coverage_intake_evidence_authority_contract_tests",
-            "dedicated_coverage_issuer_database_engine",
-            "coverage_issuer_runtime_dependency_injection",
-            "g1_coverage_issuer_principal_lifecycle",
-            "g1_coverage_issuer_secret_injection_and_cleanup",
-            "coverage_issuer_compose_environment_contract",
-            "coverage_issuer_example_environment_contract",
-            "coverage_issuer_runtime_postgres_tests",
-            "coverage_issuer_g1_harness_contract_tests",
-        ],
-        "blocked_on": [],
-    }
+    assert coverage["current_task"] is None
     assert coverage["next_task_id"] is None
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "DATA-COV-002",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
         "openapi_snapshot": None,
@@ -196,7 +171,7 @@ def test_bas202_release_advances_product_engineering_lane_without_shared_writes(
     assert engineering["current_task"] is None
     assert engineering["next_task_id"] == "BAS-203"
     assert "BAS-202" not in registry["shared_write_leases"].values()
-    assert registry["shared_write_leases"]["alembic_migration"] == "DATA-COV-002"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
@@ -219,7 +194,7 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "master_spec",
         "openapi_snapshot",
     }
-    assert registry["shared_write_leases"]["alembic_migration"] == "DATA-COV-002"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
