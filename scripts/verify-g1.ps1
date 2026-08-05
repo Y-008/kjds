@@ -27,6 +27,9 @@ $MigrationDatabaseUrl = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/$
 $CoverageIssuerPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
 $RuntimeDatabasePassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
 $RunToken = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$StrategicBenchmarkSealingKey = [Convert]::ToBase64String(
+    [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+)
 $DatabaseLeaseAcquired = $false
 $DatabaseLeaseEverAcquired = $false
 $CoverageIssuerDatabaseUrl = "postgresql+psycopg://kjds_gdc_issuance_runtime:$CoverageIssuerPassword@127.0.0.1:5432/$DatabaseName"
@@ -378,6 +381,7 @@ try {
     $env:KJDS_G1_RUNTIME_PASSWORD = $RuntimeDatabasePassword
     $env:KJDS_G1_RUN_TOKEN = $RunToken
     $env:KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL = $CoverageIssuerDatabaseUrl
+    $env:KJDS_STRATEGIC_BENCHMARK_SEALING_KEY = $StrategicBenchmarkSealingKey
     $env:KJDS_DATABASE_PROVIDER = "local-postgres"
     # The gate must not inherit a machine-level cache path that a managed
     # runner cannot access. This override is scoped to this process only.
@@ -994,6 +998,7 @@ try {
                 Remove-Item Env:KJDS_G1_COVERAGE_ISSUER_PASSWORD -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUNTIME_PASSWORD -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUN_TOKEN -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_STRATEGIC_BENCHMARK_SEALING_KEY -ErrorAction SilentlyContinue
             }
         },
         @{
