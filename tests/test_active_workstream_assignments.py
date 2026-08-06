@@ -164,7 +164,7 @@ def test_bas204_holds_closed_loop_evolution_and_migration_leases():
     assert engineering["current_task"] == {
         "task_id": "BAS-204",
         "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
         "write_scope": [
             "closed_loop_outcome_evidence_ledger",
             "exact_scope_outcome_bundle_authority",
