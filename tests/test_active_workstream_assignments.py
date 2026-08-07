@@ -182,13 +182,13 @@ def test_bas210_is_queued_as_next_research_inbox_follow_up():
 
 
 
-def test_bas211_release_frees_lane_e_and_preserves_bas210_queue():
+def test_bas211_release_hands_lane_e_to_bas212_and_preserves_bas210_queue():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     risk = lanes["E"]
     engineering = lanes["C"]
 
-    assert risk["current_task"] is None
+    assert risk["current_task"]["task_id"] == "BAS-212"
     assert risk["next_task_id"] is None
     assert engineering["current_task"] is None
     assert engineering["next_task_id"] == "BAS-210"
@@ -198,6 +198,31 @@ def test_bas211_release_frees_lane_e_and_preserves_bas210_queue():
     assert "`pg_shdepend`" in plan
     assert "禁止 `DROP OWNED`" in plan
     assert "| DONE_ENGINEERING |" in plan
+
+
+def test_bas212_claims_lane_e_with_exact_g1_lifecycle_seam_scope():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+    risk = lanes["E"]
+
+    assert risk["current_task"] == {
+        "task_id": "BAS-212",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "write_scope": [
+            "g1_contract_database_environment_binding",
+            "closed_loop_postgres_lifecycle_database_seam",
+            "team_agent_postgres_lifecycle_database_seam",
+            "g1_lifecycle_seam_contract_tests",
+            "bas212_remediation_evidence",
+        ],
+        "blocked_on": [],
+    }
+    assert risk["next_task_id"] is None
+    assert "BAS-212" not in registry["shared_write_leases"].values()
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    assert "| BAS-212 |" in plan
+    assert "| IN_PROGRESS |" in plan
 
 
 def test_shared_write_leases_and_authority_stay_fail_closed():
