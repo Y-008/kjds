@@ -6,9 +6,9 @@
 | owner | 产品负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 2.0 |
-| last_reviewed | 2026-07-26 |
-| next_review | 2026-08-09 |
+| version | 2.1 |
+| last_reviewed | 2026-08-08 |
+| next_review | 2026-09-08 |
 | gate | G0–G4 |
 
 ## 结论
@@ -28,6 +28,7 @@ Harness 说明和“AI 自动运营”叙事，包含少量 Ozon 商品页和成
 |---|---|---|---|---|
 | 萌啦 Ozon 定价精灵 | 采购、重量、体积、国内运费、类目佣金、折扣、广告、其他成本和国际物流集中录入；可保存模板并比较物流方案 | 将现有利润场景改造成逐项来源、估算/实际双列的可保存模板；同屏比较物流情景 | 未知公式/费率直接入账；“其他成本”吞掉已知成本；自动定价 | 先用 KJDS 全成本合同生成只读场景模板和差异解释 |
 | Seerfar | 30–90 天产品趋势、搜索趋势、品牌/产品集中度、关键词挖掘/反查/排名、竞品与店铺监控；官网提供 Open API 入口 | 建立研究收集箱、趋势快照、关键词—竞品—候选关系和变化提醒 | 把估算销量/收入当真实账户数据；未经协议审核安装插件或共享会话 | Open API 文档、许可、字段、速率和血缘审核后再做只读适配器 |
+| SellerSprite MCP/API | 官方 MCP 以自然语言编排商品、市场、竞品、关键词、流量、评论、定价与广告研究；API 支持选择返回字段；MIT 社区仓库示范场景工作流、原始 JSON、结构化结果和报告分层 | 借鉴“锚点 SKU/问题→最小字段并行查询→原始 Evidence→口径/样本/缺失校验→规范化 JSON+报告”的研究编排，并落入现有 Source Adapter、Evidence、Market Recon 和工作台 | Amazon 信号冒充 Ozon 事实；个人 MCP 账户用于多人内部系统；共享 Key、MCP 批量爬取、硬编码秘密、估算销量/利润晋升 actual | 当前仅做工作流对标；真实 Ozon 证据仍不足且完成 Provider 准入后，才评估许可的 provider-neutral 只读 API Adapter |
 | 妙手 ERP | 多平台采集/刊登、货盘、AI 内容、定价模板、订单、采购、库存、物流与仓储协同 | 借鉴采集箱→认领→编辑→审批的工作台；批量任务显示进度、失败项和重试 | 采集后直接刊登、自动采购、自动调价；让 ERP 成为 Canonical Product 或利润真源 | 先实现 KJDS 内部采集箱和只读批量差异预览 |
 | 51Selling | Ozon 刊登、订单、退货、库存、账单/毛利报表；账单拉取字段有来源标识，未覆盖费用会保持未归类；多平台采集、批量编辑、发货扫描和称重 | 借鉴订单异常队列、扫描/称重实测、逐字段来源标识、未归类费用队列、批量编辑预览、账单到毛利的导航 | 未复核账单直接成为毛利；自动回复或批量写操作绕过审批 | 把实测重量、费用原件和异常队列接入现有 Passport/Evidence/CM3 |
 | 店小秘 / 马帮 / 易仓 | 厂商公开页面覆盖采集/搬家、刊登、订单、采购、仓储、物流、财务和多维分析；易仓强调多平台利润和业财一体 | 借鉴按角色的一站式导航、跨店铺异常中心、库存—采购—财务联动 | 把厂商营销数字当基准；让第三方数据库拥有 KJDS 证据、利润或审批真源 | 连接器只做来源专用适配，先原件、后映射、再对账 |
@@ -200,6 +201,7 @@ Schema、商品保真/OCR/ASR/合规 QA、champion/challenger 影子评测和人
 
 - 萌啦官网当前页面可直接核对上述定价字段和模板/物流比较，但公式版本和费率权威性未验收。
 - Seerfar 官网可直接核对趋势、关键词、竞品监控和 Open API 入口；本次 Open API 文档抓取超时，接口合同保持 `requires_review`。
+- SellerSprite 官方 MCP/API 页面可核对工具域、字段选择和 Codex 配置方式；官方使用规则把个人 MCP 使用与内部系统集成分开，后者应使用 API。当前没有账户、订阅、Key、付费调用或 KJDS Adapter；其 Amazon 数据只作 C 级跨市场研究参考。
 - 妙手官网可直接核对多平台采集/刊登、定价、订单、库存、采购和物流等模块；这些是厂商公开声明，不是 KJDS 的真实执行验收。
 - 51Selling 官方 Ozon 帮助页可核对刊登、订单、退货、库存、账单和毛利报表；其账单教程还明确列出字段映射、“拉”来源标识和未归类费用处理。它证明公开产品行为，不证明算法完整、映射正确或我方账单适用，仍需账号内只读验收。
 
@@ -207,6 +209,11 @@ Schema、商品保真/OCR/ASR/合规 QA、champion/challenger 影子评测和人
 
 - 萌啦定价精灵：`https://ozon.menglar.com/tools/`
 - Seerfar 功能与 Open API 入口：`https://www.seerfar.cn/features/`
+- SellerSprite MCP：`https://open.sellersprite.com/mcp`
+- SellerSprite 使用规则：`https://open.sellersprite.com/help/36`
+- SellerSprite 商品/市场 API：`https://open.sellersprite.com/api/2`、`https://open.sellersprite.com/api/29`
+- SellerSprite Codex 配置：`https://open.sellersprite.com/mcp/40`
+- MIT 社区场景工作流：`https://github.com/liangdabiao/amazon-sorftime-research-MCP-skill`
 - 妙手 Ozon 入门：`https://erp.91miaoshou.com/help_center/article_2278.html`
 - 51Selling Ozon 功能：`https://www.51selling.com/HelpDocument/Details/156`
 - 51Selling Ozon 账单教程：`https://www.51selling.com/HelpDocument/Details/176`

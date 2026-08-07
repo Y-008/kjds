@@ -1716,7 +1716,8 @@
           "contract_version": {
             "enum": [
               "kjds-browser-capture-envelope/1.0",
-              "kjds-browser-capture-envelope/1.1"
+              "kjds-browser-capture-envelope/1.1",
+              "kjds-browser-capture-envelope/1.2"
             ],
             "title": "Contract Version",
             "type": "string"
@@ -1732,7 +1733,7 @@
             "items": {
               "$ref": "#/components/schemas/MarketplaceObservationItemInput"
             },
-            "maxItems": 50,
+            "maxItems": 500,
             "minItems": 1,
             "title": "Items",
             "type": "array"
@@ -1744,6 +1745,16 @@
             ],
             "title": "Marketplace",
             "type": "string"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BrowserCaptureMerchantInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "observed_at": {
             "title": "Observed At",
@@ -1785,6 +1796,54 @@
         "title": "BrowserCaptureEnvelopeInput",
         "type": "object"
       },
+      "BrowserCaptureMerchantInput": {
+        "additionalProperties": false,
+        "properties": {
+          "company_name": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "login_id": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Id"
+          },
+          "public_signals": {
+            "additionalProperties": true,
+            "maxProperties": 80,
+            "title": "Public Signals",
+            "type": "object"
+          },
+          "supplier_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Supplier Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplier_ref"
+        ],
+        "title": "BrowserCaptureMerchantInput",
+        "type": "object"
+      },
       "BrowserCapturePageInput": {
         "additionalProperties": false,
         "properties": {
@@ -1801,6 +1860,23 @@
             ],
             "title": "Canonical Url"
           },
+          "capture_coverage": {
+            "additionalProperties": true,
+            "maxProperties": 20,
+            "title": "Capture Coverage",
+            "type": "object"
+          },
+          "capture_kind": {
+            "default": "generic_product",
+            "enum": [
+              "product_detail_variant_matrix",
+              "search_result_candidates",
+              "store_catalog_candidates",
+              "generic_product"
+            ],
+            "title": "Capture Kind",
+            "type": "string"
+          },
           "capture_mode": {
             "const": "active_tab_visible_dom",
             "title": "Capture Mode",
@@ -1809,7 +1885,8 @@
           "extractor_version": {
             "enum": [
               "kjds-visible-dom/1.0",
-              "kjds-visible-dom/1.1"
+              "kjds-visible-dom/1.1",
+              "kjds-visible-dom/1.2"
             ],
             "title": "Extractor Version",
             "type": "string"
@@ -1826,6 +1903,58 @@
               }
             ],
             "title": "Language"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "provider_version": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Version"
+          },
+          "search_query": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search Query"
+          },
+          "structured_data_source": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structured Data Source"
           },
           "title": {
             "maxLength": 2000,
@@ -7920,6 +8049,14 @@
             "default": false,
             "title": "Checkout Verified",
             "type": "boolean"
+          },
+          "comparison_dimensions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 40,
+            "title": "Comparison Dimensions",
+            "type": "object"
           },
           "confidence": {
             "anyOf": [
@@ -16043,6 +16180,18 @@
               "maximum": 500,
               "minimum": 1,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reference_quantity",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000000,
+              "minimum": 1,
+              "title": "Reference Quantity",
               "type": "integer"
             }
           }

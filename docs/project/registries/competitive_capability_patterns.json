@@ -1,6 +1,6 @@
 {
-  "registry_version": "2.1",
-  "last_reviewed": "2026-07-29",
+  "registry_version": "2.2",
+  "last_reviewed": "2026-08-08",
   "principle": "Borrow product workflow patterns, never third-party truth claims or unapproved write authority.",
   "baseline_policy": {
     "requirement": "must_have_native_parity",
@@ -169,6 +169,58 @@
       "requires_review": true,
       "implemented_contract": "unified_operating_workbench_agent_briefing_v1",
       "next_contract": "provider_neutral_import_adapter_after_license_and_data_contract_review"
+    },
+    {
+      "id": "sellersprite_mcp_api",
+      "display_name": "SellerSprite MCP/API",
+      "url": "https://open.sellersprite.com/mcp",
+      "source_documents": [
+        "https://open.sellersprite.com/mcp",
+        "https://open.sellersprite.com/help/36",
+        "https://open.sellersprite.com/api/2",
+        "https://open.sellersprite.com/api/29",
+        "https://open.sellersprite.com/mcp/40",
+        "https://github.com/liangdabiao/amazon-sorftime-research-MCP-skill"
+      ],
+      "observed_capabilities": [
+        "natural_language_mcp_tool_orchestration",
+        "amazon_product_and_market_research",
+        "competitor_keyword_and_traffic_analysis",
+        "review_pricing_and_advertising_research",
+        "field_selective_api_responses",
+        "scenario_workflow_templates",
+        "raw_json_markdown_and_html_research_outputs"
+      ],
+      "patterns_to_borrow": [
+        "anchor_sku_research_plan",
+        "scenario_to_tool_map",
+        "raw_normalized_report_triplet",
+        "field_scale_sample_quality_checks",
+        "parallel_read_only_provider_queries",
+        "missing_field_fallback",
+        "original_data_and_report_retention"
+      ],
+      "do_not_copy": [
+        "amazon_signal_as_ozon_fact",
+        "provider_score_or_estimate_as_business_fact",
+        "individual_mcp_account_as_shared_enterprise_runtime",
+        "shared_api_key",
+        "mcp_bulk_crawling",
+        "hardcoded_secret",
+        "provider_generated_sales_or_profit_as_actual"
+      ],
+      "evidence_tier": "C",
+      "integration_status": "official_workflow_benchmark_only_no_kjds_adapter_configured",
+      "requires_review": true,
+      "license_observation": "The referenced community workflow repository declares MIT; SellerSprite service access, data use and account terms remain provider-controlled.",
+      "mapped_existing_seams": [
+        "browser_capture_inbox",
+        "intelligence_source_adapter_registry",
+        "immutable_evidence",
+        "scoped_market_radar",
+        "unified_operating_workbench"
+      ],
+      "next_contract": "licensed_provider_neutral_read_only_market_signal_adapter_only_after_real_ozon_evidence_gap_and_provider_admission"
     },
     {
       "id": "linkfox",

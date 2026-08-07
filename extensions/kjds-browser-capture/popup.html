@@ -12,12 +12,13 @@
       <div><strong>KJDS</strong><small>VISIBLE PAGE CAPTURE</small></div>
     </header>
     <main>
-      <h1>采集当前商品页</h1>
-      <p>只读取当前标签页可见 DOM/结构化商品字段，不读取 Cookie、localStorage 或内部 API。</p>
+      <h1>采集商品、SKU 或候选页</h1>
+      <p>商品页逐一读取同页 SKU/规格/价格/公开指数；搜索或店铺页采集最多 50 个当前页候选。缺失身份不会猜测。</p>
       <button id="capture" type="button">采集并打开 KJDS 预检</button>
+      <button id="search-similar" type="button">按当前商品搜索同类货源</button>
       <output id="status" aria-live="polite">等待你的显式操作</output>
     </main>
-    <footer>公开价格仅为 Observation，不是 Supplier Offer 或实际成本。</footer>
+    <footer>公开数据进入 ERP 暂存，不是 Supplier Offer、实际成本或正式销量。</footer>
     <script src="popup.js"></script>
   </body>
 </html>
