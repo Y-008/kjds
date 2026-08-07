@@ -1,0 +1,294 @@
+{
+  "contract_id": "kjds-governed-closed-loop-evolution-v1",
+  "contract_version": "1.0.0",
+  "purposes": [
+    "experiment",
+    "cost",
+    "business_outcome"
+  ],
+  "event_types": [
+    "bundle_recorded",
+    "review_requested",
+    "invalidated",
+    "revoked",
+    "superseded"
+  ],
+  "read_roles": [
+    "admin",
+    "compliance",
+    "monitor",
+    "operator",
+    "reviewer"
+  ],
+  "write_roles": [
+    "admin",
+    "compliance",
+    "operator"
+  ],
+  "review_roles": [
+    "admin",
+    "compliance",
+    "reviewer"
+  ],
+  "causal_methods": [
+    "difference_in_differences",
+    "randomized_controlled_trial"
+  ],
+  "causal_claims_enabled": false,
+  "causal_status": "association_only_until_estimator_ci_randomization_attrition_and_parallel_trends_authorities_are_registered",
+  "evidence_contracts": {
+    "experiment": {
+      "source": "closed-loop-experiment-receipt",
+      "contract_id": "kjds-closed-loop-experiment-receipt-v1",
+      "issuer_id": "kjds-closed-loop-experiment-authority",
+      "issuer_contract_id": "kjds-closed-loop-experiment-authority-v1",
+      "issuer_contract_version": "1.0.0",
+      "issuer_contract_sha256": "f97fe473225e7ffc13f42e94f164f3cfc3fba028179e1b04864c09203a7576ea",
+      "schema_sha256": "a24df85fd76d9bebdd112c619ac8d171814323971f0f8aff162458667b0d1213"
+    },
+    "cost": {
+      "source": "closed-loop-cost-receipt",
+      "contract_id": "kjds-closed-loop-cost-receipt-v1",
+      "issuer_id": "kjds-closed-loop-cost-authority",
+      "issuer_contract_id": "kjds-closed-loop-cost-authority-v1",
+      "issuer_contract_version": "1.0.0",
+      "issuer_contract_sha256": "26d5067a2eb437e757258fa60d072074771161025d3354e87d4710a26bb4602f",
+      "schema_sha256": "298f97894b3742fc42e1c65ac1fd78384243e59f7be8c9f24c2e9174e8f6da68"
+    },
+    "business_outcome": {
+      "source": "closed-loop-business-outcome-receipt",
+      "contract_id": "kjds-closed-loop-business-outcome-receipt-v1",
+      "issuer_id": "kjds-closed-loop-business_outcome-authority",
+      "issuer_contract_id": "kjds-closed-loop-business_outcome-authority-v1",
+      "issuer_contract_version": "1.0.0",
+      "issuer_contract_sha256": "707982da198bd289c13fbc7151ded979e0125672b7b341e5728079467147db6c",
+      "schema_sha256": "8058a54faabd6781b147b96efeb5bc55172a5413fa444f0f1eea153da786b3c9"
+    }
+  },
+  "agent_run_contract": {
+    "source": "governed-agent-run-evidence",
+    "terminal_event": "run_succeeded",
+    "exact_scope_fk": "uq_agent_runtime_run_exact_scope"
+  },
+  "event_contract": {
+    "source": "governed-closed-loop-evolution",
+    "contract_id": "kjds-governed-closed-loop-evolution-event-v1",
+    "grade": "D",
+    "payload_status": "hash_and_code_only"
+  },
+  "state_matrix": {
+    "bundle_recorded": "current",
+    "review_requested": "review_due",
+    "invalidated": "invalidated",
+    "revoked": "invalidated",
+    "superseded": "invalidated"
+  },
+  "temporal_contract": {
+    "recorded_at_lte_data_as_of": true,
+    "data_as_of_lte_authority_checked_at": true,
+    "authority_checked_at_lt_review_due_at": true,
+    "review_due_at_lte_effective_until": true
+  },
+  "bas177_handoff": {
+    "contract_id": "kjds-bas177-closed-loop-evolution-observation-v1",
+    "contract_version": "1.0.0",
+    "learning_input_type": "association_only_outcome",
+    "statuses": [
+      "ready",
+      "review_due",
+      "invalidated"
+    ],
+    "opaque_scope_binding": true,
+    "opaque_citation": true,
+    "causal_claim_allowed": false,
+    "learning_eligibility": "observation_only",
+    "candidate_created": false,
+    "transition_allowed": false,
+    "promotion_allowed": false,
+    "writes": 0,
+    "content_sha256": "canonical_payload_sha256",
+    "seal_sha256": "server_owned_hmac_sha256_over_full_payload"
+  },
+  "dashboard_sections": [
+    "verified_outcomes",
+    "invalidation_review"
+  ],
+  "side_effects": {
+    "fact": 0,
+    "finance_entry": 0,
+    "approval": 0,
+    "permit": 0,
+    "pilot": 0,
+    "outbox": 0,
+    "external": 0
+  },
+  "migration_revision": "20260805_0096",
+  "causal_policy": {
+    "difference_in_differences": {
+      "minimum_sample_size": 200,
+      "minimum_confidence_level_decimal": "0.95",
+      "independent_review_required": true
+    },
+    "randomized_controlled_trial": {
+      "minimum_sample_size": 100,
+      "minimum_confidence_level_decimal": "0.95",
+      "independent_review_required": true
+    }
+  },
+  "review_authority_contract": {
+    "source": "closed-loop-review-authority-receipt",
+    "contract_id": "kjds-closed-loop-review-authority-receipt-v1",
+    "issuer_id": "kjds-closed-loop-review-authority",
+    "issuer_contract_id": "kjds-closed-loop-review-authority-v1",
+    "issuer_contract_version": "1.0.0",
+    "issuer_contract_sha256": "d85428cb588631ff0afd0592b08d5c4bd372aed4abbd543c0fbb07f4c5a773e7",
+    "schema_sha256": "c79a43be77115a956ff2d996261e4f1223ab0468ae08bcb17c3656be1c37f111"
+  },
+  "dashboard_projection_contracts": {
+    "verified_outcomes": "kjds-governed-closed-loop-evolution-v1",
+    "invalidation_review": "kjds-governed-closed-loop-evolution-event-v1",
+    "citation_prefixes": {
+      "verified_outcomes": "outc",
+      "invalidation_review": "invc"
+    }
+  },
+  "authority_claim_schemas": {
+    "experiment": {
+      "schema_id": "kjds-closed-loop-experiment-claims-v1",
+      "additional_properties": false,
+      "required_fields": [
+        "agent_run_ref",
+        "experiment_ref",
+        "method",
+        "treatment_ref",
+        "control_ref",
+        "sample_size",
+        "minimum_sample_size",
+        "metric_id",
+        "metric_unit",
+        "metric_currency",
+        "window_start",
+        "window_end",
+        "confidence_level_decimal",
+        "independent_review_passed",
+        "causal_claim_allowed"
+      ],
+      "field_types": {
+        "agent_run_ref": "token",
+        "experiment_ref": "token",
+        "method": "token",
+        "treatment_ref": "token",
+        "control_ref": "nullable_token",
+        "sample_size": "positive_integer",
+        "minimum_sample_size": "positive_integer",
+        "metric_id": "token",
+        "metric_unit": "token",
+        "metric_currency": "currency_or_null_by_metric_unit",
+        "window_start": "aware_utc_datetime",
+        "window_end": "aware_utc_datetime",
+        "confidence_level_decimal": "numeric_8_6_exact_gt_0_lte_1",
+        "independent_review_passed": "strict_boolean",
+        "causal_claim_allowed": "literal_false"
+      },
+      "cross_field_rules": [
+        "window_start_lt_window_end",
+        "treatment_ref_ne_control_ref",
+        "monetary_metric_requires_currency",
+        "decimal_storage_exact_without_rounding",
+        "causal_claim_forbidden"
+      ]
+    },
+    "cost": {
+      "schema_id": "kjds-closed-loop-cost-claims-v1",
+      "additional_properties": false,
+      "required_fields": [
+        "agent_run_ref",
+        "experiment_ref",
+        "outcome_ref",
+        "cost_ref",
+        "amount_minor_units",
+        "currency",
+        "period_start",
+        "period_end",
+        "allocation_method"
+      ],
+      "field_types": {
+        "agent_run_ref": "token",
+        "experiment_ref": "token",
+        "outcome_ref": "token",
+        "cost_ref": "token",
+        "amount_minor_units": "nonnegative_integer",
+        "currency": "iso_4217_uppercase",
+        "period_start": "aware_utc_datetime",
+        "period_end": "aware_utc_datetime",
+        "allocation_method": "token"
+      },
+      "cross_field_rules": [
+        "period_start_lt_period_end"
+      ]
+    },
+    "business_outcome": {
+      "schema_id": "kjds-closed-loop-business-outcome-claims-v1",
+      "additional_properties": false,
+      "required_fields": [
+        "agent_run_ref",
+        "outcome_ref",
+        "experiment_ref",
+        "metric_id",
+        "metric_unit",
+        "metric_currency",
+        "method",
+        "sample_size",
+        "interval_start",
+        "interval_end",
+        "value_decimal",
+        "confidence_level_decimal",
+        "independent_review_passed",
+        "causal_claim_allowed"
+      ],
+      "field_types": {
+        "agent_run_ref": "token",
+        "outcome_ref": "token",
+        "experiment_ref": "token",
+        "metric_id": "token",
+        "metric_unit": "token",
+        "metric_currency": "currency_or_null_by_metric_unit",
+        "method": "token",
+        "sample_size": "positive_integer",
+        "interval_start": "aware_utc_datetime",
+        "interval_end": "aware_utc_datetime",
+        "value_decimal": "numeric_30_12_exact_abs_lt_1e18",
+        "confidence_level_decimal": "numeric_8_6_exact_gt_0_lte_1",
+        "independent_review_passed": "strict_boolean",
+        "causal_claim_allowed": "literal_false"
+      },
+      "cross_field_rules": [
+        "interval_start_lt_interval_end",
+        "monetary_metric_requires_currency",
+        "decimal_storage_exact_without_rounding",
+        "causal_claim_forbidden"
+      ]
+    },
+    "review_event": {
+      "schema_id": "kjds-closed-loop-review-event-claims-v1",
+      "additional_properties": false,
+      "required_fields": [
+        "bundle_id",
+        "event_type",
+        "reason_code",
+        "replacement_bundle_id",
+        "requested_by_actor_id"
+      ],
+      "field_types": {
+        "bundle_id": "token",
+        "event_type": "review_event_enum",
+        "reason_code": "token",
+        "replacement_bundle_id": "nullable_token",
+        "requested_by_actor_id": "token"
+      },
+      "cross_field_rules": [
+        "superseded_iff_replacement_bundle_id_present"
+      ]
+    }
+  }
+}

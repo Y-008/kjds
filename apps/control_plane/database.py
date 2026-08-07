@@ -14,6 +14,27 @@ DEFAULT_DATABASE_URL = "postgresql+psycopg://hermes:hermes_dev@localhost:5432/he
 RUNTIME_DATABASE_URL_ENV = "KJDS_RUNTIME_DATABASE_URL"
 COVERAGE_ISSUER_DATABASE_URL_ENV = "KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL"
 COVERAGE_ISSUER_ROLE = "kjds_gdc_issuance_runtime"
+CLOSED_LOOP_DATABASE_URL_ENVS = {
+    "issuer": "KJDS_CLOSED_LOOP_ISSUER_DATABASE_URL",
+    "experiment": "KJDS_CLOSED_LOOP_EXPERIMENT_AUTHORITY_DATABASE_URL",
+    "cost": "KJDS_CLOSED_LOOP_COST_AUTHORITY_DATABASE_URL",
+    "business_outcome": "KJDS_CLOSED_LOOP_OUTCOME_AUTHORITY_DATABASE_URL",
+    "review_event": "KJDS_CLOSED_LOOP_REVIEW_AUTHORITY_DATABASE_URL",
+}
+CLOSED_LOOP_DATABASE_ROLES = {
+    "issuer": "kjds_cloe_issuance_runtime",
+    "experiment": "kjds_cloe_experiment_authority",
+    "cost": "kjds_cloe_cost_authority",
+    "business_outcome": "kjds_cloe_outcome_authority",
+    "review_event": "kjds_cloe_review_authority",
+}
+CLOSED_LOOP_OWNER_ROLE = "kjds_cloe_issuance_owner"
+CLOSED_LOOP_EVENT_OWNER_ROLE = "kjds_cloe_event_issuance_owner"
+CLOSED_LOOP_ROLES = (
+    CLOSED_LOOP_OWNER_ROLE,
+    CLOSED_LOOP_EVENT_OWNER_ROLE,
+    *CLOSED_LOOP_DATABASE_ROLES.values(),
+)
 
 
 def database_url() -> str:
@@ -150,6 +171,76 @@ def _create_coverage_issuer_engine(
     finally:
         generic_engine.dispose()
     return issuer_engine
+
+
+def closed_loop_database_url(
+    purpose: str,
+    *,
+    generic_url: str | None = None,
+) -> str:
+    env_name = CLOSED_LOOP_DATABASE_URL_ENVS.get(purpose)
+    expected_role = CLOSED_LOOP_DATABASE_ROLES.get(purpose)
+    if env_name is None or expected_role is None:
+        raise RuntimeError("Closed-loop database purpose is invalid")
+    raw = str(os.getenv(env_name, "")).strip()
+    if not raw:
+        raise RuntimeError("Dedicated closed-loop database credential is required")
+    try:
+        dedicated = make_url(raw)
+        generic = make_url(generic_url or database_url())
+    except Exception as exc:
+        raise RuntimeError("Dedicated closed-loop database credential is invalid") from exc
+    if (
+        not dedicated.drivername.startswith("postgresql")
+        or dedicated.username != expected_role
+        or not dedicated.password
+        or dedicated.username == generic.username
+        or (dedicated.host, dedicated.port, dedicated.database)
+        != (generic.host, generic.port, generic.database)
+    ):
+        raise RuntimeError("Dedicated closed-loop database credential is invalid")
+    return raw
+
+
+def create_closed_loop_database_engine(
+    purpose: str,
+    *,
+    generic_url: str | None = None,
+) -> Engine:
+    expected_role = CLOSED_LOOP_DATABASE_ROLES.get(purpose)
+    if expected_role is None:
+        raise RuntimeError("Closed-loop database purpose is invalid")
+    engine = create_engine(
+        closed_loop_database_url(purpose, generic_url=generic_url),
+        pool_pre_ping=True,
+    )
+    try:
+        with engine.connect() as connection:
+            identity = connection.execute(
+                text(
+                    "SELECT current_user,session_user,rolsuper,rolinherit,"
+                    "rolcreaterole,rolcreatedb,rolreplication,rolbypassrls,"
+                    "pg_has_role(current_user,:owner,'SET'),"
+                    "(SELECT count(*) FROM pg_auth_members m "
+                    "JOIN pg_roles granted ON granted.oid=m.roleid "
+                    "JOIN pg_roles member_role ON member_role.oid=m.member "
+                    "WHERE granted.rolname=ANY(:roles) "
+                    "OR member_role.rolname=ANY(:roles)) "
+                    "FROM pg_roles WHERE rolname=current_user"
+                ),
+                {"owner": CLOSED_LOOP_OWNER_ROLE, "roles": list(CLOSED_LOOP_ROLES)},
+            ).one()
+        if (
+            tuple(identity[:2]) != (expected_role,) * 2
+            or any(identity[2:8])
+            or identity[8] is not False
+            or identity[9] != 0
+        ):
+            raise RuntimeError("Dedicated closed-loop principal contract drifted")
+    except Exception:
+        engine.dispose()
+        raise
+    return engine
 
 
 class CoverageIssuerDatabasePort:

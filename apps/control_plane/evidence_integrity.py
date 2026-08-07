@@ -6,7 +6,12 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
-from .evidence import EvidenceGrade, EvidenceIntegrityFinding, EvidenceService
+from .evidence import (
+    CLOSED_LOOP_RESERVED_SOURCES,
+    EvidenceGrade,
+    EvidenceIntegrityFinding,
+    EvidenceService,
+)
 from .incident_recovery import IncidentRecoveryService
 
 
@@ -34,7 +39,10 @@ class EvidenceIntegrityMonitorService:
         result = self.evidence.scan_integrity(
             limit=limit,
             offset=offset,
-            excluded_sources=(self.REPORT_SOURCE,),
+            excluded_sources=(
+                self.REPORT_SOURCE,
+                *sorted(CLOSED_LOOP_RESERVED_SOURCES),
+            ),
         )
         incident_ids: dict[str, str] = {}
         finding_evidence_ids: dict[str, str] = {}

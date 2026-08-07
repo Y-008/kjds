@@ -38,6 +38,12 @@ from .channel_account_authority import (
 )
 from .channel_account_governance import ChannelAccountGovernanceStateMachine
 from .channel_account_runtime_identity import SignedManagedCredentialLeaseResolver
+from .closed_loop_evolution import (
+    ClosedLoopAuthorityReceiptRegistrarPort,
+    ClosedLoopEventEvidenceIssuerPort,
+    ClosedLoopEvidenceIssuerPort,
+    GovernedClosedLoopEvolutionWorkspace,
+)
 from .commerce_operating_system import CommerceOperatingSystem
 from .commercial_lifecycle import CommercialLifecycleService
 from .content_growth import ContentGrowthService
@@ -45,6 +51,7 @@ from .cost_evidence_review import CostEvidenceAuthorityService
 from .cross_border_capability_atlas import CrossBorderCapabilityAtlas
 from .customer_service import CustomerServiceAuthorityService
 from .database import (
+    create_closed_loop_database_engine,
     create_database_engine,
     create_global_data_coverage_evidence_authority,
     runtime_database_url,
@@ -52,7 +59,11 @@ from .database import (
 from .decision_contracts import DecisionContractService
 from .decision_lifecycle import DecisionLifecycleService
 from .demand_report_gate import DemandReportGateService
-from .evidence import EvidenceService, GlobalDataCoverageEvidenceAuthorityAdapter
+from .evidence import (
+    ClosedLoopEvidenceAuthorityAdapter,
+    EvidenceService,
+    GlobalDataCoverageEvidenceAuthorityAdapter,
+)
 from .evidence_integrity import EvidenceIntegrityMonitorService
 from .evidence_scope import ScopedEvidenceAuthority
 from .evidence_scope_binding import EvidenceScopeBindingService
@@ -182,6 +193,7 @@ from .store_category_strategy import StoreCategoryStrategyWorkspace
 from .store_profile_intake import StoreProfileIntake
 from .strategic_benchmark import StrategicBenchmarkKernel
 from .strategic_capital_dashboard import (
+    ClosedLoopEvolutionReadPort,
     PrimarySourceCoverageReadPort,
     RuntimeCurrentScopeAuthority,
     ScopedDashboardCitationAuthority,
@@ -251,6 +263,8 @@ class RuntimeServices:
     engine: Any
     evidence: Any
     global_data_coverage_evidence_authority_factory: Any
+    closed_loop_evidence_authority_factory: Any
+    closed_loop_evolution: Any
     evidence_scope_binding: Any
     evidence_integrity: Any
     evidenceops_copilot: Any
@@ -393,6 +407,43 @@ def build_global_data_coverage_evidence_authority(
     )
 
 
+def _build_closed_loop_evidence_authority(
+    *, evidence, scope_grants, attestation_authorities, clock=None
+):
+    engines = {}
+    try:
+        for purpose in (
+            "issuer",
+            "experiment",
+            "cost",
+            "business_outcome",
+            "review_event",
+        ):
+            engines[purpose] = create_closed_loop_database_engine(
+                purpose, generic_url=runtime_database_url()
+            )
+        issuer = ClosedLoopEvidenceIssuerPort(engines["issuer"])
+        registrars = {
+            purpose: ClosedLoopAuthorityReceiptRegistrarPort(
+                purpose_engine, purpose=purpose
+            )
+            for purpose, purpose_engine in engines.items()
+            if purpose != "issuer"
+        }
+        return ClosedLoopEvidenceAuthorityAdapter(
+            evidence,
+            scope_grants=scope_grants,
+            attestation_authorities=attestation_authorities,
+            issuer_port=issuer,
+            receipt_registrars=registrars,
+            clock=clock,
+        )
+    except Exception:
+        for engine in engines.values():
+            engine.dispose()
+        raise
+
+
 def build_runtime() -> RuntimeServices:
     repo = build_repository()
     engine = getattr(repo, "engine", None) or create_database_engine()
@@ -412,6 +463,23 @@ def build_runtime() -> RuntimeServices:
             intake_authority=intake_authority,
             clock=clock,
         )
+
+    def closed_loop_evidence_authority_factory(
+        *, attestation_authorities, clock=None
+    ):
+        return _build_closed_loop_evidence_authority(
+            evidence=evidence,
+            scope_grants=scope_grants,
+            attestation_authorities=attestation_authorities,
+            clock=clock,
+        )
+
+    closed_loop_evolution = GovernedClosedLoopEvolutionWorkspace(
+        engine=engine,
+        evidence=evidence,
+        scope_grants=scope_grants,
+        event_evidence_issuer=ClosedLoopEventEvidenceIssuerPort(),
+    )
 
     scoped_evidence = ScopedEvidenceAuthority(evidence=evidence)
     primary_source_intake = PrimarySourceIntake(
@@ -445,6 +513,22 @@ def build_runtime() -> RuntimeServices:
                 source_contract=strategic_dashboard_registry.payload[
                     "source_contracts"
                 ]["strategic_benchmark"],
+            ),
+            "verified_outcomes": ClosedLoopEvolutionReadPort(
+                service=closed_loop_evolution,
+                section_id="verified_outcomes",
+                source_contract=strategic_dashboard_registry.payload[
+                    "source_contracts"
+                ]["verified_outcomes"],
+                citation_authority=strategic_dashboard_citation_authority,
+            ),
+            "invalidation_review": ClosedLoopEvolutionReadPort(
+                service=closed_loop_evolution,
+                section_id="invalidation_review",
+                source_contract=strategic_dashboard_registry.payload[
+                    "source_contracts"
+                ]["invalidation_review"],
+                citation_authority=strategic_dashboard_citation_authority,
             ),
         },
         clock=lambda: datetime.now(UTC),
@@ -1246,6 +1330,10 @@ def build_runtime() -> RuntimeServices:
         global_data_coverage_evidence_authority_factory=(
             coverage_intake_authority_factory
         ),
+        closed_loop_evidence_authority_factory=(
+            closed_loop_evidence_authority_factory
+        ),
+        closed_loop_evolution=closed_loop_evolution,
         evidence_scope_binding=evidence_scope_binding,
         evidence_integrity=evidence_integrity,
         evidenceops_copilot=evidenceops_copilot,
