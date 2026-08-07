@@ -247,6 +247,90 @@
   font-size: 13px;
 }
 
+.variantMatrix {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #29434a;
+  border-radius: 16px;
+  background: #0a151a;
+}
+
+.variantMatrix > div:first-child,
+.summaryStrip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.variantMatrix > div:first-child strong {
+  color: #5fe0c6;
+  font: 700 12px/1.2 ui-monospace, monospace;
+  letter-spacing: .08em;
+}
+
+.variantMatrix > div:first-child span,
+.summaryStrip span {
+  color: #8fa1ab;
+  font-size: 12px;
+}
+
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.variantMatrix table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.variantMatrix th,
+.variantMatrix td {
+  padding: 10px;
+  border-bottom: 1px solid #20343b;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.variantMatrix th {
+  color: #7f929d;
+  font-weight: 600;
+}
+
+.variantMatrix td small,
+.variantMatrix td code,
+.variantMatrix td strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.variantMatrix td small {
+  max-width: 260px;
+  color: #71858f;
+}
+
+.variantMatrix td[data-state="exact_variant_staged"] {
+  color: #5fe0c6;
+}
+
+.variantMatrix td[data-state="requires_detail_enrichment"] {
+  color: #f2c56c;
+}
+
+.summaryStrip {
+  padding-top: 4px;
+}
+
+.summaryStrip strong {
+  color: #e7edf6;
+}
+
 .raw textarea {
   min-height: 190px;
   resize: vertical;
@@ -339,6 +423,92 @@
   font-size: 24px;
 }
 
+.comparisonWorkspace {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #29434a;
+  border-radius: 16px;
+  background: #0a151a;
+}
+
+.comparisonMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  color: #8fa1ab;
+  font-size: 12px;
+}
+
+.comparisonMetrics strong {
+  color: #e7edf6;
+}
+
+.comparisonGroups {
+  display: grid;
+  gap: 10px;
+}
+
+.comparisonGroups details {
+  border: 1px solid #20343b;
+  border-radius: 12px;
+  background: #0b1217;
+}
+
+.comparisonGroups summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  padding: 14px;
+  cursor: pointer;
+  color: #8fa1ab;
+}
+
+.comparisonGroups summary strong {
+  color: #5fe0c6;
+}
+
+.comparisonGroups summary b {
+  color: #f2c56c;
+  font-size: 12px;
+}
+
+.comparisonGroups table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.comparisonGroups th,
+.comparisonGroups td {
+  padding: 10px 14px;
+  border-top: 1px solid #20343b;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.comparisonGroups th,
+.comparisonGroups td small {
+  color: #71858f;
+}
+
+.comparisonGroups td small,
+.comparisonGroups td code {
+  display: block;
+  margin-top: 4px;
+}
+
+.comparisonGroups td[data-state="eligible_public_display_price"] {
+  color: #5fe0c6;
+}
+
+.comparisonGroups td:not([data-state="eligible_public_display_price"]) {
+  color: #f2c56c;
+}
+
 .receipts {
   display: grid;
   gap: 10px;
@@ -390,7 +560,8 @@
   }
 
   .workflow,
-  .metrics {
+  .metrics,
+  .comparisonGroups summary {
     grid-template-columns: 1fr;
   }
 

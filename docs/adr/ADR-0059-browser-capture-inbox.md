@@ -119,6 +119,96 @@ BAS-138 must prove:
     authenticated KJDS preview and immutable inbox receipt without ordering,
     messaging or bypassing CAPTCHA.
 
+## 2026-08-07 amendment: 1688 full variant matrix
+
+BR-144 extends the same inbox and extension; it does not introduce a second
+crawler, Supplier source of truth or browser permission model. The accepted
+`best_solution/1.0.0` comparison is:
+
+- widening the extension to host permissions/network interception would make
+  background crawling easier, but fails the existing permission, privacy,
+  revocation and long-term maintenance constraints;
+- installing a separate all-site crawler duplicates the ingestion envelope,
+  Evidence, scope, retry and quarantine truth and has the highest replacement
+  cost;
+- deferring preserves code but leaves advertised-minimum price bait able to
+  contaminate sourcing screens;
+- selected: keep `activeTab+scripting+storage(session)`, parse only the current
+  document's visible DOM and serialized SSR `window.context`, emit one item per
+  SKU through the existing envelope, and have the server recompute the variant
+  price summary. This is reversible, immediately useful and keeps the lowest
+  operational/security cost among feasible options.
+
+The extension may read only seller/product fields already delivered in the
+active document. It must ignore buyer `loginId`, client IP, Cookie,
+localStorage and network/API response bodies. For a 1688 product page it
+records, when present:
+
+- exact `offer_id`, `sku_id`, `spec_id`, variant text and public unit price;
+- public stock/sold signals, MOQ, mix-order quantity, unit, category, weight,
+  product attributes, main/variant image references and page price range;
+- supplier company/login identity plus public card/service score, three-month
+  repeat rate, goods grade, good-rate and review-count signals;
+- capture provider/version, source kind, discovered/captured counts and
+  truncation.
+
+`BrowserCaptureInbox` contract 1.2 accepts the optional merchant and capture
+coverage projection and derives per-offer variant groups, min/max price and
+the exact minimum-price variant keys from normalized items. It never trusts a
+client-supplied "cheapest SKU" conclusion. Store pages may contribute at most
+50 current-page public product cards; any additional discovered cards are
+reported as truncated and their variant remains `unselected`.
+
+Unlike candidate pages, a product detail matrix is all-or-nothing up to 500
+rows: `discovered_count = captured_count = item_count`, `truncated=false`, and
+every row has stable offer/SKU/spec identity and price. A missing row or a
+matrix above the hard limit fails instead of being labeled complete.
+
+The decision is invalidated for review if 1688 removes the serialized SSR
+state, the provider cannot bind SKU IDs to displayed variants, the 50-item
+envelope no longer preserves source totals, or a permitted official export/API
+offers better evidence at lower total risk. Review date: 2026-09-07. Any wider
+browser permission, background pagination, supplier contact, purchase or
+formal-fact promotion requires a separate approval and acceptance Evidence.
+
+BR-145 adds no new seam. The same envelope exposes two capture kinds:
+`product_detail_variant_matrix` produces exact internal ERP staging rows, while
+`search_result_candidates` and `store_catalog_candidates` produce offer-only
+rows with `requires_detail_enrichment`. The server includes `sku_id` and
+`spec_id` in the natural key, verifies URL/offer, supplier and coverage
+conservation, and recomputes all price summaries. It groups prices only when
+server-normalized comparison dimensions are equal; missing dimensions create
+isolated `requires_dimension_alignment` groups. Consequently a three-piece
+3.90 CNY variant can be discovered as the offer minimum but cannot be compared
+as a substitute for a six-piece 9.90 CNY BOM.
+
+The keyword-search button only opens a normal 1688 search tab from the active
+page title. It does not claim official same-product identity. Search cards are
+discovery candidates until their own detail pages provide exact SKU evidence.
+
+The list read model exposes `kjds-sourcing-comparison/1.0` across captured
+offers. It selects only the newest intact detail snapshot for each
+marketplace/offer tuple, so recaptures never inflate supplier count. If the
+same offer has different supplier identities across snapshots, that offer is
+excluded as supplier drift rather than represented as two suppliers.
+Rows must have exact SKU/spec identity, category and trade unit plus at least
+two discriminating dimensions from pack count, size and material. The default
+reference quantity is one: out-of-stock rows, unknown MOQ, MOQ above one and
+non-public-unit price bases remain visible but are ineligible for the minimum
+rank. The result retains every exact row and source hash while explicitly
+keeping freight, tax, formal cost and external write false.
+
+The current SSR varies between strict JSON, JavaScript object literals with
+unquoted numeric keys, array SKU matrices and duplicate `$ref` placeholders.
+The provider never evaluates serialized page code. It quotes only numeric
+object keys outside strings, parses JSON, considers every bounded matrix
+candidate, and accepts only a matrix whose every row has SKU, spec and price.
+Arrays and objects are equivalent containers; partial and `$ref` matrices fail
+closed.
+The current-document parsing approach was informed by the MIT-licensed
+`superjack2050/1688-cli` project; KJDS retains a small independent adapter and
+license/source attribution rather than copying its browser/session framework.
+
 ## Consequences
 
 KJDS can accumulate real page observations before entity admission without

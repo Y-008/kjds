@@ -122,6 +122,122 @@ def envelope(
     }
 
 
+def variant_matrix_envelope() -> dict:
+    base = {
+        "contract_version": "kjds-browser-capture-envelope/1.2",
+        "source_profile": "browser_observation",
+        "marketplace": "1688",
+        "store_ref": "store-a",
+        "source_url": "https://detail.1688.com/offer/38547222320.html",
+        "observed_at": "2026-07-29T03:30:00Z",
+        "idempotency_key": "capture-1688-38547222320-matrix",
+        "page": {
+            "title": "加厚牛津布旅行收纳六件套",
+            "canonical_url": (
+                "https://detail.1688.com/offer/38547222320.html"
+            ),
+            "language": "zh-CN",
+            "extractor_version": "kjds-visible-dom/1.2",
+            "capture_mode": "active_tab_visible_dom",
+            "capture_kind": "product_detail_variant_matrix",
+            "provider_id": "1688-current-document-provider",
+            "provider_version": "1.0.0",
+            "structured_data_source": "serialized_ssr_window.context",
+            "capture_coverage": {
+                "discovered_count": 2,
+                "captured_count": 2,
+                "truncated": False,
+                "exact_sku_identity_count": 2,
+            },
+        },
+        "merchant": {
+            "supplier_ref": "戴贺喜188",
+            "company_name": "义乌市喜哥日用品厂",
+            "login_id": "戴贺喜188",
+            "public_signals": {
+                "service_score": "4.5",
+                "repeat_rate_3m": "69.96%",
+                "good_rate_percent": "98.8%",
+            },
+        },
+        "items": [],
+        "confirmed": True,
+    }
+    common = {
+        "external_item_id": "38547222320",
+        "supplier_ref": "戴贺喜188",
+        "title": "加厚牛津布旅行收纳六件套",
+        "currency": "CNY",
+        "price_scope": "unit_price",
+        "price_kind": "public_display_price",
+        "min_order_quantity": 1,
+        "availability": "in_stock",
+        "observed_quantity": None,
+        "checkout_verified": False,
+        "tax_included": None,
+        "domestic_freight_included": None,
+        "purchase_available": False,
+        "confidence": "0.92",
+        "media_rights_status": "unverified_external_reference",
+        "source_url": "https://detail.1688.com/offer/38547222320.html",
+    }
+    base["items"] = [
+        {
+            **common,
+            "variant_key": "颜色:西瓜红三件套收纳袋",
+            "displayed_price": "3.90",
+            "specifications": {
+                "货号": "A-2-1",
+                "selected_variant": "颜色:西瓜红三件套收纳袋",
+            },
+            "product_identity": {
+                "offer_id": "38547222320",
+                "sku_id": "sku-3",
+                "spec_id": "spec-3",
+                "item_code": "A-2-1",
+            },
+            "comparison_dimensions": {
+                "category_id": "1036894",
+                "pack_count": "3",
+                "material": "防水加厚牛津布",
+                "trade_unit": "件",
+            },
+            "market_signals": {"sku_sale_count_signal": 2},
+            "supply_signals": {
+                "stock_count": 470,
+                "advertised_price_range": "3.90-9.90",
+            },
+        },
+        {
+            **common,
+            "variant_key": "颜色:宝蓝六件套",
+            "displayed_price": "9.90",
+            "specifications": {
+                "货号": "A-2-1",
+                "selected_variant": "颜色:宝蓝六件套",
+            },
+            "product_identity": {
+                "offer_id": "38547222320",
+                "sku_id": "sku-6",
+                "spec_id": "spec-6",
+                "item_code": "A-2-1",
+            },
+            "comparison_dimensions": {
+                "category_id": "1036894",
+                "pack_count": "6",
+                "material": "防水加厚牛津布",
+                "trade_unit": "件",
+            },
+            "market_signals": {"sku_sale_count_signal": 10},
+            "supply_signals": {
+                "stock_count": 13,
+                "advertised_price_range": "3.90-9.90",
+            },
+        },
+    ]
+    return base
+
+
 def services():
     engine = database()
     evidence = EvidenceService(engine)
@@ -498,6 +614,11 @@ def test_browser_capture_routes_are_authenticated_scoped_and_canonical(
         json=envelope(),
         headers=headers,
     )
+    accepted_v12 = client.post(
+        "/v1/browser-capture-inbox/preflight",
+        json=variant_matrix_envelope(),
+        headers=headers,
+    )
     forbidden = client.post(
         "/v1/browser-capture-inbox/preflight",
         json={**envelope(), "store_ref": "store-b"},
@@ -505,6 +626,12 @@ def test_browser_capture_routes_are_authenticated_scoped_and_canonical(
     )
 
     assert accepted.status_code == 200
+    assert accepted_v12.status_code == 200
+    assert captured["body"]["contract_version"] == (
+        "kjds-browser-capture-envelope/1.2"
+    )
+    assert captured["body"]["merchant"]["login_id"] == "戴贺喜188"
+    assert len(captured["body"]["items"]) == 2
     assert captured["principal"].tenant_ref == "tenant-a"
     assert captured["entity_scope"]["entity_ref"] is None
     assert forbidden.status_code == 403
@@ -523,3 +650,312 @@ def test_browser_capture_route_rejects_anonymous(monkeypatch):
         params={"store_ref": "store-a"},
     )
     assert response.status_code == 401
+
+
+def test_v12_variant_matrix_preserves_exact_sku_mapping_and_erp_staging():
+    _, _, inbox = services()
+
+    result = inbox.preflight(
+        variant_matrix_envelope(),
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+
+    normalized = result["normalized"]
+    assert normalized["merchant"]["login_id"] == "戴贺喜188"
+    assert normalized["page"]["capture_coverage"]["captured_count"] == 2
+    by_sku = {
+        item["product_identity"]["sku_id"]: item
+        for item in normalized["items"]
+    }
+    assert by_sku["sku-3"]["unit_price"] == "3.90"
+    assert by_sku["sku-3"]["product_identity"]["spec_id"] == "spec-3"
+    assert by_sku["sku-3"]["supply_signals"]["stock_count"] == 470
+    assert by_sku["sku-6"]["unit_price"] == "9.90"
+    assert by_sku["sku-6"]["market_signals"][
+        "sku_sale_count_signal"
+    ] == 10
+    summary = normalized["variant_summary"][0]
+    assert summary["variant_count"] == 2
+    assert summary["minimum_unit_price"] == "3.90"
+    assert summary["minimum_variants"][0]["sku_id"] == "sku-3"
+    assert len(summary["comparison_groups"]) == 2
+    assert {
+        group["comparison_dimensions"]["pack_count"]
+        for group in summary["comparison_groups"]
+    } == {"3", "6"}
+    assert normalized["erp_staging"]["status"] == "exact_variant_staged"
+    assert normalized["erp_staging"]["exact_variant_count"] == 2
+    assert {
+        (row["sku_id"], row["spec_id"], row["unit_price"])
+        for row in normalized["erp_staging"]["rows"]
+    } == {
+        ("sku-3", "spec-3", "3.90"),
+        ("sku-6", "spec-6", "9.90"),
+    }
+    assert normalized["semantic_limits"]["supplier_offer_created"] is False
+    assert normalized["semantic_limits"]["sales_fact_inferred"] is False
+
+
+def test_v12_rejects_merchant_identity_drift_and_coverage_mismatch():
+    _, _, inbox = services()
+    merchant_drift = variant_matrix_envelope()
+    merchant_drift["merchant"]["supplier_ref"] = "other-supplier"
+    with pytest.raises(ValueError, match="merchant supplier_ref"):
+        inbox.preflight(
+            merchant_drift,
+            principal=principal(),
+            entity_scope=entity_scope(),
+            as_of=AS_OF,
+        )
+
+    coverage_drift = variant_matrix_envelope()
+    coverage_drift["page"]["capture_coverage"]["captured_count"] = 1
+    with pytest.raises(ValueError, match="full SKU matrix"):
+        inbox.preflight(
+            coverage_drift,
+            principal=principal(),
+            entity_scope=entity_scope(),
+            as_of=AS_OF,
+        )
+
+    missing_spec = variant_matrix_envelope()
+    del missing_spec["items"][1]["product_identity"]["spec_id"]
+    with pytest.raises(ValueError, match="requires sku_id and spec_id"):
+        inbox.preflight(
+            missing_spec,
+            principal=principal(),
+            entity_scope=entity_scope(),
+            as_of=AS_OF,
+        )
+
+
+def test_v12_candidate_cards_reach_erp_only_as_detail_enrichment_queue():
+    _, _, inbox = services()
+    candidate = variant_matrix_envelope()
+    candidate["idempotency_key"] = "capture-1688-search-candidates"
+    candidate["page"]["capture_kind"] = "search_result_candidates"
+    candidate["page"]["structured_data_source"] = (
+        "visible_current_page_product_cards"
+    )
+    candidate["merchant"] = None
+    candidate["items"] = [candidate["items"][0]]
+    candidate["items"][0]["variant_key"] = "unselected"
+    candidate["items"][0]["product_identity"] = {
+        "offer_id": "38547222320",
+        "identity_resolution": "offer_only",
+    }
+    candidate["items"][0]["comparison_dimensions"] = {}
+    candidate["page"]["capture_coverage"] = {
+        "discovered_count": 1,
+        "captured_count": 1,
+        "truncated": False,
+        "exact_sku_identity_count": 0,
+    }
+
+    result = inbox.preflight(
+        candidate,
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+
+    staging = result["normalized"]["erp_staging"]
+    assert staging["status"] == "partial_requires_detail_enrichment"
+    assert staging["exact_variant_count"] == 0
+    assert staging["rows"][0]["mapping_status"] == (
+        "requires_detail_enrichment"
+    )
+    assert "variant_selection_unverified" in result[
+        "promotion_readiness"
+    ]["source_gaps"]
+
+
+def test_list_compares_latest_exact_offers_and_respects_reference_moq():
+    _, _, inbox = services()
+
+    def exact_offer(
+        *,
+        offer_id: str,
+        supplier_ref: str,
+        price: str,
+        moq: int,
+        observed_at: str,
+        idempotency_key: str,
+    ) -> dict:
+        value = json.loads(json.dumps(variant_matrix_envelope()))
+        value["observed_at"] = observed_at
+        value["idempotency_key"] = idempotency_key
+        value["source_url"] = (
+            f"https://detail.1688.com/offer/{offer_id}.html"
+        )
+        value["page"]["canonical_url"] = value["source_url"]
+        value["page"]["capture_coverage"] = {
+            "discovered_count": 1,
+            "captured_count": 1,
+            "truncated": False,
+            "exact_sku_identity_count": 1,
+        }
+        value["merchant"] = {
+            "supplier_ref": supplier_ref,
+            "company_name": f"供应商 {supplier_ref}",
+            "login_id": supplier_ref,
+            "public_signals": {},
+        }
+        item = value["items"][1]
+        item["external_item_id"] = offer_id
+        item["supplier_ref"] = supplier_ref
+        item["displayed_price"] = price
+        item["min_order_quantity"] = moq
+        item["source_url"] = value["source_url"]
+        item["product_identity"] = {
+            **item["product_identity"],
+            "offer_id": offer_id,
+            "sku_id": f"sku-{offer_id}",
+            "spec_id": f"spec-{offer_id}",
+        }
+        value["items"] = [item]
+        return value
+
+    inbox.submit(
+        variant_matrix_envelope(),
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+    inbox.submit(
+        exact_offer(
+            offer_id="200",
+            supplier_ref="supplier-200",
+            price="8.50",
+            moq=1,
+            observed_at="2026-07-29T03:31:00Z",
+            idempotency_key="capture-offer-200-old",
+        ),
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+    inbox.submit(
+        exact_offer(
+            offer_id="400",
+            supplier_ref="supplier-400-old",
+            price="7.50",
+            moq=1,
+            observed_at="2026-07-29T03:34:00Z",
+            idempotency_key="capture-offer-400-old-supplier",
+        ),
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+    inbox.submit(
+        exact_offer(
+            offer_id="400",
+            supplier_ref="supplier-400-drift",
+            price="7.40",
+            moq=1,
+            observed_at="2026-07-29T03:35:00Z",
+            idempotency_key="capture-offer-400-supplier-drift",
+        ),
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+    inbox.submit(
+        exact_offer(
+            offer_id="200",
+            supplier_ref="supplier-200",
+            price="8.40",
+            moq=1,
+            observed_at="2026-07-29T03:32:00Z",
+            idempotency_key="capture-offer-200-latest",
+        ),
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+    inbox.submit(
+        exact_offer(
+            offer_id="300",
+            supplier_ref="supplier-300",
+            price="3.80",
+            moq=300,
+            observed_at="2026-07-29T03:33:00Z",
+            idempotency_key="capture-offer-300-moq",
+        ),
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+    candidate = json.loads(json.dumps(variant_matrix_envelope()))
+    candidate["idempotency_key"] = "capture-search-queue"
+    candidate["source_url"] = (
+        "https://s.1688.com/selloffer/offer_search.htm?keywords=bag"
+    )
+    candidate["page"]["canonical_url"] = candidate["source_url"]
+    candidate["page"]["capture_kind"] = "search_result_candidates"
+    candidate["page"]["structured_data_source"] = (
+        "visible_current_page_product_cards"
+    )
+    candidate["page"]["capture_coverage"] = {
+        "discovered_count": 1,
+        "captured_count": 1,
+        "truncated": False,
+        "exact_sku_identity_count": 0,
+    }
+    candidate["merchant"] = None
+    candidate_item = candidate["items"][0]
+    candidate_item["variant_key"] = "unselected"
+    candidate_item["product_identity"] = {
+        "offer_id": candidate_item["external_item_id"],
+        "identity_resolution": "offer_only",
+    }
+    candidate_item["comparison_dimensions"] = {}
+    candidate["items"] = [candidate_item]
+    inbox.submit(
+        candidate,
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+
+    listed = inbox.list(
+        principal=principal(),
+        entity_scope=entity_scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+    )
+    comparison = listed["sourcing_comparison"]
+    six_piece = next(
+        group
+        for group in comparison["groups"]
+        if group["comparison_dimensions"].get("pack_count") == "6"
+    )
+
+    assert comparison["contract_id"] == "kjds-sourcing-comparison/1.0"
+    assert comparison["reference_quantity"] == 1
+    assert comparison["latest_exact_offer_count"] == 3
+    assert comparison["supplier_drift_offer_count"] == 1
+    assert comparison["candidate_capture_count"] == 1
+    assert comparison["candidate_row_count"] == 1
+    assert six_piece["status"] == "comparable"
+    assert six_piece["exact_offer_count"] == 3
+    assert six_piece["eligible_offer_count"] == 2
+    assert six_piece["minimum_eligible_unit_price"] == "8.40"
+    assert {row["unit_price"] for row in six_piece["rows"]} == {
+        "3.80",
+        "8.40",
+        "9.90",
+    }
+    assert all(row["offer_id"] != "400" for row in six_piece["rows"])
+    assert six_piece["lowest_rows"][0]["offer_id"] == "200"
+    high_moq = next(
+        row for row in six_piece["rows"] if row["offer_id"] == "300"
+    )
+    assert high_moq["eligibility"] == "reference_quantity_below_moq"
+    assert comparison["formal_cost_created"] is False
+    assert comparison["freight_included"] is False
+    assert comparison["tax_included"] is False
+    assert comparison["external_write"] is False

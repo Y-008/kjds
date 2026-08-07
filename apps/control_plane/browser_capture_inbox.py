@@ -27,12 +27,23 @@ from .evidence import EvidenceGrade
 from .security import Principal
 from .sql_repository import Base
 
-CAPTURE_CONTRACT = "kjds-browser-capture-envelope/1.1"
+CAPTURE_CONTRACT = "kjds-browser-capture-envelope/1.2"
 SUPPORTED_CAPTURE_CONTRACTS = {
     "kjds-browser-capture-envelope/1.0",
+    "kjds-browser-capture-envelope/1.1",
     CAPTURE_CONTRACT,
 }
-SUPPORTED_EXTRACTORS = {"kjds-visible-dom/1.0", "kjds-visible-dom/1.1"}
+SUPPORTED_EXTRACTORS = {
+    "kjds-visible-dom/1.0",
+    "kjds-visible-dom/1.1",
+    "kjds-visible-dom/1.2",
+}
+CAPTURE_KINDS = {
+    "product_detail_variant_matrix",
+    "search_result_candidates",
+    "store_catalog_candidates",
+    "generic_product",
+}
 PUBLIC_IMAGE_HOST_SUFFIXES = (
     ".1688.com",
     ".alicdn.com",
@@ -367,6 +378,7 @@ class BrowserCaptureInbox:
             )
             for row in rows
         ]
+        sourcing_comparison = self._cross_offer_comparison(items)
         payload = {
             "contract_id": self.CONTRACT_ID,
             "status": (
@@ -391,6 +403,7 @@ class BrowserCaptureInbox:
                 "store_ref": store_ref,
             },
             "items": items,
+            "sourcing_comparison": sourcing_comparison,
             "counts": {
                 "total": len(items),
                 "quarantined": sum(
@@ -503,6 +516,9 @@ class BrowserCaptureInbox:
             raise ValueError("Unsupported browser extractor version")
         if page.get("capture_mode") != "active_tab_visible_dom":
             raise ValueError("Unsupported browser capture mode")
+        capture_kind = str(page.get("capture_kind") or "generic_product")
+        if capture_kind not in CAPTURE_KINDS:
+            raise ValueError("Unsupported browser capture kind")
         canonical_url = page.get("canonical_url")
         normalized_canonical = None
         if canonical_url:
@@ -512,8 +528,16 @@ class BrowserCaptureInbox:
                 field="page.canonical_url",
             )
         items = envelope.get("items")
-        if not isinstance(items, list) or not 1 <= len(items) <= 50:
-            raise ValueError("Browser capture requires 1 to 50 items")
+        item_limit = (
+            500
+            if contract_version == CAPTURE_CONTRACT
+            and capture_kind == "product_detail_variant_matrix"
+            else 50
+        )
+        if not isinstance(items, list) or not 1 <= len(items) <= item_limit:
+            raise ValueError(
+                f"Browser capture requires 1 to {item_limit} items"
+            )
         normalized_items = [
             self._item(
                 item,
@@ -527,6 +551,68 @@ class BrowserCaptureInbox:
         if len(set(fingerprints)) != len(fingerprints):
             raise ValueError("Browser capture contains duplicate item keys")
         normalized_items.sort(key=lambda item: item["fingerprint"])
+        if capture_kind == "product_detail_variant_matrix":
+            offer_ids = {
+                item["external_item_id"] for item in normalized_items
+            }
+            supplier_refs = {
+                item["supplier_ref"] for item in normalized_items
+            }
+            if len(offer_ids) != 1 or len(supplier_refs) != 1:
+                raise ValueError(
+                    "product detail capture must bind one offer and supplier"
+                )
+            raw_coverage = page.get("capture_coverage") or {}
+            if (
+                raw_coverage.get("discovered_count") != len(normalized_items)
+                or raw_coverage.get("captured_count") != len(normalized_items)
+                or raw_coverage.get("truncated") is not False
+            ):
+                raise ValueError(
+                    "product detail capture must preserve the full SKU matrix"
+                )
+            if any(
+                not item["product_identity"].get("sku_id")
+                or not item["product_identity"].get("spec_id")
+                for item in normalized_items
+            ):
+                raise ValueError(
+                    "product detail capture requires sku_id and spec_id for every row"
+                )
+        elif capture_kind in {
+            "search_result_candidates",
+            "store_catalog_candidates",
+        }:
+            if any(
+                item["variant_key"].lower() != "unselected"
+                for item in normalized_items
+            ):
+                raise ValueError(
+                    "candidate card capture cannot claim selected variants"
+                )
+        coverage = self._signal_object(
+            page.get("capture_coverage"),
+            "page.capture_coverage",
+            20,
+        )
+        discovered = coverage.get("discovered_count")
+        captured = coverage.get("captured_count")
+        if (
+            isinstance(discovered, int)
+            and isinstance(captured, int)
+            and (discovered < captured or captured != len(normalized_items))
+        ):
+            raise ValueError(
+                "capture coverage must preserve discovered/captured counts"
+            )
+        merchant = self._merchant(
+            envelope.get("merchant"),
+            item_supplier_refs={
+                item["supplier_ref"] for item in normalized_items
+            },
+        )
+        variant_summary = self._variant_summary(normalized_items)
+        erp_staging = self._erp_staging(normalized_items)
         source_adapter = {
             "adapter_id": adapter["adapter_id"],
             "adapter_version": adapter["adapter_version"],
@@ -560,10 +646,31 @@ class BrowserCaptureInbox:
                 ),
                 "extractor_version": page["extractor_version"],
                 "capture_mode": page["capture_mode"],
+                "capture_kind": capture_kind,
+                "provider_id": self._optional_text(
+                    page.get("provider_id"), "page.provider_id", 160
+                ),
+                "provider_version": self._optional_text(
+                    page.get("provider_version"),
+                    "page.provider_version",
+                    80,
+                ),
+                "structured_data_source": self._optional_text(
+                    page.get("structured_data_source"),
+                    "page.structured_data_source",
+                    160,
+                ),
+                "search_query": self._optional_text(
+                    page.get("search_query"), "page.search_query", 500
+                ),
+                "capture_coverage": coverage,
             },
+            "merchant": merchant,
             "scope": context,
             "source_adapter": source_adapter,
             "items": normalized_items,
+            "variant_summary": variant_summary,
+            "erp_staging": erp_staging,
             "semantic_limits": {
                 "supplier_offer_created": False,
                 "actual_cost_created": False,
@@ -625,6 +732,13 @@ class BrowserCaptureInbox:
         external_item_id = self._text(
             raw.get("external_item_id"), "external_item_id", 240
         )
+        identity_offer_id = product_identity.get(
+            "offer_id", product_identity.get("external_item_id")
+        )
+        if identity_offer_id and identity_offer_id != external_item_id:
+            raise ValueError(
+                "product_identity offer_id must match external_item_id"
+            )
         variant_key = self._text(
             raw.get("variant_key"), "variant_key", 500
         )
@@ -656,12 +770,19 @@ class BrowserCaptureInbox:
                 raise ValueError(
                     "observed checkout quantity cannot be below MOQ"
                 )
+        comparison_dimensions = self._string_map(
+            raw.get("comparison_dimensions"),
+            "comparison_dimensions",
+            40,
+        )
         natural_key = {
             "marketplace": marketplace,
             "supplier_ref": self._text(
                 raw.get("supplier_ref"), "supplier_ref", 240
             ),
             "external_item_id": external_item_id,
+            "sku_id": product_identity.get("sku_id"),
+            "spec_id": product_identity.get("spec_id"),
             "variant_key": variant_key,
         }
         gaps = []
@@ -695,6 +816,19 @@ class BrowserCaptureInbox:
                 raw.get("specifications"), "specifications", 80
             ),
             "product_identity": product_identity,
+            "comparison_dimensions": comparison_dimensions,
+            "comparison_key_sha256": (
+                self._hash(
+                    {
+                        "currency": self._text(
+                            raw.get("currency"), "currency", 3
+                        ).upper(),
+                        "dimensions": comparison_dimensions,
+                    }
+                )
+                if comparison_dimensions
+                else None
+            ),
             "observed_quantity": observed_quantity,
             "checkout_verified": raw.get("checkout_verified") is True,
             "tax_included": raw.get("tax_included"),
@@ -702,6 +836,26 @@ class BrowserCaptureInbox:
                 "domestic_freight_included"
             ),
             "purchase_available": raw.get("purchase_available") is True,
+            "confidence": format(
+                self._confidence(raw.get("confidence", "0.5")), "f"
+            ),
+            "market_signals": self._signal_object(
+                raw.get("market_signals"), "market_signals", 80
+            ),
+            "supply_signals": self._signal_object(
+                raw.get("supply_signals"), "supply_signals", 80
+            ),
+            "experiment_readbacks": self._signal_object(
+                raw.get("experiment_readbacks"),
+                "experiment_readbacks",
+                20,
+            ),
+            "target_product_id": self._optional_text(
+                raw.get("target_product_id"), "target_product_id", 160
+            ),
+            "target_offer_id": self._optional_text(
+                raw.get("target_offer_id"), "target_offer_id", 160
+            ),
             "media_rights_status": "unverified_external_reference",
             "image_references": self._image_references(
                 raw.get("image_references")
@@ -748,6 +902,7 @@ class BrowserCaptureInbox:
                 if gap
                 in {
                     "exact_product_identity_missing",
+                    "exact_sku_identity_missing",
                     "variant_selection_unverified",
                 }
             }
@@ -818,6 +973,7 @@ class BrowserCaptureInbox:
             if gap
             in {
                 "exact_product_identity_missing",
+                "exact_sku_identity_missing",
                 "variant_selection_unverified",
             }
         ]
@@ -885,6 +1041,7 @@ class BrowserCaptureInbox:
                     or code
                     in {
                         "exact_product_identity_missing",
+                        "exact_sku_identity_missing",
                         "variant_selection_unverified",
                     }
                 )
@@ -954,6 +1111,15 @@ class BrowserCaptureInbox:
             },
             "item_count": row.item_count,
             "items": row.normalized_payload_json["items"],
+            "page": row.normalized_payload_json.get("page", {}),
+            "merchant": row.normalized_payload_json.get("merchant"),
+            "variant_summary": row.normalized_payload_json.get(
+                "variant_summary", []
+            ),
+            "erp_staging": row.normalized_payload_json.get(
+                "erp_staging",
+                {"status": "legacy_capture", "rows": []},
+            ),
             "contract_version": row.contract_version,
             "promotion_readiness": {
                 "status": "ready" if promotion_ready else (
@@ -980,6 +1146,426 @@ class BrowserCaptureInbox:
             "approval_created": False,
             "permit_created": False,
             "external_write_allowed": False,
+        }
+
+    @classmethod
+    def _merchant(
+        cls,
+        value: Any,
+        *,
+        item_supplier_refs: set[str],
+    ) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError("merchant must be an object")
+        supplier_ref = cls._text(
+            value.get("supplier_ref"), "merchant.supplier_ref", 240
+        )
+        if supplier_ref not in item_supplier_refs:
+            raise ValueError(
+                "merchant supplier_ref must match a captured item supplier_ref"
+            )
+        return {
+            "supplier_ref": supplier_ref,
+            "company_name": cls._optional_text(
+                value.get("company_name"), "merchant.company_name", 500
+            ),
+            "login_id": cls._optional_text(
+                value.get("login_id"), "merchant.login_id", 240
+            ),
+            "public_signals": cls._signal_object(
+                value.get("public_signals"),
+                "merchant.public_signals",
+                80,
+            ),
+        }
+
+    @classmethod
+    def _variant_summary(
+        cls,
+        items: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for item in items:
+            groups.setdefault(item["external_item_id"], []).append(item)
+        result: list[dict[str, Any]] = []
+        for external_item_id, rows in sorted(groups.items()):
+            currencies = {row["currency"] for row in rows}
+            if len(currencies) != 1:
+                raise ValueError("one offer cannot contain multiple currencies")
+            prices = [Decimal(row["unit_price"]) for row in rows]
+            minimum = min(prices)
+            maximum = max(prices)
+            minimum_rows = [
+                cls._variant_ref(row)
+                for row in rows
+                if Decimal(row["unit_price"]) == minimum
+            ]
+            comparison_buckets: dict[str, list[dict[str, Any]]] = {}
+            for row in rows:
+                key = row.get("comparison_key_sha256")
+                if not key:
+                    key = f"unresolved:{row['fingerprint']}"
+                comparison_buckets.setdefault(key, []).append(row)
+            comparison_groups = []
+            for key, comparable_rows in sorted(comparison_buckets.items()):
+                comparable_prices = [
+                    Decimal(row["unit_price"]) for row in comparable_rows
+                ]
+                group_minimum = min(comparable_prices)
+                comparison_groups.append(
+                    {
+                        "comparison_key_sha256": (
+                            None if key.startswith("unresolved:") else key
+                        ),
+                        "comparison_dimensions": comparable_rows[0].get(
+                            "comparison_dimensions", {}
+                        ),
+                        "status": (
+                            "comparable"
+                            if not key.startswith("unresolved:")
+                            else "requires_dimension_alignment"
+                        ),
+                        "item_count": len(comparable_rows),
+                        "minimum_unit_price": format(group_minimum, "f"),
+                        "maximum_unit_price": format(
+                            max(comparable_prices), "f"
+                        ),
+                        "minimum_variants": [
+                            cls._variant_ref(row)
+                            for row in comparable_rows
+                            if Decimal(row["unit_price"]) == group_minimum
+                        ],
+                    }
+                )
+            result.append(
+                {
+                    "external_item_id": external_item_id,
+                    "currency": next(iter(currencies)),
+                    "variant_count": len(rows),
+                    "minimum_unit_price": format(minimum, "f"),
+                    "maximum_unit_price": format(maximum, "f"),
+                    "minimum_variants": minimum_rows,
+                    "stock_counts": {
+                        "in_stock": sum(
+                            row["availability"] == "in_stock" for row in rows
+                        ),
+                        "out_of_stock": sum(
+                            row["availability"] == "out_of_stock"
+                            for row in rows
+                        ),
+                        "unknown": sum(
+                            row["availability"]
+                            not in {"in_stock", "out_of_stock"}
+                            for row in rows
+                        ),
+                    },
+                    "comparison_groups": comparison_groups,
+                    "comparison_rule": (
+                        "only_equal_server_normalized_dimensions_are_comparable"
+                    ),
+                }
+            )
+        return result
+
+    @staticmethod
+    def _variant_ref(item: dict[str, Any]) -> dict[str, Any]:
+        identity = item.get("product_identity", {})
+        return {
+            "fingerprint": item["fingerprint"],
+            "sku_id": identity.get("sku_id"),
+            "spec_id": identity.get("spec_id"),
+            "variant_key": item["variant_key"],
+            "unit_price": item["unit_price"],
+            "comparison_key_sha256": item.get("comparison_key_sha256"),
+        }
+
+    @classmethod
+    def _erp_staging(
+        cls,
+        items: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        rows = []
+        for item in items:
+            identity = item["product_identity"]
+            exact = bool(
+                identity.get("sku_id")
+                and identity.get("spec_id")
+                and item["variant_key"].lower()
+                not in {"unknown", "default", "unselected"}
+            )
+            rows.append(
+                {
+                    "staging_key": item["fingerprint"],
+                    "mapping_status": (
+                        "exact_variant_staged"
+                        if exact
+                        else "requires_detail_enrichment"
+                    ),
+                    "supplier_ref": item["supplier_ref"],
+                    "offer_id": item["external_item_id"],
+                    "sku_id": identity.get("sku_id"),
+                    "spec_id": identity.get("spec_id"),
+                    "variant_key": item["variant_key"],
+                    "currency": item["currency"],
+                    "unit_price": item["unit_price"],
+                    "price_kind": item["price_kind"],
+                    "comparison_key_sha256": item.get(
+                        "comparison_key_sha256"
+                    ),
+                    "source_url": item["source_url"],
+                    "item_sha256": item["item_sha256"],
+                }
+            )
+        exact_count = sum(
+            row["mapping_status"] == "exact_variant_staged" for row in rows
+        )
+        return {
+            "contract_id": "kjds-erp-sourcing-staging/1.0",
+            "status": (
+                "exact_variant_staged"
+                if exact_count == len(rows)
+                else "partial_requires_detail_enrichment"
+            ),
+            "row_count": len(rows),
+            "exact_variant_count": exact_count,
+            "rows": rows,
+            "formal_product_write": False,
+            "supplier_offer_write": False,
+            "external_write": False,
+        }
+
+    @classmethod
+    def _cross_offer_comparison(
+        cls,
+        captures: list[dict[str, Any]],
+        *,
+        reference_quantity: int = 1,
+    ) -> dict[str, Any]:
+        """Compare only latest, intact, exact-detail rows across offers."""
+        snapshots_by_offer: dict[
+            tuple[str, str], list[dict[str, Any]]
+        ] = {}
+        candidate_capture_count = 0
+        candidate_row_count = 0
+        excluded_capture_count = 0
+        for capture in captures:
+            if (
+                capture["evidence"]["integrity_status"] != "ready"
+                or capture["source_adapter"]["current_status"] != "ready"
+            ):
+                excluded_capture_count += 1
+                continue
+            capture_kind = capture.get("page", {}).get("capture_kind")
+            if capture_kind in {
+                "search_result_candidates",
+                "store_catalog_candidates",
+            }:
+                candidate_capture_count += 1
+                candidate_row_count += len(capture.get("items", []))
+                continue
+            if capture_kind != "product_detail_variant_matrix":
+                continue
+            capture_items = capture.get("items", [])
+            if not capture_items:
+                continue
+            first = capture_items[0]
+            offer_key = (
+                capture["marketplace"],
+                first["external_item_id"],
+            )
+            snapshots_by_offer.setdefault(offer_key, []).append(capture)
+
+        latest_by_offer: dict[tuple[str, str], dict[str, Any]] = {}
+        supplier_drift_offer_count = 0
+        for offer_key, snapshots in snapshots_by_offer.items():
+            supplier_refs = {
+                item["supplier_ref"]
+                for snapshot in snapshots
+                for item in snapshot.get("items", [])[:1]
+            }
+            if len(supplier_refs) != 1:
+                supplier_drift_offer_count += 1
+                excluded_capture_count += len(snapshots)
+                continue
+            # Captures are already newest-first. Do not count historical
+            # snapshots of one offer as additional suppliers.
+            latest_by_offer[offer_key] = snapshots[0]
+
+        buckets: dict[str, dict[str, Any]] = {}
+        unresolved_rows = 0
+        for capture in latest_by_offer.values():
+            for item in capture.get("items", []):
+                identity = item.get("product_identity", {})
+                dimensions = item.get("comparison_dimensions", {})
+                discriminators = {
+                    key
+                    for key in {"pack_count", "size", "material"}
+                    if dimensions.get(key)
+                }
+                comparison_ready = bool(
+                    identity.get("sku_id")
+                    and identity.get("spec_id")
+                    and item.get("comparison_key_sha256")
+                    and dimensions.get("category_id")
+                    and dimensions.get("trade_unit")
+                    and len(discriminators) >= 2
+                )
+                if not comparison_ready:
+                    unresolved_rows += 1
+                    continue
+                price_basis = (
+                    f"{item['price_kind']}:{item['price_scope']}"
+                )
+                group_identity = {
+                    "marketplace": capture["marketplace"],
+                    "comparison_key_sha256": item[
+                        "comparison_key_sha256"
+                    ],
+                    "price_basis": price_basis,
+                }
+                group_key = cls._hash(group_identity)
+                bucket = buckets.setdefault(
+                    group_key,
+                    {
+                        "comparison_group_sha256": group_key,
+                        **group_identity,
+                        "currency": item["currency"],
+                        "comparison_dimensions": dimensions,
+                        "rows": [],
+                    },
+                )
+                moq = item.get("min_order_quantity")
+                if (
+                    item["price_kind"] != "public_display_price"
+                    or item["price_scope"] != "unit_price"
+                ):
+                    eligibility = "price_basis_not_public_unit"
+                elif item.get("availability") == "out_of_stock":
+                    eligibility = "out_of_stock"
+                elif item.get("availability") != "in_stock":
+                    eligibility = "availability_unverified"
+                elif moq is None:
+                    eligibility = "moq_unverified"
+                elif moq > reference_quantity:
+                    eligibility = "reference_quantity_below_moq"
+                else:
+                    eligibility = "eligible_public_display_price"
+                bucket["rows"].append(
+                    {
+                        "capture_id": capture["id"],
+                        "observed_at": capture["observed_at"],
+                        "supplier_ref": item["supplier_ref"],
+                        "offer_id": item["external_item_id"],
+                        "sku_id": identity["sku_id"],
+                        "spec_id": identity["spec_id"],
+                        "variant_key": item["variant_key"],
+                        "unit_price": item["unit_price"],
+                        "currency": item["currency"],
+                        "min_order_quantity": moq,
+                        "availability": item["availability"],
+                        "eligibility": eligibility,
+                        "source_url": item["source_url"],
+                        "item_sha256": item["item_sha256"],
+                    }
+                )
+
+        groups = []
+        for bucket in buckets.values():
+            rows = sorted(
+                bucket.pop("rows"),
+                key=lambda row: (
+                    Decimal(row["unit_price"]),
+                    row["supplier_ref"],
+                    row["offer_id"],
+                    row["sku_id"],
+                    row["spec_id"],
+                ),
+            )
+            eligible = [
+                row
+                for row in rows
+                if row["eligibility"]
+                == "eligible_public_display_price"
+            ]
+            eligible_offers = {
+                (row["supplier_ref"], row["offer_id"])
+                for row in eligible
+            }
+            minimum = (
+                min(Decimal(row["unit_price"]) for row in eligible)
+                if eligible
+                else None
+            )
+            groups.append(
+                {
+                    **bucket,
+                    "status": (
+                        "comparable"
+                        if len(eligible_offers) >= 2
+                        else "insufficient_exact_offers"
+                    ),
+                    "exact_offer_count": len(
+                        {
+                            (row["supplier_ref"], row["offer_id"])
+                            for row in rows
+                        }
+                    ),
+                    "exact_row_count": len(rows),
+                    "eligible_offer_count": len(eligible_offers),
+                    "eligible_row_count": len(eligible),
+                    "minimum_eligible_unit_price": (
+                        format(minimum, "f") if minimum is not None else None
+                    ),
+                    "lowest_rows": (
+                        [
+                            row
+                            for row in eligible
+                            if Decimal(row["unit_price"]) == minimum
+                        ]
+                        if minimum is not None
+                        else []
+                    ),
+                    "rows": rows,
+                }
+            )
+        groups.sort(
+            key=lambda group: (
+                group["marketplace"],
+                json.dumps(
+                    group["comparison_dimensions"],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                group["price_basis"],
+            )
+        )
+        return {
+            "contract_id": "kjds-sourcing-comparison/1.0",
+            "status": (
+                "comparable"
+                if any(group["status"] == "comparable" for group in groups)
+                else "requires_more_exact_offers"
+                if groups or candidate_row_count
+                else "no_data"
+            ),
+            "reference_quantity": reference_quantity,
+            "latest_exact_offer_count": len(latest_by_offer),
+            "candidate_capture_count": candidate_capture_count,
+            "candidate_row_count": candidate_row_count,
+            "excluded_capture_count": excluded_capture_count,
+            "supplier_drift_offer_count": supplier_drift_offer_count,
+            "unresolved_exact_row_count": unresolved_rows,
+            "groups": groups,
+            "comparison_rule": (
+                "latest_intact_exact_detail_rows_with_equal_server_"
+                "normalized_dimensions_and_explicit_moq"
+            ),
+            "formal_cost_created": False,
+            "freight_included": False,
+            "tax_included": False,
+            "external_write": False,
         }
 
     @staticmethod
@@ -1067,6 +1653,83 @@ class BrowserCaptureInbox:
         if not parsed.is_finite() or parsed <= 0:
             raise ValueError(f"{field} must be positive")
         return parsed
+
+    @staticmethod
+    def _confidence(value: Any) -> Decimal:
+        try:
+            parsed = Decimal(str(value))
+        except (InvalidOperation, TypeError) as exc:
+            raise ValueError("confidence must be a decimal") from exc
+        if not parsed.is_finite() or parsed <= 0 or parsed > 1:
+            raise ValueError("confidence must be greater than 0 and at most 1")
+        return parsed
+
+    @classmethod
+    def _optional_text(
+        cls,
+        value: Any,
+        field: str,
+        max_length: int,
+    ) -> str | None:
+        if value is None or str(value).strip() == "":
+            return None
+        return cls._text(value, field, max_length)
+
+    @classmethod
+    def _signal_object(
+        cls,
+        value: Any,
+        field: str,
+        max_keys: int,
+    ) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict) or len(value) > max_keys:
+            raise ValueError(
+                f"{field} must be an object with at most {max_keys} keys"
+            )
+
+        def normalize(item: Any, path: str, depth: int) -> Any:
+            if depth > 4:
+                raise ValueError(f"{path} exceeds maximum nesting depth")
+            if item is None or isinstance(item, bool):
+                return item
+            if isinstance(item, int):
+                return item
+            if isinstance(item, float):
+                parsed = Decimal(str(item))
+                if not parsed.is_finite():
+                    raise ValueError(f"{path} must be finite")
+                return format(parsed, "f")
+            if isinstance(item, Decimal):
+                if not item.is_finite():
+                    raise ValueError(f"{path} must be finite")
+                return format(item, "f")
+            if isinstance(item, str):
+                return cls._text(item, path, 2000)
+            if isinstance(item, list):
+                if len(item) > 80:
+                    raise ValueError(f"{path} contains too many values")
+                return [
+                    normalize(child, f"{path}[{index}]", depth + 1)
+                    for index, child in enumerate(item)
+                ]
+            if isinstance(item, dict):
+                if len(item) > 80:
+                    raise ValueError(f"{path} contains too many keys")
+                return {
+                    cls._text(key, f"{path} key", 100): normalize(
+                        child,
+                        f"{path}.{key}",
+                        depth + 1,
+                    )
+                    for key, child in sorted(
+                        item.items(), key=lambda pair: str(pair[0])
+                    )
+                }
+            raise ValueError(f"{path} contains an unsupported value")
+
+        return normalize(value, field, 0)
 
     @classmethod
     def _string_map(
