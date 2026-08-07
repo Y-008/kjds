@@ -612,7 +612,28 @@ class BrowserCaptureInbox:
             },
         )
         variant_summary = self._variant_summary(normalized_items)
-        erp_staging = self._erp_staging(normalized_items)
+        erp_staging = self._erp_staging(
+            normalized_items,
+            observed_at=self._iso(observed_at),
+            merchant=merchant,
+            capture_context={
+                "capture_kind": capture_kind,
+                "provider_id": self._optional_text(
+                    page.get("provider_id"), "page.provider_id", 160
+                ),
+                "provider_version": self._optional_text(
+                    page.get("provider_version"),
+                    "page.provider_version",
+                    80,
+                ),
+                "structured_data_source": self._optional_text(
+                    page.get("structured_data_source"),
+                    "page.structured_data_source",
+                    160,
+                ),
+                "capture_coverage": coverage,
+            },
+        )
         source_adapter = {
             "adapter_id": adapter["adapter_id"],
             "adapter_version": adapter["adapter_version"],
@@ -1285,6 +1306,10 @@ class BrowserCaptureInbox:
     def _erp_staging(
         cls,
         items: list[dict[str, Any]],
+        *,
+        observed_at: str,
+        merchant: dict[str, Any] | None,
+        capture_context: dict[str, Any],
     ) -> dict[str, Any]:
         rows = []
         for item in items:
@@ -1303,26 +1328,77 @@ class BrowserCaptureInbox:
                         if exact
                         else "requires_detail_enrichment"
                     ),
+                    "marketplace": item["marketplace"],
                     "supplier_ref": item["supplier_ref"],
+                    "supplier_public_profile": (
+                        json.loads(json.dumps(merchant, ensure_ascii=False))
+                        if merchant is not None
+                        else None
+                    ),
                     "offer_id": item["external_item_id"],
                     "sku_id": identity.get("sku_id"),
                     "spec_id": identity.get("spec_id"),
                     "variant_key": item["variant_key"],
+                    "title": item["title"],
+                    "product_identity": identity,
                     "currency": item["currency"],
+                    "displayed_price": item["displayed_price"],
+                    "price_scope": item["price_scope"],
                     "unit_price": item["unit_price"],
                     "price_kind": item["price_kind"],
+                    "price_contract": item["price_contract"],
+                    "min_order_quantity": item[
+                        "min_order_quantity"
+                    ],
+                    "availability": item["availability"],
+                    "specifications": item["specifications"],
+                    "comparison_dimensions": item[
+                        "comparison_dimensions"
+                    ],
                     "comparison_key_sha256": item.get(
                         "comparison_key_sha256"
                     ),
+                    "observed_quantity": item["observed_quantity"],
+                    "checkout_verified": item["checkout_verified"],
+                    "tax_included": item["tax_included"],
+                    "domestic_freight_included": item[
+                        "domestic_freight_included"
+                    ],
+                    "purchase_available": item["purchase_available"],
+                    "confidence": item["confidence"],
+                    "market_signals": item["market_signals"],
+                    "supply_signals": item["supply_signals"],
+                    "experiment_readbacks": item[
+                        "experiment_readbacks"
+                    ],
+                    "target_product_id": item["target_product_id"],
+                    "target_offer_id": item["target_offer_id"],
+                    "media_rights_status": item[
+                        "media_rights_status"
+                    ],
+                    "image_references": item["image_references"],
+                    "source_gaps": item["source_gaps"],
+                    "source_observed_at": observed_at,
+                    "source_capture": json.loads(
+                        json.dumps(capture_context, ensure_ascii=False)
+                    ),
                     "source_url": item["source_url"],
                     "item_sha256": item["item_sha256"],
+                    # Preserve the complete validated observation as the
+                    # immutable audit payload.  Flattened fields above are
+                    # indexes for ERP consumers; this copy prevents any
+                    # future admitted public signal from being dropped at
+                    # the staging boundary.
+                    "source_observation": json.loads(
+                        json.dumps(item, ensure_ascii=False)
+                    ),
                 }
             )
         exact_count = sum(
             row["mapping_status"] == "exact_variant_staged" for row in rows
         )
         return {
-            "contract_id": "kjds-erp-sourcing-staging/1.0",
+            "contract_id": "kjds-erp-sourcing-staging/1.1",
             "status": (
                 "exact_variant_staged"
                 if exact_count == len(rows)

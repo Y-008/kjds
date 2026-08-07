@@ -28,6 +28,15 @@ material) are equal. Auxiliary variants such as logo customization, samples,
 freight and price-difference links remain exact rows but cannot inherit the
 title BOM or enter a product-price rank.
 
+Both original and promotional SSR SKU matrices are considered. A promotional
+`tradeModel.skuMap` is accepted only if every row contains its own exact
+SKU/spec identity and price; values from search cards, base ranges or a
+different incomplete matrix are never used to fill a row. ERP staging contract
+1.1 retains the complete normalized per-SKU observation plus flattened
+identity, price, MOQ, availability, specification, comparison, stock, sales,
+tier, supplier public profile, capture provider/coverage, source-time and hash
+fields so the browser-to-ERP projection is lossless and auditable.
+
 The collection workspace compares the newest intact detail snapshot for each
 offer across suppliers. At the default reference quantity of one it excludes
 unknown/high MOQ, unavailable stock, supplier-identity drift and incomplete

@@ -27,9 +27,13 @@ The server, not the extension, recomputes the offer price range, exact
 minimum-price SKU references and comparison groups. Only rows with equal
 normalized category/BOM count/size/material/trade-unit dimensions are
 comparable. Missing dimensions remain isolated. The server also projects
-`kjds-erp-sourcing-staging/1.0` rows; these are immutable internal staging, not
-Canonical Product, Supplier Offer, actual cost, formal sales or an external
-write.
+`kjds-erp-sourcing-staging/1.1` rows. Each exact row has flattened ERP indexes
+and a lossless normalized source observation, so identity, prices, MOQ,
+availability, specification/comparison dimensions, stock/sales/tier signals,
+supplier public profile, capture provider/coverage, source time and hashes
+cross the staging boundary without remapping. These are immutable internal
+staging, not Canonical Product, Supplier Offer, actual cost, formal sales or an
+external write.
 
 The inbox collection additionally projects `kjds-sourcing-comparison/1.0`.
 It uses only the newest intact detail snapshot per marketplace/offer, excludes
@@ -103,6 +107,49 @@ cost. Detail checks on the first three demonstrated why:
 These are time-scoped public discovery observations, not supplier quotes,
 checkout totals or landed costs.
 
+## Promotion-matrix and lossless ERP acceptance
+
+A second current-document replay used offer `675097513713`. Its price-sorted
+search card showed CNY `4.26`, but the detail SSR identified that value as a
+first-order card signal. `tradeModel.skuMap` contained eight independently
+identified promotional rows at CNY `4.76` with MOQ 2; `skuMapOriginal`
+contained the same identities without row prices and a CNY `6.80` base signal
+with MOQ 4. The provider selected the only complete price-bearing matrix and
+did not join any values across card, original or promotional structures.
+
+The production extension source, executed with every later request blocked,
+produced `discovered=8`, `captured=8`, `exact identity=8` and
+`truncated=false`. The eight exact identity pairs were:
+
+| SKU ID | spec ID | color | exact public CNY |
+|---|---|---|---:|
+| `5934582561130` | `ad83bda4f5122c3126b551ae642adf4b` | pink | 4.76 |
+| `5934582561131` | `37ddd46f34feb6b80eb49db18ba5168f` | gray | 4.76 |
+| `5934582561138` | `63138c5360d9290d2acdee26faeb9a36` | wine red | 4.76 |
+| `5934582561137` | `2cbdee8401125f3a6b3689493c4d55ba` | black | 4.76 |
+| `5934582561133` | `44e0e1ec59c83b58dfb125861d576ac2` | rose | 4.76 |
+| `5934582561134` | `94685508f10ed7c5562023ccd0a14b59` | green | 4.76 |
+| `5934582561135` | `89a549f6a0f848fae52691e4f329bc29` | sky blue | 4.76 |
+| `5934582561136` | `c415ee59ab9584427ac200ec87f5ff05` | navy | 4.76 |
+
+Direct server preflight produced eight `exact_variant_staged` rows. A sampled
+row retained SKU `5934582561137`, spec
+`2cbdee8401125f3a6b3689493c4d55ba`, CNY `4.76`, MOQ 2, in-stock state,
+public stock signal `199435`, sale signal, the `discountPrice` source field,
+price tier and item hash; its complete audit copy exactly equaled the
+normalized item. All three write flags remained false. Because the default
+comparison quantity 1 is below MOQ 2 and the active document did not expose a
+verified material dimension, the rows remain ineligible for the lowest-price
+rank and are not forced into the original offer's BOM group.
+
+The normal similar-products entry returned `SIMILAR_UNAVAILABLE`, which was
+not interpreted as no supply. A 20-card keyword search supplied discovery
+candidates instead. Detail checks retained offer `655419936590` as a material
+mismatch (`无纺布+PEVA` despite its title), offer `718404380873` as unknown
+because price/MOQ/SKUs were absent, and offer `600528999073` as pending exact
+spec/price-basis enrichment because its main and mixed-order prices differed.
+None was promoted as a comparable exact cost.
+
 ## Source and license record
 
 The current-document parsing approach was informed by the MIT-licensed
@@ -140,8 +187,8 @@ interception or background pagination.
 - focused backend and API contract: `61 passed` across
   `tests/test_browser_capture_inbox.py` and `tests/test_api_contract.py`, using
   the repository's complete 126-table file-backed test runtime.
-- Web/node: `148 passed`, including serialized SSR exact mapping and search-card
-  candidate tests.
+- Web/node: `149 passed`, including serialized SSR exact mapping, promotional
+  `skuMap`, lossless ERP projection contract and search-card candidate tests.
 - `npm run build` — passed; TypeScript and 63-page Next.js production build.
 - `node --check` for extension scripts and `git diff --check` — passed.
 

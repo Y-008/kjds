@@ -686,6 +686,9 @@ def test_v12_variant_matrix_preserves_exact_sku_mapping_and_erp_staging():
         for group in summary["comparison_groups"]
     } == {"3", "6"}
     assert normalized["erp_staging"]["status"] == "exact_variant_staged"
+    assert normalized["erp_staging"]["contract_id"] == (
+        "kjds-erp-sourcing-staging/1.1"
+    )
     assert normalized["erp_staging"]["exact_variant_count"] == 2
     assert {
         (row["sku_id"], row["spec_id"], row["unit_price"])
@@ -694,6 +697,45 @@ def test_v12_variant_matrix_preserves_exact_sku_mapping_and_erp_staging():
         ("sku-3", "spec-3", "3.90"),
         ("sku-6", "spec-6", "9.90"),
     }
+    staged_by_sku = {
+        row["sku_id"]: row for row in normalized["erp_staging"]["rows"]
+    }
+    sku_3 = staged_by_sku["sku-3"]
+    assert sku_3["source_observed_at"] == "2026-07-29T03:30:00+00:00"
+    assert sku_3["supplier_public_profile"] == normalized["merchant"]
+    assert sku_3["supplier_public_profile"]["public_signals"][
+        "repeat_rate_3m"
+    ] == "69.96%"
+    assert sku_3["source_capture"]["capture_kind"] == (
+        "product_detail_variant_matrix"
+    )
+    assert sku_3["source_capture"]["capture_coverage"] == normalized[
+        "page"
+    ]["capture_coverage"]
+    assert sku_3["product_identity"] == by_sku["sku-3"][
+        "product_identity"
+    ]
+    assert sku_3["specifications"] == by_sku["sku-3"][
+        "specifications"
+    ]
+    assert sku_3["comparison_dimensions"] == by_sku["sku-3"][
+        "comparison_dimensions"
+    ]
+    assert sku_3["min_order_quantity"] == 1
+    assert sku_3["availability"] == "in_stock"
+    assert sku_3["supply_signals"]["stock_count"] == 470
+    assert sku_3["market_signals"]["sku_sale_count_signal"] == 2
+    assert sku_3["checkout_verified"] is False
+    assert sku_3["tax_included"] is None
+    assert sku_3["domestic_freight_included"] is None
+    assert sku_3["purchase_available"] is False
+    assert sku_3["source_observation"] == by_sku["sku-3"]
+    assert sku_3["source_observation"]["item_sha256"] == (
+        sku_3["item_sha256"]
+    )
+    assert normalized["erp_staging"]["formal_product_write"] is False
+    assert normalized["erp_staging"]["supplier_offer_write"] is False
+    assert normalized["erp_staging"]["external_write"] is False
     assert normalized["semantic_limits"]["supplier_offer_created"] is False
     assert normalized["semantic_limits"]["sales_fact_inferred"] is False
 
@@ -767,6 +809,14 @@ def test_v12_candidate_cards_reach_erp_only_as_detail_enrichment_queue():
     assert staging["rows"][0]["mapping_status"] == (
         "requires_detail_enrichment"
     )
+    assert staging["rows"][0]["market_signals"] == {
+        "sku_sale_count_signal": 2
+    }
+    assert staging["rows"][0]["supply_signals"]["stock_count"] == 470
+    assert staging["rows"][0]["source_observation"] == result[
+        "normalized"
+    ]["items"][0]
+    assert staging["rows"][0]["supplier_public_profile"] is None
     assert "variant_selection_unverified" in result[
         "promotion_readiness"
     ]["source_gaps"]

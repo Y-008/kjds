@@ -198,6 +198,17 @@ non-public-unit price bases remain visible but are ineligible for the minimum
 rank. The result retains every exact row and source hash while explicitly
 keeping freight, tax, formal cost and external write false.
 
+`kjds-erp-sourcing-staging/1.1` makes the row projection lossless at the ERP
+boundary. In addition to flattened supplier/offer/SKU/spec/variant/price
+indexes, every row carries source observed time, full product identity,
+specifications, comparison dimensions, MOQ/availability, price semantics,
+stock/sales/tier and supplier public signals, confidence,
+checkout/tax/freight boundaries, capture provider/coverage, media reference
+status and the complete validated normalized item. The duplicate normalized
+item is the immutable audit payload; it prevents a newly admitted public signal
+from silently disappearing while flattened indexes evolve. It does not change
+staging into a Supplier Offer, actual cost or formal ERP write.
+
 The current SSR varies between strict JSON, JavaScript object literals with
 unquoted numeric keys, array SKU matrices and duplicate `$ref` placeholders.
 The provider never evaluates serialized page code. It quotes only numeric
@@ -205,6 +216,14 @@ object keys outside strings, parses JSON, considers every bounded matrix
 candidate, and accepts only a matrix whose every row has SKU, spec and price.
 Arrays and objects are equivalent containers; partial and `$ref` matrices fail
 closed.
+
+Some promotional detail pages expose row prices only in `tradeModel.skuMap`
+while `skuMapOriginal` retains exact SKU/spec identities but no row price. Both
+are bounded matrix candidates under the same all-or-nothing rule: a matrix is
+eligible only when every row independently carries SKU, spec and price. Search
+card, base and promotion prices are never joined across matrices. This allows
+an exact promotional matrix without turning a first-order search-card price
+into the price of every SKU.
 The current-document parsing approach was informed by the MIT-licensed
 `superjack2050/1688-cli` project; KJDS retains a small independent adapter and
 license/source attribution rather than copying its browser/session framework.

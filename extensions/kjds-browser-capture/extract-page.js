@@ -338,8 +338,9 @@
       ["tradeWithoutPromotion", "tradeModel"],
     ).filter((value) => value && typeof value === "object" && !Array.isArray(value));
     const skuMapCandidates = Array.from(new Set([
+      ...tradeModels.map((value) => value.skuMap),
       ...tradeModels.map((value) => value.skuMapOriginal),
-      ...findAllByKey(context, ["skuMapOriginal"]),
+      ...findAllByKey(context, ["skuMap", "skuMapOriginal"]),
     ])).filter((value) => value && typeof value === "object");
     const completeSkuMap = (candidate) => {
       const candidateRows = Object.values(candidate);
@@ -351,7 +352,9 @@
       ));
     };
     const skuMap = skuMapCandidates.find(completeSkuMap);
-    const tradeModel = tradeModels.find((value) => value.skuMapOriginal === skuMap)
+    const tradeModel = tradeModels.find((value) => (
+      value.skuMap === skuMap || value.skuMapOriginal === skuMap
+    ))
       ?? tradeModels.find((value) => (
         value.beginAmount || value.minOrderQty || value.skuPriceScale
       )) ?? null;

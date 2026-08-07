@@ -25,6 +25,10 @@ test("capture inbox keeps promotion decisions on the authenticated server", () =
   assert.match(consoleSource, /SKU \/ SPEC \/ PRICE MATRIX/);
   assert.match(consoleSource, /exact_variant_staged/);
   assert.match(consoleSource, /requires_detail_enrichment/);
+  assert.match(consoleSource, /source_observation/);
+  assert.match(consoleSource, /ERP: MOQ=/);
+  assert.match(consoleSource, /mapping\.supply_signals\.stock_count/);
+  assert.match(consoleSource, /mapping\.market_signals\.sku_sale_count_signal/);
   assert.match(consoleSource, /comparison_dimensions/);
   assert.match(consoleSource, /跨供应商同维度比价/);
   assert.match(consoleSource, /reference_quantity_below_moq/);

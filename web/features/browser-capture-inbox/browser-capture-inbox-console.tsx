@@ -99,12 +99,51 @@ type ErpStaging = {
   rows: Array<{
     staging_key: string;
     mapping_status: "exact_variant_staged" | "requires_detail_enrichment";
+    marketplace: string;
+    supplier_ref: string;
+    supplier_public_profile: Envelope["merchant"];
     offer_id: string;
     sku_id: string | null;
     spec_id: string | null;
     variant_key: string;
+    title: string;
+    product_identity: Record<string, string>;
+    displayed_price: string;
+    price_scope: "unit_price" | "checkout_total";
     unit_price: string;
     currency: string;
+    price_kind: string;
+    price_contract: string;
+    min_order_quantity: number | null;
+    availability: string;
+    specifications: Record<string, string>;
+    comparison_dimensions: Record<string, string>;
+    comparison_key_sha256: string | null;
+    observed_quantity: number | null;
+    checkout_verified: boolean;
+    tax_included: boolean | null;
+    domestic_freight_included: boolean | null;
+    purchase_available: boolean;
+    confidence: string;
+    market_signals: Record<string, unknown>;
+    supply_signals: Record<string, unknown>;
+    experiment_readbacks: Record<string, unknown>;
+    target_product_id: string | null;
+    target_offer_id: string | null;
+    media_rights_status: "unverified_external_reference";
+    image_references: string[];
+    source_gaps: string[];
+    source_observed_at: string;
+    source_capture: {
+      capture_kind: string;
+      provider_id: string | null;
+      provider_version: string | null;
+      structured_data_source: string | null;
+      capture_coverage: Record<string, unknown>;
+    };
+    source_url: string;
+    item_sha256: string;
+    source_observation: Envelope["items"][number];
   }>;
   formal_product_write: false;
   supplier_offer_write: false;
@@ -551,7 +590,17 @@ export function BrowserCaptureInboxConsole() {
                           <td>{row.variant_key}<small>{Object.entries(row.comparison_dimensions ?? {}).map(([key, value]) => `${key}=${value}`).join(" · ") || "comparison dimensions missing"}</small></td>
                           <td><strong>{row.displayed_price} {row.currency}</strong><small>{row.price_kind}</small></td>
                           <td><span>{String(row.supply_signals?.stock_count ?? "unknown")} / {String(row.market_signals?.sku_sale_count_signal ?? "unknown")}</span></td>
-                          <td data-state={mapping?.mapping_status ?? "pending_preflight"}>{mapping?.mapping_status ?? "pending_preflight"}</td>
+                          <td data-state={mapping?.mapping_status ?? "pending_preflight"}>
+                            {mapping?.mapping_status ?? "pending_preflight"}
+                            {mapping ? (
+                              <small>
+                                ERP: MOQ={mapping.min_order_quantity ?? "unknown"}
+                                {` · ${mapping.availability}`}
+                                {` · stock=${String(mapping.supply_signals.stock_count ?? "unknown")}`}
+                                {` · sales=${String(mapping.market_signals.sku_sale_count_signal ?? "unknown")}`}
+                              </small>
+                            ) : null}
+                          </td>
                         </tr>
                       );
                     })}

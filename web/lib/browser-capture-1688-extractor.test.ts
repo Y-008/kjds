@@ -168,6 +168,116 @@ test("1688 serialized SSR extractor binds every price to its sku and spec", () =
   assert.equal(JSON.stringify(result).includes("buyer-must-not-leak"), false);
 });
 
+test("1688 promotion skuMap remains exact when skuMapOriginal has no row prices", () => {
+  const context = {
+    result: {
+      data: {
+        productTitle: {
+          fields: {
+            title: "旅行包6件套牛津布收纳包",
+            shopInfo: { companyName: "义乌市暖宏纺织品有限公司" },
+          },
+        },
+        gallery: { fields: { offerId: "675097513713" } },
+        description: { fields: { leafCategoryId: "121534005" } },
+        mainPrice: {
+          fields: {
+            finalPriceModel: {
+              tradeModel: {
+                beginAmount: 2,
+                unit: "套",
+                offerPriceModel: {
+                  currentPrices: [{ beginAmount: 2, price: "4.76" }],
+                },
+                skuMap: [
+                  {
+                    skuId: "5934582561130",
+                    specId: "ad83bda4f5122c3126b551ae642adf4b",
+                    specAttrs: "粉色#C0A6Y#",
+                    discountPrice: "4.76",
+                    canBookCount: 199383,
+                  },
+                  {
+                    skuId: "5934582561131",
+                    specId: "37ddd46f34feb6b80eb49db18ba5168f",
+                    specAttrs: "灰色#C0A6R#",
+                    discountPrice: "4.76",
+                    canBookCount: 199388,
+                  },
+                ],
+                tradeWithoutPromotion: {
+                  offerBeginAmount: 4,
+                  offerPriceDisplay: "6.80",
+                  skuMapOriginal: [
+                    {
+                      skuId: "5934582561130",
+                      specId: "ad83bda4f5122c3126b551ae642adf4b",
+                      specAttrs: "粉色#C0A6Y#",
+                    },
+                    {
+                      skuId: "5934582561131",
+                      specId: "37ddd46f34feb6b80eb49db18ba5168f",
+                      specAttrs: "灰色#C0A6R#",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+        globalData: {
+          model: {
+            offerDetail: {
+              featureAttributes: [{ name: "材质", value: "牛津布" }],
+            },
+          },
+        },
+      },
+    },
+  };
+  const location = new URL(
+    "https://detail.1688.com/offer/675097513713.html",
+  );
+  const document = {
+    scripts: [{
+      textContent: `window.context=(function(a,b){return b})(window.contextPath,${JSON.stringify(context)});`,
+    }],
+    title: "旅行包6件套牛津布收纳包 - 阿里巴巴",
+    documentElement: { lang: "zh-CN" },
+    querySelector(selector: string) {
+      if (selector === "link[rel='canonical']") {
+        return { getAttribute: () => location.href };
+      }
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+  };
+
+  const result = vm.runInNewContext(extractorSource, {
+    URL,
+    location,
+    document,
+    crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000003" },
+    getComputedStyle: () => ({ display: "block", visibility: "visible" }),
+  });
+
+  assert.equal(result.envelope.items.length, 2);
+  assert.equal(result.envelope.items[0].displayed_price, "4.76");
+  assert.equal(result.envelope.items[0].min_order_quantity, 2);
+  assert.equal(
+    result.envelope.items[0].product_identity.spec_id,
+    "ad83bda4f5122c3126b551ae642adf4b",
+  );
+  assert.equal(result.envelope.items[0].supply_signals.price_source_field, "discountPrice");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(result.envelope.items[0].supply_signals.price_tiers)),
+    [{ minimum_quantity: 2, price: "4.76" }],
+  );
+  assert.equal(result.envelope.items.some((item: any) => item.displayed_price === "4.26"), false);
+});
+
 test("1688 search cards remain offer-only candidates until detail enrichment", () => {
   const makeNode = (textContent: string) => ({
     textContent,
