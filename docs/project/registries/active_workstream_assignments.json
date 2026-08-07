@@ -86,8 +86,19 @@
       "id": "E",
       "name": "risk_review",
       "accountable_role": "risk_owner",
-      "current_task": null,
-      "next_task_id": "BAS-211"
+      "current_task": {
+        "task_id": "BAS-211",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "write_scope": [
+          "g1_owned_role_dependency_cleanup",
+          "gdc_postgres_fixture_interrupted_run_recovery",
+          "g1_cleanup_contract_tests",
+          "bas211_remediation_evidence"
+        ],
+        "blocked_on": []
+      },
+      "next_task_id": null
     },
     {
       "id": "F",
