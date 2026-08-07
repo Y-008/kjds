@@ -132,7 +132,7 @@ KJDS 对标领域模型、流程平台、Agent/Skill、全域 ERP 与实施平�
 - BAS-215A + Team Control + Global Expert Team + Capability Atlas focused 回归：`115 passed in 4.38s`；
 - 负向覆盖：完成语态动态真相字段、14 领域角色责任覆盖、Squad↔WBS 单边删边/增边、角色/Squad/WBS/引用、DAG cycle、阶段、M0–M4、SoD、并发上限、三类上游版本漂移、四源哈希和零 I/O；
 - Ruff：`All checks passed!`；
-- 初次 pytest 在系统全局 temp 根因 `WinError 5` 中止；未改代码，改用本任务独占 `D:\KJDS\.runtime\bas215a-pytest-e32448d75d0d4bbaa79288f63772653f` 后全绿；最终 focused 回归使用独占 `D:\KJDS\.runtime\bas215a-focused-24e0ffc618f644208ecfead8ae0d8e8f`；受控递归清理被本地策略拒绝，两目录登记为 `cleanup_pending`，位于仓库外且不计入 exact4 manifest；
+- 初次 pytest 在系统全局 temp 根因 `WinError 5` 中止；未改代码，改用本任务独占 `D:\KJDS\.runtime\bas215a-pytest-e32448d75d0d4bbaa79288f63772653f` 后全绿；最终 focused 回归使用独占 `D:\KJDS\.runtime\bas215a-focused-24e0ffc618f644208ecfead8ae0d8e8f`；两个绝对路径已由原 Owner 复核为 `D:\KJDS\.runtime` 内普通非链接目录，并于 2026-08-08 完成清理，逐项回读 `EXISTS_AFTER=False`、`REMAINING=0`；
 - Secret：`Secret scan passed: 1420 non-ignored worktree files and 1415 historical paths checked`；
 - `git diff --check`：exit `0`；cached diff check：exit `0`；
 - DB、Alembic、G-1、API/OpenAPI、Web build：本切片明确不运行。
