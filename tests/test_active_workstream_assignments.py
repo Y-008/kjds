@@ -215,6 +215,7 @@ def test_bas212_claims_lane_e_with_exact_g1_lifecycle_seam_scope():
             "team_agent_postgres_lifecycle_database_seam",
             "g1_lifecycle_seam_contract_tests",
             "bas212_remediation_evidence",
+            "outbox_coverage_registry_alignment",
         ],
         "blocked_on": [],
     }
@@ -222,6 +223,8 @@ def test_bas212_claims_lane_e_with_exact_g1_lifecycle_seam_scope():
     assert "BAS-212" not in registry["shared_write_leases"].values()
     plan = PLAN_PATH.read_text(encoding="utf-8")
     assert "| BAS-212 |" in plan
+    assert "outbox_coverage.json" in plan
+    assert "internal_only" in plan
     assert "| IN_PROGRESS |" in plan
 
 

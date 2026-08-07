@@ -95,7 +95,8 @@
           "closed_loop_postgres_lifecycle_database_seam",
           "team_agent_postgres_lifecycle_database_seam",
           "g1_lifecycle_seam_contract_tests",
-          "bas212_remediation_evidence"
+          "bas212_remediation_evidence",
+          "outbox_coverage_registry_alignment"
         ],
         "blocked_on": []
       },
