@@ -1,6 +1,6 @@
 {
   "schema_version": "kjds-frontier-technology-adoption-v1",
-  "as_of": "2026-08-03",
+  "as_of": "2026-08-07",
   "registry_purpose": "A date-bounded, evidence-linked decision register for frontier technology adoption in KJDS.",
   "decision_vocabulary": {
     "adopt_now": "Approved to enter a scoped implementation slice; not proof that implementation or production rollout is complete.",
@@ -51,16 +51,16 @@
         "agent_evals"
       ],
       "decision": "adopt_now",
-      "decision_rationale": "KJDS already has in-process governed runs, GenAI-style spans and deterministic eval records; persisting provider-neutral run, model, prompt-template, tool, Evidence, authority and outcome lineage closes the remaining auditability gap without creating a second control plane.",
+      "decision_rationale": "KJDS already has in-process governed runs, GenAI-style spans and deterministic eval records; the adopted capability is the provider-neutral KJDS run, trace, evaluation and Evidence contract, not the deprecated OpenAI hosted Evals or Graders platform.",
       "maturity": {
-        "upstream_status": "released_apis_and_established_evaluation_pattern",
-        "evidence_basis": "Official Responses API, Agents SDK tracing, graders, and eval APIs are published.",
+        "upstream_status": "provider_neutral_internal_contract_with_maintained_agents_tracing_reference",
+        "evidence_basis": "OpenAI Agents SDK tracing remains documented and actively released, while the hosted Evals and Graders platform has a separate deprecation and shutdown schedule; KJDS therefore keeps evaluation corpora, thresholds and receipts in its own code and CI contracts.",
         "stable_for_kjds_production": false
       },
       "evidence_urls": [
-        "https://openai.com/index/new-tools-for-building-agents/",
-        "https://platform.openai.com/docs/api-reference/graders",
-        "https://platform.openai.com/docs/api-reference/evals/"
+        "https://openai.github.io/openai-agents-python/tracing/",
+        "https://github.com/openai/openai-agents-python/releases",
+        "https://developers.openai.com/api/docs/deprecations"
       ],
       "kjds_use_cases": [
         "Bind model, prompt, tool, Evidence, scope authority, latency, cost, and outcome to one agent run.",
@@ -69,7 +69,8 @@
       "risks": [
         "Trace payloads may expose prompts, tool arguments, credentials, or tenant data.",
         "Provider-specific trace schemas can leak into canonical business contracts.",
-        "Weak graders can reward fluent but unsupported conclusions."
+        "Weak graders can reward fluent but unsupported conclusions.",
+        "Treating hosted Evals or provider graders as a durable dependency would strand KJDS on a platform scheduled to shut down."
       ],
       "entry_gate": {
         "id": "AGENT-TRACE-EVAL-ENTRY",
@@ -90,8 +91,8 @@
         ]
       },
       "owner": "agent_platform",
-      "reviewed_on": "2026-08-03",
-      "review_due_on": "2026-09-03",
+      "reviewed_on": "2026-08-07",
+      "review_due_on": "2026-09-07",
       "control_boundary": {
         "runtime_implemented": true,
         "production_dependency_allowed": false,
@@ -166,12 +167,13 @@
       "decision_rationale": "Stable framework capabilities can simplify long-running operator views and build performance, but KJDS should adopt only measured patterns that preserve its existing design system and server authority boundaries.",
       "maturity": {
         "upstream_status": "stable_framework_releases",
-        "evidence_basis": "React 19.2 and Next.js 16 are officially released with documented APIs and migration guidance.",
+        "evidence_basis": "React 19.2 is officially released, and Next.js 16.3 is a stable release published on 2026-08-03 with some features still explicitly experimental; KJDS remains pinned to the separately supported Next.js 16.2.11 and React 19.2.7 baseline until an upgrade slice passes its own gates.",
         "stable_for_kjds_production": false
       },
       "evidence_urls": [
         "https://react.dev/blog/2025/10/01/react-19-2",
-        "https://nextjs.org/blog/next-16"
+        "https://nextjs.org/blog/next-16",
+        "https://nextjs.org/blog/next-16-3"
       ],
       "kjds_use_cases": [
         "Use Activity for preserving state in hidden operator workspaces where measured UX benefits exist.",
@@ -180,6 +182,7 @@
       "risks": [
         "Cache boundaries can serve stale tenant- or scope-sensitive data.",
         "Compiler or rendering changes can hide hydration and authorization regressions.",
+        "An upstream stable release does not authorize an automatic KJDS dependency upgrade, and experimental flags inside that release still require isolated validation.",
         "Framework novelty can displace higher-value business work."
       ],
       "entry_gate": {
@@ -201,8 +204,8 @@
         ]
       },
       "owner": "web_platform",
-      "reviewed_on": "2026-08-03",
-      "review_due_on": "2026-09-03",
+      "reviewed_on": "2026-08-07",
+      "review_due_on": "2026-09-07",
       "control_boundary": {
         "runtime_implemented": false,
         "production_dependency_allowed": false,
@@ -383,14 +386,14 @@
       "decision": "pilot",
       "decision_rationale": "Portable agent telemetry is valuable, but GenAI semantic conventions now evolve in a separate repository and sensitive payload attributes require explicit opt-in, version pinning, and redaction.",
       "maturity": {
-        "upstream_status": "separate_evolving_genai_semantic_convention",
-        "evidence_basis": "OpenTelemetry semantic conventions 1.43 mark GenAI conventions as moved to a separate repository; the old registry pages are deprecated, so KJDS requires a pinned translation boundary rather than domain-schema coupling.",
+        "upstream_status": "separate_development_repository_without_release",
+        "evidence_basis": "OpenTelemetry core semantic conventions 1.44.0 point GenAI to a dedicated repository; that repository marks the GenAI conventions Development and publishes no formal GitHub release, so KJDS requires a pinned translation boundary rather than domain-schema coupling.",
         "stable_for_kjds_production": false
       },
       "evidence_urls": [
         "https://opentelemetry.io/docs/specs/semconv/",
-        "https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-exceptions/",
-        "https://opentelemetry.io/docs/specs/semconv/registry/attributes/gen-ai/"
+        "https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/README.md",
+        "https://github.com/open-telemetry/semantic-conventions-genai/releases"
       ],
       "kjds_use_cases": [
         "Export provider-neutral latency, token, cache, tool, and workflow metrics from the AgentRun contract.",
@@ -398,6 +401,7 @@
       ],
       "risks": [
         "Development attributes may change and break dashboards.",
+        "The dedicated GenAI repository has no formal release whose compatibility KJDS can rely on.",
         "Prompt, tool-argument, and tool-result capture can expose personal, tenant, or secret data.",
         "High-cardinality labels can create cost and availability problems."
       ],
@@ -420,8 +424,8 @@
         ]
       },
       "owner": "observability",
-      "reviewed_on": "2026-08-03",
-      "review_due_on": "2026-10-03",
+      "reviewed_on": "2026-08-07",
+      "review_due_on": "2026-09-07",
       "control_boundary": {
         "runtime_implemented": false,
         "production_dependency_allowed": false,
@@ -810,6 +814,59 @@
     }
   ],
   "reject_now": [
+    {
+      "id": "openai_hosted_evals_graders_dependency",
+      "coverage_tags": [
+        "openai_hosted_evals"
+      ],
+      "decision": "reject_now",
+      "decision_rationale": "Do not add or retain OpenAI hosted Evals or Graders as a KJDS production dependency. OpenAI has deprecated the platform and directs users toward portable, code-oriented local or CI evaluation; only bounded export and migration work is admissible.",
+      "maturity": {
+        "upstream_status": "deprecated_platform_with_scheduled_shutdown",
+        "evidence_basis": "OpenAI announced the Evals platform deprecation on 2026-06-03, schedules existing evals to become read-only on 2026-10-31 and the dashboard and API to shut down on 2026-11-30; documented graders are part of the transition.",
+        "stable_for_kjds_production": false
+      },
+      "evidence_urls": [
+        "https://developers.openai.com/api/docs/deprecations",
+        "https://developers.openai.com/cookbook/examples/evaluation/moving-from-openai-evals-to-promptfoo"
+      ],
+      "kjds_use_cases": [
+        "Export any supported legacy evaluation configuration or historical result needed for migration evidence.",
+        "Re-express required evaluation corpora, assertions and thresholds as provider-neutral code and CI contracts owned by KJDS."
+      ],
+      "risks": [
+        "Existing hosted evals become read-only on 2026-10-31 and the dashboard and API are scheduled to shut down on 2026-11-30.",
+        "Exported graders or manually recreated judge logic may not preserve numerical behavior without an independent regression baseline.",
+        "A provider-hosted eval dependency can leak prompts, datasets or results and become a second authority for release decisions."
+      ],
+      "entry_gate": {
+        "id": "OPENAI-HOSTED-EVALS-RECONSIDER",
+        "state": "blocked",
+        "criteria": [
+          "A future supported service has an independently reviewed lifecycle with no scheduled shutdown.",
+          "A measured requirement cannot be met by the existing provider-neutral KJDS evaluation and Evidence contracts.",
+          "Data residency, export, deletion, redaction, rollback and provider-exit contracts are approved."
+        ]
+      },
+      "exit_gate": {
+        "id": "OPENAI-HOSTED-EVALS-MIGRATION-EXIT",
+        "state": "not_passed",
+        "criteria": [
+          "No KJDS production or release Gate calls the hosted Evals dashboard, API or provider grader as an authority.",
+          "Required legacy configurations and results are exported with content hashes and migration warnings preserved.",
+          "Local or CI evaluation reproduces the frozen acceptance decisions, with any scoring difference reviewed before use."
+        ]
+      },
+      "owner": "agent_platform",
+      "reviewed_on": "2026-08-07",
+      "review_due_on": "2026-10-31",
+      "control_boundary": {
+        "runtime_implemented": false,
+        "production_dependency_allowed": false,
+        "external_write_allowed": false,
+        "formal_fact_promotion_allowed": false
+      }
+    },
     {
       "id": "clickhouse_iceberg_platform_expansion",
       "coverage_tags": [

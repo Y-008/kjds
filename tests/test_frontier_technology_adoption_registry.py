@@ -18,6 +18,7 @@ EVIDENCE_DIR = (
 )
 PROJECT_ENTRY_PATH = Path(__file__).parents[1] / "项目.md"
 AGENTS_PATH = Path(__file__).parents[1] / "AGENTS.md"
+WEB_PACKAGE_PATH = Path(__file__).parents[1] / "web" / "package.json"
 DECISIONS = ("adopt_now", "pilot", "watch", "reject_now")
 EXPECTED_ENTRY_STATES = {
     "adopt_now": "approved_to_implement",
@@ -28,6 +29,7 @@ EXPECTED_ENTRY_STATES = {
 REQUIRED_COVERAGE = {
     "agent_tracing",
     "agent_evals",
+    "openai_hosted_evals",
     "durable_workflows",
     "causal_graphrag",
     "mcp_auth",
@@ -67,6 +69,11 @@ SOURCE_HOST_SUFFIXES = {
     "temporal.io",
     "w3.org",
 }
+EXACT_SOURCE_HOSTS = {"openai.github.io"}
+OFFICIAL_GITHUB_REPOSITORIES = {
+    ("openai", "openai-agents-python"),
+    ("open-telemetry", "semantic-conventions-genai"),
+}
 
 
 def _load_registry():
@@ -88,7 +95,20 @@ def _frontier_evidence_ledgers():
     }
 
 
-def _is_primary_or_official_source(hostname):
+def _is_primary_or_official_source(parsed):
+    hostname = parsed.hostname.casefold()
+    if hostname in EXACT_SOURCE_HOSTS:
+        return True
+    if hostname == "github.com":
+        path_parts = tuple(
+            part.casefold()
+            for part in parsed.path.split("/")
+            if part
+        )
+        return (
+            len(path_parts) >= 2
+            and path_parts[:2] in OFFICIAL_GITHUB_REPOSITORIES
+        )
     return any(
         hostname == suffix or hostname.endswith(f".{suffix}")
         for suffix in SOURCE_HOST_SUFFIXES
@@ -115,7 +135,7 @@ def test_registry_has_four_decisions_and_complete_frontier_coverage():
         for tag in item["coverage_tags"]
     }
     assert len(ids) == len(set(ids))
-    assert len(entries) == 15
+    assert len(entries) == 16
     assert coverage == REQUIRED_COVERAGE
 
 
@@ -172,7 +192,30 @@ def test_sources_are_https_and_limited_to_primary_or_official_material():
             parsed = urlparse(evidence_url)
             assert parsed.scheme == "https"
             assert parsed.hostname
-            assert _is_primary_or_official_source(parsed.hostname)
+            assert _is_primary_or_official_source(parsed)
+
+
+def test_github_sources_and_pages_require_exact_official_identity():
+    accepted = {
+        "https://github.com/openai/openai-agents-python/releases",
+        "https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/README.md",
+    }
+    rejected = {
+        "https://github.com/attacker/openai-agents-python/releases",
+        "https://github.com/openai-lookalike/openai-agents-python/releases",
+        "https://github.com/open-telemetry-lookalike/semantic-conventions-genai/releases",
+        "https://github.com/openai/openai-agents-python-lookalike/releases",
+        "https://attacker.openai.github.io/openai-agents-python/tracing/",
+    }
+
+    assert all(
+        _is_primary_or_official_source(urlparse(url))
+        for url in accepted
+    )
+    assert all(
+        not _is_primary_or_official_source(urlparse(url))
+        for url in rejected
+    )
 
 
 def test_every_registry_source_is_present_in_the_reviewed_research_ledger():
@@ -247,7 +290,7 @@ def test_experimental_or_draft_technology_is_not_adopt_now_or_production_ready()
             "watch",
         ),
         "opentelemetry_genai_semantic_conventions": (
-            "separate_evolving_genai_semantic_convention",
+            "separate_development_repository_without_release",
             "pilot",
         ),
         "webdriver_bidi_browser_provider": (
@@ -283,7 +326,14 @@ def test_incremental_review_tracks_breaking_protocol_and_database_security_chang
 
     otel = by_id["opentelemetry_genai_semantic_conventions"]
     assert otel["decision"] == "pilot"
-    assert "separate repository" in otel["maturity"]["evidence_basis"]
+    assert "1.44.0" in otel["maturity"]["evidence_basis"]
+    assert "Development" in otel["maturity"]["evidence_basis"]
+    assert "no formal GitHub release" in otel["maturity"]["evidence_basis"]
+    assert otel["evidence_urls"] == [
+        "https://opentelemetry.io/docs/specs/semconv/",
+        "https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/README.md",
+        "https://github.com/open-telemetry/semantic-conventions-genai/releases",
+    ]
 
     postgres = by_id["postgresql_18_rehearsal"]
     assert postgres["decision"] == "pilot"
@@ -292,6 +342,70 @@ def test_incremental_review_tracks_breaking_protocol_and_database_security_chang
     provenance = by_id["slsa_cyclonedx_supply_chain_evidence"]
     assert provenance["decision"] == "adopt_now"
     assert any("17.10" in criterion for criterion in provenance["exit_gate"]["criteria"])
+
+
+def test_provider_neutral_agent_eval_is_split_from_deprecated_hosted_evals():
+    registry = _load_registry()
+    by_id = {item["id"]: item for _, item in _entries(registry)}
+
+    governed = by_id["agent_run_tracing_and_evals"]
+    assert governed["decision"] == "adopt_now"
+    assert governed["coverage_tags"] == ["agent_tracing", "agent_evals"]
+    assert "provider-neutral KJDS" in governed["decision_rationale"]
+    assert "not the deprecated OpenAI hosted Evals" in governed["decision_rationale"]
+    assert governed["maturity"]["upstream_status"] == (
+        "provider_neutral_internal_contract_with_maintained_agents_tracing_reference"
+    )
+    assert governed["evidence_urls"] == [
+        "https://openai.github.io/openai-agents-python/tracing/",
+        "https://github.com/openai/openai-agents-python/releases",
+        "https://developers.openai.com/api/docs/deprecations",
+    ]
+    assert all(
+        "api-reference/evals" not in url and "api-reference/graders" not in url
+        for url in governed["evidence_urls"]
+    )
+
+    hosted = by_id["openai_hosted_evals_graders_dependency"]
+    assert hosted["decision"] == "reject_now"
+    assert hosted["coverage_tags"] == ["openai_hosted_evals"]
+    assert hosted["maturity"]["upstream_status"] == (
+        "deprecated_platform_with_scheduled_shutdown"
+    )
+    assert "2026-06-03" in hosted["maturity"]["evidence_basis"]
+    assert "2026-10-31" in hosted["maturity"]["evidence_basis"]
+    assert "2026-11-30" in hosted["maturity"]["evidence_basis"]
+    assert hosted["entry_gate"]["state"] == "blocked"
+    assert hosted["control_boundary"] == {
+        "runtime_implemented": False,
+        "production_dependency_allowed": False,
+        "external_write_allowed": False,
+        "formal_fact_promotion_allowed": False,
+    }
+    assert hosted["evidence_urls"] == [
+        "https://developers.openai.com/api/docs/deprecations",
+        "https://developers.openai.com/cookbook/examples/evaluation/moving-from-openai-evals-to-promptfoo",
+    ]
+
+
+def test_next_16_3_stable_material_does_not_auto_upgrade_kjds():
+    registry = _load_registry()
+    by_id = {item["id"]: item for _, item in _entries(registry)}
+    web = by_id["react_19_2_next_16_delivery_patterns"]
+    package = json.loads(WEB_PACKAGE_PATH.read_text(encoding="utf-8"))
+
+    assert web["decision"] == "adopt_now"
+    assert web["reviewed_on"] == "2026-08-07"
+    assert "Next.js 16.3 is a stable release" in web["maturity"]["evidence_basis"]
+    assert "some features still explicitly experimental" in (
+        web["maturity"]["evidence_basis"]
+    )
+    assert "https://nextjs.org/blog/next-16-3" in web["evidence_urls"]
+    assert package["dependencies"]["next"] == "16.2.11"
+    assert package["dependencies"]["react"] == "19.2.7"
+    assert package["dependencies"]["react-dom"] == "19.2.7"
+    assert web["maturity"]["stable_for_kjds_production"] is False
+    assert web["control_boundary"]["production_dependency_allowed"] is False
 
 
 def test_registry_reports_implemented_evidence_controls_without_promoting_production():
