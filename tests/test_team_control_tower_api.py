@@ -57,17 +57,49 @@ class RevokedScopeGrants(FakeScopeGrants):
         }
 
 
+class RotatedScopeGrants(FakeScopeGrants):
+    OLD_AUTHORITY_SHA256 = "c" * 64
+    NEW_AUTHORITY_SHA256 = "d" * 64
+
+    def __init__(self, *, rotated_at: datetime) -> None:
+        super().__init__()
+        self.rotated_at = rotated_at
+
+    def current(self, *, principal, store_ref, as_of):
+        self.current_calls.append(
+            {"principal": principal, "store_ref": store_ref, "as_of": as_of}
+        )
+        if as_of < self.rotated_at:
+            return {
+                "status": "ready",
+                "tenant_ref": principal.tenant_ref,
+                "entity_ref": "entity-old-1",
+                "store_ref": store_ref,
+                "authority_sha256": self.OLD_AUTHORITY_SHA256,
+                "as_of": as_of.isoformat(),
+            }
+        return {
+            "status": "blocked",
+            "tenant_ref": principal.tenant_ref,
+            "entity_ref": None,
+            "store_ref": store_ref,
+            "authority_sha256": self.NEW_AUTHORITY_SHA256,
+            "rejected_authority_sha256": self.OLD_AUTHORITY_SHA256,
+            "reason": "entity_scope_authority_rotated",
+        }
+
+
 class FakeTower:
     def __init__(self) -> None:
         self.brief_calls = []
         self.advance_calls = []
-        self.authorized_brief_reads = 0
+        self.business_adapter_reads = 0
 
     def brief(self, **values):
         self.brief_calls.append(values)
         if values["entity_scope"].get("status") != "ready":
             return {"status": "scope_invalid", "next_action": None}
-        self.authorized_brief_reads += 1
+        self.business_adapter_reads += 1
         return {"status": "attention_required", "next_action": {"continuation": "b" * 64}}
 
     def advance(self, **values):
@@ -163,6 +195,41 @@ def test_historical_brief_cutoff_cannot_rewind_revoked_scope(monkeypatch):
     authority_checked_at = scope_grants.current_calls[0]["as_of"]
     assert checked_before <= authority_checked_at <= checked_after
     assert authority_checked_at > scope_grants.revoked_at
+    assert len(tower.brief_calls) == 1
     assert tower.brief_calls[0]["as_of"] == historical_cutoff
     assert tower.brief_calls[0]["entity_scope"]["status"] == "no_data"
-    assert tower.authorized_brief_reads == 0
+    assert tower.business_adapter_reads == 0
+
+
+def test_historical_brief_cutoff_cannot_restore_rotated_authority(monkeypatch):
+    checked_before = datetime.now(UTC)
+    historical_cutoff = checked_before - timedelta(days=2)
+    scope_grants = RotatedScopeGrants(
+        rotated_at=checked_before - timedelta(days=1),
+    )
+    tower = FakeTower()
+    monkeypatch.setattr(system.runtime, "scope_grants", scope_grants)
+    monkeypatch.setattr(system.runtime, "team_control_tower", tower)
+
+    result = system.team_control_brief(
+        principal=principal("monitor"),
+        as_of=historical_cutoff.isoformat(),
+    )
+    checked_after = datetime.now(UTC)
+
+    assert result == {"status": "scope_invalid", "next_action": None}
+    assert len(scope_grants.current_calls) == 1
+    authority_checked_at = scope_grants.current_calls[0]["as_of"]
+    assert checked_before <= authority_checked_at <= checked_after
+    assert authority_checked_at > scope_grants.rotated_at
+    assert len(tower.brief_calls) == 1
+    assert tower.brief_calls[0]["as_of"] == historical_cutoff
+    current_scope = tower.brief_calls[0]["entity_scope"]
+    assert current_scope["status"] == "blocked"
+    assert current_scope["authority_sha256"] == scope_grants.NEW_AUTHORITY_SHA256
+    assert (
+        current_scope["rejected_authority_sha256"]
+        == scope_grants.OLD_AUTHORITY_SHA256
+    )
+    assert current_scope["authority_sha256"] != scope_grants.OLD_AUTHORITY_SHA256
+    assert tower.business_adapter_reads == 0
