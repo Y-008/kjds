@@ -265,6 +265,7 @@ def test_bas213_claims_lane_e_with_exact_project_governance_scope():
             "project_documentation_navigation",
             "frontier_review_evidence",
             "frontier_registry_contract_tests",
+            "frontier_registry_material_change",
         ],
         "blocked_on": [],
     }
