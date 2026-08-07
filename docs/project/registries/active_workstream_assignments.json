@@ -98,7 +98,19 @@
       "id": "E",
       "name": "risk_review",
       "accountable_role": "risk_owner",
-      "current_task": null,
+      "current_task": {
+        "task_id": "BAS-213",
+        "state": "in_progress",
+        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
+        "write_scope": [
+          "project_entry_documentation",
+          "frontier_review_agent_policy",
+          "project_documentation_navigation",
+          "frontier_review_evidence",
+          "frontier_registry_contract_tests"
+        ],
+        "blocked_on": []
+      },
       "next_task_id": null
     },
     {

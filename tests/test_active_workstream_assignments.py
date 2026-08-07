@@ -216,14 +216,11 @@ def test_bas211_release_record_and_bas210_execution_are_preserved():
     assert "| DONE_ENGINEERING |" in plan
 
 
-def test_bas212_release_frees_lane_e_and_preserves_bas210_execution():
+def test_bas212_release_record_and_bas210_execution_are_preserved():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
-    risk = lanes["E"]
     engineering = lanes["C"]
 
-    assert risk["current_task"] is None
-    assert risk["next_task_id"] is None
     assert engineering["current_task"]["task_id"] == "BAS-210"
     assert engineering["next_task_id"] is None
     assert "BAS-212" not in registry["shared_write_leases"].values()
@@ -236,6 +233,39 @@ def test_bas212_release_frees_lane_e_and_preserves_bas210_execution():
     assert "internal_only" in bas212_row
     assert "e3100b04 full G-1 PASS" in bas212_row
     assert bas212_row.endswith("| DONE_ENGINEERING |")
+
+
+def test_bas213_claims_lane_e_with_exact_project_governance_scope():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+    risk = lanes["E"]
+    engineering = lanes["C"]
+
+    assert risk["current_task"] == {
+        "task_id": "BAS-213",
+        "state": "in_progress",
+        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
+        "write_scope": [
+            "project_entry_documentation",
+            "frontier_review_agent_policy",
+            "project_documentation_navigation",
+            "frontier_review_evidence",
+            "frontier_registry_contract_tests",
+        ],
+        "blocked_on": [],
+    }
+    assert risk["next_task_id"] is None
+    assert engineering["current_task"]["task_id"] == "BAS-210"
+    assert engineering["next_task_id"] is None
+    assert all(value is None for value in registry["shared_write_leases"].values())
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    bas213_row = next(
+        line for line in plan.splitlines() if line.startswith("| BAS-213 |")
+    )
+    assert "frontier technology registry" in bas213_row
+    assert "20260807_PROJECT_ENTRY_AND_FRONTIER_REVIEW_GOVERNANCE.md" in bas213_row
+    assert "不升级依赖" in bas213_row
+    assert bas213_row.endswith("| IN_PROGRESS |")
 
 
 def test_shared_write_leases_and_authority_stay_fail_closed():
