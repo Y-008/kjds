@@ -224,6 +224,12 @@ eligible only when every row independently carries SKU, spec and price. Search
 card, base and promotion prices are never joined across matrices. This allows
 an exact promotional matrix without turning a first-order search-card price
 into the price of every SKU.
+
+Comparison-dimension extraction treats Chinese and 1688-served English
+translations of an explicit pack count as the same scalar (`六件套`,
+`6-piece`, `six-piece`, `6 pcs`). This does not normalize away material,
+category, size or trade-unit differences; matching pack count alone never
+makes two offers comparable.
 The current-document parsing approach was informed by the MIT-licensed
 `superjack2050/1688-cli` project; KJDS retains a small independent adapter and
 license/source attribution rather than copying its browser/session framework.

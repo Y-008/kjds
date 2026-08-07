@@ -174,7 +174,7 @@ test("1688 promotion skuMap remains exact when skuMapOriginal has no row prices"
       data: {
         productTitle: {
           fields: {
-            title: "旅行包6件套牛津布收纳包",
+            title: "Factory direct Oxford cloth six-piece storage bag",
             shopInfo: { companyName: "义乌市暖宏纺织品有限公司" },
           },
         },
@@ -266,6 +266,7 @@ test("1688 promotion skuMap remains exact when skuMapOriginal has no row prices"
   assert.equal(result.envelope.items.length, 2);
   assert.equal(result.envelope.items[0].displayed_price, "4.76");
   assert.equal(result.envelope.items[0].min_order_quantity, 2);
+  assert.equal(result.envelope.items[0].comparison_dimensions.pack_count, "6");
   assert.equal(
     result.envelope.items[0].product_identity.spec_id,
     "ad83bda4f5122c3126b551ae642adf4b",

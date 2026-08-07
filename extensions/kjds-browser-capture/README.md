@@ -36,6 +36,10 @@ different incomplete matrix are never used to fill a row. ERP staging contract
 identity, price, MOQ, availability, specification, comparison, stock, sales,
 tier, supplier public profile, capture provider/coverage, source-time and hash
 fields so the browser-to-ERP projection is lossless and auditable.
+Pack-count extraction accepts both Chinese product titles and the English
+translations that 1688 may serve (`六件套`, `6-piece`, `six-piece`, `6 pcs`);
+it never equates different materials or missing dimensions merely because the
+count matches.
 
 The collection workspace compares the newest intact detail snapshot for each
 offer across suppliers. At the default reference quantity of one it excludes

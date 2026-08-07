@@ -145,10 +145,37 @@ rank and are not forced into the original offer's BOM group.
 The normal similar-products entry returned `SIMILAR_UNAVAILABLE`, which was
 not interpreted as no supply. A 20-card keyword search supplied discovery
 candidates instead. Detail checks retained offer `655419936590` as a material
-mismatch (`无纺布+PEVA` despite its title), offer `718404380873` as unknown
-because price/MOQ/SKUs were absent, and offer `600528999073` as pending exact
-spec/price-basis enrichment because its main and mixed-order prices differed.
-None was promoted as a comparable exact cost.
+mismatch (`无纺布+PEVA` despite its title) and offer `718404380873` as unknown
+because price/MOQ/SKUs were absent. Offer `600528999073` initially exposed
+conflicting main/mixed display values, so it stayed pending until a later raw
+SSR replay established the per-SKU and quantity contract below.
+
+The later replay accepted 11/11 exact SKU/spec rows for `600528999073`.
+1688 served the title/attributes in English, including explicit `six-piece`
+and `Material=Oxford cloth`; the provider now recognizes explicit Chinese and
+English pack counts while retaining exact material text. All 11 row-local
+`discountPrice` values were CNY `8.20`, MOQ was 1, 10 rows were in stock and
+one was out of stock. The same trade model froze tiers of CNY `8.20` for
+quantity 1–99, `8.00` for 100–999 and `7.80` from 1000. Other CLI display
+signals (`10.79/11.20` and `7.79/8.20`) did not overwrite that row-local SSR
+contract; they remain separate unresolved price presentations.
+
+Server comparison of the newest exact snapshots for offers `38547222320`,
+`600528999073` and `675097513713` reported three exact offers but no two-offer
+equal-dimension group. It produced:
+
+| normalized comparison dimensions | rows | eligible minimum at quantity 1 |
+|---|---:|---:|
+| category `1036894`, waterproof thickened Oxford cloth, 3 pieces, unit `件` | 1 | CNY 3.90 |
+| category `1036894`, waterproof thickened Oxford cloth, 6 pieces, unit `件` | 8 | CNY 9.90 |
+| category `1036894`, Oxford cloth, 6 pieces, unit `件` | 11 | CNY 8.20 |
+
+Each group remained `insufficient_exact_offers`. The eight
+`675097513713` rows remained unresolved because their category/unit differed,
+material was absent and MOQ 2 exceeded reference quantity 1. The server did
+not collapse `Oxford cloth` into `waterproof thickened Oxford cloth`; the
+mechanical difference between CNY 8.20 and 9.90 is therefore not a same-BOM
+lowest-price conclusion. No row was promoted to a quote, cost or profit fact.
 
 ## Source and license record
 

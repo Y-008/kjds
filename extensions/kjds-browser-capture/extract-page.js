@@ -246,9 +246,20 @@
     const digit = normalized.match(/(\d{1,3})\s*(?:件|个|只|片)\s*套/);
     if (digit) return digit[1];
     const chinese = normalized.match(/([一二两三四五六七八九十])\s*(?:件|个|只|片)\s*套/);
-    if (!chinese) return null;
-    return String({ 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6,
-      七: 7, 八: 8, 九: 9, 十: 10 }[chinese[1]] ?? "") || null;
+    if (chinese) {
+      return String({ 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6,
+        七: 7, 八: 8, 九: 9, 十: 10 }[chinese[1]] ?? "") || null;
+    }
+    const englishDigit = normalized.match(
+      /\b(\d{1,3})\s*(?:-|\s)?(?:pieces?|pcs?|pack)\b/i,
+    );
+    if (englishDigit) return englishDigit[1];
+    const englishWord = normalized.match(
+      /\b(one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:-|\s)?(?:pieces?|pcs?|pack)\b/i,
+    );
+    if (!englishWord) return null;
+    return String({ one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+      seven: 7, eight: 8, nine: 9, ten: 10 }[englishWord[1].toLowerCase()] ?? "") || null;
   }
 
   function sizeSignal(text) {
