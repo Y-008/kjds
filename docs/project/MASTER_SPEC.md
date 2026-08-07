@@ -234,6 +234,11 @@ KJDS 是“确定性经营内核 + 证据优先数据层 + 受控 Agent 外层�
 | BR-138 | 全量社媒卖家情报、用户分析与 campaign 运营 | 唯一 `SocialCommerceIntelligenceWorkspace` 必须在 exact tenant/entity/store/account/as-of 下组合官方授权 API/导出、经营者选择的 CLI、专用浏览器公开或可见页与人工 Evidence，并按来源阶梯降级而不猜造字段。对选定来源默认获取全部可用页、字段和时间窗口，保存 checkpoint、覆盖率、失败页与 `accepted + quarantined = source_total` 守恒；原始、规范、分析、实验、动作和经营结果分层，按 actor/content/comment/product/time 建时序关系并支持卖家分群、公开或获授权用户分析、主题/钩子/评论意图/节奏/漏斗与变化检测。发布、更新、删除、评论、回复、点赞、收藏、关注、私信、获授权下载和账号操作不得被产品全局移除，必须由带账号、动作集、预算、有效期、停止条件、幂等与回读的 `CampaignGrant` 批量授权；验证码交给经营者处理，凭据不进入 Agent、Git 或 Evidence，跨客户原始数据不混用，互动不冒充销量。Adapter 失败必须依次检索官方文档、源码、Issue、Release、Fork 和替代实现，并把修复形成 Eval/SkillCandidate。详见 [ADR-0090](../adr/ADR-0090-governed-social-commerce-intelligence-and-platform-operations.md) 与 [社媒运营系统](15_SOCIAL_COMMERCE_INTELLIGENCE_AND_OPERATIONS.md)。 | P0 |
 | BR-139 | 俄罗斯市场需求与热点事件全量雷达 | 唯一 `RussiaMarketIntelligenceWorkspace` 必须组合 Ozon/Wildberries/Yandex Market 授权站内数据、Yandex Wordstat 地区/时间搜索需求、Telegram/VK 公开或授权讨论、平台官方变更及俄罗斯宏观/贸易/物流事件，不复制 Product、Order、Finance、Profit、Campaign 或 Fact 真源。每个来源必须全分页、全字段、请求时间窗历史回补、checkpoint/resume、失败页和 `accepted + quarantined = source_total`，记录来源自身的条数/订阅/权限上限而不增加内部抽样上限。需求、价格促销库存评价、社媒传播、平台规则、汇率通胀与供应事件分维度保存；热点评分必须分解权威、时效、速度、跨源数、实体相关度、利润/供应暴露与真实市场响应。单条帖子、搜索激增或新闻不得直接成为销量、利润、采购、广告或发布事实；商品、内容、软件 JTBD 和风险机会分别引用各自 owner。详见 [ADR-0091](../adr/ADR-0091-russia-market-demand-and-event-radar.md) 与 [俄罗斯雷达](16_RUSSIA_MARKET_DEMAND_AND_EVENT_RADAR.md)。 | P0 |
 
+| BR-140 | 全球跨境专家委员会与首席组合调度 | 唯一 `GlobalPortfolioOrchestrator` 必须从版本化专家注册表编译团队快照与 `ExpertTaskContract`，不得建立第二套 Task、Fact、Finance、Evidence、Approval、Permit 或审计真源。团队固定采用 AI 核心+真人专业复核、全球研究+俄罗斯/Ozon 首战区、一名总负责人业务拍板+L3/L4 高风险双签；总负责人可定目标、优先级、内部预算、WIP、继续/暂停/退出并随时 Stop，但不得自审自批、替代法务/财务/合规/发布 Gate、签发 Permit、持有平台凭证或强制失败 Gate 放行。十二个有界专家席位必须有唯一责任、作用域、SLA、工具/数据白名单、Evidence handoff、独立 Reviewer、真人复核条件和替补人；未绑定当前真人 Owner 时只能 proposal/shadow。全球非 RU/Ozon 任务保持 research-only；俄罗斯/Ozon 的 L3 也只能返回双签与执行路线，本模块永远不直接外写。详见 [ADR-0095](../adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md) 与 [运行合同](17_GLOBAL_CROSS_BORDER_EXPERT_TEAM.md)。 | P0 |
+| BR-141 | Exact-scope 团队总控塔与唯一下一动作 | 唯一 `TeamControlTower` 必须把“项目总控与商业化、SKU 闭环、双轮商业化、LG-001 Exact-scope”四条用户主线编译为当前 authenticated tenant/entity/store/authority hash 下的领导者 `brief`，且任何时刻最多公开一个状态绑定的下一动作。`advance` 只接受 opaque continuation、有限结果、理由、Evidence IDs 与幂等键；过期 continuation、跨 scope、同键内容漂移、无 Evidence 的完成/停止、角色越权和注册表/泳道漂移全部失败关闭。运行写入只复用既有 OperatingTask/Event 权威，不创建第二任务、Fact、Finance、Approval、Permit 或审计账，不持有凭据或外写；Kill Switch 生效时推进接口必须关闭。总负责人可领取、开始、完成、阻断、升级或停止内部协作，但真人任命、高风险双签、硬 Gate 和外部 Executor 权威不被替代。详见 [团队总控运行手册](18_TEAM_CONTROL_TOWER.md) 与 [ADR-0095](../adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md)。 | P0 |
+| BR-142 | 90 天 Top1 大型团队总控与五类权威投影 | `TeamControlTower` v1.1 必须在保留唯一 `brief/advance` Interface、A–M 泳道及 OperatingTask/Event 真源的前提下，把 18 个核心角色、12 个 AI 专家、20–40 人专家池容量与 5 个独立控制角色编译为机器可验证但不证明真人到岗的组织合同。`brief` 必须只在 exact scope 通过后读取并投影 `organization_readiness`、四阶段 `critical_path`、12 维 `top1_scorecard`、`cash_at_risk` 与五个 `delivery_gate`；统一使用 `VERIFIED/PARTIAL/BLOCKED/STALE/CONFLICTED/UNKNOWN`、reason code、source ref、as-of 与投影哈希。Top1 只能只读映射最新同 scope `StrategicBenchmark` 既有比较组，不重排；少于 5 个合格 peer、数据过期、重复最新组或 authority drift 必须失败关闭，且 `global_top1_claim=false`。期初余额、CashPlan、FX、现金底线或最大损失缺失时不得猜测 13 周现金。日历、泳道或任务完成不得替代正式 Gate PASS。五类投影共同进入 `decision_basis_sha256`，任一人员、现金、Benchmark、Gate 或泳道变化必须使旧 continuation 失效。当前切片不得新增数据库迁移，BAS-204 继续独占 `0096`；工程交付只能标记 `DONE_ENGINEERING`，真人、现金、SKU、客户和 Top1 保持外部 Evidence Gate。详见 [ADR-0095](../adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md)、[运行手册](18_TEAM_CONTROL_TOWER.md) 与 [LG-002 Evidence](evidence/20260807_LG_002_TOP1_TEAM_CONTROL.md)。 | P0 |
+| BR-143 | 90 天 Campaign 运行调度与真实 SKU 现金闭环投影 | `TeamControlTower` v1.2 必须在不增加外部 Interface、数据库表、迁移或平行任务账的前提下，把四阶段 Campaign 运行协调复用到 exact-scope `OperatingTask/Event`。首阶段 `start` Event 只有绑定当前 scope Evidence 时才形成不可变 kickoff；实际战役日从该 Event 计算，不能从计划日期、任务状态或系统时钟倒推。阶段任务 `resolve` 只证明工作交接，不证明正式 Gate PASS；无匹配的 canonical Gate authority 时不得自动打开下一阶段。`brief` 还必须只读注入现有 `ScopedSettlementCashWorkspace`，只有同一 cycle 同时具备订单 Fact、平台结算、银行现金、`reconciled` 和 Actual Cash CM3 时，才可把“至少一个真实 SKU 现金闭环”投影为 `VERIFIED`；该事实不能补造 13 周现金、现金底线、最大损失或正式 Gate。Campaign/现金投影变化必须进入 `decision_basis_sha256` 并使旧 continuation 失效；单纯观测时间变化不得导致相邻 `brief/advance` 永久 stale，因此审计快照哈希与去除 cutoff 噪声、保留业务权威语义的决定基线哈希必须分离。exact scope 失败时任务、Benchmark 和现金权威均不得读取。 | P0 |
+
 BR-082 精确身份补充门禁：任一身份字段或变体仍为
 `unknown/unspecified/pending/未确认` 等占位值时，不得生成或复用匹配键；历史观察在
 扫描时同样失败关闭为 `observe/no_match`，不得为扩大候选数而猜配。已冻结类别身份
@@ -1348,3 +1353,66 @@ temporal and source-hashed; generated nodes/edges are Observations, raw cross-te
 forbidden, and runtime Agents cannot self-modify code, authority, Facts, Approval, Permit or
 external-write policy. Continuous frontier review can propose a registry change but cannot install a
 dependency or change a Gate automatically.
+
+## 22. Global cross-border expert council
+
+The frozen operating choice is `ai_core_human_professional_review +
+global_research_russia_ozon_execution_first + business_decision_high_risk_dual_sign`.
+One `global_chief_commerce_officer` coordinates twelve bounded specialist seats through the
+`GlobalPortfolioOrchestrator` interface. The coordinator may prioritize, allocate internal work,
+resolve business trade-offs and stop work, but cannot verify its own proposal, override a failed
+professional Gate, issue a Permit, hold marketplace credentials or perform an external write.
+
+The machine source is `docs/project/registries/global_expert_team_registry.json`; the operating
+contract is `docs/project/17_GLOBAL_CROSS_BORDER_EXPERT_TEAM.md`; the architecture decision is
+`docs/adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md`. Until named human owners,
+licensed reviewers and existing Gate evidence are current, the council remains proposal/shadow and
+does not change Russia entry, commercial sale, payment, platform-write or Actual Cash CM3 status.
+
+## 23. Exact-scope team control tower
+
+`TeamControlTower.brief(...)` is the single leadership read interface for the four active user
+workflows. It validates current exact-scope authority before reading OperatingTask, combines the
+authoritative active-workstream registry with the global expert-team contract, reports WIP/write
+scope conflicts, and emits exactly one state-bound continuation. `advance(...)` is the only command
+interface; it progresses work through the existing OperatingTask/Event ledger with bounded results,
+Evidence requirements and idempotency checks.
+
+The control tower is coordination infrastructure, not proof of a business outcome. It creates no
+Fact, finance entry, Approval or Permit and performs no provider write. Named human owners,
+professional review, Russian order/settlement/bank Evidence, Actual Cash CM3 and the first paid C0
+customer remain separate hard gates. The machine source is
+`docs/project/registries/team_control_tower_registry.json`; the operator and owner runbook is
+`docs/project/18_TEAM_CONTROL_TOWER.md`.
+
+## 24. 90-day Top1 organization and delivery control
+
+The 2026-08-07 baseline deepens the existing Team Control Tower; it does not introduce another
+campaign, organization, finance, Gate, audit or task authority. The machine contract freezes 18
+core role contracts, the existing 12 AI specialist contracts, a 20–40 person on-demand expert-pool
+capacity target and the existing five independent control roles. A registry count is a staffing
+requirement, not appointment Evidence. Until primary and alternate human bindings, professional
+scope, conflicts, budget cap and maximum loss are independently evidenced, organization readiness
+remains `UNKNOWN`.
+
+The four campaign phases are day 1–7 organization freeze, day 8–30 real operating inputs, day
+31–60 internal Alpha and cash loop, and day 61–90 commercial delivery plus dimension audit. The
+planned interval is 2026-08-07 through 2026-11-04. Without an immutable kickoff event the actual
+campaign day is `UNKNOWN`; a planned date cannot pass a Gate. A–E, I, L and M are active battle
+lanes, while F–H remain preparation-only and cannot take resources from the Russian cash loop.
+
+The twelve-dimensional scorecard selects only metrics already registered in
+`strategic_benchmark_contracts.json`. It consumes the latest unique exact-scope benchmark snapshot,
+preserves the existing leader observation references and never recomputes rank. A metric may show
+`METRIC_LEADER` only when at least five eligible peer/frontier observations exist and the current
+KJDS observation is already in those leader references. This is a metric/cohort/market/window result,
+never a global Top1 claim. Cash forecasting is similarly authority-bound: missing opening bank
+balance, CashPlan, FX basis, signed cash floor or approved maximum loss produces `UNKNOWN`, not zero
+or an inferred forecast.
+
+Organization, critical path, Top1, cash and five delivery Gate projections each carry their own
+truth state, reasons, sources, as-of and SHA-256. Their hashes join the existing scope, flow,
+workstream and conflict state in `decision_basis_sha256`; `advance` accepts only the continuation
+bound to that exact basis. Engineering completion proves that this control projection, Web surface
+and negative controls work. It does not prove real staffing, a real SKU cash reconciliation, a C0
+design partner, production SLO/RPO/RTO or any market-leading claim.

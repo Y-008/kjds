@@ -164,8 +164,37 @@ class LoopEngineeringService:
             raise LoopRegistryError("Loop registry must define the six modules in canonical order")
         if not isinstance(registry.get("loop_contract"), list) or not registry["loop_contract"]:
             raise LoopRegistryError("Loop registry must define a non-empty loop contract")
+        self._validate_team_agent_contract(registry)
         self._validate_evolution_contract(registry)
         return registry
+
+    @staticmethod
+    def _validate_team_agent_contract(registry: dict[str, Any]) -> None:
+        team = registry.get("team_agent_contract")
+        if not isinstance(team, dict):
+            raise LoopRegistryError("Loop registry must define team_agent_contract")
+        expected = {
+            "operating_registry": "docs/project/registries/global_expert_team_registry.json",
+            "operating_model": "ai_core_human_professional_review",
+            "portfolio_scope": "global_research_russia_ozon_execution_first",
+            "leader_authority": "business_decision_high_risk_dual_sign",
+            "leader_role": "global_chief_commerce_officer",
+            "specialist_role_count": 12,
+        }
+        if any(team.get(key) != expected_value for key, expected_value in expected.items()):
+            raise LoopRegistryError("Global expert team operating contract drift")
+        if team.get("architecture") != (
+            "coordinator_plus_bounded_specialists_plus_independent_verifier"
+        ):
+            raise LoopRegistryError("TeamAgent architecture drift")
+        roles = team.get("roles")
+        if not isinstance(roles, list) or len(roles) != len(set(roles)):
+            raise LoopRegistryError("TeamAgent runtime roles must be unique")
+        separation = team.get("separation_of_duties")
+        if not isinstance(separation, dict) or not separation:
+            raise LoopRegistryError("TeamAgent separation of duties is required")
+        if any(value is not False for value in separation.values()):
+            raise LoopRegistryError("TeamAgent separation of duties must fail closed")
 
     @staticmethod
     def _validate_evolution_contract(registry: dict[str, Any]) -> None:

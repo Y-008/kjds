@@ -1,8 +1,8 @@
 {
   "registry_id": "KJDS-LOOP-001",
-  "version": "2.1",
+  "version": "2.2",
   "status": "active",
-  "updated_at": "2026-08-03",
+  "updated_at": "2026-08-06",
   "principle": "automation must produce evidence, skills must be versioned, integrations must be least-privilege, subagents must be bounded, worktrees must be isolated, and memory must preserve provenance",
   "modules": [
     {
@@ -32,8 +32,8 @@
     {
       "id": "subagents",
       "purpose": "用受限专业角色分解任务，避免单一超级 Agent 持有全部权限",
-      "current_surfaces": ["Evidence/Compliance", "Product/Sourcing", "Finance/Cash", "Experiment", "Risk/Red-team", "Execution"],
-      "state": "design_only",
+      "current_surfaces": ["Evidence/Compliance", "Product/Sourcing", "Finance/Cash", "Experiment", "Risk/Red-team", "Execution", "GlobalPortfolioOrchestrator", "global_expert_team_registry.json"],
+      "state": "partial",
       "required_controls": ["agent_identity", "role_scope", "budget", "tool_allowlist", "handoff_contract", "independent_review", "trace"],
       "promotion_gate": "G5 shadow; G6 controlled execution"
     },
@@ -66,6 +66,12 @@
   ],
   "team_agent_contract": {
     "architecture": "coordinator_plus_bounded_specialists_plus_independent_verifier",
+    "operating_registry": "docs/project/registries/global_expert_team_registry.json",
+    "operating_model": "ai_core_human_professional_review",
+    "portfolio_scope": "global_research_russia_ozon_execution_first",
+    "leader_authority": "business_decision_high_risk_dual_sign",
+    "leader_role": "global_chief_commerce_officer",
+    "specialist_role_count": 12,
     "roles": [
       "coordinator",
       "research",

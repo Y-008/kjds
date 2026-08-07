@@ -60,6 +60,7 @@ KILL_SWITCH_CONTROL_PATHS = {
     "/v1/system/kill-switch/engage",
     "/v1/system/kill-switch/release",
     "/v1/loop-engineering/validate",
+    "/v1/global-expert-team/route",
     "/v1/evidence/integrity-scan",
 }
 

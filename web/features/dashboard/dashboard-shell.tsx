@@ -4,6 +4,7 @@ import {
   Boxes,
   ChevronRight,
   CircleDollarSign,
+  Command,
   Database,
   LayoutDashboard,
   LockKeyhole,
@@ -128,6 +129,10 @@ export function DashboardShell({
             <p>{current.description}</p>
           </div>
           <div className="topbar-actions">
+            <Link className="evidenceops-launch atlas-launch" href="/team-control">
+              <Command size={16} />
+              团队总控
+            </Link>
             <Link className="evidenceops-launch atlas-launch" href="/profit-command">
               <CircleDollarSign size={16} />
               利润指挥

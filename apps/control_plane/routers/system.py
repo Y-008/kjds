@@ -12,12 +12,14 @@ from ..api_contracts import (
     APP_VERSION,
     AnomalyScanInput,
     EvidenceOpsPlanInput,
+    GlobalExpertTaskRouteInput,
     KillSwitchInput,
     LoopValidationInput,
     OperatingTaskTransitionInput,
     RecommendationInput,
     ScopeGrantEventInput,
     ScopeGrantSourceReviewInput,
+    TeamControlAdvanceInput,
     current_principal,
     ensure_role,
     ensure_store_scope,
@@ -37,28 +39,29 @@ def _scope_context(
     as_of: str | None,
 ) -> tuple[datetime, dict]:
     ensure_store_scope(principal, store_ref)
+    authority_checked_at = datetime.now(UTC)
     if as_of is None:
-        cutoff = datetime.now(UTC)
+        data_cutoff = authority_checked_at
     else:
         try:
-            cutoff = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+            data_cutoff = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
         except ValueError as exc:
             raise HTTPException(
                 status_code=422,
                 detail="as_of must be an ISO-8601 timestamp",
             ) from exc
-        if cutoff.tzinfo is None:
+        if data_cutoff.tzinfo is None:
             raise HTTPException(
                 status_code=422,
                 detail="as_of must include a timezone",
             )
-        cutoff = cutoff.astimezone(UTC)
+        data_cutoff = data_cutoff.astimezone(UTC)
     entity_scope = runtime.scope_grants.current(
         principal=principal,
         store_ref=store_ref,
-        as_of=cutoff,
+        as_of=authority_checked_at,
     )
-    return cutoff, entity_scope
+    return data_cutoff, entity_scope
 
 
 @router.get("/health")
@@ -124,6 +127,94 @@ def validate_loop_engineering(
     ensure_role(principal, "operator", "reviewer", "compliance", "approver", "risk", "admin")
     return run(
         lambda: runtime.loop_engineering.validate(module=body.module, mode=body.mode, controls=body.controls).to_dict()
+    )
+
+
+@router.get("/v1/global-expert-team/registry")
+def global_expert_team_registry(
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return runtime.global_expert_team.snapshot()
+
+
+@router.post("/v1/global-expert-team/route")
+def route_global_expert_task(
+    body: GlobalExpertTaskRouteInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "admin",
+    )
+    return run(lambda: runtime.global_expert_team.route(**body.model_dump()))
+
+
+@router.get("/v1/team-control/brief")
+def team_control_brief(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+) -> dict:
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store_ref,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.team_control_tower.brief(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+            as_of=cutoff,
+        )
+    )
+
+
+@router.post("/v1/team-control/advance")
+def advance_team_control(
+    body: TeamControlAdvanceInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+) -> dict:
+    ensure_role(principal, "operator", "admin")
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store_ref,
+        as_of=None,
+    )
+    return run(
+        lambda: runtime.team_control_tower.advance(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+            as_of=cutoff,
+            **body.model_dump(),
+        )
     )
 
 

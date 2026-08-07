@@ -874,6 +874,39 @@ class LoopValidationInput(BaseModel):
     controls: dict[str, Any]
 
 
+class GlobalExpertTaskRouteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task_ref: str = Field(min_length=1, max_length=160)
+    task_type: Literal[
+        "market_research",
+        "country_entry",
+        "product_portfolio",
+        "platform_operations",
+        "sourcing_quality",
+        "logistics_customs",
+        "finance_profit",
+        "legal_compliance",
+        "localization_content",
+        "growth_commercial",
+        "product_management",
+        "data_ai",
+        "architecture_delivery",
+    ]
+    market: str = Field(min_length=2, max_length=6)
+    platform: str = Field(min_length=1, max_length=80)
+    risk_level: Literal["L0", "L1", "L2", "L3", "L4"]
+    evidence_refs: list[str] = Field(default_factory=list, max_length=100)
+
+
+class TeamControlAdvanceInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    continuation: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    result: Literal["take", "done", "blocked", "escalate", "stop"]
+    rationale: str = Field(min_length=1, max_length=2000)
+    evidence_ids: list[str] = Field(default_factory=list, max_length=20)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
 class LineageLinkInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     target_type: str = Field(min_length=1, max_length=100)

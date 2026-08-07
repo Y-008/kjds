@@ -757,6 +757,7 @@ class OperatingIntelligenceService:
         principal: Principal | None = None,
         entity_scope: dict[str, Any] | None = None,
         store_ref: str | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         event_type = event_type.strip().lower()
         reason = reason.strip()
@@ -768,6 +769,14 @@ class OperatingIntelligenceService:
         if not reason or not actor:
             raise ValueError("Task event requires reason and actor")
         normalized_evidence = self._evidence_ids(evidence_ids)
+        if payload is not None and not isinstance(payload, dict):
+            raise ValueError("Task event payload must be an object")
+        event_payload = {
+            "automatic_business_action": False,
+            **(payload or {}),
+        }
+        if event_payload.get("automatic_business_action") is not False:
+            raise ValueError("Task events cannot create automatic business actions")
         if event_type in {"resolve", "dismiss"} and not normalized_evidence:
             raise ValueError("Resolved or dismissed task requires Evidence")
         scoped, authority_scope = self._requested_scope(
@@ -824,7 +833,7 @@ class OperatingIntelligenceService:
                 to_status=target,
                 reason=reason,
                 evidence_ids=normalized_evidence,
-                payload={"automatic_business_action": False},
+                payload=event_payload,
                 actor_id=actor,
                 occurred_at=now,
             )

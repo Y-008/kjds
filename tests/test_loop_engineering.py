@@ -53,6 +53,16 @@ def test_loop_contract_rejects_unknown_module():
         service.validate(module="unknown", mode="proposal", controls={})
 
 
+def test_loop_contract_rejects_global_expert_leader_authority_drift(tmp_path):
+    source = LoopEngineeringService().registry_snapshot()
+    source["team_agent_contract"]["leader_authority"] = "single_actor_all_authority"
+    path = tmp_path / "loop-registry.json"
+    path.write_text(json.dumps(source), encoding="utf-8")
+
+    with pytest.raises(LoopRegistryError, match="operating contract drift"):
+        LoopEngineeringService(path)
+
+
 @pytest.mark.parametrize(
     "mutation",
     ("add_skip", "drop_gate", "duplicate", "terminal_escape"),
