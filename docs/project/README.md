@@ -6,8 +6,8 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 5.4 |
-| last_reviewed | 2026-08-03 |
+| version | 5.5 |
+| last_reviewed | 2026-08-07 |
 | gate | G-1–G8 |
 
 本文件只做导航，不维护迁移号、测试数量或任务状态。
@@ -16,6 +16,7 @@
 
 | 主题 | 权威位置 | 规则 |
 |---|---|---|
+| 老板、团队与 Coding Agent 统一入口 | [../../项目.md](../../项目.md) | 只做入口和持续更新规则，不复制动态或机器真相 |
 | 稳定需求、边界、架构和验收 | [MASTER_SPEC.md](MASTER_SPEC.md) | 不写动态完成度 |
 | 当前任务、状态、依赖和下一动作 | [03_REMAINING_WORK_AND_PARALLEL_PLAN.md](03_REMAINING_WORK_AND_PARALLEL_PLAN.md) | 唯一动态任务真源 |
 | Gate 定义 | [02_ROADMAP_AND_GATES.md](02_ROADMAP_AND_GATES.md) | 只定义放行标准 |
@@ -33,6 +34,7 @@
 | 社媒来源采用注册表 | [registries/social_commerce_source_adoption.json](registries/social_commerce_source_adoption.json) | 固化官方来源、GitHub 候选、固定版本、许可证、全量采集与 campaign 能力选择 |
 | 俄罗斯市场来源注册表 | [registries/russia_market_intelligence_sources.json](registries/russia_market_intelligence_sources.json) | 固化站内需求、搜索、社媒、平台与宏观事件来源、限制和下一 Gate |
 | 思维与前沿研究 Evidence | [evidence/20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md](evidence/20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md) | 区分 Observation、一手来源、Inference 与 UNKNOWN |
+| 项目入口与前沿复核 Evidence | [evidence/20260807_PROJECT_ENTRY_AND_FRONTIER_REVIEW_GOVERNANCE.md](evidence/20260807_PROJECT_ENTRY_AND_FRONTIER_REVIEW_GOVERNANCE.md) | 记录本次相关官方来源 freshness 检查与 `checked_no_change` 结论 |
 | 社媒开源研究 Evidence | [evidence/20260803_SOCIAL_COMMERCE_OPEN_SOURCE_RESEARCH.md](evidence/20260803_SOCIAL_COMMERCE_OPEN_SOURCE_RESEARCH.md) | 记录官方平台、GitHub 来源、许可、可借鉴模式、当前缺口与用户指定 CLI 选择 |
 | 俄罗斯需求与事件来源 Evidence | [evidence/20260803_RUSSIA_MARKET_DEMAND_AND_EVENT_SOURCE_RESEARCH.md](evidence/20260803_RUSSIA_MARKET_DEMAND_AND_EVENT_SOURCE_RESEARCH.md) | 记录官方来源能力、当前公共观察、来源上限与尚未接入的真实凭据 |
 | 当前运行验证 | `.runtime/G1_VERIFICATION.json` | 本地生成，不提交 |

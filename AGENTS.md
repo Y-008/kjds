@@ -72,16 +72,34 @@ Do not treat a passing test as proof that the requirement was implemented correc
 - Include a no-action or defer option when feasible. Record the selected option, rejected alternatives and reasons, sensitivity, invalidation conditions, review date, and approval requirement.
 - Ponytail/YAGNI may remove complexity only after the best feasible solution is identified; minimum code is not itself the objective.
 
+## Frontier technology review
+
+- Before every material product, architecture, dependency, security, privacy, data, automation,
+  provider or commercial change, read `docs/project/registries/frontier_technology_adoption.json`
+  and check the relevant candidates' `as_of`, `reviewed_on`, `review_due_on`, Owner and Gates.
+- Verify only task-relevant candidates against current official documentation, formal specifications,
+  official release notes or primary research. Simple, local and reversible fixes may record
+  `frontier_review=not_required` instead of performing an unrelated scan.
+- Record a dated review receipt in the task's engineering Evidence with exact scope, candidate IDs,
+  official sources, observed changes, decision, registry/ADR references, unresolved items and next
+  review. Use `checked_no_change` when the evidence does not change an adoption decision.
+- When upstream facts or KJDS fit change materially, update the registry and linked research Evidence
+  together, and update the affected ADR or stable requirement when its boundary changes. Never update
+  only `as_of`, `reviewed_on` or `review_due_on` to simulate freshness.
+- A newer release is not automatic authorization to install, upgrade or deploy. Continue to use
+  `best_solution`, `adopt_now/pilot/watch/reject_now`, entry/exit Gates, independent review and
+  rollback evidence; frontier review cannot grant external write, Fact, FinanceEntry, Approval or Permit.
+
 ## Coding Agent workflow for complex changes
 
 Simple, local, reversible fixes may move directly from inspection to implementation and targeted
 verification. Cross-Module, authority, data, commercial, privacy, security or architecture changes
 must use this workflow without creating a second documentation center:
 
-1. Build project context from README, `MASTER_SPEC`, linked ADRs, the dynamic task plan,
+1. Build project context from `项目.md`, README, `MASTER_SPEC`, linked ADRs, the dynamic task plan,
    registries, test entry points, Git status and the current write-domain/migration leases.
 2. Classify impact and record affected requirements, Modules, authorities, failure modes, Gates,
-   Owners and acceptance Evidence.
+   Owners, acceptance Evidence and whether the frontier review is `required` or `not_required`.
 3. Update stable requirements, ADR decisions, machine contracts and acceptance criteria before or
    with the implementation; prompts and code comments are not a durable source of truth.
 4. For a material Interface or architecture decision, compare at least two feasible designs,

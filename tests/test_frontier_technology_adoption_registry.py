@@ -10,13 +10,14 @@ REGISTRY_PATH = (
     / "registries"
     / "frontier_technology_adoption.json"
 )
-EVIDENCE_PATH = (
+EVIDENCE_DIR = (
     Path(__file__).parents[1]
     / "docs"
     / "project"
     / "evidence"
-    / "20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md"
 )
+PROJECT_ENTRY_PATH = Path(__file__).parents[1] / "项目.md"
+AGENTS_PATH = Path(__file__).parents[1] / "AGENTS.md"
 DECISIONS = ("adopt_now", "pilot", "watch", "reject_now")
 EXPECTED_ENTRY_STATES = {
     "adopt_now": "approved_to_implement",
@@ -80,6 +81,13 @@ def _entries(registry):
     ]
 
 
+def _frontier_evidence_ledgers():
+    return {
+        path: path.read_text(encoding="utf-8")
+        for path in EVIDENCE_DIR.glob("*FRONTIER*.md")
+    }
+
+
 def _is_primary_or_official_source(hostname):
     return any(
         hostname == suffix or hostname.endswith(f".{suffix}")
@@ -91,7 +99,11 @@ def test_registry_has_four_decisions_and_complete_frontier_coverage():
     registry = _load_registry()
 
     assert registry["schema_version"] == "kjds-frontier-technology-adoption-v1"
-    assert registry["as_of"] == "2026-08-03"
+    registry_as_of = date.fromisoformat(registry["as_of"])
+    assert registry_as_of == max(
+        date.fromisoformat(item["reviewed_on"])
+        for _, item in _entries(registry)
+    )
     assert set(registry["decision_vocabulary"]) == set(DECISIONS)
     assert all(registry[decision] for decision in DECISIONS)
 
@@ -165,11 +177,65 @@ def test_sources_are_https_and_limited_to_primary_or_official_material():
 
 def test_every_registry_source_is_present_in_the_reviewed_research_ledger():
     registry = _load_registry()
-    research = EVIDENCE_PATH.read_text(encoding="utf-8")
+    research = "\n".join(_frontier_evidence_ledgers().values())
 
     for _, item in _entries(registry):
         for evidence_url in item["evidence_urls"]:
             assert evidence_url in research
+
+
+def test_review_dates_and_sources_are_bound_to_frontier_evidence():
+    registry = _load_registry()
+    ledgers = _frontier_evidence_ledgers()
+
+    assert ledgers
+    for _, item in _entries(registry):
+        review_marker = f"| source_access_date | {item['reviewed_on']} |"
+        dated_ledgers = [
+            research
+            for research in ledgers.values()
+            if review_marker in research
+        ]
+        assert dated_ledgers, f"missing dated review Evidence for {item['id']}"
+        dated_research = "\n".join(dated_ledgers)
+        for evidence_url in item["evidence_urls"]:
+            assert evidence_url in dated_research, (
+                f"{item['id']} source is not bound to its reviewed_on Evidence"
+            )
+
+
+def test_project_entry_links_canonical_truth_without_copying_registry_payload():
+    project_entry = PROJECT_ENTRY_PATH.read_text(encoding="utf-8")
+    required_targets = {
+        "README.md",
+        "AGENTS.md",
+        "docs/project/00_PROJECT_CHARTER.md",
+        "docs/project/MASTER_SPEC.md",
+        "docs/project/03_REMAINING_WORK_AND_PARALLEL_PLAN.md",
+        "docs/project/02_ROADMAP_AND_GATES.md",
+        "docs/adr/",
+        "docs/project/evidence/",
+        "docs/project/README.md",
+        "docs/project/registries/frontier_technology_adoption.json",
+    }
+
+    for relative_target in required_targets:
+        assert f"]({relative_target})" in project_entry
+        assert (PROJECT_ENTRY_PATH.parent / relative_target).exists()
+
+    assert "前沿技术采用决定的唯一机器真源" in project_entry
+    assert "前沿技术采用注册表" in project_entry
+    assert '"adopt_now": [' not in project_entry
+
+
+def test_agents_workflow_enforces_evidence_backed_frontier_review():
+    instructions = AGENTS_PATH.read_text(encoding="utf-8")
+
+    assert "## Frontier technology review" in instructions
+    assert "frontier_review=not_required" in instructions
+    assert "checked_no_change" in instructions
+    assert "Never update" in instructions
+    assert "frontier_technology_adoption.json" in instructions
 
 
 def test_experimental_or_draft_technology_is_not_adopt_now_or_production_ready():
