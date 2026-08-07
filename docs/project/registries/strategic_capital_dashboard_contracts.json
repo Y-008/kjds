@@ -2,7 +2,7 @@
   "schema": "kjds-strategic-capital-dashboard-contracts-v1",
   "contract_id": "kjds-strategic-capital-dashboard-v1",
   "version": "1.0.0",
-  "content_sha256": "81dac7bdd13a3553df327cf0506324654bd1c2dce362f63c8d247618c8104df0",
+  "content_sha256": "8c0f8538008d796b2e335d49324bcfa06a61d94a1c20aeab486567312380c6a7",
   "section_order": [
     "primary_source_coverage",
     "strategic_benchmark",
@@ -67,16 +67,16 @@
       "registry_path": "docs/project/registries/capital_allocation_contracts.json"
     },
     "verified_outcomes": {
-      "contract_id": "kjds-strategic-outcome-projection-v1",
+      "contract_id": "kjds-governed-closed-loop-evolution-v1",
       "contract_version": "1.0.0",
-      "contract_sha256": "bb86be646f6c61e6c940bbf5420ab55b6615341c429c66f14e5df032fa3e8598",
-      "registry_path": "docs/project/registries/strategic_benchmark_contracts.json"
+      "contract_sha256": "3b46a8730ab6cf32eed49793c5c4d04889dd412a048c226f2a13de96599b022d",
+      "registry_path": "docs/project/registries/closed_loop_evolution_contracts.json"
     },
     "invalidation_review": {
-      "contract_id": "kjds-strategic-invalidation-review-projection-v1",
+      "contract_id": "kjds-governed-closed-loop-evolution-event-v1",
       "contract_version": "1.0.0",
-      "contract_sha256": "bb86be646f6c61e6c940bbf5420ab55b6615341c429c66f14e5df032fa3e8598",
-      "registry_path": "docs/project/registries/strategic_benchmark_contracts.json"
+      "contract_sha256": "3b46a8730ab6cf32eed49793c5c4d04889dd412a048c226f2a13de96599b022d",
+      "registry_path": "docs/project/registries/closed_loop_evolution_contracts.json"
     }
   },
   "limits": {
