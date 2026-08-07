@@ -120,7 +120,7 @@ class EnterpriseAiErpProgram:
             "capability_atlas_ids",
             "capability_gap_refs",
             "work_item_refs",
-            "first_acceptance_result",
+            "first_acceptance_contract",
         }
     )
     WBS_FIELDS = frozenset(
@@ -175,9 +175,17 @@ class EnterpriseAiErpProgram:
             "current_kpi_value",
             "current_gate_result",
             "current_release_result",
+            "first_acceptance_result",
+            "acceptance_result",
+            "achieved_result",
+            "pass_result",
+            "gate_result",
             "continuation_token",
             "decision_basis_sha256",
         }
+    )
+    FORBIDDEN_STATIC_TRUTH_KEY_TOKENS = frozenset(
+        {"result", "results", "achieved", "pass", "passed"}
     )
     _IDENTIFIER = re.compile(r"[A-Za-z0-9_.:-]+")
 
@@ -495,6 +503,8 @@ class EnterpriseAiErpProgram:
             known_roles=known_roles,
             squad_ids=set(squad_ids),
         )
+        self._validate_domain_role_coverage(squads, work_items)
+        self._validate_squad_work_item_edges(squads, work_items)
         self._topological_order(work_items)
         self._validate_phases(registry.get("phases"))
         self._validate_maturity_model(registry.get("maturity_model"))
@@ -571,7 +581,12 @@ class EnterpriseAiErpProgram:
     def _reject_static_truth_fields(cls, value: Any, path: str = "registry") -> None:
         if isinstance(value, dict):
             for key, nested in value.items():
-                if key in cls.FORBIDDEN_STATIC_TRUTH_FIELDS:
+                key_tokens = set(key.lower().split("_"))
+                is_static_denial = key.startswith("proves_") and nested is False
+                if (
+                    key in cls.FORBIDDEN_STATIC_TRUTH_FIELDS
+                    or key_tokens & cls.FORBIDDEN_STATIC_TRUTH_KEY_TOKENS
+                ) and not is_static_denial:
                     raise EnterpriseAiErpProgramError(
                         f"Static registry cannot contain dynamic truth field: {path}.{key}"
                     )
@@ -699,7 +714,8 @@ class EnterpriseAiErpProgram:
                     f"{squad_ref} references an unknown work item"
                 )
             self._text(
-                squad["first_acceptance_result"], f"{squad_ref} acceptance result"
+                squad["first_acceptance_contract"],
+                f"{squad_ref} acceptance contract",
             )
 
     def _validate_work_items(
@@ -760,6 +776,52 @@ class EnterpriseAiErpProgram:
             sla = item["sla_hours"]
             if not isinstance(sla, int) or isinstance(sla, bool) or sla <= 0:
                 raise EnterpriseAiErpProgramError(f"{item_ref} SLA must be positive")
+
+    def _validate_domain_role_coverage(
+        self,
+        squads: list[dict[str, Any]],
+        work_items: list[dict[str, Any]],
+    ) -> None:
+        responsibility_refs = {
+            role_ref
+            for squad in squads
+            for role_ref in (squad["owner_role_ref"], squad["reviewer_role_ref"])
+        }
+        responsibility_refs.update(
+            role_ref
+            for item in work_items
+            for role_ref in (
+                item["owner_role_ref"],
+                item["alternate_role_ref"],
+                item["reviewer_role_ref"],
+            )
+        )
+        missing = set(self.DOMAIN_ROLES) - responsibility_refs
+        if missing:
+            raise EnterpriseAiErpProgramError(
+                "Domain roles require a squad or WBS responsibility mapping: "
+                + ", ".join(sorted(missing))
+            )
+
+    @staticmethod
+    def _validate_squad_work_item_edges(
+        squads: list[dict[str, Any]],
+        work_items: list[dict[str, Any]],
+    ) -> None:
+        squad_edges = {
+            (squad["squad_ref"], work_item_ref)
+            for squad in squads
+            for work_item_ref in squad["work_item_refs"]
+        }
+        work_item_edges = {
+            (squad_ref, item["work_item_ref"])
+            for item in work_items
+            for squad_ref in item["squad_refs"]
+        }
+        if squad_edges != work_item_edges:
+            raise EnterpriseAiErpProgramError(
+                "Squad and WBS work item edges must be bidirectional"
+            )
 
     def _topological_order(self, work_items: list[dict[str, Any]]) -> tuple[str, ...]:
         item_ids = {item["work_item_ref"] for item in work_items}

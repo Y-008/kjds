@@ -394,7 +394,7 @@
       "capability_atlas_ids": ["product_management", "evidence_lineage", "full_cost_cm3", "finance_reconciliation"],
       "capability_gap_refs": ["enterprise_business_ontology", "master_data_identity", "temporal_relationship_graph", "semantic_metric_catalog"],
       "work_item_refs": ["EAERP-02", "EAERP-03", "EAERP-04", "EAERP-05", "EAERP-06"],
-      "first_acceptance_result": "商品、订单、供应商、库存、物流和现金语义链具备确定性回放合同。"
+      "first_acceptance_contract": "验收要求：商品、订单、供应商、库存、物流和现金语义链必须通过确定性回放合同审查。"
     },
     {
       "squad_ref": "S2",
@@ -407,7 +407,7 @@
       "capability_atlas_ids": ["ai_conversation", "agent_product_and_glossary", "scheduled_tasks", "skill_marketplace", "model_and_skill_observability", "controlled_execution", "evidence_lineage"],
       "capability_gap_refs": ["agent_builder", "skill_promotion_lifecycle", "frozen_eval_center", "knowledge_freshness_revocation"],
       "work_item_refs": ["EAERP-03", "EAERP-04", "EAERP-05", "EAERP-06"],
-      "first_acceptance_result": "一个经营目标生成可审计计划并通过冻结 Eval 合同。"
+      "first_acceptance_contract": "验收要求：一个经营目标必须生成可审计计划并通过冻结 Eval 合同。"
     },
     {
       "squad_ref": "S3",
@@ -420,7 +420,7 @@
       "capability_atlas_ids": ["market_research", "competitor_monitoring", "product_management", "listing_generation", "brand_compliance", "global_platform_adapters"],
       "capability_gap_refs": ["platform_policy_freshness_radar", "merchant_jtbd_catalog", "country_platform_pack", "listing_write_readback"],
       "work_item_refs": ["EAERP-01", "EAERP-04", "EAERP-05", "EAERP-06"],
-      "first_acceptance_result": "一个 SKU 完成政策预检、受控发布合同和平台 Readback 验收。"
+      "first_acceptance_contract": "验收要求：一个 SKU 必须完成政策预检、受控发布合同和平台 Readback 验收。"
     },
     {
       "squad_ref": "S4",
@@ -433,7 +433,7 @@
       "capability_atlas_ids": ["sourcing_1688", "inventory_orders_logistics_returns", "product_management", "full_cost_cm3", "finance_reconciliation"],
       "capability_gap_refs": ["supplier_master", "quality_inspection", "wms_reconciliation", "bom_mrp_mes_partner_contract"],
       "work_item_refs": ["EAERP-03", "EAERP-04", "EAERP-05", "EAERP-06"],
-      "first_acceptance_result": "一笔订单无漏单、库存守恒、履约和退件全链路可追踪。"
+      "first_acceptance_contract": "验收要求：一笔订单必须证明无漏单、库存守恒、履约和退件全链路可追踪。"
     },
     {
       "squad_ref": "S5",
@@ -446,7 +446,7 @@
       "capability_atlas_ids": ["full_cost_cm3", "finance_reconciliation", "ads_and_causal_growth", "evidence_lineage", "controlled_execution"],
       "capability_gap_refs": ["gl_ar_ap_sidecar", "tax_country_pack", "treasury_cash_position", "consolidation_partner_contract"],
       "work_item_refs": ["EAERP-01", "EAERP-03", "EAERP-04", "EAERP-05", "EAERP-06"],
-      "first_acceptance_result": "订单、结算、银行和 Actual Cash CM3 完成守恒对账。"
+      "first_acceptance_contract": "验收要求：订单、结算、银行和 Actual Cash CM3 必须完成守恒对账。"
     },
     {
       "squad_ref": "S6",
@@ -459,7 +459,7 @@
       "capability_atlas_ids": ["team_collaboration", "market_research", "listing_generation", "ads_and_causal_growth", "evidence_lineage"],
       "capability_gap_refs": ["crm_pipeline", "cpq_contract", "implementation_factory", "customer_exit_export"],
       "work_item_refs": ["EAERP-03", "EAERP-04", "EAERP-05", "EAERP-06"],
-      "first_acceptance_result": "一个设计伙伴完成合同、部署、验收和客户价值回读。"
+      "first_acceptance_contract": "验收要求：一个设计伙伴必须完成合同、部署、验收和客户价值回读。"
     },
     {
       "squad_ref": "S7",
@@ -472,7 +472,7 @@
       "capability_atlas_ids": ["team_collaboration", "product_management", "evidence_lineage", "controlled_execution"],
       "capability_gap_refs": ["hcm_core", "project_accounting", "plm_sidecar", "mes_sidecar", "eam_sidecar"],
       "work_item_refs": ["EAERP-01", "EAERP-04", "EAERP-05"],
-      "first_acceptance_result": "各企业扩展域完成唯一 Owner、Interface、数据和卸载 Pilot 合同。"
+      "first_acceptance_contract": "验收要求：各企业扩展域必须完成唯一 Owner、Interface、数据和卸载 Pilot 合同。"
     },
     {
       "squad_ref": "S8",
@@ -485,7 +485,7 @@
       "capability_atlas_ids": ["compute_and_quota", "team_collaboration", "controlled_execution", "evidence_lineage", "model_and_skill_observability", "global_platform_adapters"],
       "capability_gap_refs": ["trust_center", "release_train", "restore_factory", "software_supply_chain_evidence"],
       "work_item_refs": ["EAERP-03", "EAERP-04", "EAERP-05", "EAERP-06"],
-      "first_acceptance_result": "系统可部署、可恢复、可审计并取得独立发布 Gate 结论。"
+      "first_acceptance_contract": "验收要求：系统必须证明可部署、可恢复、可审计，并取得独立发布 Gate 结论。"
     }
   ],
   "wbs_contract": {
@@ -526,7 +526,7 @@
       "exact_scope": "official_vendor_capability_benchmark_contract_only",
       "jtbd": "为每项 KJDS 能力选择 build、buy、partner、defer 或 no_action，而不是按宣传功能数量决策。",
       "owner_role_ref": "global_cross_border_market_product_operations_lead",
-      "alternate_role_ref": "global_market_intelligence",
+      "alternate_role_ref": "globalization_country_pack_lead",
       "input_authorities": ["official_vendor_docs", "official_release_notes", "frontier_technology_registry"],
       "data_classification": ["public_official_source", "internal_analysis"],
       "dependency_refs": [],
@@ -582,7 +582,7 @@
       "exact_scope": "process_state_exception_compensation_and_takeover_contract",
       "jtbd": "让自动化可观察、可补偿、可人工接管，并阻止无回滚的外部副作用。",
       "owner_role_ref": "process_intelligence_automation_lead",
-      "alternate_role_ref": "integration_partner_ecosystem_lead",
+      "alternate_role_ref": "customer_implementation_adoption_lead",
       "input_authorities": ["ontology_contract", "operating_event_contracts", "risk_policy", "evidence_metadata"],
       "data_classification": ["internal_process_metadata", "restricted_exception_metadata"],
       "dependency_refs": ["EAERP-02"],

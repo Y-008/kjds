@@ -4,7 +4,7 @@
 - 基线日期：`2026-08-07`
 - 机器租约：Lane `M`，Owner `019fd4c1-60c9-79a0-9338-8c204ba0f312`
 - CAS commit：`cbab2c93dbc0c3064a217490691213397ae00010`
-- 最终重采基线：`07e659133370a760fad3ad5ffcf9227938afabd8`（BAS-215A CAS 为其祖先；后续 BAS-216A CAS、BAS-210 功能及 release 提交均不重叠 exact4）
+- follow-up 基线：`d9042de6b2515fc6ac101b8da83a67358b089009`（首个 BAS-215A exact4 功能提交；本次不 amend，只闭合迟到独立红队发现）
 - 实施状态：`DONE_ENGINEERING_CANDIDATE`
 - 外部经营状态：`UNKNOWN`
 - Runtime/API/Web/DB/G-1/外写：未接入、未运行、未授权
@@ -15,14 +15,14 @@
 
 - 14 个企业领域 Lead，逐个冻结唯一主责、角色替补、30/60/90 天结果、工具/数据白名单、SLA、Reviewer、预算和最大损失未知状态、冲突声明、Evidence、Stop 与交接条件；
 - 30–60 人任务有界全球专家池目标及九类专业覆盖；静态容量合同不证明任何专家已签约或取得资质；
-- 8 个并行 Squad，每组固定五类职能，并只引用现有 Capability Atlas 的真实 capability ID；尚不存在的 HCM、PLM、MES 等能力只登记为 gap，不冒充已实现能力；
-- `EAERP-01..06` 完整 WBS 合同、依赖 DAG 和四个并行波次；
+- 8 个并行 Squad，每组固定五类职能，并只引用现有 Capability Atlas 的真实 capability ID；每组只保存 `first_acceptance_contract` 验收要求，不保存或投影完成语态的结果；尚不存在的 HCM、PLM、MES 等能力只登记为 gap，不冒充已实现能力；
+- `EAERP-01..06` 完整 WBS 合同、依赖 DAG 和四个并行波次；14 个领域角色必须至少映射一项 Squad/WBS 主责、替补或审阅责任，Squad↔WBS 引用边必须双向精确相等；
 - Day 0–30、31–60、61–90、91–180、181–365 五阶段验收合同；
 - M0–M4 能力成熟度 Evidence 要求、顺序晋级和失败关闭策略；
 - 六类职责分离、`1 总控 + 最多 3 专业 Agent`、最多 3 个并行 Writer、每专家和每 Writer 最多 1 个 active task、每 Lane 最多 1 个 current task、每周最多 3 个公司结果、每周 2 次集成列车和六个单一集成人写域；
 - 机器合同、Team Control、Global Expert Team、Capability Atlas 四源语义哈希和确定性 projection hash。
 
-`contract_integrity=VERIFIED` 只说明上述静态结构和引用闭合；总体状态、真人绑定、Squad readiness、WIP、Gate、成熟度、现金、客户和 Top1 始终为 `UNKNOWN`。
+`contract_integrity=VERIFIED` 只说明上述静态结构和引用闭合；总体状态、真人绑定、Squad readiness、WIP、Gate、成熟度、现金、客户和 Top1 始终为 `UNKNOWN`。提交 `d9042de` 后收到的独立早期红队 P1 使旧冻结双签失效；本 follow-up 专门关闭“验收结果静态冒充完成”和“角色/双向责任边不闭合”两个反例，必须重新冻结和独立签署后才能释放 Lane M。
 
 ## 2. 方案比较
 
@@ -112,28 +112,28 @@ KJDS 对标领域模型、流程平台、Agent/Skill、全域 ERP 与实施平�
 
 当前非自引用原始 SHA256：
 
-- Module：`e228f3125d029d37ce6d0b50c936721dd4d73caba456c6fa44493cde5b0d3629`
-- Registry raw：`5cf3b6ef4e0789b3f6e00ca4d7ce432bff60d8b2267e8ef52b60133c960b1abf`
-- Tests：`53afee772929c3a729159d14f3d49535cf13b59833c160ada3061896e4fa8537`
+- Module：`3884190fff0f3a115f3167abf47b1234718ba141518b37080a7f884988bc2e8a`
+- Registry raw：`8d5fb2cf5b1824957ce6a62f7e86c961d75f162f042232f88f2db8f4d165499d`
+- Tests：`726ea5c02919500325d1eea993b206ab27c62c3c2b62f96a374d6d07c0c2b115`
 
 确定性语义哈希：
 
-- Program registry：`ebc449a43d6ff1fe6daf44d9e17b93fffa2ab0919a1a166f5f3c21ddcc3d1570`
+- Program registry：`8ba3f6a2a3293a66416dd474223d538c7dc1ff5a3c57789c34d994be0aa26657`
 - Team Control：`7ea44e05ef2d4dc8d3a476d0933991c42a63ea0bcd5827c588b3312d627debc5`
 - Global Expert Team：`1c6fd73a84d49bcfda5f98f2490ed2e9b0adc17bc4479163353d9cc22a2f3950`
 - Capability Atlas：`db5c29731bc8bfa5d5c0f7dc9d35247a4ab3a98dc149afe88745637376507eeb`
-- Source bundle：`4f2d6f5bb158806d04fe82b9758f7902bd72eaea6bf06e04df04dfb5f66bd6ee`
-- Projection snapshot：`e4311d7519901d298ddd2d12b19f40849424df892ee2e361a0b084b9bff480ed`
+- Source bundle：`5a19123b858752d8a7611e542e918a5b81a9c7b24131291116135736f12b93f5`
+- Projection snapshot：`c203e25a36ed257e0757eeff0d9124dfe4db1dcd2225d12e2d9d06d4fca583f9`
 
 ## 7. 验证记录
 
 - `py_compile`：PASS；
-- `tests/test_enterprise_ai_erp_program.py`：`59 passed in 0.57s`；
-- BAS-215A + Team Control + Global Expert Team + Capability Atlas focused 回归：`107 passed in 3.61s`；
-- 负向覆盖：动态真相字段、角色/Squad/WBS/引用、DAG cycle、阶段、M0–M4、SoD、并发上限、三类上游版本漂移、四源哈希和零 I/O；
+- `tests/test_enterprise_ai_erp_program.py`：`67 passed in 0.68s`；
+- BAS-215A + Team Control + Global Expert Team + Capability Atlas focused 回归：`115 passed in 4.38s`；
+- 负向覆盖：完成语态动态真相字段、14 领域角色责任覆盖、Squad↔WBS 单边删边/增边、角色/Squad/WBS/引用、DAG cycle、阶段、M0–M4、SoD、并发上限、三类上游版本漂移、四源哈希和零 I/O；
 - Ruff：`All checks passed!`；
 - 初次 pytest 在系统全局 temp 根因 `WinError 5` 中止；未改代码，改用本任务独占 `D:\KJDS\.runtime\bas215a-pytest-e32448d75d0d4bbaa79288f63772653f` 后全绿；最终 focused 回归使用独占 `D:\KJDS\.runtime\bas215a-focused-24e0ffc618f644208ecfead8ae0d8e8f`；受控递归清理被本地策略拒绝，两目录登记为 `cleanup_pending`，位于仓库外且不计入 exact4 manifest；
-- Secret：`Secret scan passed: 1420 non-ignored worktree files and 1411 historical paths checked`；
+- Secret：`Secret scan passed: 1420 non-ignored worktree files and 1415 historical paths checked`；
 - `git diff --check`：exit `0`；cached diff check：exit `0`；
 - DB、Alembic、G-1、API/OpenAPI、Web build：本切片明确不运行。
 

@@ -23,6 +23,16 @@ def _payload(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _all_keys(value):
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            yield key
+            yield from _all_keys(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            yield from _all_keys(nested)
+
+
 def _mutated(path: Path, tmp_path: Path, name: str, mutate) -> Path:
     payload = _payload(path)
     mutate(payload)
@@ -83,6 +93,16 @@ def test_squads_require_five_functions_and_never_claim_readiness():
     assert all(
         tuple(item["required_functions"]) == service.SQUAD_FUNCTIONS
         for item in readiness["items"]
+    )
+    assert all(
+        item["first_acceptance_contract"].startswith("验收要求：")
+        for item in readiness["items"]
+    )
+    forbidden_tokens = {"result", "results", "achieved", "pass", "passed"}
+    assert all(
+        not (set(key.lower().split("_")) & forbidden_tokens)
+        for item in readiness["items"]
+        for key in _all_keys(item)
     )
 
 
@@ -231,6 +251,11 @@ def test_control_envelope_denies_every_runtime_or_external_authority():
         ("owner_thread_id", "thread-1"),
         ("current_kpi_value", 1),
         ("current_release_result", "PASS"),
+        ("first_acceptance_result", "PASS"),
+        ("acceptance_result", "PASS"),
+        ("achieved_result", "PASS"),
+        ("pass_result", "PASS"),
+        ("gate_result", "PASS"),
     ],
 )
 def test_static_registry_rejects_dynamic_truth_fields(tmp_path: Path, field: str, value):
@@ -313,6 +338,31 @@ def test_program_rejects_role_and_header_contract_drift(tmp_path: Path, mutate, 
 )
 def test_program_rejects_squad_contract_drift(tmp_path: Path, mutate, match: str):
     with pytest.raises(EnterpriseAiErpProgramError, match=match):
+        _program(tmp_path, mutate)
+
+
+def test_program_rejects_orphan_domain_role(tmp_path: Path):
+    def mutate(payload):
+        payload["squads"][0]["owner_role_ref"] = (
+            "process_intelligence_automation_lead"
+        )
+        payload["work_items"][1]["owner_role_ref"] = (
+            "process_intelligence_automation_lead"
+        )
+
+    with pytest.raises(EnterpriseAiErpProgramError, match="Domain roles require"):
+        _program(tmp_path, mutate)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload["squads"][0]["work_item_refs"].remove("EAERP-06"),
+        lambda payload: payload["squads"][0]["work_item_refs"].append("EAERP-01"),
+    ],
+)
+def test_program_rejects_one_sided_squad_wbs_edges(tmp_path: Path, mutate):
+    with pytest.raises(EnterpriseAiErpProgramError, match="must be bidirectional"):
         _program(tmp_path, mutate)
 
 
