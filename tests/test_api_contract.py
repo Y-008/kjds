@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, UploadFile
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from apps.control_plane import api as api_module
 from apps.control_plane.api import (
@@ -24,6 +26,7 @@ from apps.control_plane.domain import ChargeType
 from apps.control_plane.finance import FeeSignRule
 from apps.control_plane.imports import ImportPreview
 from apps.control_plane.routers.evidence_governance import capture_evidence
+from apps.control_plane.routers.product_content import ResearchSignalResponse
 from apps.control_plane.routers.seller_erp_bridge import (
     submit_seller_erp_bridge_source,
 )
@@ -1905,12 +1908,29 @@ def test_cost_authority_catalog_is_read_only_and_complete() -> None:
 
 def test_research_signal_endpoint_preserves_raw_fields_and_never_returns_an_action(monkeypatch) -> None:
     captured: dict = {}
+    authority_checks: list[dict] = []
 
     def record(**values):
         captured.update(values)
+        values["authority_guard"]()
+        values["authority_guard"]()
         return {"automatic_listing": False, "automatic_procurement": False}
 
     monkeypatch.setattr(api_module.app.state.runtime, "research_inbox", SimpleNamespace(capture=record))
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scope_grants",
+        SimpleNamespace(
+            current=lambda **values: authority_checks.append(values)
+            or {
+                "status": "ready",
+                "tenant_ref": "default",
+                "entity_ref": "entity-a",
+                "store_ref": "ozon-primary",
+                "authority_sha256": "a" * 64,
+            }
+        ),
+    )
     result = asyncio.run(
         api_module.capture_research_signal(
             file=UploadFile(file=io.BytesIO(b"raw export"), filename="signal.csv"),
@@ -1920,6 +1940,7 @@ def test_research_signal_endpoint_preserves_raw_fields_and_never_returns_an_acti
             observed_at="2026-07-20T00:00:00Z",
             declared_grade=api_module.EvidenceGrade.C,
             license_status="requires_review",
+            store_ref="ozon-primary",
             principal=Principal("operator-1", frozenset({"operator"})),
             raw_fields_json='{"keyword":"storage box","search_index":81.5}',
             candidate_refs_json='["candidate://storage-box-v1"]',
@@ -1928,7 +1949,443 @@ def test_research_signal_endpoint_preserves_raw_fields_and_never_returns_an_acti
 
     assert captured["raw_fields"] == {"keyword": "storage box", "search_index": 81.5}
     assert captured["candidate_refs"] == ["candidate://storage-box-v1"]
+    assert captured["scope"] == {
+        "tenant_ref": "default",
+        "entity_ref": "entity-a",
+        "store_ref": "ozon-primary",
+        "scope_grant_authority_sha256": "a" * 64,
+    }
+    assert len(authority_checks) == 3
+    assert all(
+        value["as_of"].tzinfo is not None
+        and abs((datetime.now(UTC) - value["as_of"]).total_seconds()) < 5
+        for value in authority_checks
+    )
     assert result == {"automatic_listing": False, "automatic_procurement": False}
+
+
+def test_research_signal_list_uses_exact_current_scope_and_canonical_cursor(monkeypatch) -> None:
+    authority_checks: list[dict] = []
+    listed: dict = {}
+
+    def current(**values):
+        authority_checks.append(values)
+        return {
+            "status": "ready",
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "authority_sha256": "a" * 64,
+        }
+
+    def list_records(**values):
+        listed.update(values)
+        return []
+
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scope_grants",
+        SimpleNamespace(current=current),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "research_inbox",
+        SimpleNamespace(list=list_records),
+    )
+    result = api_module.list_research_signals(
+        principal=Principal(
+            "operator-1",
+            frozenset({"operator"}),
+            "tenant-a",
+            frozenset({"store-a"}),
+        ),
+        store_ref="store-a",
+        candidate_ref="candidate://one",
+        limit=25,
+        cursor_recorded_at="2026-08-07T12:00:00+00:00",
+        cursor_id="evd_cursor",
+    )
+
+    assert result == []
+    assert listed["scope"] == {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "a" * 64,
+    }
+    assert listed["candidate_ref"] == "candidate://one"
+    assert listed["cursor_recorded_at"] == datetime(2026, 8, 7, 12, tzinfo=UTC)
+    assert listed["cursor_id"] == "evd_cursor"
+    assert len(authority_checks) == 2
+
+
+def test_research_signal_list_returns_no_data_without_querying_foreign_scope(monkeypatch) -> None:
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scope_grants",
+        SimpleNamespace(
+            current=lambda **_: {
+                "status": "no_data",
+                "tenant_ref": "tenant-a",
+                "store_ref": "store-a",
+                "entity_ref": None,
+                "authority_sha256": None,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "research_inbox",
+        SimpleNamespace(list=lambda **_: pytest.fail("Research Inbox must not query")),
+    )
+
+    assert api_module.list_research_signals(
+        principal=Principal(
+            "operator-1",
+            frozenset({"operator"}),
+            "tenant-a",
+            frozenset({"store-a"}),
+        ),
+        store_ref="store-a",
+    ) == []
+
+
+def test_research_signal_list_discards_rows_when_authority_rotates(monkeypatch) -> None:
+    authorities = iter(
+        [
+            {
+                "status": "ready",
+                "tenant_ref": "tenant-a",
+                "entity_ref": "entity-a",
+                "store_ref": "store-a",
+                "authority_sha256": "a" * 64,
+            },
+            {
+                "status": "ready",
+                "tenant_ref": "tenant-a",
+                "entity_ref": "entity-a",
+                "store_ref": "store-a",
+                "authority_sha256": "b" * 64,
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scope_grants",
+        SimpleNamespace(current=lambda **_: next(authorities)),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "research_inbox",
+        SimpleNamespace(list=lambda **_: [{"evidence": {"id": "evd_old"}}]),
+    )
+
+    assert api_module.list_research_signals(
+        principal=Principal(
+            "operator-1",
+            frozenset({"operator"}),
+            "tenant-a",
+            frozenset({"store-a"}),
+        ),
+        store_ref="store-a",
+    ) == []
+
+
+def test_research_signal_cursor_rejects_noncanonical_or_partial_values(monkeypatch) -> None:
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scope_grants",
+        SimpleNamespace(
+            current=lambda **_: {
+                "status": "ready",
+                "tenant_ref": "tenant-a",
+                "entity_ref": "entity-a",
+                "store_ref": "store-a",
+                "authority_sha256": "a" * 64,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "research_inbox",
+        SimpleNamespace(list=lambda **_: pytest.fail("Invalid cursor must not query")),
+    )
+    principal = Principal(
+        "operator-1",
+        frozenset({"operator"}),
+        "tenant-a",
+        frozenset({"store-a"}),
+    )
+
+    with pytest.raises(HTTPException, match="not canonical") as error:
+        api_module.list_research_signals(
+            principal=principal,
+            store_ref="store-a",
+            cursor_recorded_at="2026-08-07T12:00:00Z",
+            cursor_id="evd_cursor",
+        )
+    assert error.value.status_code == 422
+    with pytest.raises(HTTPException, match="supplied together"):
+        api_module.list_research_signals(
+            principal=principal,
+            store_ref="store-a",
+            cursor_id="evd_cursor",
+        )
+
+
+def test_research_signal_capture_does_not_return_after_authority_rotation(monkeypatch) -> None:
+    authorities = iter(
+        [
+            {
+                "status": "ready",
+                "tenant_ref": "tenant-a",
+                "entity_ref": "entity-a",
+                "store_ref": "store-a",
+                "authority_sha256": "a" * 64,
+            },
+            {
+                "status": "ready",
+                "tenant_ref": "tenant-a",
+                "entity_ref": "entity-a",
+                "store_ref": "store-a",
+                "authority_sha256": "a" * 64,
+            },
+            {
+                "status": "ready",
+                "tenant_ref": "tenant-a",
+                "entity_ref": "entity-a",
+                "store_ref": "store-a",
+                "authority_sha256": "b" * 64,
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "scope_grants",
+        SimpleNamespace(current=lambda **_: next(authorities)),
+    )
+    def capture_with_guard(**values):
+        values["authority_guard"]()
+        values["authority_guard"]()
+        return {"evidence": {"id": "evd_old"}}
+
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "research_inbox",
+        SimpleNamespace(capture=capture_with_guard),
+    )
+
+    with pytest.raises(HTTPException, match="authority_changed_during_capture") as error:
+        asyncio.run(
+            api_module.capture_research_signal(
+                file=UploadFile(
+                    file=io.BytesIO(b"raw export"),
+                    filename="signal.csv",
+                ),
+                provider="Seerfar",
+                provider_record_id="seerfar://row-1",
+                source_url="https://www.seerfar.cn/features/",
+                observed_at="2026-07-20T00:00:00Z",
+                declared_grade=api_module.EvidenceGrade.C,
+                license_status="requires_review",
+                store_ref="store-a",
+                principal=Principal(
+                    "operator-1",
+                    frozenset({"operator"}),
+                    "tenant-a",
+                    frozenset({"store-a"}),
+                ),
+            )
+        )
+    assert error.value.status_code == 409
+
+
+def test_research_signal_openapi_exposes_store_and_keyset_without_scope_internals() -> None:
+    operation = app.openapi()["paths"]["/v1/market/research-signals"]
+    parameters = {
+        item["name"]: item for item in operation["get"]["parameters"]
+    }
+
+    assert set(parameters) == {
+        "store_ref",
+        "candidate_ref",
+        "limit",
+        "cursor_recorded_at",
+        "cursor_id",
+    }
+    assert parameters["store_ref"]["required"] is True
+    assert not set(parameters).intersection(
+        {"tenant_ref", "entity_ref", "scope_grant_authority_sha256"}
+    )
+    body_ref = operation["post"]["requestBody"]["content"][
+        "multipart/form-data"
+    ]["schema"]["$ref"]
+    body_schema = app.openapi()["components"]["schemas"][body_ref.rsplit("/", 1)[1]]
+    assert "store_ref" in body_schema["required"]
+
+    schemas = app.openapi()["components"]["schemas"]
+    post_response_ref = operation["post"]["responses"]["201"]["content"][
+        "application/json"
+    ]["schema"]["$ref"]
+    get_response = operation["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert get_response["type"] == "array"
+    assert get_response["items"]["$ref"] == post_response_ref
+    response_schema = schemas[post_response_ref.rsplit("/", 1)[1]]
+    evidence_ref = response_schema["properties"]["evidence"]["$ref"]
+    evidence_schema = schemas[evidence_ref.rsplit("/", 1)[1]]
+    metadata_ref = evidence_schema["properties"]["metadata"]["$ref"]
+    metadata_schema = schemas[metadata_ref.rsplit("/", 1)[1]]
+    assert metadata_schema["additionalProperties"] is False
+    assert set(metadata_schema["properties"]) == {
+        "evidence_role",
+        "provider",
+        "provider_record_id",
+        "source_url",
+        "captured_at",
+        "raw_fields",
+        "license_status",
+        "review_status",
+        "declared_grade",
+        "promotion_status",
+    }
+    assert set(metadata_schema["properties"]).isdisjoint(
+        {
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "research_capture_contract_id",
+            "research_capture_request_sha256",
+            "research_scope_binding_sha256",
+        }
+    )
+
+
+def test_research_signal_api_capture_and_list_hide_server_contract_metadata(
+    monkeypatch,
+) -> None:
+    public_metadata = {
+        "evidence_role": "research_signal",
+        "provider": "Seerfar",
+        "provider_record_id": "seerfar://row-1",
+        "source_url": "https://www.seerfar.cn/features/",
+        "captured_at": "2026-08-07T12:00:00+00:00",
+        "raw_fields": {"keyword": "storage box", "search_index": 81.5},
+        "license_status": "requires_review",
+        "review_status": "pending_authority_review",
+        "declared_grade": "C",
+        "promotion_status": "auxiliary_only",
+    }
+    view = {
+        "evidence": {
+            "id": "evd_public_research",
+            "sha256": "b" * 64,
+            "byte_size": 10,
+            "filename": "signal.csv",
+            "content_type": "text/csv",
+            "source": "Seerfar",
+            "source_ref": "seerfar://row-1",
+            "grade": "C",
+            "effective_at": "2026-07-20T00:00:00+00:00",
+            "effective_until": None,
+            "recorded_at": "2026-08-07T12:00:00+00:00",
+            "created_by": "operator-1",
+            "metadata": public_metadata,
+        },
+        "candidate_refs": ["candidate://storage-box-v1"],
+        "integrity_valid": True,
+        "decision_use": "auxiliary_only_pending_independent_authority_review",
+        "automatic_listing": False,
+        "automatic_procurement": False,
+    }
+    principal = Principal(
+        "operator-1",
+        frozenset({"operator"}),
+        "tenant-a",
+        frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime.scope_grants,
+        "current",
+        lambda **_: {
+            "status": "ready",
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "authority_sha256": "a" * 64,
+        },
+    )
+    monkeypatch.setattr(
+        api_module.app.state.runtime,
+        "research_inbox",
+        SimpleNamespace(
+            capture=lambda **_: view,
+            list=lambda **_: [view],
+        ),
+    )
+    captured_raw = asyncio.run(
+        api_module.capture_research_signal(
+            file=UploadFile(file=io.BytesIO(b"raw export"), filename="signal.csv"),
+            provider="Seerfar",
+            provider_record_id="seerfar://row-1",
+            source_url="https://www.seerfar.cn/features/",
+            observed_at="2026-07-20T00:00:00Z",
+            declared_grade=api_module.EvidenceGrade.C,
+            license_status="requires_review",
+            store_ref="store-a",
+            principal=principal,
+            raw_fields_json='{"keyword":"storage box"}',
+            candidate_refs_json='["candidate://storage-box-v1"]',
+        )
+    )
+    listed_raw = api_module.list_research_signals(
+        principal=principal,
+        store_ref="store-a",
+    )
+
+    server_only = {
+        "tenant_ref",
+        "entity_ref",
+        "store_ref",
+        "scope_grant_authority_sha256",
+        "research_capture_contract_id",
+        "research_capture_request_sha256",
+        "research_scope_binding_sha256",
+    }
+
+    def nested_keys(value) -> set[str]:
+        if isinstance(value, dict):
+            return set(value).union(
+                *(nested_keys(item) for item in value.values())
+            )
+        if isinstance(value, list):
+            return set().union(*(nested_keys(item) for item in value))
+        return set()
+
+    for internal_field in server_only:
+        leaking = json.loads(json.dumps(view))
+        leaking["evidence"]["metadata"][internal_field] = "must-not-leak"
+        with pytest.raises(ValidationError):
+            ResearchSignalResponse.model_validate(leaking)
+        nested_leaking = json.loads(json.dumps(view))
+        nested_leaking["evidence"]["metadata"]["raw_fields"][
+            internal_field
+        ] = "must-not-leak"
+        with pytest.raises(ValidationError):
+            ResearchSignalResponse.model_validate(nested_leaking)
+
+    captured = ResearchSignalResponse.model_validate(captured_raw).model_dump(
+        mode="json"
+    )
+    listed = [
+        ResearchSignalResponse.model_validate(item).model_dump(mode="json")
+        for item in listed_raw
+    ]
+    for payload in (captured, listed[0]):
+        assert set(payload["evidence"]["metadata"]) == set(public_metadata)
+        assert nested_keys(payload).isdisjoint(server_only)
 
 
 def test_ozon_import_period_is_required_and_duplicate_conflicts_fail_closed(monkeypatch) -> None:

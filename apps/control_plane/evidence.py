@@ -454,6 +454,9 @@ COVERAGE_INTAKE_CONTRACTS: dict[str, dict[str, str]] = {
     },
 }
 _RESERVED_CAPTURE_AUTHORITY = object()
+_RESEARCH_CAPTURE_AUTHORITY = object()
+RESEARCH_SIGNAL_EVIDENCE_ROLE = "research_signal"
+RESEARCH_CAPTURE_CONTRACT_ID = "kjds-research-capture-request-v1"
 
 TEAM_AGENT_AUTHORITY_CONTRACTS: dict[str, dict[str, Any]] = {
     "eval_set": {
@@ -949,6 +952,38 @@ class EvidenceService:
         with Session(self.engine) as session, session.begin():
             yield session
 
+    @staticmethod
+    def lock_scope_authority_in_session(
+        *,
+        tenant_ref: str,
+        store_ref: str,
+        subject_actor_id: str,
+        session: Session,
+    ) -> None:
+        """Serialize capture with the matching append-only scope authority."""
+
+        tenant_ref = tenant_ref.strip()
+        store_ref = store_ref.strip()
+        subject_actor_id = subject_actor_id.strip()
+        if not tenant_ref or not store_ref or not subject_actor_id:
+            raise ValueError("Scope authority lock requires tenant, store, and subject")
+        if session.get_bind().dialect.name != "postgresql":
+            return
+        session.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtextextended("
+                "concat_ws(chr(31), :tenant_ref, :store_ref, :subject_actor_id), 0"
+                ")"
+                ")"
+            ),
+            {
+                "tenant_ref": tenant_ref,
+                "store_ref": store_ref,
+                "subject_actor_id": subject_actor_id,
+            },
+        )
+
     def capture_team_agent_evolution_event(
         self,
         *,
@@ -1256,6 +1291,15 @@ class EvidenceService:
             raise ValueError(
                 "Reserved closed-loop Evidence requires its dedicated authority adapter"
             )
+        if (
+            str(metadata.get("evidence_role") or "").strip()
+            == RESEARCH_SIGNAL_EVIDENCE_ROLE
+            or str(metadata.get("research_capture_contract_id") or "").strip()
+            == RESEARCH_CAPTURE_CONTRACT_ID
+        ) and _reserved_authority is not _RESEARCH_CAPTURE_AUTHORITY:
+            raise ValueError(
+                "Reserved research Evidence requires its dedicated intake workflow"
+            )
         retention_class = metadata.get("retention_class")
         if retention_class is not None:
             try:
@@ -1385,9 +1429,47 @@ class EvidenceService:
                 if winner is None:
                     raise
                 if not hmac.compare_digest(winner.blob_sha256, digest):
-                    raise ValueError("Evidence source reference already has different immutable content") from None
+                    raise ValueError(
+                        "Evidence source reference already has different immutable content"
+                    ) from None
                 return self._record(winner, len(content))
 
+    def capture_research_signal_evidence(
+        self,
+        *,
+        content: bytes,
+        filename: str,
+        content_type: str,
+        source: str,
+        source_ref: str,
+        grade: EvidenceGrade,
+        effective_at: str,
+        created_by: str,
+        metadata: dict[str, Any],
+        session: Session,
+    ) -> EvidenceRecord:
+        """Persist one Research Inbox record through its dedicated adapter."""
+
+        if (
+            metadata.get("evidence_role") != RESEARCH_SIGNAL_EVIDENCE_ROLE
+            or metadata.get("research_capture_contract_id")
+            != RESEARCH_CAPTURE_CONTRACT_ID
+        ):
+            raise ValueError("Invalid reserved research Evidence contract")
+        return self.capture(
+            content=content,
+            filename=filename,
+            content_type=content_type,
+            source=source,
+            source_ref=source_ref,
+            grade=grade,
+            effective_at=effective_at,
+            effective_until=None,
+            created_by=created_by,
+            metadata=metadata,
+            _reserved_authority=_RESEARCH_CAPTURE_AUTHORITY,
+            _session=session,
+        )
     def get(self, evidence_id: str) -> EvidenceRecord:
         with Session(self.engine) as session:
             row = session.get(EvidenceRecordRow, evidence_id)
@@ -1437,18 +1519,82 @@ class EvidenceService:
         limit: int,
         cursor_recorded_at: datetime | None = None,
         cursor_id: str | None = None,
+        evidence_role: str | None = None,
+        evidence_ids: Sequence[str] | None = None,
+        exact_scope: Mapping[str, str] | None = None,
+        lineage_target: Mapping[str, str] | None = None,
+        metadata_equals: Mapping[str, str] | None = None,
     ) -> list[EvidenceRecord]:
-        """Page records while filtering reserved closed-loop rows in SQL.
+        """Page records while applying governance visibility in SQL.
 
         Ordinary Evidence keeps the historical governance visibility contract.
         Closed-loop authority and event Evidence is admitted to the query only
         when every current scope component matches, so another scope cannot
-        consume the bounded page or disclose its record count/order.
+        consume the bounded page or disclose its record count/order. Optional
+        Role, identifier, exact-scope, lineage, and metadata filters are applied
+        before the bounded page. A supplied cursor must itself remain visible
+        under the same complete predicate before it can advance the page.
         """
 
         bounded_limit = min(max(limit, 1), 501)
-        scope_clauses = [
-            and_(
+        if (cursor_recorded_at is None) != (cursor_id is None):
+            raise ValueError("Evidence cursor components must be supplied together")
+        if cursor_recorded_at is not None and cursor_recorded_at.tzinfo is None:
+            raise ValueError("Evidence cursor timestamp must include a timezone")
+        normalized_role = evidence_role.strip() if evidence_role is not None else None
+        if evidence_role is not None and not normalized_role:
+            raise ValueError("Evidence role filter cannot be empty")
+        normalized_ids = (
+            tuple(sorted({item.strip() for item in evidence_ids if item.strip()}))
+            if evidence_ids is not None
+            else None
+        )
+        if normalized_ids == ():
+            return []
+        scope_keys = {
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+        }
+        normalized_scope: dict[str, str] | None = None
+        if exact_scope is not None:
+            if set(exact_scope) != scope_keys:
+                raise ValueError("Evidence exact scope must contain exactly four fields")
+            normalized_scope = {
+                key: str(exact_scope[key]).strip() for key in sorted(scope_keys)
+            }
+            if any(not value for value in normalized_scope.values()) or not re.fullmatch(
+                r"[0-9a-f]{64}",
+                normalized_scope["scope_grant_authority_sha256"],
+            ):
+                raise ValueError("Evidence exact scope is invalid")
+        lineage_keys = {"target_type", "target_id", "relationship"}
+        normalized_lineage: dict[str, str] | None = None
+        if lineage_target is not None:
+            if set(lineage_target) != lineage_keys:
+                raise ValueError("Evidence lineage filter must contain exactly three fields")
+            normalized_lineage = {
+                "target_type": str(lineage_target["target_type"]).strip().lower(),
+                "target_id": str(lineage_target["target_id"]).strip(),
+                "relationship": str(lineage_target["relationship"]).strip(),
+            }
+            if any(not value for value in normalized_lineage.values()):
+                raise ValueError("Evidence lineage filter is invalid")
+        normalized_metadata: dict[str, str] | None = None
+        if metadata_equals is not None:
+            if any(
+                not isinstance(key, str)
+                or not re.fullmatch(r"[a-z][a-z0-9_]{0,119}", key)
+                or not isinstance(value, str)
+                or not value
+                for key, value in metadata_equals.items()
+            ):
+                raise ValueError("Evidence metadata filter is invalid")
+            normalized_metadata = dict(sorted(metadata_equals.items()))
+
+        def scope_clause(scope: Mapping[str, str]):
+            return and_(
                 EvidenceRecordRow.metadata_json["tenant_ref"].as_string()
                 == scope["tenant_ref"],
                 EvidenceRecordRow.metadata_json["entity_ref"].as_string()
@@ -1460,39 +1606,90 @@ class EvidenceService:
                 ].as_string()
                 == scope["scope_grant_authority_sha256"],
             )
+
+        scope_clauses = [
+            scope_clause(scope)
             for scope in closed_loop_scopes
         ]
         closed_loop_visibility = and_(
             EvidenceRecordRow.source.in_(tuple(CLOSED_LOOP_RESERVED_SOURCES)),
             or_(*scope_clauses) if scope_clauses else text("false"),
         )
+        ordinary_visibility = EvidenceRecordRow.source.not_in(
+            tuple(CLOSED_LOOP_RESERVED_SOURCES)
+        )
+        if normalized_scope is not None:
+            ordinary_visibility = and_(
+                ordinary_visibility,
+                scope_clause(normalized_scope),
+            )
         visibility = or_(
-            EvidenceRecordRow.source.not_in(tuple(CLOSED_LOOP_RESERVED_SOURCES)),
+            ordinary_visibility,
             closed_loop_visibility,
         )
-        query = (
-            select(EvidenceRecordRow, EvidenceBlobRow.byte_size)
-            .join(
-                EvidenceBlobRow,
-                EvidenceBlobRow.sha256 == EvidenceRecordRow.blob_sha256,
+        filters = [visibility]
+        if normalized_role is not None:
+            filters.append(
+                EvidenceRecordRow.metadata_json["evidence_role"].as_string()
+                == normalized_role
             )
-            .where(visibility)
-            .order_by(EvidenceRecordRow.recorded_at.desc(), EvidenceRecordRow.id)
-            .limit(bounded_limit)
-        )
-        if (cursor_recorded_at is None) != (cursor_id is None):
-            raise ValueError("Evidence cursor components must be supplied together")
-        if cursor_recorded_at is not None and cursor_id is not None:
-            query = query.where(
-                or_(
-                    EvidenceRecordRow.recorded_at < cursor_recorded_at,
-                    and_(
-                        EvidenceRecordRow.recorded_at == cursor_recorded_at,
-                        EvidenceRecordRow.id > cursor_id,
-                    ),
+        if normalized_ids is not None:
+            filters.append(EvidenceRecordRow.id.in_(normalized_ids))
+        if normalized_lineage is not None:
+            filters.append(
+                EvidenceRecordRow.id.in_(
+                    select(LineageEdgeRow.from_id).where(
+                        LineageEdgeRow.from_type == "evidence",
+                        LineageEdgeRow.to_type
+                        == normalized_lineage["target_type"],
+                        LineageEdgeRow.to_id == normalized_lineage["target_id"],
+                        LineageEdgeRow.relationship
+                        == normalized_lineage["relationship"],
+                    )
                 )
             )
+        if normalized_metadata is not None:
+            filters.extend(
+                EvidenceRecordRow.metadata_json[key].as_string() == value
+                for key, value in normalized_metadata.items()
+            )
         with Session(self.engine) as session:
+            if cursor_recorded_at is not None and cursor_id is not None:
+                normalized_cursor = cursor_recorded_at.astimezone(UTC)
+                cursor_row = session.scalar(
+                    select(EvidenceRecordRow).where(
+                        *filters,
+                        EvidenceRecordRow.id == cursor_id,
+                    )
+                )
+                if cursor_row is None:
+                    raise ValueError(
+                        "Evidence cursor is not visible in the current query scope"
+                    )
+                stored_cursor = cursor_row.recorded_at
+                if stored_cursor.tzinfo is None:
+                    stored_cursor = stored_cursor.replace(tzinfo=UTC)
+                if stored_cursor.astimezone(UTC) != normalized_cursor:
+                    raise ValueError("Evidence cursor timestamp does not match its record")
+                filters.append(
+                    or_(
+                        EvidenceRecordRow.recorded_at < normalized_cursor,
+                        and_(
+                            EvidenceRecordRow.recorded_at == normalized_cursor,
+                            EvidenceRecordRow.id > cursor_id,
+                        ),
+                    )
+                )
+            query = (
+                select(EvidenceRecordRow, EvidenceBlobRow.byte_size)
+                .join(
+                    EvidenceBlobRow,
+                    EvidenceBlobRow.sha256 == EvidenceRecordRow.blob_sha256,
+                )
+                .where(*filters)
+                .order_by(EvidenceRecordRow.recorded_at.desc(), EvidenceRecordRow.id)
+                .limit(bounded_limit)
+            )
             rows = session.execute(query).all()
             return [self._record(row, byte_size) for row, byte_size in rows]
 
@@ -1575,6 +1772,37 @@ class EvidenceService:
                 return None
             row, byte_size = result
             return self._record(row, byte_size)
+
+    def find_by_source_ref_in_session(
+        self,
+        *,
+        source: str,
+        source_ref: str,
+        session: Session,
+    ) -> EvidenceRecord | None:
+        """Resolve one source identity in the caller's transaction."""
+
+        source = source.strip()
+        source_ref = source_ref.strip()
+        if not source or not source_ref:
+            raise ValueError("Evidence source and source_ref are required")
+        result = session.execute(
+            select(EvidenceRecordRow, EvidenceBlobRow.byte_size)
+            .join(
+                EvidenceBlobRow,
+                EvidenceBlobRow.sha256 == EvidenceRecordRow.blob_sha256,
+            )
+            .where(
+                EvidenceRecordRow.source == source,
+                EvidenceRecordRow.source_ref == source_ref,
+            )
+            .order_by(EvidenceRecordRow.recorded_at, EvidenceRecordRow.id)
+            .limit(1)
+        ).first()
+        if result is None:
+            return None
+        row, byte_size = result
+        return self._record(row, byte_size)
 
     def find_binding_ids(
         self,
@@ -1910,6 +2138,88 @@ class EvidenceService:
                     raise
                 return self._edge(winner)
 
+    def link_in_session(
+        self,
+        *,
+        evidence_id: str,
+        target_type: str,
+        target_id: str,
+        relationship: str,
+        created_by: str,
+        session: Session,
+    ) -> LineageEdge:
+        """Append lineage inside the caller's Evidence transaction."""
+
+        source_row = session.get(EvidenceRecordRow, evidence_id)
+        if source_row is None:
+            raise KeyError(f"Unknown evidence: {evidence_id}")
+        if source_row.source in CLOSED_LOOP_RESERVED_SOURCES:
+            raise ValueError(
+                "Reserved closed-loop lineage requires its dedicated ledger"
+            )
+        target_type = target_type.strip().lower()
+        target_id = target_id.strip()
+        relationship = relationship.strip()
+        if not target_type or not target_id or not relationship:
+            raise ValueError(
+                "Lineage requires target_type, target_id, and relationship"
+            )
+        if target_type == "evidence":
+            target_row = session.get(EvidenceRecordRow, target_id)
+            if target_row is None:
+                raise KeyError(f"Unknown evidence: {target_id}")
+            if target_row.source in CLOSED_LOOP_RESERVED_SOURCES:
+                raise ValueError(
+                    "Reserved closed-loop lineage requires its dedicated ledger"
+                )
+            if target_id == evidence_id:
+                raise ValueError("Evidence cannot derive from itself")
+        existing = self._lineage_row(
+            session,
+            evidence_id=evidence_id,
+            target_type=target_type,
+            target_id=target_id,
+            relationship=relationship,
+        )
+        if existing is not None:
+            return self._edge(existing)
+        row = LineageEdgeRow(
+            id=new_id("lin"),
+            from_type="evidence",
+            from_id=evidence_id,
+            to_type=target_type,
+            to_id=target_id,
+            relationship=relationship,
+            created_by=created_by,
+            recorded_at=datetime.now(UTC),
+        )
+        session.add(row)
+        session.flush()
+        return self._edge(row)
+
+    @staticmethod
+    def linked_target_ids_in_session(
+        *,
+        evidence_id: str,
+        target_type: str,
+        relationship: str,
+        session: Session,
+    ) -> list[str]:
+        """Read one Evidence record's governed target IDs in its transaction."""
+
+        return list(
+            session.scalars(
+                select(LineageEdgeRow.to_id)
+                .where(
+                    LineageEdgeRow.from_type == "evidence",
+                    LineageEdgeRow.from_id == evidence_id,
+                    LineageEdgeRow.to_type == target_type,
+                    LineageEdgeRow.relationship == relationship,
+                )
+                .order_by(LineageEdgeRow.to_id)
+            )
+        )
+
     def lineage(self, evidence_id: str) -> list[LineageEdge]:
         self.get(evidence_id)
         with Session(self.engine) as session:
@@ -1947,6 +2257,15 @@ class EvidenceService:
 
     @staticmethod
     def _record(row: EvidenceRecordRow, byte_size: int) -> EvidenceRecord:
+        effective_at = row.effective_at
+        recorded_at = row.recorded_at
+        if effective_at.tzinfo is None:
+            effective_at = effective_at.replace(tzinfo=UTC)
+        if recorded_at.tzinfo is None:
+            recorded_at = recorded_at.replace(tzinfo=UTC)
+        effective_until = row.effective_until
+        if effective_until is not None and effective_until.tzinfo is None:
+            effective_until = effective_until.replace(tzinfo=UTC)
         return EvidenceRecord(
             row.id,
             row.blob_sha256,
@@ -1956,9 +2275,11 @@ class EvidenceService:
             row.source,
             row.source_ref,
             EvidenceGrade(row.grade),
-            row.effective_at.isoformat(),
-            row.effective_until.isoformat() if row.effective_until else None,
-            row.recorded_at.isoformat(),
+            effective_at.astimezone(UTC).isoformat(),
+            effective_until.astimezone(UTC).isoformat()
+            if effective_until
+            else None,
+            recorded_at.astimezone(UTC).isoformat(),
             row.created_by,
             row.metadata_json,
         )

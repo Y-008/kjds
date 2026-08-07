@@ -1045,6 +1045,10 @@
           "source_url": {
             "title": "Source Url",
             "type": "string"
+          },
+          "store_ref": {
+            "title": "Store Ref",
+            "type": "string"
           }
         },
         "required": [
@@ -1054,7 +1058,8 @@
           "source_url",
           "observed_at",
           "declared_grade",
-          "license_status"
+          "license_status",
+          "store_ref"
         ],
         "title": "Body_capture_research_signal_v1_market_research_signals_post",
         "type": "object"
@@ -11664,6 +11669,189 @@
           "capabilities"
         ],
         "title": "RegistrationInput",
+        "type": "object"
+      },
+      "ResearchSignalEvidenceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_size": {
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "effective_at": {
+            "title": "Effective At",
+            "type": "string"
+          },
+          "effective_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Until"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "grade": {
+            "$ref": "#/components/schemas/EvidenceGrade"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ResearchSignalMetadataResponse"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_ref": {
+            "title": "Source Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sha256",
+          "byte_size",
+          "filename",
+          "content_type",
+          "source",
+          "source_ref",
+          "grade",
+          "effective_at",
+          "effective_until",
+          "recorded_at",
+          "created_by",
+          "metadata"
+        ],
+        "title": "ResearchSignalEvidenceResponse",
+        "type": "object"
+      },
+      "ResearchSignalMetadataResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "captured_at": {
+            "title": "Captured At",
+            "type": "string"
+          },
+          "declared_grade": {
+            "title": "Declared Grade",
+            "type": "string"
+          },
+          "evidence_role": {
+            "title": "Evidence Role",
+            "type": "string"
+          },
+          "license_status": {
+            "title": "License Status",
+            "type": "string"
+          },
+          "promotion_status": {
+            "title": "Promotion Status",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "provider_record_id": {
+            "title": "Provider Record Id",
+            "type": "string"
+          },
+          "raw_fields": {
+            "additionalProperties": true,
+            "title": "Raw Fields",
+            "type": "object"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_role",
+          "provider",
+          "provider_record_id",
+          "source_url",
+          "captured_at",
+          "raw_fields",
+          "license_status",
+          "review_status",
+          "declared_grade",
+          "promotion_status"
+        ],
+        "title": "ResearchSignalMetadataResponse",
+        "type": "object"
+      },
+      "ResearchSignalResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "automatic_listing": {
+            "const": false,
+            "title": "Automatic Listing",
+            "type": "boolean"
+          },
+          "automatic_procurement": {
+            "const": false,
+            "title": "Automatic Procurement",
+            "type": "boolean"
+          },
+          "candidate_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Candidate Refs",
+            "type": "array"
+          },
+          "decision_use": {
+            "const": "auxiliary_only_pending_independent_authority_review",
+            "title": "Decision Use",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ResearchSignalEvidenceResponse"
+          },
+          "integrity_valid": {
+            "title": "Integrity Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "evidence",
+          "candidate_refs",
+          "integrity_valid",
+          "decision_use",
+          "automatic_listing",
+          "automatic_procurement"
+        ],
+        "title": "ResearchSignalResponse",
         "type": "object"
       },
       "RevokeInput": {
@@ -24750,6 +24938,15 @@
         "parameters": [
           {
             "in": "query",
+            "name": "store_ref",
+            "required": true,
+            "schema": {
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "candidate_ref",
             "required": false,
             "schema": {
@@ -24773,13 +24970,51 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "cursor_recorded_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor Recorded At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor Id"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ResearchSignalResponse"
+                  },
+                  "title": "Response List Research Signals V1 Market Research Signals Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -24818,7 +25053,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSignalResponse"
+                }
               }
             },
             "description": "Successful Response"
