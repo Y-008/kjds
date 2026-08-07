@@ -164,9 +164,9 @@ def test_bas204_release_frees_closed_loop_and_migration_leases():
     assert engineering["current_task"]["task_id"] == "BAS-210"
     assert engineering["next_task_id"] is None
     assert registry["shared_write_leases"]["alembic_migration"] is None
-    assert registry["shared_write_leases"]["api_aggregation_root"] is None
+    assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-210"
     assert registry["shared_write_leases"]["master_spec"] is None
-    assert registry["shared_write_leases"]["openapi_snapshot"] is None
+    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-210"
     assert "BAS-204" not in registry["shared_write_leases"].values()
 
 def test_bas210_claims_lane_c_with_exact_research_inbox_scope():
@@ -184,11 +184,18 @@ def test_bas210_claims_lane_c_with_exact_research_inbox_scope():
             "research_inbox_reserved_evidence_fairness",
             "research_inbox_scope_no_data_tests",
             "bas210_remediation_evidence",
+            "research_inbox_capture_scope_binding",
+            "research_inbox_current_authority_route",
+            "research_inbox_keyset_api_contract",
+            "research_inbox_openapi_snapshot",
         ],
         "blocked_on": [],
     }
     assert engineering["next_task_id"] is None
-    assert "BAS-210" not in registry["shared_write_leases"].values()
+    assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-210"
+    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-210"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
+    assert registry["shared_write_leases"]["master_spec"] is None
     plan = PLAN_PATH.read_text(encoding="utf-8")
     bas210_row = next(
         line for line in plan.splitlines() if line.startswith("| BAS-210 |")
@@ -196,7 +203,9 @@ def test_bas210_claims_lane_c_with_exact_research_inbox_scope():
     assert "apps/control_plane/evidence.py" in bas210_row
     assert "apps/control_plane/research_inbox.py" in bas210_row
     assert "20260807_BAS_210_RESEARCH_INBOX_PAGINATION.md" in bas210_row
-    assert "不改 route/API/OpenAPI/migration/runtime" in bas210_row
+    assert "apps/control_plane/routers/product_content.py" in bas210_row
+    assert "docs/project/contracts/openapi-v1.json" in bas210_row
+    assert "不改 migration/runtime/事实/外写" in bas210_row
     assert bas210_row.endswith("| IN_PROGRESS |")
 
 
@@ -224,7 +233,12 @@ def test_bas212_release_record_and_bas210_execution_are_preserved():
     assert engineering["current_task"]["task_id"] == "BAS-210"
     assert engineering["next_task_id"] is None
     assert "BAS-212" not in registry["shared_write_leases"].values()
-    assert all(value is None for value in registry["shared_write_leases"].values())
+    assert registry["shared_write_leases"] == {
+        "alembic_migration": None,
+        "api_aggregation_root": "BAS-210",
+        "master_spec": None,
+        "openapi_snapshot": "BAS-210",
+    }
     plan = PLAN_PATH.read_text(encoding="utf-8")
     bas212_row = next(
         line for line in plan.splitlines() if line.startswith("| BAS-212 |")
@@ -257,7 +271,12 @@ def test_bas213_claims_lane_e_with_exact_project_governance_scope():
     assert risk["next_task_id"] is None
     assert engineering["current_task"]["task_id"] == "BAS-210"
     assert engineering["next_task_id"] is None
-    assert all(value is None for value in registry["shared_write_leases"].values())
+    assert registry["shared_write_leases"] == {
+        "alembic_migration": None,
+        "api_aggregation_root": "BAS-210",
+        "master_spec": None,
+        "openapi_snapshot": "BAS-210",
+    }
     plan = PLAN_PATH.read_text(encoding="utf-8")
     bas213_row = next(
         line for line in plan.splitlines() if line.startswith("| BAS-213 |")
@@ -277,8 +296,8 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "openapi_snapshot",
     }
     assert registry["shared_write_leases"]["alembic_migration"] is None
-    assert registry["shared_write_leases"]["openapi_snapshot"] is None
-    assert registry["shared_write_leases"]["api_aggregation_root"] is None
+    assert registry["shared_write_leases"]["openapi_snapshot"] == "BAS-210"
+    assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-210"
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["policy"]["legacy_in_progress_is_execution_lease"] is False
     assert registry["policy"]["current_task_is_execution_lease"] is True
