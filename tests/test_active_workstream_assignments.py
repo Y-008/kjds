@@ -162,12 +162,25 @@ def test_bas204_release_frees_closed_loop_and_migration_leases():
     engineering = lanes["C"]
 
     assert engineering["current_task"] is None
-    assert engineering["next_task_id"] is None
+    assert engineering["next_task_id"] == "BAS-210"
     assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert "BAS-204" not in registry["shared_write_leases"].values()
+
+def test_bas210_is_queued_as_next_research_inbox_follow_up():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+    engineering = lanes["C"]
+
+    assert engineering["current_task"] is None
+    assert engineering["next_task_id"] == "BAS-210"
+    assert "BAS-210" not in registry["shared_write_leases"].values()
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    assert "| BAS-210 |" in plan
+
+
 
 def test_bas176_holds_only_the_disposable_postgres_rehearsal_lane():
     registry = _registry()

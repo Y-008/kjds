@@ -56,7 +56,7 @@
       "name": "product_engineering",
       "accountable_role": "engineering_owner",
       "current_task": null,
-      "next_task_id": null
+      "next_task_id": "BAS-210"
     },
     {
       "id": "D",
