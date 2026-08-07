@@ -182,36 +182,22 @@ def test_bas210_is_queued_as_next_research_inbox_follow_up():
 
 
 
-def test_bas211_claims_lane_e_with_exact_g1_cleanup_scope():
+def test_bas211_release_frees_lane_e_and_preserves_bas210_queue():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     risk = lanes["E"]
+    engineering = lanes["C"]
 
-    assert risk["current_task"] == {
-        "task_id": "BAS-211",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-            "g1_owned_role_dependency_cleanup",
-            "g1_harness_recovery_phase",
-            "gdc_postgres_fixture_interrupted_run_recovery",
-            "g1_cleanup_contract_tests",
-            "bas211_remediation_evidence",
-        ],
-        "blocked_on": [],
-    }
+    assert risk["current_task"] is None
     assert risk["next_task_id"] is None
+    assert engineering["current_task"] is None
+    assert engineering["next_task_id"] == "BAS-210"
     assert "BAS-211" not in registry["shared_write_leases"].values()
     plan = PLAN_PATH.read_text(encoding="utf-8")
     assert "| BAS-211 |" in plan
-    assert "| IN_PROGRESS |" in plan
-def test_bas176_holds_only_the_disposable_postgres_rehearsal_lane():
-    registry = _registry()
-    lanes = {lane["id"]: lane for lane in registry["lanes"]}
-    risk = lanes["E"]
-
-    assert risk["current_task"]["task_id"] == "BAS-211"
-    assert risk["next_task_id"] is None
+    assert "`pg_shdepend`" in plan
+    assert "禁止 `DROP OWNED`" in plan
+    assert "| DONE_ENGINEERING |" in plan
 
 
 def test_shared_write_leases_and_authority_stay_fail_closed():
