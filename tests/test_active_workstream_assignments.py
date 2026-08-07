@@ -152,7 +152,7 @@ def test_data_cov_002_release_no_longer_owns_coverage_or_migration_leases():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     coverage = lanes["M"]
 
-    assert coverage["current_task"]["task_id"] == "BAS-215A"
+    assert coverage["current_task"] is None
     assert coverage["next_task_id"] is None
     assert "DATA-COV-002" not in registry["shared_write_leases"].values()
 
@@ -262,24 +262,13 @@ def test_bas213_release_frees_lane_e_and_preserves_bas210_release():
     assert bas213_row.endswith("| DONE_ENGINEERING |")
 
 
-def test_bas215a_claims_lane_m_with_exact_static_program_scope():
+def test_bas215a_release_frees_lane_m_after_static_program_commit():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     coverage = lanes["M"]
     engineering = lanes["C"]
 
-    assert coverage["current_task"] == {
-        "task_id": "BAS-215A",
-        "state": "in_progress",
-        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
-        "write_scope": [
-            "enterprise_ai_erp_program_module",
-            "enterprise_ai_erp_program_registry",
-            "enterprise_ai_erp_program_contract_tests",
-            "enterprise_ai_erp_program_evidence",
-        ],
-        "blocked_on": [],
-    }
+    assert coverage["current_task"] is None
     assert coverage["next_task_id"] is None
     assert engineering["current_task"] is None
     assert registry["shared_write_leases"] == {
@@ -298,7 +287,7 @@ def test_bas215a_claims_lane_m_with_exact_static_program_scope():
     assert "test_enterprise_ai_erp_program.py" in bas215a_row
     assert "20260807_BAS_215A_ENTERPRISE_AI_ERP_PROGRAM.md" in bas215a_row
     assert "不接 OperatingTask/runtime/router/API/OpenAPI/DB/Web" in bas215a_row
-    assert bas215a_row.endswith("| IN_PROGRESS |")
+    assert bas215a_row.endswith("| DONE_ENGINEERING |")
 
 
 def test_bas216a_claims_lane_l_without_shared_write_leases():
@@ -323,7 +312,7 @@ def test_bas216a_claims_lane_l_without_shared_write_leases():
     }
     assert intelligence["next_task_id"] is None
     assert engineering["current_task"] is None
-    assert coverage["current_task"]["task_id"] == "BAS-215A"
+    assert coverage["current_task"] is None
     assert registry["shared_write_leases"] == {
         "alembic_migration": None,
         "api_aggregation_root": None,
