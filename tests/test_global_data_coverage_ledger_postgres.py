@@ -111,13 +111,27 @@ def _g1_role_snapshot(connection) -> tuple[list[tuple], list[tuple]]:
     return roles, memberships
 
 
+def _set_g1_secrets(monkeypatch, *, token: str | None = None) -> str:
+    run_token = token or uuid4().hex + uuid4().hex
+    monkeypatch.setenv("KJDS_G1_RUN_TOKEN", run_token)
+    for name in (
+        "KJDS_G1_COVERAGE_ISSUER_PASSWORD",
+        "KJDS_G1_RUNTIME_PASSWORD",
+        "KJDS_G1_CLOE_ISSUER_PASSWORD",
+        "KJDS_G1_CLOE_EXPERIMENT_PASSWORD",
+        "KJDS_G1_CLOE_COST_PASSWORD",
+        "KJDS_G1_CLOE_OUTCOME_PASSWORD",
+        "KJDS_G1_CLOE_REVIEW_PASSWORD",
+    ):
+        monkeypatch.setenv(name, uuid4().hex + uuid4().hex)
+    return run_token
+
+
 def test_g1_run_lease_blocks_second_owner_and_preserves_first(monkeypatch):
     target_url = _g1_target_url()
     token_a = uuid4().hex + uuid4().hex
     token_b = uuid4().hex + uuid4().hex
-    monkeypatch.setenv("KJDS_G1_RUN_TOKEN", token_a)
-    monkeypatch.setenv("KJDS_G1_COVERAGE_ISSUER_PASSWORD", uuid4().hex + uuid4().hex)
-    monkeypatch.setenv("KJDS_G1_RUNTIME_PASSWORD", uuid4().hex + uuid4().hex)
+    _set_g1_secrets(monkeypatch, token=token_a)
     g1_database_manager.manage("acquire", target_url)
     g1_database_manager.manage("recreate", target_url)
     owner_engine = create_engine(target_url)
@@ -148,6 +162,37 @@ def test_g1_run_lease_blocks_second_owner_and_preserves_first(monkeypatch):
     with create_engine(DATABASE_URL).connect() as admin:
         assert not g1_database_manager._database_exists(admin)
         assert g1_database_manager._existing_roles(admin) == []
+
+
+def test_g1_role_password_server_literal_and_invalid_secret_cleanup(monkeypatch):
+    target_url = _g1_target_url()
+    admin_engine = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
+    raw = "quoted'value\nwith-control"
+    with admin_engine.connect() as admin:
+        literal = g1_database_manager._server_literal(admin, raw)
+        assert admin.scalar(text(f"SELECT {literal}")) == raw
+    token = _set_g1_secrets(monkeypatch)
+    monkeypatch.setenv("KJDS_G1_CLOE_COST_PASSWORD", raw)
+    try:
+        g1_database_manager.manage("acquire", target_url)
+        with pytest.raises(RuntimeError, match="credential.*invalid"):
+            g1_database_manager.manage("recreate", target_url)
+        with admin_engine.connect() as admin:
+            assert not g1_database_manager._database_exists(admin)
+            assert g1_database_manager._existing_roles(admin) == []
+        g1_database_manager.manage("drop", target_url)
+    finally:
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", token)
+        with admin_engine.connect() as admin:
+            if admin.scalar(text("SELECT to_regclass(:table_name)"), {"table_name": g1_database_manager.LEASE_TABLE}):
+                admin.execute(
+                    text(
+                        f"DELETE FROM {g1_database_manager.LEASE_TABLE} "
+                        "WHERE lease_id=:lease_id"
+                    ),
+                    {"lease_id": g1_database_manager.LEASE_ID},
+                )
+        admin_engine.dispose()
 
 
 def test_g1_role_exists_failure_cleanup_preserves_preexisting_grants(monkeypatch):
