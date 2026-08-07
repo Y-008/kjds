@@ -249,26 +249,13 @@ def test_bas212_release_record_and_bas210_execution_are_preserved():
     assert bas212_row.endswith("| DONE_ENGINEERING |")
 
 
-def test_bas213_claims_lane_e_with_exact_project_governance_scope():
+def test_bas213_release_frees_lane_e_and_preserves_bas210_and_shared_leases():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     risk = lanes["E"]
     engineering = lanes["C"]
 
-    assert risk["current_task"] == {
-        "task_id": "BAS-213",
-        "state": "in_progress",
-        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
-        "write_scope": [
-            "project_entry_documentation",
-            "frontier_review_agent_policy",
-            "project_documentation_navigation",
-            "frontier_review_evidence",
-            "frontier_registry_contract_tests",
-            "frontier_registry_material_change",
-        ],
-        "blocked_on": [],
-    }
+    assert risk["current_task"] is None
     assert risk["next_task_id"] is None
     assert engineering["current_task"]["task_id"] == "BAS-210"
     assert engineering["next_task_id"] is None
@@ -285,7 +272,7 @@ def test_bas213_claims_lane_e_with_exact_project_governance_scope():
     assert "frontier technology registry" in bas213_row
     assert "20260807_PROJECT_ENTRY_AND_FRONTIER_REVIEW_GOVERNANCE.md" in bas213_row
     assert "不升级依赖" in bas213_row
-    assert bas213_row.endswith("| IN_PROGRESS |")
+    assert bas213_row.endswith("| DONE_ENGINEERING |")
 
 
 def test_shared_write_leases_and_authority_stay_fail_closed():
