@@ -196,19 +196,7 @@
       "id": "L",
       "name": "strategic_intelligence",
       "accountable_role": "strategy_and_capital_allocation_owner",
-      "current_task": {
-        "task_id": "BAS-216A",
-        "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
-        "write_scope": [
-          "marketplace_research_workflow_contract",
-          "sellersprite_source_receipt_fixture",
-          "marketplace_research_normalization",
-          "proposal_only_opportunity_scoring",
-          "bas216a_tests_and_evidence"
-        ],
-        "blocked_on": []
-      },
+      "current_task": null,
       "next_task_id": null
     },
     {

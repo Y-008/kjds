@@ -136,12 +136,12 @@ def test_bas196_release_frees_local_demo_lane():
     assert "BAS-196" not in registry["shared_write_leases"].values()
 
 
-def test_bas201_release_allows_bas216a_without_shared_writes():
+def test_bas201_and_bas216a_releases_leave_lane_l_unleased():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     strategic = lanes["L"]
 
-    assert strategic["current_task"]["task_id"] == "BAS-216A"
+    assert strategic["current_task"] is None
     assert strategic["next_task_id"] is None
     assert "BAS-201" not in registry["shared_write_leases"].values()
     assert "BAS-216A" not in registry["shared_write_leases"].values()
@@ -290,26 +290,14 @@ def test_bas215a_release_frees_lane_m_after_static_program_commit():
     assert bas215a_row.endswith("| DONE_ENGINEERING |")
 
 
-def test_bas216a_claims_lane_l_without_shared_write_leases():
+def test_bas216a_release_frees_lane_l_without_shared_write_leases():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     intelligence = lanes["L"]
     engineering = lanes["C"]
     coverage = lanes["M"]
 
-    assert intelligence["current_task"] == {
-        "task_id": "BAS-216A",
-        "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
-        "write_scope": [
-            "marketplace_research_workflow_contract",
-            "sellersprite_source_receipt_fixture",
-            "marketplace_research_normalization",
-            "proposal_only_opportunity_scoring",
-            "bas216a_tests_and_evidence",
-        ],
-        "blocked_on": [],
-    }
+    assert intelligence["current_task"] is None
     assert intelligence["next_task_id"] is None
     assert engineering["current_task"] is None
     assert coverage["current_task"] is None
@@ -328,7 +316,7 @@ def test_bas216a_claims_lane_l_without_shared_write_leases():
     assert "bas216a_sellersprite_mcp_v1.json" in bas216a_row
     assert "fixture/manual export" in bas216a_row
     assert "不改依赖、DB/migration/runtime/router/API/OpenAPI/Web/G1" in bas216a_row
-    assert bas216a_row.endswith("| IN_PROGRESS |")
+    assert bas216a_row.endswith("| DONE_ENGINEERING |")
 
 
 def test_shared_write_leases_and_authority_stay_fail_closed():
