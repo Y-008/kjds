@@ -193,6 +193,7 @@ def test_bas211_claims_lane_e_with_exact_g1_cleanup_scope():
         "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
         "write_scope": [
             "g1_owned_role_dependency_cleanup",
+            "g1_harness_recovery_phase",
             "gdc_postgres_fixture_interrupted_run_recovery",
             "g1_cleanup_contract_tests",
             "bas211_remediation_evidence",
