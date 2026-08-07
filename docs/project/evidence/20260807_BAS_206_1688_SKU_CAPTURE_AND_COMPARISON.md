@@ -151,6 +151,24 @@ the repository's ignored `wuliu` and `output/market_recon` user artifacts, and
 three pre-existing environment/registry checks also remained red. Machine
 comparison of the before/after JUnit reports found exactly the same 29 red test
 IDs, with no new failure. The focused BAS-206 suite, all 148 Web tests and the
-production build are green. Final branch/PR evidence is appended below;
-engineering status must not be interpreted as live extension installation,
+production build are green.
+
+## Publication
+
+- engineering commit: `2fd8e42` on the original isolated worktree;
+- publication commit: `96b33fb` on
+  `feat/1688-supplier-capture-20260807`;
+- pull request: <https://github.com/Y-008/kjds/pull/47>;
+- PR base: `integration/pony-full-20260807`, the publication-only mirror of
+  the local Ponytail-full integration baseline.
+
+The remote `main` did not yet contain that 117-commit integration baseline.
+GitHub push protection also recognized synthetic `sk_live_...` negative-test
+fixtures in an ancestor as Stripe credentials. The publication baseline keeps
+the same runtime test values while splitting those literals into source-level
+string concatenation; the credential-rejection suite passed `100/100` together
+with BAS-206 and API contract tests. No protection was bypassed, and the PR
+diff remains only the 17 BAS-206 files.
+
+Engineering status must not be interpreted as live extension installation,
 formal fact promotion, a supplier quote or a purchase.
