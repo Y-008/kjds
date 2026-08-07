@@ -289,6 +289,52 @@
     return null;
   }
 
+  function materialComparisonDimensions(attributes, title) {
+    const rawMaterial = materialSignal(attributes);
+    if (!rawMaterial) return {};
+    const material = /牛津布|oxford\s*cloth/i.test(rawMaterial)
+      ? "oxford_cloth" : clean(rawMaterial, 500);
+    if (!material) return {};
+    const context = `${rawMaterial} ${String(title ?? "")}`;
+    const finish = [];
+    if (/加厚|thickened?/i.test(context)) finish.push("thickened");
+    if (/防水|waterproof/i.test(context)) finish.push("waterproof");
+    return {
+      material,
+      ...(finish.length ? { material_finish: finish.join("+") } : {}),
+    };
+  }
+
+  function priceTiersForSku(priceTiers, skuPrice) {
+    if (!priceTiers.length) return [];
+    const priceKey = String(skuPrice);
+    if (!priceTiers.some((tier) => String(tier.price) === priceKey)) {
+      return [];
+    }
+    const quantityCounts = new Map();
+    for (const tier of priceTiers) {
+      quantityCounts.set(
+        tier.minimum_quantity,
+        (quantityCounts.get(tier.minimum_quantity) ?? 0) + 1,
+      );
+    }
+    const hasAmbiguousQuantity = Array.from(quantityCounts.values()).some(
+      (count) => count > 1,
+    );
+    const candidates = hasAmbiguousQuantity
+      ? priceTiers.filter((tier) => String(tier.price) === priceKey)
+      : priceTiers;
+    const unique = new Map();
+    for (const tier of candidates) {
+      const existing = unique.get(tier.minimum_quantity);
+      if (existing && existing.price !== tier.price) return [];
+      unique.set(tier.minimum_quantity, tier);
+    }
+    return Array.from(unique.values()).sort(
+      (left, right) => left.minimum_quantity - right.minimum_quantity,
+    );
+  }
+
   function feGlobalsOfferLoginId() {
     const pattern = /(?:["']?offerLoginId["']?)\s*:\s*(["'])([^"'\\]{1,240})\1/;
     for (const script of Array.from(document.scripts).slice(0, 200)) {
@@ -447,16 +493,17 @@
       if (!skuId || !specId || !variantKey || price === null) continue;
       const stock = nonnegativeInteger(raw.canBookCount ?? raw.stock);
       const saleCount = nonnegativeInteger(raw.saleCount);
+      const skuPriceTiers = priceTiersForSku(priceTiers, price);
       const auxiliaryVariant = auxiliaryVariantSignal(variantKey);
       const packCount = packCountSignal(variantKey)
         ?? (auxiliaryVariant ? null : packCountSignal(title));
       const size = sizeSignal(variantKey) ?? sizeSignal(title);
-      const material = materialSignal(attributes);
+      const materialDimensions = materialComparisonDimensions(attributes, title);
       const comparisonDimensions = {};
       if (categoryId) comparisonDimensions.category_id = categoryId;
       if (packCount) comparisonDimensions.pack_count = packCount;
       if (size) comparisonDimensions.size = size;
-      if (material) comparisonDimensions.material = material;
+      Object.assign(comparisonDimensions, materialDimensions);
       if (unit) comparisonDimensions.trade_unit = unit;
       if (auxiliaryVariant) {
         comparisonDimensions.variant_role = "auxiliary_or_customization";
@@ -502,7 +549,7 @@
           ...(unit ? { trade_unit: unit } : {}),
           ...(unitWeight !== null ? { unit_weight_kg_signal: String(unitWeight) } : {}),
           ...(priceRange ? { advertised_price_range: priceRange } : {}),
-          ...(priceTiers.length ? { price_tiers: priceTiers } : {}),
+          ...(skuPriceTiers.length ? { price_tiers: skuPriceTiers } : {}),
           ...(auxiliaryVariant
             ? { comparison_exclusion: "auxiliary_or_customization_variant" }
             : {}),

@@ -225,6 +225,10 @@ def list_browser_captures(
     store_ref: str = "ozon-primary",
     as_of: str | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    reference_quantity: Annotated[
+        int,
+        Query(ge=1, le=1_000_000),
+    ] = 1,
 ):
     ensure_role(
         principal,
@@ -245,6 +249,7 @@ def list_browser_captures(
             store_ref=store_ref,
             as_of=cutoff,
             limit=limit,
+            reference_quantity=reference_quantity,
         )
     )
 

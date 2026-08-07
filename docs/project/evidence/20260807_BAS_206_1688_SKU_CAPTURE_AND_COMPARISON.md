@@ -35,12 +35,14 @@ cross the staging boundary without remapping. These are immutable internal
 staging, not Canonical Product, Supplier Offer, actual cost, formal sales or an
 external write.
 
-The inbox collection additionally projects `kjds-sourcing-comparison/1.0`.
+The inbox collection additionally projects `kjds-sourcing-comparison/1.1`.
 It uses only the newest intact detail snapshot per marketplace/offer, excludes
-cross-snapshot supplier drift, and keeps every exact row visible. At reference
-quantity one, unknown MOQ, MOQ above one, unavailable stock and non-public-unit
-price bases cannot enter the minimum-price rank. Search cards remain a detail
-enrichment queue.
+cross-snapshot supplier drift, and keeps every exact row visible. It retains
+the captured row price and complete row-local public tiers, then derives an
+effective public price for the selected reference quantity. Unknown MOQ, MOQ
+above the selected quantity, unavailable stock, an explicit tier set with no
+applicable quantity and non-public-unit price bases cannot enter the
+minimum-price rank. Search cards remain a detail enrichment queue.
 
 ## Real public-page observation used for acceptance design
 
@@ -155,7 +157,7 @@ The later replay accepted 11/11 exact SKU/spec rows for `600528999073`.
 and `Material=Oxford cloth`; the provider now recognizes explicit Chinese and
 English pack counts while retaining exact material text. All 11 row-local
 `discountPrice` values were CNY `8.20`, MOQ was 1, 10 rows were in stock and
-one was out of stock. The same trade model froze tiers of CNY `8.20` for
+one was out of stock. The same trade model froze row-local tiers of CNY `8.20` for
 quantity 1–99, `8.00` for 100–999 and `7.80` from 1000. Other CLI display
 signals (`10.79/11.20` and `7.79/8.20`) did not overwrite that row-local SSR
 contract; they remain separate unresolved price presentations.
@@ -177,6 +179,86 @@ not collapse `Oxford cloth` into `waterproof thickened Oxford cloth`; the
 mechanical difference between CNY 8.20 and 9.90 is therefore not a same-BOM
 lowest-price conclusion. No row was promoted to a quote, cost or profit fact.
 
+## Row-local tier isolation and quantity-aware same-BOM acceptance
+
+A later current-document replay exposed a critical offer-level ambiguity in
+`38547222320`: `offerPriceModel.currentPrices` contained two entries with the
+same `minimum_quantity=1`, one at CNY `3.90` for the three-piece SKU/BOM and
+one at CNY `9.90` for the six-piece SKUs. Copying that offer-level list into
+every row would leak the three-piece price into the six-piece variants and
+would correctly be rejected by the server's unique-tier-quantity validation.
+
+The provider now binds tiers to each SKU's own row price. When an offer-level
+quantity bucket is ambiguous it retains only entries whose price equals that
+SKU row; if a unique mapping still cannot be formed, it emits no tier rather
+than guessing. The real replay therefore produced one `1+=3.90` tier for the
+three-piece row and one `1+=9.90` tier for each six-piece row. All 9/9 exact
+SKU/spec rows survived service preflight, and every ERP staging
+`source_observation` exactly equaled its normalized item.
+
+A fourth real detail page, offer `992456786229`, produced 9/9 exact rows for
+the same normalized six-piece BOM dimensions as `38547222320`:
+`category_id=1036894`, `material=oxford_cloth`,
+`material_finish=thickened+waterproof`, `pack_count=6`, `trade_unit=件`.
+Eight rows were in stock and one was out of stock. The row price was CNY
+`8.50`, the page MOQ was 2, and the unambiguous public tiers were `1+=8.50`,
+`200+=8.40`, `1000+=8.30`. The tier starting at one does not override the
+separate MOQ gate.
+
+All four real envelopes were replayed through current server code into one
+temporary Evidence store. Preflight returned 9, 11, 8 and 9 exact ERP staging
+rows respectively for offers `38547222320`, `600528999073`,
+`675097513713` and `992456786229`. The same-BOM comparison was:
+
+| reference quantity | exact offers | eligible offers | lowest effective public unit price | status |
+|---:|---:|---:|---:|---|
+| 1 | 2 | 1 | `9.90 CNY` (`38547222320`) | `insufficient_exact_offers`; `992456786229` blocked by MOQ 2 |
+| 2 | 2 | 2 | `8.50 CNY` (`992456786229`) | `comparable` |
+
+The private acceptance artifact is
+`1688-sourcing-comparison-38547222320-600528999073-675097513713-992456786229-20260807.json`
+with SHA-256
+`cdb7cabeea037a0c030f643df312434037b9918140d2904bc92b91e8e2c16b21`.
+Its controls keep Supplier Offer, actual cost, Product, Listing and external
+write false. The CNY 8.50 result is a quantity-aware public-page comparison,
+not a supplier quotation, checkout total, landed cost, profit or purchase
+authorization.
+
+## SellerSprite MCP workflow benchmark and KJDS mapping
+
+The user-submitted Xiaohongshu short link no longer returned the referenced
+note content during the dated review, so no claim was copied from that note.
+The benchmark instead used SellerSprite's official MCP/API documentation and
+the MIT-declared community repository
+[`liangdabiao/amazon-sorftime-research-MCP-skill`](https://github.com/liangdabiao/amazon-sorftime-research-MCP-skill).
+SellerSprite's official MCP page exposed a natural-language research surface
+covering product, market, competitor, keyword, traffic, review, pricing and
+advertising scenarios, while its product API supports field-selective
+responses. The official usage policy separates individual MCP use from
+multi-user/internal system integration and directs integration use cases to
+the API contract.
+
+KJDS borrows the workflow shape, not Amazon truth or provider authority:
+
+1. start from an anchor SKU/BOM and one explicit research question;
+2. issue bounded read-only source queries, requesting only required fields;
+3. retain immutable raw responses before normalization;
+4. label field definitions, units, scale, sample size, time range, missing
+   fields and fallback path;
+5. bind supplier offer/SKU/spec and quantity price before comparison;
+6. generate normalized JSON plus a human report with contradictions and
+   blockers, while retaining original data;
+7. promote nothing until KJDS's existing Evidence, RFQ, independent review,
+   CM3, approval and readback Gates pass.
+
+This maps into the existing `BrowserCaptureInbox`, source-adapter, Evidence,
+Market Recon and workbench seams; no second research framework or provider
+truth store is introduced. No SellerSprite account, subscription, key, paid
+call or KJDS adapter was configured. Any future system integration requires a
+licensed, provider-neutral read-only API adapter and real sample reconciliation;
+Amazon estimates can never be represented as Ozon demand, sales, price,
+Supplier Offer or profit facts.
+
 ## Source and license record
 
 The current-document parsing approach was informed by the MIT-licensed
@@ -186,6 +268,16 @@ The current-document parsing approach was informed by the MIT-licensed
 separate from search-card minimum prices. KJDS implements a smaller independent
 active-document adapter and retains the project/link/license attribution. It
 does not copy the CLI browser/session framework into the extension.
+
+The SellerSprite workflow review used the provider's official
+[MCP](https://open.sellersprite.com/mcp),
+[usage policy](https://open.sellersprite.com/help/36),
+[product API](https://open.sellersprite.com/api/2),
+[market API](https://open.sellersprite.com/api/29) and
+[Codex setup](https://open.sellersprite.com/mcp/40) pages plus the MIT-declared
+community workflow repository cited above. These are C-tier product and
+workflow references; they are not runtime dependencies or KJDS operating
+facts.
 
 ## Changed interfaces and implementation
 
@@ -209,29 +301,42 @@ interception or background pagination.
 ## Verification
 
 - `uv run python scripts/verify_secrets.py` — passed; 1378 non-ignored files
-  and 1405 historical paths checked at the final pre-commit run.
+  and 1420 historical paths checked at the final pre-commit run.
 - `uv run ruff check .` — passed.
-- focused backend and API contract: `61 passed` across
+- focused backend and API contract: `62 passed` across
   `tests/test_browser_capture_inbox.py` and `tests/test_api_contract.py`, using
   the repository's complete 126-table file-backed test runtime.
+- competitive-pattern registry: `1 passed`, including the SellerSprite
+  workflow-only admission and existing-seam mapping.
 - Web/node: `149 passed`, including serialized SSR exact mapping, promotional
-  `skuMap`, lossless ERP projection contract and search-card candidate tests.
+  `skuMap`, row-local tier isolation, lossless ERP projection contract and
+  search-card candidate tests.
 - `npm run build` — passed; TypeScript and 63-page Next.js production build.
 - `node --check` for extension scripts and `git diff --check` — passed.
+- Alembic reports exactly one head, `20260805_0096`. A fresh local Compose
+  PostgreSQL replay advanced from base through `20260803_0094`, then migration
+  0095 failed closed because the dedicated DATA-COV issuer roles had not been
+  provisioned in that ad-hoc database. This slice adds no migration and does
+  not bypass the pre-existing role contract; local `/health/ready` is therefore
+  not claimed by this run, and the governed G-1/PostgreSQL environment remains
+  the acceptance path for that infrastructure prerequisite.
 
-The final full repository run completed `2561 passed, 241 skipped`; its
+The final full repository run completed `2562 passed, 241 skipped`; its
 remaining `25 failed, 4 errors` were outside BAS-206: the clean worktree lacks
 the repository's ignored `wuliu` and `output/market_recon` user artifacts, and
 three pre-existing environment/registry checks also remained red. Machine
 comparison of the before/after JUnit reports found exactly the same 29 red test
-IDs, with no new failure. The focused BAS-206 suite, all 148 Web tests and the
+IDs, with no new failure. The focused BAS-206 suite, all 149 Web tests and the
 production build are green.
 
 ## Publication
 
 - engineering commit: `2fd8e42` on the original isolated worktree;
-- publication commit: `96b33fb` on
+- initial publication commit: `96b33fb` on
   `feat/1688-supplier-capture-20260807`;
+- lossless ERP and translated-dimension follow-ups: `fdd6c0b`, `33c7b6b`;
+- quantity-tier engineering source commit: `2a9a50d`, mirrored into the same
+  publication branch by the current cherry-pick;
 - pull request: <https://github.com/Y-008/kjds/pull/47>;
 - PR base: `integration/pony-full-20260807`, the publication-only mirror of
   the local Ponytail-full integration baseline.
@@ -242,7 +347,14 @@ fixtures in an ancestor as Stripe credentials. The publication baseline keeps
 the same runtime test values while splitting those literals into source-level
 string concatenation; the credential-rejection suite passed `100/100` together
 with BAS-206 and API contract tests. No protection was bypassed, and the PR
-diff remains only the 17 BAS-206 files.
+contains only shared BAS-206/benchmark files; no private `.runtime` startup
+artifact is committed.
 
 Engineering status must not be interpreted as live extension installation,
 formal fact promotion, a supplier quote or a purchase.
+
+`npm audit` additionally reports the pre-existing indirect
+`Next -> PostCSS -> nanoid 3.3.16` advisory. This slice did not change
+`package.json` or `package-lock.json`; upgrading the transitive dependency is
+deferred to a separate dependency review instead of mixing it with the 1688
+data-contract PR.

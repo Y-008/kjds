@@ -5,6 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchJson } from "../../lib/fetch-json";
 import styles from "./browser-capture-inbox.module.css";
 
+type PriceTier = {
+  minimum_quantity: number;
+  price: string;
+};
+
 type Envelope = {
   contract_version:
     | "kjds-browser-capture-envelope/1.0"
@@ -65,6 +70,7 @@ type Envelope = {
     confidence?: string;
     market_signals?: Record<string, unknown>;
     supply_signals?: Record<string, unknown>;
+    price_tiers?: PriceTier[];
     media_rights_status: "unverified_external_reference";
   }>;
   confirmed: true;
@@ -114,6 +120,7 @@ type ErpStaging = {
     currency: string;
     price_kind: string;
     price_contract: string;
+    price_tiers: PriceTier[];
     min_order_quantity: number | null;
     availability: string;
     specifications: Record<string, string>;
@@ -151,7 +158,9 @@ type ErpStaging = {
 };
 
 type SourcingComparison = {
-  contract_id: "kjds-sourcing-comparison/1.0";
+  contract_id:
+    | "kjds-sourcing-comparison/1.0"
+    | "kjds-sourcing-comparison/1.1";
   status: "comparable" | "requires_more_exact_offers" | "no_data";
   reference_quantity: number;
   latest_exact_offer_count: number;
@@ -189,12 +198,20 @@ type SourcingComparisonRow = {
   spec_id: string;
   variant_key: string;
   unit_price: string;
+  effective_unit_price: string | null;
+  effective_price_source:
+    | "captured_public_unit_price"
+    | "public_price_tier"
+    | "no_public_price_tier_for_quantity";
+  applied_price_tier_minimum_quantity: number | null;
+  price_tiers: PriceTier[];
   currency: string;
   min_order_quantity: number | null;
   availability: string;
   eligibility:
     | "eligible_public_display_price"
     | "reference_quantity_below_moq"
+    | "quantity_price_unverified"
     | "moq_unverified"
     | "out_of_stock"
     | "availability_unverified"
@@ -373,6 +390,8 @@ export function BrowserCaptureInboxConsole() {
     "loading" | "idle" | "preflighting" | "saving" | "saved" | "error"
   >("loading");
   const [detail, setDetail] = useState<string | null>(null);
+  const [referenceQuantity, setReferenceQuantity] = useState(1);
+  const [referenceQuantityDraft, setReferenceQuantityDraft] = useState("1");
   const [extensionId, setExtensionId] = useState<string | null | undefined>(
     undefined,
   );
@@ -384,11 +403,11 @@ export function BrowserCaptureInboxConsole() {
 
   const loadInbox = useCallback(async () => {
     const response = await fetchJson<Inbox>(
-      `/backend/v1/browser-capture-inbox/submissions?store_ref=${encodeURIComponent(STORE_REF)}`,
+      `/backend/v1/browser-capture-inbox/submissions?store_ref=${encodeURIComponent(STORE_REF)}&reference_quantity=${referenceQuantity}`,
       { cache: "no-store" },
     );
     setInbox(await responsePayload<Inbox>(response));
-  }, []);
+  }, [referenceQuantity]);
 
   useEffect(() => {
     if (extensionId === undefined) return;
@@ -588,7 +607,13 @@ export function BrowserCaptureInboxConsole() {
                           <td><code>{row.external_item_id}</code></td>
                           <td><code>{row.product_identity.sku_id ?? "unknown"}</code><small>{row.product_identity.spec_id ?? "unknown"}</small></td>
                           <td>{row.variant_key}<small>{Object.entries(row.comparison_dimensions ?? {}).map(([key, value]) => `${key}=${value}`).join(" · ") || "comparison dimensions missing"}</small></td>
-                          <td><strong>{row.displayed_price} {row.currency}</strong><small>{row.price_kind}</small></td>
+                          <td>
+                            <strong>{row.displayed_price} {row.currency}</strong>
+                            <small>{row.price_kind}</small>
+                            <small>
+                              {(row.price_tiers ?? []).map((tier) => `${tier.minimum_quantity}+=${tier.price}`).join(" · ") || "no explicit tiers"}
+                            </small>
+                          </td>
                           <td><span>{String(row.supply_signals?.stock_count ?? "unknown")} / {String(row.market_signals?.sku_sale_count_signal ?? "unknown")}</span></td>
                           <td data-state={mapping?.mapping_status ?? "pending_preflight"}>
                             {mapping?.mapping_status ?? "pending_preflight"}
@@ -598,6 +623,7 @@ export function BrowserCaptureInboxConsole() {
                                 {` · ${mapping.availability}`}
                                 {` · stock=${String(mapping.supply_signals.stock_count ?? "unknown")}`}
                                 {` · sales=${String(mapping.market_signals.sku_sale_count_signal ?? "unknown")}`}
+                                {` · tiers=${mapping.price_tiers.map((tier) => `${tier.minimum_quantity}+=${tier.price}`).join("/") || "not observed"}`}
                               </small>
                             ) : null}
                           </td>
@@ -694,9 +720,42 @@ export function BrowserCaptureInboxConsole() {
                 <p>SOURCING COMPARISON · QTY {inbox.sourcing_comparison.reference_quantity}</p>
                 <h2>跨供应商同维度比价</h2>
               </div>
-              <strong data-state={inbox.sourcing_comparison.status}>
-                {inbox.sourcing_comparison.status}
-              </strong>
+              <div className={styles.comparisonActions}>
+                <form onSubmit={(event) => {
+                  event.preventDefault();
+                  const parsed = Number(referenceQuantityDraft);
+                  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1_000_000) {
+                    setDetail("采购比价数量必须是 1–1000000 的整数");
+                    setState("error");
+                    return;
+                  }
+                  setDetail(null);
+                  if (parsed === referenceQuantity) {
+                    loadInbox().catch((error: unknown) => {
+                      setDetail(error instanceof Error ? error.message : "比价刷新失败");
+                      setState("error");
+                    });
+                    return;
+                  }
+                  setReferenceQuantity(parsed);
+                }}>
+                  <label htmlFor="sourcing-reference-quantity">采购数量</label>
+                  <input
+                    id="sourcing-reference-quantity"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={1_000_000}
+                    step={1}
+                    value={referenceQuantityDraft}
+                    onChange={(event) => setReferenceQuantityDraft(event.target.value)}
+                  />
+                  <button type="submit">按数量比价</button>
+                </form>
+                <strong data-state={inbox.sourcing_comparison.status}>
+                  {inbox.sourcing_comparison.status}
+                </strong>
+              </div>
             </div>
             <div className={styles.comparisonMetrics}>
               <span>最新详情 offer <strong>{inbox.sourcing_comparison.latest_exact_offer_count}</strong></span>
@@ -718,14 +777,18 @@ export function BrowserCaptureInboxConsole() {
                     </summary>
                     <div className={styles.tableScroll}>
                       <table>
-                        <thead><tr><th>供应商 / Offer</th><th>SKU / Spec</th><th>规格</th><th>公开单价</th><th>MOQ / 库存</th><th>资格</th></tr></thead>
+                        <thead><tr><th>供应商 / Offer</th><th>SKU / Spec</th><th>规格</th><th>采集价 / 数量价</th><th>完整阶梯价</th><th>MOQ / 库存</th><th>资格</th></tr></thead>
                         <tbody>
                           {group.rows.map((row) => (
                             <tr key={`${row.capture_id}:${row.sku_id}:${row.spec_id}`}>
                               <td>{row.supplier_ref}<small>{row.offer_id}</small></td>
                               <td><code>{row.sku_id}</code><small>{row.spec_id}</small></td>
                               <td>{row.variant_key}</td>
-                              <td><strong>{row.unit_price} {row.currency}</strong></td>
+                              <td>
+                                <strong>{row.unit_price} / {row.effective_unit_price ?? "unverified"} {row.currency}</strong>
+                                <small>{row.effective_price_source}{row.applied_price_tier_minimum_quantity ? ` · tier ${row.applied_price_tier_minimum_quantity}+` : ""}</small>
+                              </td>
+                              <td>{row.price_tiers.map((tier) => `${tier.minimum_quantity}+=${tier.price}`).join(" · ") || "not observed"}</td>
                               <td>{row.min_order_quantity ?? "unknown"} / {row.availability}</td>
                               <td data-state={row.eligibility}>{row.eligibility}</td>
                             </tr>

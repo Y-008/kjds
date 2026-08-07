@@ -186,17 +186,22 @@ The keyword-search button only opens a normal 1688 search tab from the active
 page title. It does not claim official same-product identity. Search cards are
 discovery candidates until their own detail pages provide exact SKU evidence.
 
-The list read model exposes `kjds-sourcing-comparison/1.0` across captured
+The list read model exposes `kjds-sourcing-comparison/1.1` across captured
 offers. It selects only the newest intact detail snapshot for each
 marketplace/offer tuple, so recaptures never inflate supplier count. If the
 same offer has different supplier identities across snapshots, that offer is
 excluded as supplier drift rather than represented as two suppliers.
 Rows must have exact SKU/spec identity, category and trade unit plus at least
-two discriminating dimensions from pack count, size and material. The default
-reference quantity is one: out-of-stock rows, unknown MOQ, MOQ above one and
-non-public-unit price bases remain visible but are ineligible for the minimum
-rank. The result retains every exact row and source hash while explicitly
-keeping freight, tax, formal cost and external write false.
+two discriminating dimensions from pack count, size and material. A caller may
+select a reference quantity from 1 to 1,000,000. The server chooses the
+applicable public tier with the greatest `minimum_quantity` not exceeding that
+quantity; if a row has explicit tiers but none applies, it remains visible as
+`quantity_price_unverified` and cannot enter the minimum rank. Out-of-stock
+rows, unknown MOQ, MOQ above the reference quantity and non-public-unit price
+bases are likewise visible but ineligible. The result retains captured price,
+effective quantity price, applied tier, all tiers, every exact row and source
+hash while explicitly keeping freight, tax, formal cost and external write
+false.
 
 `kjds-erp-sourcing-staging/1.1` makes the row projection lossless at the ERP
 boundary. In addition to flattened supplier/offer/SKU/spec/variant/price
@@ -225,11 +230,27 @@ card, base and promotion prices are never joined across matrices. This allows
 an exact promotional matrix without turning a first-order search-card price
 into the price of every SKU.
 
+Offer-level `currentPrices` may contain multiple rows with the same
+`minimum_quantity` because those rows belong to different SKU/BOM prices. The
+provider may attach a tier set to a SKU only when that set contains the SKU's
+own row price. If minimum-quantity buckets are ambiguous, it retains only
+entries matching that row-local price; any remaining conflict produces no
+tier rather than copying an offer minimum across the matrix. The server then
+requires unique integer tier quantities and valid decimal prices before the
+lossless ERP projection or quantity comparison is produced.
+
 Comparison-dimension extraction treats Chinese and 1688-served English
 translations of an explicit pack count as the same scalar (`六件套`,
 `6-piece`, `six-piece`, `6 pcs`). This does not normalize away material,
 category, size or trade-unit differences; matching pack count alone never
 makes two offers comparable.
+
+For explicit Oxford-cloth attributes, comparison uses a language-neutral
+`material=oxford_cloth` family plus a separately derived, ordered
+`material_finish` (`thickened`, `waterproof`) from the admitted material/title
+text. Raw wording remains in specifications. A missing material attribute is
+never filled from title alone, and plain Oxford cloth does not equal
+thickened/waterproof Oxford cloth.
 The current-document parsing approach was informed by the MIT-licensed
 `superjack2050/1688-cli` project; KJDS retains a small independent adapter and
 license/source attribution rather than copying its browser/session framework.

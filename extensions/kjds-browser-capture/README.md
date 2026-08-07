@@ -40,11 +40,20 @@ Pack-count extraction accepts both Chinese product titles and the English
 translations that 1688 may serve (`六件套`, `6-piece`, `six-piece`, `6 pcs`);
 it never equates different materials or missing dimensions merely because the
 count matches.
+Oxford-cloth comparison uses a language-neutral `oxford_cloth` family and a
+separate ordered finish signal. `防水加厚牛津布` and `thickened waterproof
+Oxford cloth` can therefore align as `thickened+waterproof`, while plain
+Oxford cloth remains a different dimension set. Raw supplier wording remains
+unchanged in `specifications`.
 
 The collection workspace compares the newest intact detail snapshot for each
-offer across suppliers. At the default reference quantity of one it excludes
-unknown/high MOQ, unavailable stock, supplier-identity drift and incomplete
-dimensions from the minimum rank while keeping their rows visible.
+offer across suppliers. Each SKU retains only quantity tiers that can be bound
+to that row's own price; duplicate offer-level quantity buckets for different
+SKU/BOM prices are isolated instead of copied across the matrix. A selected
+reference quantity chooses the highest observed tier whose minimum quantity is
+not greater than the requested quantity. Unknown/high MOQ, unavailable stock,
+missing applicable tiers, supplier-identity drift and incomplete dimensions
+remain visible but cannot enter the minimum rank.
 
 The parsing approach was informed by the MIT-licensed `1688-cli` project
 (`superjack2050/1688-cli`); KJDS keeps its own minimal current-document adapter

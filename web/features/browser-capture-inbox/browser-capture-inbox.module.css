@@ -445,6 +445,47 @@
   color: #e7edf6;
 }
 
+.comparisonActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+
+.comparisonActions form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #8fa1ab;
+  font-size: 12px;
+}
+
+.comparisonActions input {
+  width: 100px;
+  border: 1px solid #2f4650;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #e7edf6;
+  background: #0b1217;
+}
+
+.comparisonActions button {
+  border: 1px solid #2f4650;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #d6e7eb;
+  background: #14242a;
+}
+
+.comparisonActions > strong {
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: #f2c56c;
+  background: #1b2a31;
+  font: 700 12px/1 ui-monospace, monospace;
+}
+
 .comparisonGroups {
   display: grid;
   gap: 10px;
@@ -600,6 +641,11 @@
   .sectionHeading,
   .error {
     display: grid;
+  }
+
+  .comparisonActions,
+  .comparisonActions form {
+    justify-content: flex-start;
   }
 
   .item dl,

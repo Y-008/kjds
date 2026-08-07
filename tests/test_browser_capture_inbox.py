@@ -206,6 +206,9 @@ def variant_matrix_envelope() -> dict:
             "supply_signals": {
                 "stock_count": 470,
                 "advertised_price_range": "3.90-9.90",
+                "price_tiers": [
+                    {"minimum_quantity": 1, "price": "3.90"}
+                ],
             },
         },
         {
@@ -232,6 +235,9 @@ def variant_matrix_envelope() -> dict:
             "supply_signals": {
                 "stock_count": 13,
                 "advertised_price_range": "3.90-9.90",
+                "price_tiers": [
+                    {"minimum_quantity": 1, "price": "9.90"}
+                ],
             },
         },
     ]
@@ -606,6 +612,20 @@ def test_browser_capture_routes_are_authenticated_scoped_and_canonical(
         "preflight",
         fake_preflight,
     )
+
+    def fake_list(**values):
+        captured["list"] = values
+        return {
+            "contract_id": "kjds-browser-capture-inbox/1.0",
+            "status": "no_data",
+            "items": [],
+        }
+
+    monkeypatch.setattr(
+        runtime.browser_capture_inbox,
+        "list",
+        fake_list,
+    )
     client = TestClient(app)
     headers = {"X-KJDS-API-Key": "test-key"}
 
@@ -624,6 +644,16 @@ def test_browser_capture_routes_are_authenticated_scoped_and_canonical(
         json={**envelope(), "store_ref": "store-b"},
         headers=headers,
     )
+    listed = client.get(
+        "/v1/browser-capture-inbox/submissions",
+        params={"store_ref": "store-a", "reference_quantity": 300},
+        headers=headers,
+    )
+    invalid_quantity = client.get(
+        "/v1/browser-capture-inbox/submissions",
+        params={"store_ref": "store-a", "reference_quantity": 0},
+        headers=headers,
+    )
 
     assert accepted.status_code == 200
     assert accepted_v12.status_code == 200
@@ -635,6 +665,9 @@ def test_browser_capture_routes_are_authenticated_scoped_and_canonical(
     assert captured["principal"].tenant_ref == "tenant-a"
     assert captured["entity_scope"]["entity_ref"] is None
     assert forbidden.status_code == 403
+    assert listed.status_code == 200
+    assert captured["list"]["reference_quantity"] == 300
+    assert invalid_quantity.status_code == 422
     assert app.openapi()["paths"][
         "/v1/browser-capture-inbox/submissions"
     ]["post"]["security"] == [{"KjdsApiKey": []}]
@@ -672,6 +705,9 @@ def test_v12_variant_matrix_preserves_exact_sku_mapping_and_erp_staging():
     assert by_sku["sku-3"]["unit_price"] == "3.90"
     assert by_sku["sku-3"]["product_identity"]["spec_id"] == "spec-3"
     assert by_sku["sku-3"]["supply_signals"]["stock_count"] == 470
+    assert by_sku["sku-3"]["price_tiers"] == [
+        {"minimum_quantity": 1, "price": "3.90"}
+    ]
     assert by_sku["sku-6"]["unit_price"] == "9.90"
     assert by_sku["sku-6"]["market_signals"][
         "sku_sale_count_signal"
@@ -724,6 +760,9 @@ def test_v12_variant_matrix_preserves_exact_sku_mapping_and_erp_staging():
     assert sku_3["min_order_quantity"] == 1
     assert sku_3["availability"] == "in_stock"
     assert sku_3["supply_signals"]["stock_count"] == 470
+    assert sku_3["price_tiers"] == [
+        {"minimum_quantity": 1, "price": "3.90"}
+    ]
     assert sku_3["market_signals"]["sku_sale_count_signal"] == 2
     assert sku_3["checkout_verified"] is False
     assert sku_3["tax_included"] is None
@@ -771,6 +810,67 @@ def test_v12_rejects_merchant_identity_drift_and_coverage_mismatch():
             entity_scope=entity_scope(),
             as_of=AS_OF,
         )
+
+    duplicate_tiers = variant_matrix_envelope()
+    duplicate_tiers["items"][0]["supply_signals"]["price_tiers"] = [
+        {"minimum_quantity": 1, "price": "3.90"},
+        {"minimum_quantity": 1, "price": "9.90"},
+    ]
+    with pytest.raises(ValueError, match="must be unique"):
+        inbox.preflight(
+            duplicate_tiers,
+            principal=principal(),
+            entity_scope=entity_scope(),
+            as_of=AS_OF,
+        )
+
+
+def test_quantity_price_requires_an_applicable_public_tier():
+    _, _, inbox = services()
+    value = variant_matrix_envelope()
+    value["idempotency_key"] = "capture-1688-quantity-tier-gap"
+    value["items"] = [value["items"][1]]
+    value["items"][0]["supply_signals"]["price_tiers"] = [
+        {"minimum_quantity": 5, "price": "8.00"},
+    ]
+    value["page"]["capture_coverage"] = {
+        "discovered_count": 1,
+        "captured_count": 1,
+        "truncated": False,
+        "exact_sku_identity_count": 1,
+    }
+    inbox.submit(
+        value,
+        principal=principal(),
+        entity_scope=entity_scope(),
+        as_of=AS_OF,
+    )
+
+    quantity_1 = inbox.list(
+        principal=principal(),
+        entity_scope=entity_scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+        reference_quantity=1,
+    )["sourcing_comparison"]
+    quantity_5 = inbox.list(
+        principal=principal(),
+        entity_scope=entity_scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+        reference_quantity=5,
+    )["sourcing_comparison"]
+
+    row_at_1 = quantity_1["groups"][0]["rows"][0]
+    row_at_5 = quantity_5["groups"][0]["rows"][0]
+    assert row_at_1["eligibility"] == "quantity_price_unverified"
+    assert row_at_1["effective_unit_price"] is None
+    assert row_at_1["effective_price_source"] == (
+        "no_public_price_tier_for_quantity"
+    )
+    assert row_at_5["eligibility"] == "eligible_public_display_price"
+    assert row_at_5["effective_unit_price"] == "8.00"
+    assert row_at_5["applied_price_tier_minimum_quantity"] == 5
 
 
 def test_v12_candidate_cards_reach_erp_only_as_detail_enrichment_queue():
@@ -833,6 +933,7 @@ def test_list_compares_latest_exact_offers_and_respects_reference_moq():
         moq: int,
         observed_at: str,
         idempotency_key: str,
+        price_tiers: list[dict] | None = None,
     ) -> dict:
         value = json.loads(json.dumps(variant_matrix_envelope()))
         value["observed_at"] = observed_at
@@ -858,6 +959,10 @@ def test_list_compares_latest_exact_offers_and_respects_reference_moq():
         item["supplier_ref"] = supplier_ref
         item["displayed_price"] = price
         item["min_order_quantity"] = moq
+        if price_tiers is not None:
+            item.setdefault("supply_signals", {})["price_tiers"] = (
+                price_tiers
+            )
         item["source_url"] = value["source_url"]
         item["product_identity"] = {
             **item["product_identity"],
@@ -921,6 +1026,10 @@ def test_list_compares_latest_exact_offers_and_respects_reference_moq():
             moq=1,
             observed_at="2026-07-29T03:32:00Z",
             idempotency_key="capture-offer-200-latest",
+            price_tiers=[
+                {"minimum_quantity": 1, "price": "8.40"},
+                {"minimum_quantity": 100, "price": "8.00"},
+            ],
         ),
         principal=principal(),
         entity_scope=entity_scope(),
@@ -934,6 +1043,10 @@ def test_list_compares_latest_exact_offers_and_respects_reference_moq():
             moq=300,
             observed_at="2026-07-29T03:33:00Z",
             idempotency_key="capture-offer-300-moq",
+            price_tiers=[
+                {"minimum_quantity": 300, "price": "3.80"},
+                {"minimum_quantity": 500, "price": "3.50"},
+            ],
         ),
         principal=principal(),
         entity_scope=entity_scope(),
@@ -984,7 +1097,7 @@ def test_list_compares_latest_exact_offers_and_respects_reference_moq():
         if group["comparison_dimensions"].get("pack_count") == "6"
     )
 
-    assert comparison["contract_id"] == "kjds-sourcing-comparison/1.0"
+    assert comparison["contract_id"] == "kjds-sourcing-comparison/1.1"
     assert comparison["reference_quantity"] == 1
     assert comparison["latest_exact_offer_count"] == 3
     assert comparison["supplier_drift_offer_count"] == 1
@@ -1005,7 +1118,50 @@ def test_list_compares_latest_exact_offers_and_respects_reference_moq():
         row for row in six_piece["rows"] if row["offer_id"] == "300"
     )
     assert high_moq["eligibility"] == "reference_quantity_below_moq"
+    assert high_moq["effective_unit_price"] is None
+    assert high_moq["price_tiers"] == [
+        {"minimum_quantity": 300, "price": "3.80"},
+        {"minimum_quantity": 500, "price": "3.50"},
+    ]
+
+    quantity_300 = inbox.list(
+        principal=principal(),
+        entity_scope=entity_scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+        reference_quantity=300,
+    )["sourcing_comparison"]
+    six_piece_300 = next(
+        group
+        for group in quantity_300["groups"]
+        if group["comparison_dimensions"].get("pack_count") == "6"
+    )
+    offer_200_at_300 = next(
+        row for row in six_piece_300["rows"] if row["offer_id"] == "200"
+    )
+    offer_300_at_300 = next(
+        row for row in six_piece_300["rows"] if row["offer_id"] == "300"
+    )
+    assert quantity_300["reference_quantity"] == 300
+    assert six_piece_300["eligible_offer_count"] == 3
+    assert six_piece_300["minimum_eligible_unit_price"] == "3.80"
+    assert offer_200_at_300["unit_price"] == "8.40"
+    assert offer_200_at_300["effective_unit_price"] == "8.00"
+    assert offer_200_at_300["applied_price_tier_minimum_quantity"] == 100
+    assert offer_300_at_300["effective_unit_price"] == "3.80"
+    assert offer_300_at_300["eligibility"] == (
+        "eligible_public_display_price"
+    )
+    assert six_piece_300["lowest_rows"][0]["offer_id"] == "300"
     assert comparison["formal_cost_created"] is False
     assert comparison["freight_included"] is False
     assert comparison["tax_included"] is False
     assert comparison["external_write"] is False
+    with pytest.raises(ValueError, match="reference_quantity"):
+        inbox.list(
+            principal=principal(),
+            entity_scope=entity_scope(),
+            store_ref="store-a",
+            as_of=AS_OF,
+            reference_quantity=0,
+        )

@@ -345,7 +345,17 @@ class BrowserCaptureInbox:
         store_ref: str,
         as_of: datetime,
         limit: int = 100,
+        reference_quantity: int = 1,
     ) -> dict[str, Any]:
+        if (
+            isinstance(reference_quantity, bool)
+            or not isinstance(reference_quantity, int)
+            or reference_quantity < 1
+            or reference_quantity > 1_000_000
+        ):
+            raise ValueError(
+                "reference_quantity must be an integer from 1 to 1000000"
+            )
         self._context(
             principal=principal,
             entity_scope=entity_scope,
@@ -378,7 +388,10 @@ class BrowserCaptureInbox:
             )
             for row in rows
         ]
-        sourcing_comparison = self._cross_offer_comparison(items)
+        sourcing_comparison = self._cross_offer_comparison(
+            items,
+            reference_quantity=reference_quantity,
+        )
         payload = {
             "contract_id": self.CONTRACT_ID,
             "status": (
@@ -813,6 +826,17 @@ class BrowserCaptureInbox:
             gaps.append("variant_selection_unverified")
         if price_kind != CHECKOUT_PRICE_KIND:
             gaps.append("checkout_price_not_verified")
+        market_signals = self._signal_object(
+            raw.get("market_signals"), "market_signals", 80
+        )
+        supply_signals = self._signal_object(
+            raw.get("supply_signals"), "supply_signals", 80
+        )
+        price_tiers = self._price_tiers(
+            supply_signals.get("price_tiers")
+        )
+        if price_tiers:
+            supply_signals["price_tiers"] = price_tiers
         item = {
             **natural_key,
             "fingerprint": self._hash(natural_key),
@@ -860,12 +884,9 @@ class BrowserCaptureInbox:
             "confidence": format(
                 self._confidence(raw.get("confidence", "0.5")), "f"
             ),
-            "market_signals": self._signal_object(
-                raw.get("market_signals"), "market_signals", 80
-            ),
-            "supply_signals": self._signal_object(
-                raw.get("supply_signals"), "supply_signals", 80
-            ),
+            "market_signals": market_signals,
+            "supply_signals": supply_signals,
+            "price_tiers": price_tiers,
             "experiment_readbacks": self._signal_object(
                 raw.get("experiment_readbacks"),
                 "experiment_readbacks",
@@ -1347,6 +1368,7 @@ class BrowserCaptureInbox:
                     "unit_price": item["unit_price"],
                     "price_kind": item["price_kind"],
                     "price_contract": item["price_contract"],
+                    "price_tiers": item["price_tiers"],
                     "min_order_quantity": item[
                         "min_order_quantity"
                     ],
@@ -1513,6 +1535,12 @@ class BrowserCaptureInbox:
                     },
                 )
                 moq = item.get("min_order_quantity")
+                effective_price, applied_tier_minimum, price_source = (
+                    cls._effective_public_unit_price(
+                        item,
+                        reference_quantity=reference_quantity,
+                    )
+                )
                 if (
                     item["price_kind"] != "public_display_price"
                     or item["price_scope"] != "unit_price"
@@ -1526,6 +1554,8 @@ class BrowserCaptureInbox:
                     eligibility = "moq_unverified"
                 elif moq > reference_quantity:
                     eligibility = "reference_quantity_below_moq"
+                elif effective_price is None:
+                    eligibility = "quantity_price_unverified"
                 else:
                     eligibility = "eligible_public_display_price"
                 bucket["rows"].append(
@@ -1538,6 +1568,16 @@ class BrowserCaptureInbox:
                         "spec_id": identity["spec_id"],
                         "variant_key": item["variant_key"],
                         "unit_price": item["unit_price"],
+                        "effective_unit_price": (
+                            format(effective_price, "f")
+                            if effective_price is not None
+                            else None
+                        ),
+                        "effective_price_source": price_source,
+                        "applied_price_tier_minimum_quantity": (
+                            applied_tier_minimum
+                        ),
+                        "price_tiers": item.get("price_tiers", []),
                         "currency": item["currency"],
                         "min_order_quantity": moq,
                         "availability": item["availability"],
@@ -1552,7 +1592,10 @@ class BrowserCaptureInbox:
             rows = sorted(
                 bucket.pop("rows"),
                 key=lambda row: (
-                    Decimal(row["unit_price"]),
+                    Decimal(
+                        row["effective_unit_price"]
+                        or row["unit_price"]
+                    ),
                     row["supplier_ref"],
                     row["offer_id"],
                     row["sku_id"],
@@ -1570,7 +1613,10 @@ class BrowserCaptureInbox:
                 for row in eligible
             }
             minimum = (
-                min(Decimal(row["unit_price"]) for row in eligible)
+                min(
+                    Decimal(row["effective_unit_price"])
+                    for row in eligible
+                )
                 if eligible
                 else None
             )
@@ -1598,7 +1644,8 @@ class BrowserCaptureInbox:
                         [
                             row
                             for row in eligible
-                            if Decimal(row["unit_price"]) == minimum
+                            if Decimal(row["effective_unit_price"])
+                            == minimum
                         ]
                         if minimum is not None
                         else []
@@ -1618,7 +1665,7 @@ class BrowserCaptureInbox:
             )
         )
         return {
-            "contract_id": "kjds-sourcing-comparison/1.0",
+            "contract_id": "kjds-sourcing-comparison/1.1",
             "status": (
                 "comparable"
                 if any(group["status"] == "comparable" for group in groups)
@@ -1636,7 +1683,7 @@ class BrowserCaptureInbox:
             "groups": groups,
             "comparison_rule": (
                 "latest_intact_exact_detail_rows_with_equal_server_"
-                "normalized_dimensions_and_explicit_moq"
+                "normalized_dimensions_explicit_moq_and_quantity_price"
             ),
             "formal_cost_created": False,
             "freight_included": False,
@@ -1806,6 +1853,71 @@ class BrowserCaptureInbox:
             raise ValueError(f"{path} contains an unsupported value")
 
         return normalize(value, field, 0)
+
+    @classmethod
+    def _price_tiers(cls, value: Any) -> list[dict[str, Any]]:
+        if value is None:
+            return []
+        if not isinstance(value, list) or len(value) > 80:
+            raise ValueError("supply_signals.price_tiers must be a list")
+        tiers: list[dict[str, Any]] = []
+        seen_quantities: set[int] = set()
+        for index, raw in enumerate(value):
+            field = f"supply_signals.price_tiers[{index}]"
+            if not isinstance(raw, dict):
+                raise ValueError(f"{field} must be an object")
+            quantity = raw.get("minimum_quantity")
+            if (
+                isinstance(quantity, bool)
+                or not isinstance(quantity, int)
+                or quantity < 1
+                or quantity > 1_000_000
+            ):
+                raise ValueError(
+                    f"{field}.minimum_quantity must be an integer from "
+                    "1 to 1000000"
+                )
+            if quantity in seen_quantities:
+                raise ValueError(
+                    "supply_signals.price_tiers minimum quantities must "
+                    "be unique"
+                )
+            seen_quantities.add(quantity)
+            price = cls._decimal(raw.get("price"), f"{field}.price")
+            tiers.append(
+                {
+                    "minimum_quantity": quantity,
+                    "price": format(price, "f"),
+                }
+            )
+        return sorted(tiers, key=lambda tier: tier["minimum_quantity"])
+
+    @staticmethod
+    def _effective_public_unit_price(
+        item: dict[str, Any],
+        *,
+        reference_quantity: int,
+    ) -> tuple[Decimal | None, int | None, str]:
+        tiers = item.get("price_tiers") or []
+        if not tiers:
+            return (
+                Decimal(item["unit_price"]),
+                None,
+                "captured_public_unit_price",
+            )
+        applicable = [
+            tier
+            for tier in tiers
+            if tier["minimum_quantity"] <= reference_quantity
+        ]
+        if not applicable:
+            return None, None, "no_public_price_tier_for_quantity"
+        tier = applicable[-1]
+        return (
+            Decimal(tier["price"]),
+            tier["minimum_quantity"],
+            "public_price_tier",
+        )
 
     @classmethod
     def _string_map(

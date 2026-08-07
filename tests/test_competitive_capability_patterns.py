@@ -23,6 +23,7 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
         "seerfar",
         "miaoshou_erp",
         "selling51_erp",
+        "sellersprite_mcp_api",
     }
     assert registry["baseline_policy"] == {
         "requirement": "must_have_native_parity",
@@ -130,6 +131,27 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
         seerfar["observed_capabilities"]
     )
     assert "review_insight_packet" in seerfar["patterns_to_borrow"]
+
+    sellersprite = next(
+        item for item in providers if item["id"] == "sellersprite_mcp_api"
+    )
+    assert sellersprite["integration_status"] == (
+        "official_workflow_benchmark_only_no_kjds_adapter_configured"
+    )
+    assert "raw_normalized_report_triplet" in (
+        sellersprite["patterns_to_borrow"]
+    )
+    assert "amazon_signal_as_ozon_fact" in sellersprite["do_not_copy"]
+    assert "individual_mcp_account_as_shared_enterprise_runtime" in (
+        sellersprite["do_not_copy"]
+    )
+    assert sellersprite["mapped_existing_seams"] == [
+        "browser_capture_inbox",
+        "intelligence_source_adapter_registry",
+        "immutable_evidence",
+        "scoped_market_radar",
+        "unified_operating_workbench",
+    ]
 
     maozi = next(item for item in providers if item["id"] == "maozierp")
     assert maozi["source_documents"] == [

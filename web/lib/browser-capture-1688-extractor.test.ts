@@ -56,6 +56,12 @@ test("1688 serialized SSR extractor binds every price to its sku and spec", () =
                 beginAmount: 1,
                 mixAmount: 80,
                 skuPriceScale: "3.90-9.90",
+                offerPriceModel: {
+                  currentPrices: [
+                    { beginAmount: 1, price: "3.90" },
+                    { beginAmount: 1, price: "9.90" },
+                  ],
+                },
                 skuMapOriginal: [
                   {
                     skuId: "sku-3",
@@ -145,15 +151,28 @@ test("1688 serialized SSR extractor binds every price to its sku and spec", () =
     ]),
   );
   assert.equal(bySku.get("sku-3")?.displayed_price, "3.9");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(bySku.get("sku-3")?.supply_signals.price_tiers)),
+    [{ minimum_quantity: 1, price: "3.9" }],
+  );
   assert.equal(bySku.get("sku-3")?.product_identity.spec_id, "spec-3");
   assert.equal(bySku.get("sku-3")?.comparison_dimensions.pack_count, "3");
   assert.equal(
     bySku.get("sku-3")?.comparison_dimensions.material,
-    "防水加厚牛津布",
+    "oxford_cloth",
+  );
+  assert.equal(
+    bySku.get("sku-3")?.comparison_dimensions.material_finish,
+    "thickened+waterproof",
   );
   assert.equal(bySku.get("sku-6")?.displayed_price, "9.9");
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(bySku.get("sku-6")?.supply_signals.price_tiers)),
+    [{ minimum_quantity: 1, price: "9.9" }],
+  );
   assert.equal(bySku.get("sku-6")?.comparison_dimensions.pack_count, "6");
   assert.equal(bySku.get("sku-logo")?.displayed_price, "3.3");
+  assert.equal(bySku.get("sku-logo")?.supply_signals.price_tiers, undefined);
   assert.equal(bySku.get("sku-logo")?.comparison_dimensions.pack_count, undefined);
   assert.equal(
     bySku.get("sku-logo")?.comparison_dimensions.variant_role,
@@ -267,6 +286,8 @@ test("1688 promotion skuMap remains exact when skuMapOriginal has no row prices"
   assert.equal(result.envelope.items[0].displayed_price, "4.76");
   assert.equal(result.envelope.items[0].min_order_quantity, 2);
   assert.equal(result.envelope.items[0].comparison_dimensions.pack_count, "6");
+  assert.equal(result.envelope.items[0].comparison_dimensions.material, "oxford_cloth");
+  assert.equal(result.envelope.items[0].comparison_dimensions.material_finish, undefined);
   assert.equal(
     result.envelope.items[0].product_identity.spec_id,
     "ad83bda4f5122c3126b551ae642adf4b",
