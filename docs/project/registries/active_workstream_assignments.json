@@ -55,21 +55,7 @@
       "id": "C",
       "name": "product_engineering",
       "accountable_role": "engineering_owner",
-      "current_task": {
-        "task_id": "BAS-204",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-          "closed_loop_outcome_evidence_ledger",
-          "exact_scope_outcome_bundle_authority",
-          "freshness_invalidation_review_projection",
-          "bas177_evolution_observation_handoff",
-          "strategic_dashboard_verified_outcome_adapters",
-          "alembic_migration_0096",
-          "closed_loop_tests_and_evidence"
-        ],
-        "blocked_on": []
-      },
+      "current_task": null,
       "next_task_id": null
     },
     {
@@ -222,7 +208,7 @@
     }
   ],
   "shared_write_leases": {
-    "alembic_migration": "BAS-204",
+    "alembic_migration": null,
     "api_aggregation_root": null,
     "master_spec": null,
     "openapi_snapshot": null
