@@ -244,7 +244,7 @@ def test_bas213_claims_lane_e_with_exact_project_governance_scope():
     assert risk["current_task"] == {
         "task_id": "BAS-213",
         "state": "in_progress",
-        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
         "write_scope": [
             "project_entry_documentation",
             "frontier_review_agent_policy",
