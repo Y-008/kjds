@@ -26,6 +26,7 @@
 | 一人主责双引擎经营系统 | [14_ONE_PERSON_DUAL_ENGINE_OPERATING_SYSTEM.md](14_ONE_PERSON_DUAL_ENGINE_OPERATING_SYSTEM.md) | 定义前中后台、逆漏斗、付费 MVP、案例模块化、控制轨与多线程写域 |
 | 社媒卖家情报与运营系统 | [15_SOCIAL_COMMERCE_INTELLIGENCE_AND_OPERATIONS.md](15_SOCIAL_COMMERCE_INTELLIGENCE_AND_OPERATIONS.md) | 定义全量采集、多维用户/内容分析、小红书/抖音分线与 campaign 级发布互动回读 |
 | 俄罗斯市场需求与事件雷达 | [16_RUSSIA_MARKET_DEMAND_AND_EVENT_RADAR.md](16_RUSSIA_MARKET_DEMAND_AND_EVENT_RADAR.md) | 定义 Ozon/WB/Yandex/Telegram/VK/宏观事件的全量、多源、时序和跨源验证 |
+| 全球专家团队与团队总控塔 | [17_GLOBAL_CROSS_BORDER_EXPERT_TEAM.md](17_GLOBAL_CROSS_BORDER_EXPERT_TEAM.md)、[18_TEAM_CONTROL_TOWER.md](18_TEAM_CONTROL_TOWER.md) | 定义 18 核心角色、12 AI 专家、20–40 人专家池容量、5 独立控制角色、90 天关键路径、五类权威投影、四条业务主线与唯一下一动作 |
 | A-I 泳道执行租约 | [registries/active_workstream_assignments.json](registries/active_workstream_assignments.json) | 当前真正占用 WIP 与共享写域的机器真源；历史 `IN_PROGRESS` 不自动获得写租约 |
 | TeamAgent 进化 Loop | [registries/loop_engineering_registry.json](registries/loop_engineering_registry.json) | 定义角色边界、Eval→Shadow→Review→Promotion/Rollback、Graph 学习和持续更新边界 |
 | 前沿技术采用雷达 | [registries/frontier_technology_adoption.json](registries/frontier_technology_adoption.json) | `adopt_now/pilot/watch/reject_now` 的机器真源；注册不等于实现或生产放行 |

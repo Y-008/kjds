@@ -6242,6 +6242,76 @@
         "title": "GateReviewSubmitInput",
         "type": "object"
       },
+      "GlobalExpertTaskRouteInput": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "market": {
+            "maxLength": 6,
+            "minLength": 2,
+            "title": "Market",
+            "type": "string"
+          },
+          "platform": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Platform",
+            "type": "string"
+          },
+          "risk_level": {
+            "enum": [
+              "L0",
+              "L1",
+              "L2",
+              "L3",
+              "L4"
+            ],
+            "title": "Risk Level",
+            "type": "string"
+          },
+          "task_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Task Ref",
+            "type": "string"
+          },
+          "task_type": {
+            "enum": [
+              "market_research",
+              "country_entry",
+              "product_portfolio",
+              "platform_operations",
+              "sourcing_quality",
+              "logistics_customs",
+              "finance_profit",
+              "legal_compliance",
+              "localization_content",
+              "growth_commercial",
+              "product_management",
+              "data_ai",
+              "architecture_delivery"
+            ],
+            "title": "Task Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_ref",
+          "task_type",
+          "market",
+          "platform",
+          "risk_level"
+        ],
+        "title": "GlobalExpertTaskRouteInput",
+        "type": "object"
+      },
       "GovernedExecutionDryRunInput": {
         "additionalProperties": false,
         "properties": {
@@ -13694,6 +13764,57 @@
           "required_value"
         ],
         "title": "SupplierRfqSpecificationInput",
+        "type": "object"
+      },
+      "TeamControlAdvanceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "continuation": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Continuation",
+            "type": "string"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "idempotency_key": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "result": {
+            "enum": [
+              "take",
+              "done",
+              "blocked",
+              "escalate",
+              "stop"
+            ],
+            "title": "Result",
+            "type": "string"
+          }
+        },
+        "required": [
+          "continuation",
+          "result",
+          "rationale",
+          "idempotency_key"
+        ],
+        "title": "TeamControlAdvanceInput",
         "type": "object"
       },
       "UnavailableDashboardSectionResponse": {
@@ -21370,6 +21491,76 @@
           }
         ],
         "summary": "List Unknown Fees"
+      }
+    },
+    "/v1/global-expert-team/registry": {
+      "get": {
+        "operationId": "global_expert_team_registry_v1_global_expert_team_registry_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Global Expert Team Registry V1 Global Expert Team Registry Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Global Expert Team Registry"
+      }
+    },
+    "/v1/global-expert-team/route": {
+      "post": {
+        "operationId": "route_global_expert_task_v1_global_expert_team_route_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GlobalExpertTaskRouteInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Route Global Expert Task V1 Global Expert Team Route Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Route Global Expert Task"
       }
     },
     "/v1/governance/gate-reviews": {
@@ -35069,6 +35260,126 @@
           }
         ],
         "summary": "Release Kill Switch"
+      }
+    },
+    "/v1/team-control/advance": {
+      "post": {
+        "operationId": "advance_team_control_v1_team_control_advance_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamControlAdvanceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Advance Team Control V1 Team Control Advance Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Advance Team Control"
+      }
+    },
+    "/v1/team-control/brief": {
+      "get": {
+        "operationId": "team_control_brief_v1_team_control_brief_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Team Control Brief V1 Team Control Brief Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Team Control Brief"
       }
     },
     "/v1/truth-governance/snapshot": {

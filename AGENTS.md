@@ -71,3 +71,29 @@ Do not treat a passing test as proof that the requirement was implemented correc
 - Among feasible options, compare evidence-backed long-term risk-adjusted value, total cost of ownership, maximum loss, reversibility, time to value, operational fit, maintenance, and replacement cost. Do not generate an equal-weight score when the dimensions are not commensurable.
 - Include a no-action or defer option when feasible. Record the selected option, rejected alternatives and reasons, sensitivity, invalidation conditions, review date, and approval requirement.
 - Ponytail/YAGNI may remove complexity only after the best feasible solution is identified; minimum code is not itself the objective.
+
+## Coding Agent workflow for complex changes
+
+Simple, local, reversible fixes may move directly from inspection to implementation and targeted
+verification. Cross-Module, authority, data, commercial, privacy, security or architecture changes
+must use this workflow without creating a second documentation center:
+
+1. Build project context from README, `MASTER_SPEC`, linked ADRs, the dynamic task plan,
+   registries, test entry points, Git status and the current write-domain/migration leases.
+2. Classify impact and record affected requirements, Modules, authorities, failure modes, Gates,
+   Owners and acceptance Evidence.
+3. Update stable requirements, ADR decisions, machine contracts and acceptance criteria before or
+   with the implementation; prompts and code comments are not a durable source of truth.
+4. For a material Interface or architecture decision, compare at least two feasible designs,
+   including defer/no-action when relevant, and record rejection reasons and invalidation conditions.
+5. Implement in independently testable and reversible slices: registry/schema validation first,
+   server-side projection second, Web third and external authorities last.
+6. Verify continuously with targeted tests, then run the applicable full regression, Web production
+   build, secret scan and diff checks. A passing test is necessary but not proof of business truth.
+7. Perform an independent completion review for requirement alignment, permissions, privacy,
+   reliability, recovery, delivery completeness and false completion claims.
+8. Evolve documentation and code together; finish by updating task status, engineering Evidence,
+   unresolved business gaps and the one next action.
+
+This workflow does not require approval after every step. Pause only for new external permissions,
+real payment, contract signature, marketplace write, human appointment or a material scope change.

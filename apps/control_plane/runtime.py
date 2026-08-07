@@ -62,6 +62,7 @@ from .execution_plans import ExecutionPlanService
 from .facts import FactPromotionService
 from .finance import FinanceService
 from .fx_evidence_intake import FxEvidenceIntake
+from .global_expert_team import GlobalPortfolioOrchestrator
 from .governance import GovernanceService
 from .governance_scope import GovernanceScopeAuthority
 from .image_execution import ComfyImageExecutionService
@@ -191,6 +192,7 @@ from .strategic_capital_dashboard import (
 from .supplier_quote_authority import SupplierQuoteAuthorityService
 from .supplier_rfq import SupplierRfqWorkspace
 from .supplier_rfq_dispatch import SupplierRfqDispatchWorkspace
+from .team_control_tower import TeamControlTower
 from .truth_governance import TruthGovernanceService
 from .warehouse_fulfillment import WarehouseExecutionAuthorityService
 
@@ -258,6 +260,8 @@ class RuntimeServices:
     finance: Any
     fx_evidence_intake: Any
     finance_report_reviews: Any
+    global_expert_team: Any
+    team_control_tower: Any
     governance: Any
     governance_scope: Any
     image_execution: Any
@@ -581,6 +585,7 @@ def build_runtime() -> RuntimeServices:
     )
     automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
     loop_engineering = LoopEngineeringService()
+    global_expert_team = GlobalPortfolioOrchestrator()
     sourcing_store = SqlSourcingStore(engine)
     logistics_store = SqlLogisticsStore(engine)
     logistics = LogisticsQuoteWorkspace(
@@ -759,6 +764,13 @@ def build_runtime() -> RuntimeServices:
         profit_ledger=profit_ledger,
         evidence=evidence,
         scoped_evidence=scoped_evidence,
+    )
+    team_control_tower = TeamControlTower(
+        expert_team=global_expert_team,
+        operating_tasks=operating_intelligence,
+        scoped_evidence=scoped_evidence,
+        strategic_benchmark=strategic_benchmark,
+        settlement_cash=scoped_settlement_cash,
     )
     governance_scope = GovernanceScopeAuthority(
         governance=governance,
@@ -1243,6 +1255,8 @@ def build_runtime() -> RuntimeServices:
         finance=finance,
         fx_evidence_intake=fx_evidence_intake,
         finance_report_reviews=finance_report_reviews,
+        global_expert_team=global_expert_team,
+        team_control_tower=team_control_tower,
         governance=governance,
         governance_scope=governance_scope,
         image_execution=image_execution,

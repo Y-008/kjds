@@ -27,10 +27,15 @@ def test_team_agent_roles_are_bounded_and_independently_verified():
     registry = json.loads(path.read_text(encoding="utf-8"))
     team = registry["team_agent_contract"]
 
-    assert registry["version"] == "2.1"
+    assert registry["version"] == "2.2"
     assert team["architecture"] == (
         "coordinator_plus_bounded_specialists_plus_independent_verifier"
     )
+    assert team["operating_model"] == "ai_core_human_professional_review"
+    assert team["portfolio_scope"] == "global_research_russia_ozon_execution_first"
+    assert team["leader_authority"] == "business_decision_high_risk_dual_sign"
+    assert team["leader_role"] == "global_chief_commerce_officer"
+    assert team["specialist_role_count"] == 12
     assert {"coordinator", "finance", "risk", "execution", "independent_verifier"} <= set(
         team["roles"]
     )
