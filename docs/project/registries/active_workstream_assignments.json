@@ -219,7 +219,18 @@
       "id": "M",
       "name": "global_data_coverage",
       "accountable_role": "global_data_coverage_owner",
-      "current_task": null,
+      "current_task": {
+        "task_id": "BAS-215A",
+        "state": "in_progress",
+        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
+        "write_scope": [
+          "enterprise_ai_erp_program_module",
+          "enterprise_ai_erp_program_registry",
+          "enterprise_ai_erp_program_contract_tests",
+          "enterprise_ai_erp_program_evidence"
+        ],
+        "blocked_on": []
+      },
       "next_task_id": null
     }
   ],

@@ -146,12 +146,12 @@ def test_bas201_release_frees_capital_allocation_lane_without_shared_writes():
     assert "BAS-201" not in registry["shared_write_leases"].values()
 
 
-def test_data_cov_002_release_frees_coverage_and_migration_leases():
+def test_data_cov_002_release_no_longer_owns_coverage_or_migration_leases():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     coverage = lanes["M"]
 
-    assert coverage["current_task"] is None
+    assert coverage["current_task"]["task_id"] == "BAS-215A"
     assert coverage["next_task_id"] is None
     assert "DATA-COV-002" not in registry["shared_write_leases"].values()
 
@@ -273,6 +273,45 @@ def test_bas213_release_frees_lane_e_and_preserves_bas210_and_shared_leases():
     assert "20260807_PROJECT_ENTRY_AND_FRONTIER_REVIEW_GOVERNANCE.md" in bas213_row
     assert "不升级依赖" in bas213_row
     assert bas213_row.endswith("| DONE_ENGINEERING |")
+
+
+def test_bas215a_claims_lane_m_with_exact_static_program_scope():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+    coverage = lanes["M"]
+    engineering = lanes["C"]
+
+    assert coverage["current_task"] == {
+        "task_id": "BAS-215A",
+        "state": "in_progress",
+        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
+        "write_scope": [
+            "enterprise_ai_erp_program_module",
+            "enterprise_ai_erp_program_registry",
+            "enterprise_ai_erp_program_contract_tests",
+            "enterprise_ai_erp_program_evidence",
+        ],
+        "blocked_on": [],
+    }
+    assert coverage["next_task_id"] is None
+    assert engineering["current_task"]["task_id"] == "BAS-210"
+    assert registry["shared_write_leases"] == {
+        "alembic_migration": None,
+        "api_aggregation_root": "BAS-210",
+        "master_spec": None,
+        "openapi_snapshot": "BAS-210",
+    }
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    bas215a_row = next(
+        line for line in plan.splitlines() if line.startswith("| BAS-215A |")
+    )
+    assert "EnterpriseAiErpProgram" in bas215a_row
+    assert "enterprise_ai_erp_program.py" in bas215a_row
+    assert "enterprise_ai_erp_program.json" in bas215a_row
+    assert "test_enterprise_ai_erp_program.py" in bas215a_row
+    assert "20260807_BAS_215A_ENTERPRISE_AI_ERP_PROGRAM.md" in bas215a_row
+    assert "不接 OperatingTask/runtime/router/API/OpenAPI/DB/Web" in bas215a_row
+    assert bas215a_row.endswith("| IN_PROGRESS |")
 
 
 def test_shared_write_leases_and_authority_stay_fail_closed():
