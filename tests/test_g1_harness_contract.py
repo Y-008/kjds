@@ -214,7 +214,10 @@ def test_g1_coverage_issuer_principals_are_ephemeral_and_secrets_are_scrubbed():
     assert "kjds_gdc_issuance_owner NOLOGIN NOINHERIT" in manager
     assert "kjds_gdc_issuance_runtime LOGIN NOINHERIT" in manager
     assert "kjds_g1_runtime LOGIN NOINHERIT" in manager
-    assert "DROP ROLE IF EXISTS" in manager
+    assert "DROP OWNED BY" not in manager
+    assert "REVOKE ADMIN OPTION FOR" in manager
+    assert "_preflight_role_cleanup" in manager
+    assert "GDC_RECEIPT_TABLE" in manager
     assert "REVOKE EXECUTE ON FUNCTION kjds_gdc_issue_evidence" in manager
     assert "print({" in manager
     assert "issuer_password" not in manager.split("print({", 1)[1]
@@ -242,18 +245,35 @@ def test_g1_strategic_benchmark_sealing_key_is_ephemeral_and_scrubbed():
 
 def test_g1_isolates_cluster_global_coverage_postgres_contracts_before_lease():
     harness = HARNESS.read_text(encoding="utf-8")
+    postgres_contract = (ROOT / "tests" / "test_global_data_coverage_ledger_postgres.py").read_text(
+        encoding="utf-8"
+    )
 
     contract = '"tests\\test_global_data_coverage_ledger_postgres.py"'
+    recovery_gate = "Recovering receipt-owned interrupted PostgreSQL resources"
     dedicated_gate = "Verifying isolated global data coverage PostgreSQL contracts"
+    recovery = '"scripts/manage_g1_database.py", "recover"'
     acquire = '"scripts/manage_g1_database.py", "acquire"'
     generic_exclusion = "Where-Object { $_ -ne $DataCoveragePostgresContract }"
 
     assert contract in harness
+    assert recovery_gate in harness
     assert dedicated_gate in harness
     assert generic_exclusion in harness
+    assert harness.index(recovery_gate) < harness.index(recovery) < harness.index(dedicated_gate)
     assert harness.index(dedicated_gate) < harness.index(acquire)
     assert "$env:KJDS_DATABASE_URL = $AdminDatabaseUrl" in harness
+    assert "$result.g1_stale_resource_recovery = $true" in harness
     assert "$result.global_data_coverage_postgres_contract = $true" in harness
+    assert "g1_stale_resource_recovery = $false" in harness
+    fixture = postgres_contract[
+        postgres_contract.index('@pytest.fixture(scope="module")') : postgres_contract.index(
+            "@pytest.fixture\ndef service"
+        )
+    ]
+    assert "acquire_gdc_contract_resources" in fixture
+    assert "release_gdc_contract_resources" in fixture
+    assert "DROP ROLE" not in fixture
 
 
 def test_g1_generic_tests_keep_owned_runtime_target_and_isolate_lifecycle_modules():

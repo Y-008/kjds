@@ -418,6 +418,7 @@ $result = [ordered]@{
     g1_control_mutex_acquired = $false
     g1_control_mutex_finalization_required = $true
     g1_control_mutex_release_receipt = $null
+    g1_stale_resource_recovery = $false
     global_data_coverage_postgres_contract = $false
     generic_postgres_contract_database = $false
     transactional_outbox = $false
@@ -532,6 +533,14 @@ try {
         }
     }
 
+    Write-Output "[G-1] Recovering receipt-owned interrupted PostgreSQL resources"
+    $env:KJDS_G1_ADMIN_DATABASE_URL = $AdminDatabaseUrl
+    $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
+    Invoke-External -Command $Python -Arguments @(
+        "scripts/manage_g1_database.py", "recover"
+    )
+    $result.g1_stale_resource_recovery = $true
+
     # This contract owns and mutates cluster-global fixed issuer roles. Run it
     # on the clean admin database before the G-1 lease creates those roles, and
     # exclude only this exact file from the later generic test phase.
@@ -544,7 +553,6 @@ try {
     $result.global_data_coverage_postgres_contract = $true
 
     Write-Output "[G-1] Creating run-scoped generic PostgreSQL contract database"
-    $env:KJDS_G1_ADMIN_DATABASE_URL = $AdminDatabaseUrl
     $env:KJDS_G1_CONTRACT_DATABASE_NAME = $ContractDatabaseName
     $env:KJDS_G1_RUN_TOKEN_SHA256 = $RunTokenSha256
     Invoke-External -Command $Python -Arguments @("-c", $ContractDatabaseManager, "create")

@@ -89,6 +89,21 @@ def _g1_target_url() -> str:
     ).render_as_string(hide_password=False)
 
 
+def _g1_admin_url() -> str:
+    return make_url(DATABASE_URL).set(database="postgres").render_as_string(
+        hide_password=False
+    )
+
+
+def _g1_receipt_snapshot():
+    admin = create_engine(_g1_admin_url())
+    try:
+        with admin.connect() as connection:
+            return g1_database_manager._g1_receipt(connection)
+    finally:
+        admin.dispose()
+
+
 def _g1_role_snapshot(connection) -> tuple[list[tuple], list[tuple]]:
     roles = connection.execute(
         text(
@@ -114,6 +129,7 @@ def _g1_role_snapshot(connection) -> tuple[list[tuple], list[tuple]]:
 def _set_g1_secrets(monkeypatch, *, token: str | None = None) -> str:
     run_token = token or uuid4().hex + uuid4().hex
     monkeypatch.setenv("KJDS_G1_RUN_TOKEN", run_token)
+    monkeypatch.setenv(g1_database_manager.GDC_ADMIN_DATABASE_URL_ENV, DATABASE_URL)
     for name in (
         "KJDS_G1_COVERAGE_ISSUER_PASSWORD",
         "KJDS_G1_RUNTIME_PASSWORD",
@@ -247,63 +263,373 @@ def test_g1_role_exists_failure_cleanup_preserves_preexisting_grants(monkeypatch
         admin_engine.dispose()
 
 
+def test_g1_recovery_cleans_receipt_owned_public_acl_and_is_idempotent(monkeypatch):
+    target_url = _g1_target_url()
+    original_token = _set_g1_secrets(monkeypatch)
+    admin_engine = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
+    try:
+        g1_database_manager.manage("acquire", target_url)
+        g1_database_manager.manage("recreate", target_url)
+        with admin_engine.connect() as admin:
+            admin.exec_driver_sql(
+                "GRANT USAGE ON SCHEMA public TO kjds_g1_runtime"
+            )
+            admin.exec_driver_sql(
+                "GRANT kjds_gdc_issuance_owner TO kjds_g1_runtime WITH ADMIN OPTION"
+            )
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", uuid4().hex + uuid4().hex)
+        g1_database_manager.manage("recover", target_url)
+        g1_database_manager.manage("recover", target_url)
+        with admin_engine.connect() as admin:
+            assert not g1_database_manager._database_exists(admin)
+            assert g1_database_manager._existing_roles(admin) == []
+        assert _g1_receipt_snapshot() is None
+    finally:
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", original_token)
+        receipt = _g1_receipt_snapshot()
+        if receipt is not None:
+            g1_database_manager.manage("drop", target_url)
+        admin_engine.dispose()
+
+
+def test_g1_recovery_replays_crash_after_acquire(monkeypatch):
+    target_url = _g1_target_url()
+    original_token = _set_g1_secrets(monkeypatch)
+    try:
+        g1_database_manager.manage("acquire", target_url)
+        receipt = _g1_receipt_snapshot()
+        assert receipt == (hashlib.sha256(original_token.encode()).hexdigest(), False, False)
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", uuid4().hex + uuid4().hex)
+        g1_database_manager.manage("recover", target_url)
+        g1_database_manager.manage("recover", target_url)
+        assert _g1_receipt_snapshot() is None
+        admin_engine = create_engine(_g1_admin_url())
+        try:
+            with admin_engine.connect() as admin:
+                assert not g1_database_manager._database_exists(admin)
+                assert g1_database_manager._existing_roles(admin) == []
+        finally:
+            admin_engine.dispose()
+    finally:
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", original_token)
+        if _g1_receipt_snapshot() is not None:
+            g1_database_manager.manage("drop", target_url)
+
+
+def test_g1_recovery_rejects_owned_sentinel_without_any_mutation(monkeypatch):
+    target_url = _g1_target_url()
+    original_token = _set_g1_secrets(monkeypatch)
+    sentinel = f"bas211_sentinel_{uuid4().hex}"
+    admin_engine = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
+    try:
+        g1_database_manager.manage("acquire", target_url)
+        g1_database_manager.manage("recreate", target_url)
+        with admin_engine.connect() as admin:
+            admin.exec_driver_sql(
+                f'CREATE SCHEMA "{sentinel}" AUTHORIZATION kjds_g1_runtime'
+            )
+            admin.exec_driver_sql(
+                "GRANT USAGE ON SCHEMA public TO kjds_g1_runtime"
+            )
+            role_before = _g1_role_snapshot(admin)
+            public_acl_before = admin.scalar(
+                text("SELECT nspacl::text FROM pg_namespace WHERE nspname='public'")
+            )
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", uuid4().hex + uuid4().hex)
+        with pytest.raises(RuntimeError, match="unowned database dependency"):
+            g1_database_manager.manage("recover", target_url)
+        with admin_engine.connect() as admin:
+            assert g1_database_manager._database_exists(admin)
+            assert _g1_role_snapshot(admin) == role_before
+            assert admin.scalar(
+                text("SELECT nspacl::text FROM pg_namespace WHERE nspname='public'")
+            ) == public_acl_before
+            assert admin.scalar(
+                text("SELECT to_regnamespace(:schema_name)"),
+                {"schema_name": sentinel},
+            ) == sentinel
+    finally:
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", original_token)
+        with admin_engine.connect() as admin:
+            if admin.scalar(
+                text("SELECT to_regnamespace(:schema_name)"),
+                {"schema_name": sentinel},
+            ):
+                owner = str(admin.scalar(text("SELECT current_user")))
+                admin.exec_driver_sql(
+                    f'ALTER SCHEMA "{sentinel}" OWNER TO "{owner}"'
+                )
+                admin.exec_driver_sql(f'DROP SCHEMA "{sentinel}"')
+            if admin.scalar(
+                text("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='kjds_g1_runtime')")
+            ):
+                admin.exec_driver_sql(
+                    "REVOKE ALL PRIVILEGES ON SCHEMA public FROM kjds_g1_runtime"
+                )
+        receipt = _g1_receipt_snapshot()
+        if receipt is not None:
+            g1_database_manager.manage("drop", target_url)
+        admin_engine.dispose()
+
+
+def test_g1_role_drop_transaction_rolls_back_and_replays(monkeypatch):
+    target_url = _g1_target_url()
+    token = _set_g1_secrets(monkeypatch)
+    original_cleanup = g1_database_manager._apply_role_cleanup
+    admin_engine = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
+
+    def fail_after_first_drop(connection, plan):
+        connection.exec_driver_sql(
+            f"DROP ROLE {g1_database_manager._identifier(plan.roles[0])}"
+        )
+        raise RuntimeError("injected role-drop interruption")
+
+    try:
+        g1_database_manager.manage("acquire", target_url)
+        g1_database_manager.manage("recreate", target_url)
+        monkeypatch.setattr(
+            g1_database_manager,
+            "_apply_role_cleanup",
+            fail_after_first_drop,
+        )
+        with pytest.raises(RuntimeError, match="injected role-drop interruption"):
+            g1_database_manager.manage("drop", target_url)
+        with admin_engine.connect() as admin:
+            assert not g1_database_manager._database_exists(admin)
+            assert set(g1_database_manager._existing_roles(admin)) == set(
+                g1_database_manager.ROLE_NAMES
+            )
+        receipt = _g1_receipt_snapshot()
+        assert receipt == (hashlib.sha256(token.encode()).hexdigest(), True, False)
+        monkeypatch.setattr(
+            g1_database_manager,
+            "_apply_role_cleanup",
+            original_cleanup,
+        )
+        g1_database_manager.manage("drop", target_url)
+        assert _g1_receipt_snapshot() is None
+        with admin_engine.connect() as admin:
+            assert g1_database_manager._existing_roles(admin) == []
+    finally:
+        monkeypatch.setattr(
+            g1_database_manager,
+            "_apply_role_cleanup",
+            original_cleanup,
+        )
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", token)
+        if _g1_receipt_snapshot() is not None:
+            g1_database_manager.manage("drop", target_url)
+        admin_engine.dispose()
+
+
+def test_g1_recovery_preserves_unknown_role_and_schema(monkeypatch):
+    target_url = _g1_target_url()
+    _set_g1_secrets(monkeypatch)
+    schema = f"data_cov_002_{uuid4().hex}"
+    admin_engine = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
+    try:
+        with admin_engine.connect() as admin:
+            admin.exec_driver_sql(
+                "CREATE ROLE kjds_gdc_generic_runtime LOGIN NOINHERIT NOSUPERUSER "
+                "NOCREATEROLE NOCREATEDB NOREPLICATION BYPASSRLS"
+            )
+            admin.exec_driver_sql(
+                "COMMENT ON ROLE kjds_gdc_generic_runtime IS 'preexisting-runtime'"
+            )
+            admin.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+            role_before = admin.execute(
+                text(
+                    "SELECT rolname,shobj_description(oid,'pg_authid') "
+                    "FROM pg_roles WHERE rolname='kjds_gdc_generic_runtime'"
+                )
+            ).one()
+        with pytest.raises(RuntimeError, match="no ownership receipt"):
+            g1_database_manager.manage("recover", target_url)
+        with admin_engine.connect() as admin:
+            assert admin.execute(
+                text(
+                    "SELECT rolname,shobj_description(oid,'pg_authid') "
+                    "FROM pg_roles WHERE rolname='kjds_gdc_generic_runtime'"
+                )
+            ).one() == role_before
+            assert admin.scalar(
+                text("SELECT to_regnamespace(:schema_name)"),
+                {"schema_name": schema},
+            ) == schema
+    finally:
+        with admin_engine.connect() as admin:
+            admin.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+            admin.exec_driver_sql("DROP ROLE IF EXISTS kjds_gdc_generic_runtime")
+        admin_engine.dispose()
+
+
+def test_g1_recovery_replays_interrupted_receipt_owned_gdc_resources(monkeypatch):
+    target_url = _g1_target_url()
+    original_token = _set_g1_secrets(monkeypatch)
+    schema = f"data_cov_002_{uuid4().hex}"
+    admin_engine = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
+    try:
+        g1_database_manager.acquire_gdc_contract_resources(
+            DATABASE_URL,
+            schema_name=schema,
+            issuer_password=uuid4().hex + uuid4().hex,
+            generic_password=uuid4().hex + uuid4().hex,
+        )
+        with admin_engine.connect() as admin:
+            admin.exec_driver_sql(f'CREATE TABLE "{schema}".owned_receipt(id integer)')
+            admin.exec_driver_sql(
+                f'ALTER TABLE "{schema}".owned_receipt OWNER TO kjds_gdc_issuance_owner'
+            )
+            admin.exec_driver_sql(
+                f'GRANT USAGE ON SCHEMA "{schema}" TO kjds_gdc_generic_runtime'
+            )
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", uuid4().hex + uuid4().hex)
+        g1_database_manager.manage("recover", target_url)
+        g1_database_manager.manage("recover", target_url)
+        with admin_engine.connect() as admin:
+            assert g1_database_manager._gdc_receipt(admin) is None
+            assert _g1_role_snapshot(admin)[0] == []
+            assert admin.scalar(
+                text("SELECT to_regnamespace(:schema_name)"),
+                {"schema_name": schema},
+            ) is None
+    finally:
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", original_token)
+        with admin_engine.connect() as admin:
+            receipt = g1_database_manager._gdc_receipt(admin)
+        if receipt is not None:
+            g1_database_manager.release_gdc_contract_resources(DATABASE_URL)
+        admin_engine.dispose()
+
+
+def test_gdc_role_drop_transaction_rolls_back_and_replays(monkeypatch):
+    target_url = _g1_target_url()
+    original_token = _set_g1_secrets(monkeypatch)
+    original_cleanup = g1_database_manager._apply_role_cleanup
+    schema = f"data_cov_002_{uuid4().hex}"
+    admin_engine = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
+
+    def fail_after_first_drop(connection, plan):
+        connection.exec_driver_sql(
+            f"DROP ROLE {g1_database_manager._identifier(plan.roles[0])}"
+        )
+        raise RuntimeError("injected GDC role-drop interruption")
+
+    try:
+        g1_database_manager.acquire_gdc_contract_resources(
+            DATABASE_URL,
+            schema_name=schema,
+            issuer_password=uuid4().hex + uuid4().hex,
+            generic_password=uuid4().hex + uuid4().hex,
+        )
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", uuid4().hex + uuid4().hex)
+        monkeypatch.setattr(
+            g1_database_manager,
+            "_apply_role_cleanup",
+            fail_after_first_drop,
+        )
+        with pytest.raises(RuntimeError, match="injected GDC role-drop interruption"):
+            g1_database_manager.manage("recover", target_url)
+        with admin_engine.connect() as admin:
+            receipt = g1_database_manager._gdc_receipt(admin)
+            assert receipt is not None
+            assert receipt[1:] == (schema, True, True)
+            assert set(
+                admin.execute(
+                    text("SELECT rolname FROM pg_roles WHERE rolname=ANY(:roles)"),
+                    {"roles": list(g1_database_manager.GDC_CONTRACT_ROLE_NAMES)},
+                ).scalars()
+            ) == set(g1_database_manager.GDC_CONTRACT_ROLE_NAMES)
+            assert admin.scalar(
+                text("SELECT to_regnamespace(:schema_name)"),
+                {"schema_name": schema},
+            ) == schema
+        monkeypatch.setattr(
+            g1_database_manager,
+            "_apply_role_cleanup",
+            original_cleanup,
+        )
+        g1_database_manager.manage("recover", target_url)
+        with admin_engine.connect() as admin:
+            assert g1_database_manager._gdc_receipt(admin) is None
+            assert list(
+                admin.execute(
+                    text("SELECT rolname FROM pg_roles WHERE rolname=ANY(:roles)"),
+                    {"roles": list(g1_database_manager.GDC_CONTRACT_ROLE_NAMES)},
+                ).scalars()
+            ) == []
+            assert admin.scalar(
+                text("SELECT to_regnamespace(:schema_name)"),
+                {"schema_name": schema},
+            ) is None
+    finally:
+        monkeypatch.setattr(
+            g1_database_manager,
+            "_apply_role_cleanup",
+            original_cleanup,
+        )
+        monkeypatch.setenv("KJDS_G1_RUN_TOKEN", original_token)
+        with admin_engine.connect() as admin:
+            receipt = g1_database_manager._gdc_receipt(admin)
+        if receipt is not None:
+            g1_database_manager.release_gdc_contract_resources(DATABASE_URL)
+        admin_engine.dispose()
+
+
 @pytest.fixture(scope="module")
 def engine():
     schema = f"data_cov_002_{uuid4().hex}"
     issuer_password = f"gdc-{uuid4().hex}-{uuid4().hex}"
     generic_password = f"app-{uuid4().hex}-{uuid4().hex}"
-    admin = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
-    with admin.connect() as connection:
-        connection.execute(text("DROP ROLE IF EXISTS kjds_gdc_issuance_runtime"))
-        connection.execute(text("DROP ROLE IF EXISTS kjds_gdc_issuance_owner"))
-        connection.execute(text("DROP ROLE IF EXISTS kjds_gdc_generic_runtime"))
-        connection.execute(
-            text(
-                "CREATE ROLE kjds_gdc_issuance_owner NOLOGIN NOINHERIT NOSUPERUSER "
-                "NOCREATEROLE NOCREATEDB NOREPLICATION BYPASSRLS"
-            )
-        )
-        connection.exec_driver_sql(
-            "CREATE ROLE kjds_gdc_issuance_runtime LOGIN NOINHERIT NOSUPERUSER "
-            "NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS "
-            f"PASSWORD '{issuer_password}'"
-        )
-        connection.exec_driver_sql(
-            "CREATE ROLE kjds_gdc_generic_runtime LOGIN NOINHERIT NOSUPERUSER "
-            "NOCREATEROLE NOCREATEDB NOREPLICATION BYPASSRLS "
-            f"PASSWORD '{generic_password}'"
-        )
-        connection.execute(text(f'CREATE SCHEMA "{schema}"'))
-        connection.execute(
-            text(
-                f'CREATE TABLE "{schema}".alembic_version '
-                "(version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
-            )
-        )
-    url = make_url(DATABASE_URL)
-    query = dict(url.query)
-    query["options"] = f"-csearch_path={schema}"
-    target = create_engine(url.set(query=query), pool_pre_ping=True)
-    issuer_url = url.set(
-        username="kjds_gdc_issuance_runtime",
-        password=issuer_password,
-        query=query,
-    )
-    issuer_engine = create_engine(issuer_url, pool_pre_ping=True)
-    generic_url = url.set(
-        username="kjds_gdc_generic_runtime",
-        password=generic_password,
-        query=query,
-    )
-    generic_engine = create_engine(generic_url, pool_pre_ping=True)
-    target.coverage_issuer_engine = issuer_engine
-    target.generic_engine = generic_engine
-    previous = os.environ.get("KJDS_DATABASE_URL")
-    os.environ["KJDS_DATABASE_URL"] = target.url.render_as_string(
-        hide_password=False
-    ).replace("%", "%%")
-    config = migration_config(target)
+    previous_run_token = os.environ.get(g1_database_manager.RUN_TOKEN_ENV)
+    previous_database_url = os.environ.get("KJDS_DATABASE_URL")
+    acquired = False
+    database_url_changed = False
+    admin = None
+    target = None
+    issuer_engine = None
+    generic_engine = None
+    if previous_run_token is None:
+        os.environ[g1_database_manager.RUN_TOKEN_ENV] = uuid4().hex + uuid4().hex
     try:
+        g1_database_manager.acquire_gdc_contract_resources(
+            DATABASE_URL,
+            schema_name=schema,
+            issuer_password=issuer_password,
+            generic_password=generic_password,
+        )
+        acquired = True
+        admin = create_engine(DATABASE_URL, isolation_level="AUTOCOMMIT")
+        with admin.connect() as connection:
+            connection.execute(
+                text(
+                    f'CREATE TABLE "{schema}".alembic_version '
+                    "(version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
+                )
+            )
+        url = make_url(DATABASE_URL)
+        query = dict(url.query)
+        query["options"] = f"-csearch_path={schema}"
+        target = create_engine(url.set(query=query), pool_pre_ping=True)
+        issuer_url = url.set(
+            username="kjds_gdc_issuance_runtime",
+            password=issuer_password,
+            query=query,
+        )
+        issuer_engine = create_engine(issuer_url, pool_pre_ping=True)
+        generic_url = url.set(
+            username="kjds_gdc_generic_runtime",
+            password=generic_password,
+            query=query,
+        )
+        generic_engine = create_engine(generic_url, pool_pre_ping=True)
+        target.coverage_issuer_engine = issuer_engine
+        target.generic_engine = generic_engine
+        os.environ["KJDS_DATABASE_URL"] = target.url.render_as_string(
+            hide_password=False
+        ).replace("%", "%%")
+        database_url_changed = True
+        config = migration_config(target)
         command.upgrade(config, "20260803_0094")
         command.upgrade(config, "20260804_0095")
         command.downgrade(config, "20260803_0094")
@@ -325,19 +651,52 @@ def engine():
             )
         yield target
     finally:
-        if previous is None:
-            os.environ.pop("KJDS_DATABASE_URL", None)
-        else:
-            os.environ["KJDS_DATABASE_URL"] = previous
-        issuer_engine.dispose()
-        generic_engine.dispose()
-        target.dispose()
-        with admin.connect() as connection:
-            connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
-            connection.execute(text("DROP ROLE IF EXISTS kjds_gdc_issuance_runtime"))
-            connection.execute(text("DROP ROLE IF EXISTS kjds_gdc_issuance_owner"))
-            connection.execute(text("DROP ROLE IF EXISTS kjds_gdc_generic_runtime"))
-        admin.dispose()
+        if database_url_changed:
+            if previous_database_url is None:
+                os.environ.pop("KJDS_DATABASE_URL", None)
+            else:
+                os.environ["KJDS_DATABASE_URL"] = previous_database_url
+        if issuer_engine is not None:
+            issuer_engine.dispose()
+        if generic_engine is not None:
+            generic_engine.dispose()
+        if target is not None:
+            target.dispose()
+        if admin is not None:
+            admin.dispose()
+        try:
+            if acquired:
+                g1_database_manager.release_gdc_contract_resources(DATABASE_URL)
+        finally:
+            if previous_run_token is None:
+                os.environ.pop(g1_database_manager.RUN_TOKEN_ENV, None)
+            else:
+                os.environ[g1_database_manager.RUN_TOKEN_ENV] = previous_run_token
+
+
+def test_gdc_fixture_setup_failure_releases_receipt_owned_resources(monkeypatch):
+    _set_g1_secrets(monkeypatch)
+
+    def fail_upgrade(*_args, **_kwargs):
+        raise RuntimeError("injected GDC fixture setup failure")
+
+    monkeypatch.setattr(command, "upgrade", fail_upgrade)
+    fixture = engine.__wrapped__()
+    with pytest.raises(RuntimeError, match="injected GDC fixture setup failure"):
+        next(fixture)
+    admin_engine = create_engine(DATABASE_URL)
+    try:
+        with admin_engine.connect() as admin:
+            assert g1_database_manager._gdc_receipt(admin) is None
+            assert list(
+                admin.execute(
+                    text("SELECT rolname FROM pg_roles WHERE rolname=ANY(:roles)"),
+                    {"roles": list(g1_database_manager.GDC_CONTRACT_ROLE_NAMES)},
+                ).scalars()
+            ) == []
+            assert g1_database_manager._matching_gdc_schemas(admin) == []
+    finally:
+        admin_engine.dispose()
 
 
 @pytest.fixture
