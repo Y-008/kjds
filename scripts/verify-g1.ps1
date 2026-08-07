@@ -12,6 +12,7 @@ $ReleaseEvidenceDirectory = Join-Path $Runtime ("release-g1-" + [guid]::NewGuid(
 $DatabaseName = "kjds_g1_smoke"
 $RestoreDatabaseName = "kjds_g1_restore"
 $DataCoveragePostgresContract = "tests\test_global_data_coverage_ledger_postgres.py"
+$ClosedLoopPostgresContract = "tests\test_closed_loop_evolution_postgres.py"
 $ApiPort = 8010
 $WebPort = 3010
 $EvidenceSmokeFile = Join-Path $Runtime ("g1-evidence-" + [guid]::NewGuid().ToString("N") + ".txt")
@@ -420,6 +421,7 @@ $result = [ordered]@{
     g1_control_mutex_release_receipt = $null
     g1_stale_resource_recovery = $false
     global_data_coverage_postgres_contract = $false
+    closed_loop_evolution_postgres_contract = $false
     generic_postgres_contract_database = $false
     transactional_outbox = $false
     sourcing_numeric_integrity = $false
@@ -559,9 +561,21 @@ try {
     $ContractDatabaseCreated = $true
     $env:KJDS_DATABASE_URL = $ContractDatabaseUrl
     Invoke-External -Command uv -Arguments @(
-        "run", "alembic", "-c", "alembic.ini", "upgrade", "20260803_0092"
+        "run", "alembic", "-c", "alembic.ini", "upgrade", "20260803_0094"
     )
     $result.generic_postgres_contract_database = $true
+
+    # CLOE owns fixed G-1 roles and the fixed target database. Run the whole
+    # lifecycle file before the primary lease exists, using the run-owned
+    # contract database as its immutable 0094 management database.
+    Write-Output "[G-1] Verifying isolated closed-loop PostgreSQL lifecycle contracts"
+    Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL -ErrorAction SilentlyContinue
+    $env:KJDS_DATABASE_URL = $ContractDatabaseUrl
+    Invoke-External -Command uv -Arguments @(
+        "run", "python", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+        "--basetemp=$PytestTemp", $ClosedLoopPostgresContract
+    )
+    $result.closed_loop_evolution_postgres_contract = $true
 
     $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
     Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "acquire")
@@ -676,11 +690,16 @@ try {
     $testFiles = @(
         Get-ChildItem (Join-Path $Root "tests") -Filter "test_*.py" -File |
             ForEach-Object { $_.FullName.Substring($Root.Length + 1) } |
-            Where-Object { $_ -ne $DataCoveragePostgresContract }
+            Where-Object {
+                $_ -notin @(
+                    $DataCoveragePostgresContract,
+                    $ClosedLoopPostgresContract
+                )
+            }
     ) | Sort-Object
     Write-Output "[G-1] Running generic tests with isolated migration-lifecycle database"
     # Keep application/runtime collection on the fully migrated owned G-1
-    # endpoint.  Only the two migration-lifecycle modules consume the
+    # endpoint. Media, Primary Source Intake, and TeamAgent consume the
     # run-scoped contract database through their server-owned test seam.
     $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
     $env:KJDS_RUNTIME_DATABASE_URL = $RuntimeDatabaseUrl

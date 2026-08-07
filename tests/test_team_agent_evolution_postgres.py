@@ -45,7 +45,9 @@ from apps.control_plane.team_agent_evolution import (
     _event_digest,
 )
 
-DATABASE_URL = os.getenv("KJDS_DATABASE_URL", "")
+DATABASE_URL = os.getenv("KJDS_G1_CONTRACT_DATABASE_URL") or os.getenv(
+    "KJDS_DATABASE_URL", ""
+)
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL.startswith("postgresql"),
     reason="PostgreSQL contract tests require KJDS_DATABASE_URL",

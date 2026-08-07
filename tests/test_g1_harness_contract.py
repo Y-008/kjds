@@ -26,6 +26,7 @@ def test_g1_harness_keeps_infrastructure_seams_without_domain_scenarios():
         "Replaying migrations in disposable database",
         "Seeding the disposable operating Gate observation graph",
         "Verifying transactional outbox on PostgreSQL",
+        "Verifying isolated closed-loop PostgreSQL lifecycle contracts",
         "Running Python quality gates",
         "Verifying production API image",
         "Verifying Ozon Worker cannot bypass explicit execution intent",
@@ -254,12 +255,14 @@ def test_g1_isolates_cluster_global_coverage_postgres_contracts_before_lease():
     dedicated_gate = "Verifying isolated global data coverage PostgreSQL contracts"
     recovery = '"scripts/manage_g1_database.py", "recover"'
     acquire = '"scripts/manage_g1_database.py", "acquire"'
-    generic_exclusion = "Where-Object { $_ -ne $DataCoveragePostgresContract }"
+    generic_exclusion = "$_ -notin @("
 
     assert contract in harness
     assert recovery_gate in harness
     assert dedicated_gate in harness
     assert generic_exclusion in harness
+    assert "$DataCoveragePostgresContract," in harness
+    assert "$ClosedLoopPostgresContract" in harness
     assert harness.index(recovery_gate) < harness.index(recovery) < harness.index(dedicated_gate)
     assert harness.index(dedicated_gate) < harness.index(acquire)
     assert "$env:KJDS_DATABASE_URL = $AdminDatabaseUrl" in harness
@@ -319,6 +322,9 @@ def test_g1_generic_contract_database_has_run_scoped_ownership_and_cleanup():
     primary_postgres = (
         ROOT / "tests" / "test_primary_source_intake_postgres.py"
     ).read_text(encoding="utf-8")
+    team_agent_postgres = (
+        ROOT / "tests" / "test_team_agent_evolution_postgres.py"
+    ).read_text(encoding="utf-8")
 
     create_marker = "Creating run-scoped generic PostgreSQL contract database"
     generic_marker = "Running generic tests with isolated migration-lifecycle database"
@@ -328,7 +334,7 @@ def test_g1_generic_contract_database_has_run_scoped_ownership_and_cleanup():
     assert "kjds-g1-contract:" in harness
     assert "shobj_description(oid,'pg_database')" in harness
     assert "G-1 contract database is not owned by this run" in harness
-    assert '"upgrade", "20260803_0092"' in harness
+    assert '"upgrade", "20260803_0094"' in harness
     assert "$env:KJDS_G1_CONTRACT_DATABASE_URL = $ContractDatabaseUrl" in harness
     assert "Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL" in harness
     assert harness.index(create_marker) < harness.index(generic_marker)
@@ -338,17 +344,65 @@ def test_g1_generic_contract_database_has_run_scoped_ownership_and_cleanup():
     seam_consumers = {
         path.name
         for path in (ROOT / "tests").glob("test_*.py")
-        if path.name != Path(__file__).name
+        if path.name
+        not in {
+            Path(__file__).name,
+            "test_closed_loop_evolution_postgres.py",
+        }
         and "KJDS_G1_CONTRACT_DATABASE_URL" in path.read_text(encoding="utf-8")
     }
     assert seam_consumers == {
         "test_media_connectors_postgres.py",
         "test_primary_source_intake_postgres.py",
+        "test_team_agent_evolution_postgres.py",
     }
     for module in (media_postgres, primary_postgres):
         assert 'os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")' in module
         assert 'os.environ["KJDS_DATABASE_URL"] = DATABASE_URL' in module
         assert 'os.environ["KJDS_DATABASE_URL"] = original_database_url' in module
+    assert 'os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")' in team_agent_postgres
+    assert 'os.environ["KJDS_DATABASE_URL"] = target.url.render_as_string(' in (
+        team_agent_postgres
+    )
+    assert 'os.environ["KJDS_DATABASE_URL"] = original_database_url' in (
+        team_agent_postgres
+    )
+
+
+def test_g1_runs_closed_loop_lifecycle_before_primary_lease_and_excludes_generic():
+    harness = HARNESS.read_text(encoding="utf-8")
+    closed_loop_postgres = (
+        ROOT / "tests" / "test_closed_loop_evolution_postgres.py"
+    ).read_text(encoding="utf-8")
+
+    create_marker = "Creating run-scoped generic PostgreSQL contract database"
+    dedicated_marker = "Verifying isolated closed-loop PostgreSQL lifecycle contracts"
+    acquire = '"scripts/manage_g1_database.py", "acquire"'
+    generic_marker = "Running generic tests with isolated migration-lifecycle database"
+    exclusion = "$_ -notin @("
+    dedicated_offset = harness.index(dedicated_marker)
+    seam_clear_offset = harness.index(
+        "Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL", dedicated_offset
+    )
+    seam_set_offset = harness.index(
+        "$env:KJDS_G1_CONTRACT_DATABASE_URL = $ContractDatabaseUrl"
+    )
+
+    assert '"tests\\test_closed_loop_evolution_postgres.py"' in harness
+    assert harness.index(create_marker) < harness.index(dedicated_marker)
+    assert harness.index(dedicated_marker) < harness.index(acquire)
+    assert harness.index(dedicated_marker) < harness.index(generic_marker)
+    assert dedicated_offset < seam_clear_offset < harness.index(acquire)
+    assert harness.index(acquire) < seam_set_offset
+    assert exclusion in harness
+    exclusion_offset = harness.index(exclusion)
+    assert "$ClosedLoopPostgresContract" in harness[exclusion_offset:]
+    assert "$result.closed_loop_evolution_postgres_contract = $true" in harness
+    assert "closed_loop_evolution_postgres_contract = $false" in harness
+    assert 'G1_CONTRACT_DATABASE_URL = os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")' in (
+        closed_loop_postgres
+    )
+    assert "must run in the dedicated" in closed_loop_postgres
 
 
 def test_g1_global_mutex_precedes_fixed_database_and_role_contracts():

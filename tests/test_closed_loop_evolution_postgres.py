@@ -67,6 +67,7 @@ from apps.control_plane.evidence import (
 from apps.control_plane.security import Principal
 
 DATABASE_URL = os.getenv("KJDS_DATABASE_URL", "")
+G1_CONTRACT_DATABASE_URL = os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL.startswith("postgresql"),
     reason="PostgreSQL contract tests require KJDS_DATABASE_URL",
@@ -1917,6 +1918,10 @@ def _capture_review_authority(
 
 @pytest.fixture(scope="module")
 def postgres_gate():
+    assert G1_CONTRACT_DATABASE_URL is None, (
+        "closed-loop PostgreSQL lifecycle contracts must run in the dedicated "
+        "pre-lease G-1 phase"
+    )
     target_url = (
         make_url(DATABASE_URL).set(database=g1_database_manager.DATABASE_NAME).render_as_string(hide_password=False)
     )
