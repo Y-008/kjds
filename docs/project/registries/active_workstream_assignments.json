@@ -87,7 +87,7 @@
       "name": "risk_review",
       "accountable_role": "risk_owner",
       "current_task": null,
-      "next_task_id": null
+      "next_task_id": "BAS-211"
     },
     {
       "id": "F",

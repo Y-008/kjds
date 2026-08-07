@@ -182,13 +182,26 @@ def test_bas210_is_queued_as_next_research_inbox_follow_up():
 
 
 
+def test_bas211_is_queued_for_isolated_g1_role_cleanup():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+    risk = lanes["E"]
+
+    assert risk["current_task"] is None
+    assert risk["next_task_id"] == "BAS-211"
+    assert "BAS-211" not in registry["shared_write_leases"].values()
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    assert "| BAS-211 |" in plan
+
+
+
 def test_bas176_holds_only_the_disposable_postgres_rehearsal_lane():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     risk = lanes["E"]
 
     assert risk["current_task"] is None
-    assert risk["next_task_id"] is None
+    assert risk["next_task_id"] == "BAS-211"
 
 
 def test_shared_write_leases_and_authority_stay_fail_closed():
