@@ -161,34 +161,53 @@ def test_bas204_release_frees_closed_loop_and_migration_leases():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] is None
-    assert engineering["next_task_id"] == "BAS-210"
+    assert engineering["current_task"]["task_id"] == "BAS-210"
+    assert engineering["next_task_id"] is None
     assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert "BAS-204" not in registry["shared_write_leases"].values()
 
-def test_bas210_is_queued_as_next_research_inbox_follow_up():
+def test_bas210_claims_lane_c_with_exact_research_inbox_scope():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] is None
-    assert engineering["next_task_id"] == "BAS-210"
+    assert engineering["current_task"] == {
+        "task_id": "BAS-210",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "write_scope": [
+            "evidence_research_role_query",
+            "research_inbox_server_pagination",
+            "research_inbox_reserved_evidence_fairness",
+            "research_inbox_scope_no_data_tests",
+            "bas210_remediation_evidence",
+        ],
+        "blocked_on": [],
+    }
+    assert engineering["next_task_id"] is None
     assert "BAS-210" not in registry["shared_write_leases"].values()
     plan = PLAN_PATH.read_text(encoding="utf-8")
-    assert "| BAS-210 |" in plan
+    bas210_row = next(
+        line for line in plan.splitlines() if line.startswith("| BAS-210 |")
+    )
+    assert "apps/control_plane/evidence.py" in bas210_row
+    assert "apps/control_plane/research_inbox.py" in bas210_row
+    assert "20260807_BAS_210_RESEARCH_INBOX_PAGINATION.md" in bas210_row
+    assert "不改 route/API/OpenAPI/migration/runtime" in bas210_row
+    assert bas210_row.endswith("| IN_PROGRESS |")
 
 
 
-def test_bas211_release_record_and_bas210_queue_are_preserved():
+def test_bas211_release_record_and_bas210_execution_are_preserved():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] is None
-    assert engineering["next_task_id"] == "BAS-210"
+    assert engineering["current_task"]["task_id"] == "BAS-210"
+    assert engineering["next_task_id"] is None
     assert "BAS-211" not in registry["shared_write_leases"].values()
     plan = PLAN_PATH.read_text(encoding="utf-8")
     assert "| BAS-211 |" in plan
@@ -197,7 +216,7 @@ def test_bas211_release_record_and_bas210_queue_are_preserved():
     assert "| DONE_ENGINEERING |" in plan
 
 
-def test_bas212_release_frees_lane_e_after_clean_head_g1():
+def test_bas212_release_frees_lane_e_and_preserves_bas210_execution():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     risk = lanes["E"]
@@ -205,8 +224,8 @@ def test_bas212_release_frees_lane_e_after_clean_head_g1():
 
     assert risk["current_task"] is None
     assert risk["next_task_id"] is None
-    assert engineering["current_task"] is None
-    assert engineering["next_task_id"] == "BAS-210"
+    assert engineering["current_task"]["task_id"] == "BAS-210"
+    assert engineering["next_task_id"] is None
     assert "BAS-212" not in registry["shared_write_leases"].values()
     assert all(value is None for value in registry["shared_write_leases"].values())
     plan = PLAN_PATH.read_text(encoding="utf-8")
