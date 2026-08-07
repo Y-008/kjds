@@ -27,6 +27,8 @@ from ..api_contracts import (
 from ..evidence import (
     CHANNEL_ACCOUNT_RESERVED_CONTRACTS,
     CHANNEL_ACCOUNT_RESERVED_SOURCES,
+    CLOSED_LOOP_RESERVED_CONTRACTS,
+    CLOSED_LOOP_RESERVED_SOURCES,
     EvidenceGrade,
 )
 from ..research_inbox import ResearchInboxService
@@ -69,6 +71,8 @@ def _ensure_channel_evidence_access(
     *,
     content: bool = False,
 ) -> None:
+    if record.source in CLOSED_LOOP_RESERVED_SOURCES:
+        raise HTTPException(status_code=404, detail="Evidence not found")
     if record.source in STRATEGIC_BENCHMARK_EVIDENCE_SOURCES:
         metadata = record.metadata
         store_ref = str(metadata.get("store_ref") or "")
@@ -140,6 +144,7 @@ async def capture_evidence(
     ensure_role(principal, "operator", "reviewer", "compliance", "admin")
     if source.strip().lower() in {
         *CHANNEL_ACCOUNT_RESERVED_SOURCES,
+        *CLOSED_LOOP_RESERVED_SOURCES,
         "candidate_evidence_authority_review",
         "gate_requirement_review",
         "listing_russian_native_review",
@@ -187,6 +192,14 @@ async def capture_evidence(
         raise HTTPException(
             status_code=422,
             detail=("Reserved channel account authority metadata requires its dedicated separation-of-duties workflow"),
+        )
+    if str(metadata.get("contract_id") or "").strip() in CLOSED_LOOP_RESERVED_CONTRACTS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Reserved closed-loop authority metadata requires its "
+                "dedicated workflow"
+            ),
         )
     return run(
         lambda: runtime.evidence.capture(
@@ -333,7 +346,10 @@ def list_evidence(
     principal: Annotated[Principal, Depends(current_principal)],
     limit: int = 100,
 ):
-    records = runtime.evidence.list(min(max(limit, 1), 500))
+    records = runtime.evidence.list_for_governance(
+        closed_loop_scopes=(),
+        limit=min(max(limit, 1), 500),
+    )
     visible = []
     for item in records:
         try:

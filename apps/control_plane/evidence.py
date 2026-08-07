@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from collections.abc import Iterator
+import re
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Any
 
@@ -20,7 +22,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
     func,
+    or_,
     select,
     text,
 )
@@ -158,6 +162,280 @@ COVERAGE_RESERVED_CONTRACTS = frozenset(
         "kjds-global-data-coverage-ledger-evidence-v1",
     }
 )
+CLOSED_LOOP_RESERVED_SOURCES = frozenset(
+    {
+        "closed-loop-experiment-receipt",
+        "closed-loop-cost-receipt",
+        "closed-loop-business-outcome-receipt",
+        "closed-loop-review-authority-receipt",
+        "governed-closed-loop-evolution",
+    }
+)
+CLOSED_LOOP_RESERVED_CONTRACTS = frozenset(
+    {
+        "kjds-closed-loop-experiment-receipt-v1",
+        "kjds-closed-loop-cost-receipt-v1",
+        "kjds-closed-loop-business-outcome-receipt-v1",
+        "kjds-closed-loop-review-authority-receipt-v1",
+        "kjds-governed-closed-loop-evolution-event-v1",
+    }
+)
+CLOSED_LOOP_AUTHORITY_SCHEMA_MANIFESTS: dict[str, dict[str, Any]] = {
+    "experiment": {
+        "schema_id": "kjds-closed-loop-experiment-claims-v1",
+        "additional_properties": False,
+        "required_fields": [
+            "agent_run_ref",
+            "experiment_ref",
+            "method",
+            "treatment_ref",
+            "control_ref",
+            "sample_size",
+            "minimum_sample_size",
+            "metric_id",
+            "metric_unit",
+            "metric_currency",
+            "window_start",
+            "window_end",
+            "confidence_level_decimal",
+            "independent_review_passed",
+            "causal_claim_allowed",
+        ],
+        "field_types": {
+            "agent_run_ref": "token",
+            "experiment_ref": "token",
+            "method": "token",
+            "treatment_ref": "token",
+            "control_ref": "nullable_token",
+            "sample_size": "positive_integer",
+            "minimum_sample_size": "positive_integer",
+            "metric_id": "token",
+            "metric_unit": "token",
+            "metric_currency": "currency_or_null_by_metric_unit",
+            "window_start": "aware_utc_datetime",
+            "window_end": "aware_utc_datetime",
+            "confidence_level_decimal": "numeric_8_6_exact_gt_0_lte_1",
+            "independent_review_passed": "strict_boolean",
+            "causal_claim_allowed": "literal_false",
+        },
+        "cross_field_rules": [
+            "window_start_lt_window_end",
+            "treatment_ref_ne_control_ref",
+            "monetary_metric_requires_currency",
+            "decimal_storage_exact_without_rounding",
+            "causal_claim_forbidden",
+        ],
+    },
+    "cost": {
+        "schema_id": "kjds-closed-loop-cost-claims-v1",
+        "additional_properties": False,
+        "required_fields": [
+            "agent_run_ref",
+            "experiment_ref",
+            "outcome_ref",
+            "cost_ref",
+            "amount_minor_units",
+            "currency",
+            "period_start",
+            "period_end",
+            "allocation_method",
+        ],
+        "field_types": {
+            "agent_run_ref": "token",
+            "experiment_ref": "token",
+            "outcome_ref": "token",
+            "cost_ref": "token",
+            "amount_minor_units": "nonnegative_integer",
+            "currency": "iso_4217_uppercase",
+            "period_start": "aware_utc_datetime",
+            "period_end": "aware_utc_datetime",
+            "allocation_method": "token",
+        },
+        "cross_field_rules": ["period_start_lt_period_end"],
+    },
+    "business_outcome": {
+        "schema_id": "kjds-closed-loop-business-outcome-claims-v1",
+        "additional_properties": False,
+        "required_fields": [
+            "agent_run_ref",
+            "outcome_ref",
+            "experiment_ref",
+            "metric_id",
+            "metric_unit",
+            "metric_currency",
+            "method",
+            "sample_size",
+            "interval_start",
+            "interval_end",
+            "value_decimal",
+            "confidence_level_decimal",
+            "independent_review_passed",
+            "causal_claim_allowed",
+        ],
+        "field_types": {
+            "agent_run_ref": "token",
+            "outcome_ref": "token",
+            "experiment_ref": "token",
+            "metric_id": "token",
+            "metric_unit": "token",
+            "metric_currency": "currency_or_null_by_metric_unit",
+            "method": "token",
+            "sample_size": "positive_integer",
+            "interval_start": "aware_utc_datetime",
+            "interval_end": "aware_utc_datetime",
+            "value_decimal": "numeric_30_12_exact_abs_lt_1e18",
+            "confidence_level_decimal": "numeric_8_6_exact_gt_0_lte_1",
+            "independent_review_passed": "strict_boolean",
+            "causal_claim_allowed": "literal_false",
+        },
+        "cross_field_rules": [
+            "interval_start_lt_interval_end",
+            "monetary_metric_requires_currency",
+            "decimal_storage_exact_without_rounding",
+            "causal_claim_forbidden",
+        ],
+    },
+    "review_event": {
+        "schema_id": "kjds-closed-loop-review-event-claims-v1",
+        "additional_properties": False,
+        "required_fields": [
+            "bundle_id",
+            "event_type",
+            "reason_code",
+            "replacement_bundle_id",
+            "requested_by_actor_id",
+        ],
+        "field_types": {
+            "bundle_id": "token",
+            "event_type": "review_event_enum",
+            "reason_code": "token",
+            "replacement_bundle_id": "nullable_token",
+            "requested_by_actor_id": "token",
+        },
+        "cross_field_rules": [
+            "superseded_iff_replacement_bundle_id_present"
+        ],
+    },
+}
+
+
+def _closed_loop_schema_sha256(purpose: str) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            CLOSED_LOOP_AUTHORITY_SCHEMA_MANIFESTS[purpose],
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+    ).hexdigest()
+
+
+CLOSED_LOOP_AUTHORITY_CONTRACTS: dict[str, dict[str, Any]] = {
+    "experiment": {
+        "source": "closed-loop-experiment-receipt",
+        "contract_id": "kjds-closed-loop-experiment-receipt-v1",
+        "issuer_id": "kjds-closed-loop-experiment-authority",
+        "issuer_contract_id": "kjds-closed-loop-experiment-authority-v1",
+        "issuer_contract_version": "1.0.0",
+        "issuer_contract_sha256": (
+            "f97fe473225e7ffc13f42e94f164f3cfc3fba028179e1b04864c09203a7576ea"
+        ),
+        "schema_sha256": _closed_loop_schema_sha256("experiment"),
+        "fields": frozenset(
+            {
+                "agent_run_ref",
+                "experiment_ref",
+                "method",
+                "treatment_ref",
+                "control_ref",
+                "sample_size",
+                "minimum_sample_size",
+                "metric_id",
+                "metric_unit",
+                "metric_currency",
+                "window_start",
+                "window_end",
+                "confidence_level_decimal",
+                "independent_review_passed",
+                "causal_claim_allowed",
+            }
+        ),
+    },
+    "cost": {
+        "source": "closed-loop-cost-receipt",
+        "contract_id": "kjds-closed-loop-cost-receipt-v1",
+        "issuer_id": "kjds-closed-loop-cost-authority",
+        "issuer_contract_id": "kjds-closed-loop-cost-authority-v1",
+        "issuer_contract_version": "1.0.0",
+        "issuer_contract_sha256": (
+            "26d5067a2eb437e757258fa60d072074771161025d3354e87d4710a26bb4602f"
+        ),
+        "schema_sha256": _closed_loop_schema_sha256("cost"),
+        "fields": frozenset(
+            {
+                "agent_run_ref",
+                "experiment_ref",
+                "outcome_ref",
+                "cost_ref",
+                "amount_minor_units",
+                "currency",
+                "period_start",
+                "period_end",
+                "allocation_method",
+            }
+        ),
+    },
+    "business_outcome": {
+        "source": "closed-loop-business-outcome-receipt",
+        "contract_id": "kjds-closed-loop-business-outcome-receipt-v1",
+        "issuer_id": "kjds-closed-loop-business_outcome-authority",
+        "issuer_contract_id": "kjds-closed-loop-business_outcome-authority-v1",
+        "issuer_contract_version": "1.0.0",
+        "issuer_contract_sha256": (
+            "707982da198bd289c13fbc7151ded979e0125672b7b341e5728079467147db6c"
+        ),
+        "schema_sha256": _closed_loop_schema_sha256("business_outcome"),
+        "fields": frozenset(
+            {
+                "agent_run_ref",
+                "outcome_ref",
+                "experiment_ref",
+                "metric_id",
+                "metric_unit",
+                "metric_currency",
+                "method",
+                "sample_size",
+                "interval_start",
+                "interval_end",
+                "value_decimal",
+                "confidence_level_decimal",
+                "independent_review_passed",
+                "causal_claim_allowed",
+            }
+        ),
+    },
+    "review_event": {
+        "source": "closed-loop-review-authority-receipt",
+        "contract_id": "kjds-closed-loop-review-authority-receipt-v1",
+        "issuer_id": "kjds-closed-loop-review-authority",
+        "issuer_contract_id": "kjds-closed-loop-review-authority-v1",
+        "issuer_contract_version": "1.0.0",
+        "issuer_contract_sha256": (
+            "d85428cb588631ff0afd0592b08d5c4bd372aed4abbd543c0fbb07f4c5a773e7"
+        ),
+        "schema_sha256": _closed_loop_schema_sha256("review_event"),
+        "fields": frozenset(
+            {
+                "bundle_id",
+                "event_type",
+                "reason_code",
+                "replacement_bundle_id",
+                "requested_by_actor_id",
+            }
+        ),
+    },
+}
 COVERAGE_INTAKE_CONTRACTS: dict[str, dict[str, str]] = {
     "manifest": {
         "source": "global-data-coverage-manifest",
@@ -407,6 +685,26 @@ class EvidenceRecordRow(Base):
                 "'team-agent-risk-authority',"
                 "'team-agent-rollback-authority',"
                 "'team-agent-shadow-authority')"
+            ),
+        ),
+        Index(
+            "uq_closed_loop_authority_evidence_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text(
+                "source IN ('closed-loop-experiment-receipt',"
+                "'closed-loop-cost-receipt',"
+                "'closed-loop-business-outcome-receipt',"
+                "'closed-loop-review-authority-receipt',"
+                "'governed-closed-loop-evolution')"
+            ),
+            sqlite_where=text(
+                "source IN ('closed-loop-experiment-receipt',"
+                "'closed-loop-cost-receipt',"
+                "'closed-loop-business-outcome-receipt',"
+                "'closed-loop-review-authority-receipt',"
+                "'governed-closed-loop-evolution')"
             ),
         ),
         Index(
@@ -749,6 +1047,148 @@ class EvidenceService:
             _session=session,
         )
 
+    def capture_closed_loop_evolution_event(
+        self,
+        *,
+        content: bytes,
+        source_ref: str,
+        effective_at: str,
+        recorded_at: str,
+        metadata: dict[str, Any],
+        session: Session,
+    ) -> EvidenceRecord:
+        """Persist one module-owned, canonical closed-loop event receipt."""
+
+        bundle_id = str(metadata.get("bundle_id") or "").strip()
+        event_id = str(metadata.get("event_id") or "").strip()
+        expected_ref = f"closed-loop-evolution://{bundle_id}/{event_id}"
+        try:
+            payload = json.loads(content.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError("Closed-loop event must be canonical JSON") from None
+        canonical = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid governed closed-loop event Evidence contract")
+        expected_keys = {
+            "contract_id",
+            "bundle_id",
+            "event_index",
+            "event_type",
+            "reason_code",
+            "actor_id",
+            "request_sha256",
+            "previous_event_sha256",
+            "occurred_at",
+            "event_sha256",
+            "review_evidence_ref",
+            "replacement_bundle_id",
+            "payload_status",
+            "candidate_created",
+            "transition_allowed",
+            "promotion_allowed",
+            "external_write_allowed",
+        }
+        expected_metadata_keys = {
+            "contract_id",
+            "bundle_id",
+            "event_id",
+            "event_type",
+            "event_sha256",
+            "review_evidence_ref",
+            "replacement_bundle_id",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "retention_class",
+            "legal_hold",
+        }
+        event_core = {
+            key: payload.get(key)
+            for key in (
+                "bundle_id",
+                "event_index",
+                "event_type",
+                "reason_code",
+                "actor_id",
+                "request_sha256",
+                "previous_event_sha256",
+                "occurred_at",
+            )
+        }
+        recomputed_event_sha256 = hashlib.sha256(
+            "\x1f".join(
+                str(event_core[field])
+                for field in (
+                    "bundle_id",
+                    "event_index",
+                    "event_type",
+                    "reason_code",
+                    "actor_id",
+                    "request_sha256",
+                    "previous_event_sha256",
+                    "occurred_at",
+                )
+            ).encode()
+        ).hexdigest()
+        if (
+            canonical != content
+            or set(payload) != expected_keys
+            or set(metadata) != expected_metadata_keys
+            or metadata.get("contract_id")
+            != "kjds-governed-closed-loop-evolution-event-v1"
+            or payload.get("contract_id")
+            != "kjds-governed-closed-loop-evolution-event-v1"
+            or payload.get("bundle_id") != bundle_id
+            or payload.get("event_sha256") != metadata.get("event_sha256")
+            or payload.get("event_sha256") != recomputed_event_sha256
+            or payload.get("event_type") != metadata.get("event_type")
+            or payload.get("review_evidence_ref")
+            != metadata.get("review_evidence_ref")
+            or payload.get("replacement_bundle_id")
+            != metadata.get("replacement_bundle_id")
+            or metadata.get("retention_class") != "compliance"
+            or metadata.get("legal_hold") is not False
+            or not isinstance(payload.get("event_index"), int)
+            or isinstance(payload.get("event_index"), bool)
+            or payload.get("event_index", 0) < 1
+            or payload.get("payload_status") != "hash_and_code_only"
+            or any(
+                payload.get(field) is not False
+                for field in (
+                    "candidate_created",
+                    "transition_allowed",
+                    "promotion_allowed",
+                    "external_write_allowed",
+                )
+            )
+            or source_ref != expected_ref
+            or not bundle_id
+            or not event_id
+        ):
+            raise ValueError("Invalid governed closed-loop event Evidence contract")
+        return self.capture(
+            content=content,
+            filename=f"{event_id}.json",
+            content_type="application/json",
+            source="governed-closed-loop-evolution",
+            source_ref=source_ref,
+            grade=EvidenceGrade.D,
+            effective_at=effective_at,
+            effective_until=None,
+            created_by="kjds-closed-loop-evolution",
+            metadata=metadata,
+            _reserved_authority=_RESERVED_CAPTURE_AUTHORITY,
+            _session=session,
+            _recorded_at=recorded_at,
+        )
+
     def capture(
         self,
         *,
@@ -764,6 +1204,7 @@ class EvidenceService:
         metadata: dict[str, Any] | None = None,
         _reserved_authority: object | None = None,
         _session: Session | None = None,
+        _recorded_at: str | None = None,
     ) -> EvidenceRecord:
         if not content:
             raise ValueError("Evidence content cannot be empty")
@@ -807,6 +1248,14 @@ class EvidenceService:
             raise ValueError(
                 "Reserved coverage Evidence requires its dedicated authority adapter"
             )
+        if (
+            source.strip().lower() in CLOSED_LOOP_RESERVED_SOURCES
+            or str(metadata.get("contract_id") or "").strip()
+            in CLOSED_LOOP_RESERVED_CONTRACTS
+        ) and _reserved_authority is not _RESERVED_CAPTURE_AUTHORITY:
+            raise ValueError(
+                "Reserved closed-loop Evidence requires its dedicated authority adapter"
+            )
         retention_class = metadata.get("retention_class")
         if retention_class is not None:
             try:
@@ -817,7 +1266,12 @@ class EvidenceService:
             raise ValueError("legal_hold must be true or false")
 
         digest = hashlib.sha256(content).hexdigest()
-        now = datetime.now(UTC)
+        if _recorded_at is not None:
+            if _reserved_authority is not _RESERVED_CAPTURE_AUTHORITY:
+                raise ValueError("Explicit Evidence recorded_at is reserved")
+            now = parse_timestamp(_recorded_at, "recorded_at")
+        else:
+            now = datetime.now(UTC)
         if _session is not None:
             blob = _session.get(EvidenceBlobRow, digest)
             if blob is None:
@@ -975,6 +1429,114 @@ class EvidenceService:
                 .limit(limit)
             ).all()
             return [self._record(row, byte_size) for row, byte_size in rows]
+
+    def list_for_governance(
+        self,
+        *,
+        closed_loop_scopes: Sequence[Mapping[str, str]],
+        limit: int,
+        cursor_recorded_at: datetime | None = None,
+        cursor_id: str | None = None,
+    ) -> list[EvidenceRecord]:
+        """Page records while filtering reserved closed-loop rows in SQL.
+
+        Ordinary Evidence keeps the historical governance visibility contract.
+        Closed-loop authority and event Evidence is admitted to the query only
+        when every current scope component matches, so another scope cannot
+        consume the bounded page or disclose its record count/order.
+        """
+
+        bounded_limit = min(max(limit, 1), 501)
+        scope_clauses = [
+            and_(
+                EvidenceRecordRow.metadata_json["tenant_ref"].as_string()
+                == scope["tenant_ref"],
+                EvidenceRecordRow.metadata_json["entity_ref"].as_string()
+                == scope["entity_ref"],
+                EvidenceRecordRow.metadata_json["store_ref"].as_string()
+                == scope["store_ref"],
+                EvidenceRecordRow.metadata_json[
+                    "scope_grant_authority_sha256"
+                ].as_string()
+                == scope["scope_grant_authority_sha256"],
+            )
+            for scope in closed_loop_scopes
+        ]
+        closed_loop_visibility = and_(
+            EvidenceRecordRow.source.in_(tuple(CLOSED_LOOP_RESERVED_SOURCES)),
+            or_(*scope_clauses) if scope_clauses else text("false"),
+        )
+        visibility = or_(
+            EvidenceRecordRow.source.not_in(tuple(CLOSED_LOOP_RESERVED_SOURCES)),
+            closed_loop_visibility,
+        )
+        query = (
+            select(EvidenceRecordRow, EvidenceBlobRow.byte_size)
+            .join(
+                EvidenceBlobRow,
+                EvidenceBlobRow.sha256 == EvidenceRecordRow.blob_sha256,
+            )
+            .where(visibility)
+            .order_by(EvidenceRecordRow.recorded_at.desc(), EvidenceRecordRow.id)
+            .limit(bounded_limit)
+        )
+        if (cursor_recorded_at is None) != (cursor_id is None):
+            raise ValueError("Evidence cursor components must be supplied together")
+        if cursor_recorded_at is not None and cursor_id is not None:
+            query = query.where(
+                or_(
+                    EvidenceRecordRow.recorded_at < cursor_recorded_at,
+                    and_(
+                        EvidenceRecordRow.recorded_at == cursor_recorded_at,
+                        EvidenceRecordRow.id > cursor_id,
+                    ),
+                )
+            )
+        with Session(self.engine) as session:
+            rows = session.execute(query).all()
+            return [self._record(row, byte_size) for row, byte_size in rows]
+
+    def governance_cursor_candidates(
+        self,
+        *,
+        closed_loop_scopes: Sequence[Mapping[str, str]],
+        recorded_at: datetime,
+    ) -> tuple[str, ...]:
+        """Return only current-scope identifiers at one cursor timestamp."""
+
+        scope_clauses = [
+            and_(
+                EvidenceRecordRow.metadata_json["tenant_ref"].as_string()
+                == scope["tenant_ref"],
+                EvidenceRecordRow.metadata_json["entity_ref"].as_string()
+                == scope["entity_ref"],
+                EvidenceRecordRow.metadata_json["store_ref"].as_string()
+                == scope["store_ref"],
+                EvidenceRecordRow.metadata_json[
+                    "scope_grant_authority_sha256"
+                ].as_string()
+                == scope["scope_grant_authority_sha256"],
+            )
+            for scope in closed_loop_scopes
+        ]
+        visibility = or_(
+            EvidenceRecordRow.source.not_in(tuple(CLOSED_LOOP_RESERVED_SOURCES)),
+            and_(
+                EvidenceRecordRow.source.in_(tuple(CLOSED_LOOP_RESERVED_SOURCES)),
+                or_(*scope_clauses) if scope_clauses else text("false"),
+            ),
+        )
+        with Session(self.engine) as session:
+            return tuple(
+                session.scalars(
+                    select(EvidenceRecordRow.id)
+                    .where(
+                        visibility,
+                        EvidenceRecordRow.recorded_at == recorded_at,
+                    )
+                    .order_by(EvidenceRecordRow.id)
+                )
+            )
 
     def list_by_source(self, source: str, limit: int = 100) -> list[EvidenceRecord]:
         source = source.strip()
@@ -1293,14 +1855,22 @@ class EvidenceService:
         relationship: str,
         created_by: str,
     ) -> LineageEdge:
-        self.get(evidence_id)
+        source_record = self.get(evidence_id)
+        if source_record.source in CLOSED_LOOP_RESERVED_SOURCES:
+            raise ValueError(
+                "Reserved closed-loop lineage requires its dedicated ledger"
+            )
         target_type = target_type.strip().lower()
         target_id = target_id.strip()
         relationship = relationship.strip()
         if not target_type or not target_id or not relationship:
             raise ValueError("Lineage requires target_type, target_id, and relationship")
         if target_type == "evidence":
-            self.get(target_id)
+            target_record = self.get(target_id)
+            if target_record.source in CLOSED_LOOP_RESERVED_SOURCES:
+                raise ValueError(
+                    "Reserved closed-loop lineage requires its dedicated ledger"
+                )
             if target_id == evidence_id:
                 raise ValueError("Evidence cannot derive from itself")
         try:
@@ -1462,6 +2032,334 @@ def hmac_compare(left: str, right: str) -> bool:
     return hmac.compare_digest(left, right)
 
 
+_CLOSED_LOOP_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
+_CLOSED_LOOP_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_CLOSED_LOOP_CURRENCY = re.compile(r"^[A-Z]{3}$")
+
+
+def _closed_loop_token(
+    value: object, field: str, *, optional: bool = False
+) -> str | None:
+    if value is None and optional:
+        return None
+    if not isinstance(value, str):
+        raise PermissionError(f"Closed-loop {field} is invalid")
+    normalized = value.strip()
+    if optional and not normalized:
+        return None
+    if not _CLOSED_LOOP_TOKEN.fullmatch(normalized):
+        raise PermissionError(f"Closed-loop {field} is invalid")
+    return normalized
+
+
+def _closed_loop_sha256(value: object, field: str) -> str:
+    if not isinstance(value, str) or not _CLOSED_LOOP_SHA256.fullmatch(value):
+        raise PermissionError(f"Closed-loop {field} is invalid")
+    return value
+
+
+def _closed_loop_int(
+    value: object, field: str, *, positive: bool, maximum: int
+) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < (1 if positive else 0)
+        or value > maximum
+    ):
+        raise PermissionError(f"Closed-loop {field} is invalid")
+    return value
+
+
+def _closed_loop_time(value: object, field: str) -> tuple[datetime, str]:
+    if not isinstance(value, str):
+        raise PermissionError(f"Closed-loop {field} is invalid")
+    parsed = parse_timestamp(value, field)
+    return parsed, parsed.isoformat()
+
+
+def _closed_loop_decimal(
+    value: object,
+    field: str,
+    *,
+    maximum_scale: int,
+    maximum_integer_digits: int | None = None,
+) -> Decimal:
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise PermissionError(f"Closed-loop {field} is invalid")
+    try:
+        parsed = Decimal(str(value))
+    except InvalidOperation:
+        raise PermissionError(f"Closed-loop {field} is invalid") from None
+    if not parsed.is_finite():
+        raise PermissionError(f"Closed-loop {field} is invalid")
+    _, digits, exponent = parsed.as_tuple()
+    if exponent < -maximum_scale:
+        excess_digits = -maximum_scale - exponent
+        if any(digit != 0 for digit in digits[-excess_digits:]):
+            raise PermissionError(f"Closed-loop {field} is not exactly storable")
+    if (
+        maximum_integer_digits is not None
+        and parsed.copy_abs() >= Decimal(10) ** maximum_integer_digits
+    ):
+        raise PermissionError(f"Closed-loop {field} is not exactly storable")
+    return parsed
+
+
+def _closed_loop_metric_currency(*, metric_unit: str, value: object) -> str | None:
+    if metric_unit == "minor_currency_units":
+        if not isinstance(value, str) or not _CLOSED_LOOP_CURRENCY.fullmatch(value):
+            raise PermissionError("Closed-loop monetary metric currency is invalid")
+        return value
+    if value is not None:
+        raise PermissionError("Closed-loop non-monetary metric currency must be null")
+    return None
+
+
+def _closed_loop_require_association_only(
+    purpose: str, claims: Mapping[str, Any]
+) -> None:
+    if purpose in {"experiment", "business_outcome"}:
+        if claims.get("causal_claim_allowed") is not False:
+            raise PermissionError("Closed-loop causal claims are not admitted")
+    elif purpose == "cost" and "causal_claim_allowed" in claims:
+        raise PermissionError("Closed-loop cost claims cannot declare causality")
+
+
+def _closed_loop_claims(purpose: str, claims: dict[str, Any]) -> dict[str, Any]:
+    _closed_loop_require_association_only(purpose, claims)
+    if purpose == "review_event":
+        event_type = _closed_loop_token(
+            claims["event_type"], "review_event.event_type"
+        )
+        replacement = _closed_loop_token(
+            claims["replacement_bundle_id"],
+            "review_event.replacement_bundle_id",
+            optional=True,
+        )
+        if event_type not in {
+            "review_requested",
+            "invalidated",
+            "revoked",
+            "superseded",
+        } or (event_type == "superseded") != (replacement is not None):
+            raise PermissionError("Closed-loop review claims are invalid")
+        return {
+            "bundle_id": _closed_loop_token(
+                claims["bundle_id"], "review_event.bundle_id"
+            ),
+            "event_type": event_type,
+            "reason_code": _closed_loop_token(
+                claims["reason_code"], "review_event.reason_code"
+            ),
+            "replacement_bundle_id": replacement,
+            "requested_by_actor_id": _closed_loop_token(
+                claims["requested_by_actor_id"],
+                "review_event.requested_by_actor_id",
+            ),
+        }
+    if purpose == "experiment":
+        window_start, window_start_text = _closed_loop_time(
+            claims["window_start"], "experiment.window_start"
+        )
+        window_end, window_end_text = _closed_loop_time(
+            claims["window_end"], "experiment.window_end"
+        )
+        treatment = _closed_loop_token(
+            claims["treatment_ref"], "experiment.treatment_ref"
+        )
+        control = _closed_loop_token(
+            claims["control_ref"], "experiment.control_ref", optional=True
+        )
+        sample = _closed_loop_int(
+            claims["sample_size"],
+            "experiment.sample_size",
+            positive=True,
+            maximum=1_000_000_000,
+        )
+        minimum = _closed_loop_int(
+            claims["minimum_sample_size"],
+            "experiment.minimum_sample_size",
+            positive=True,
+            maximum=1_000_000_000,
+        )
+        causal = False
+        independent_review = claims["independent_review_passed"]
+        confidence = _closed_loop_decimal(
+            claims["confidence_level_decimal"],
+            "experiment.confidence_level_decimal",
+            maximum_scale=6,
+        )
+        if (
+            not isinstance(causal, bool)
+            or not isinstance(independent_review, bool)
+            or confidence <= 0
+            or confidence > 1
+            or window_start >= window_end
+            or treatment == control
+        ):
+            raise PermissionError("Closed-loop experiment claims are invalid")
+        metric_unit = _closed_loop_token(
+            claims["metric_unit"], "experiment.metric_unit"
+        )
+        return {
+            "agent_run_ref": _closed_loop_token(
+                claims["agent_run_ref"], "experiment.agent_run_ref"
+            ),
+            "experiment_ref": _closed_loop_token(
+                claims["experiment_ref"], "experiment.experiment_ref"
+            ),
+            "method": _closed_loop_token(
+                claims["method"], "experiment.method"
+            ),
+            "treatment_ref": treatment,
+            "control_ref": control,
+            "sample_size": sample,
+            "minimum_sample_size": minimum,
+            "metric_id": _closed_loop_token(
+                claims["metric_id"], "experiment.metric_id"
+            ),
+            "metric_unit": metric_unit,
+            "metric_currency": _closed_loop_metric_currency(
+                metric_unit=metric_unit, value=claims["metric_currency"]
+            ),
+            "window_start": window_start_text,
+            "window_end": window_end_text,
+            "confidence_level_decimal": format(confidence, "f"),
+            "independent_review_passed": independent_review,
+            "causal_claim_allowed": causal,
+        }
+    if purpose == "cost":
+        period_start, period_start_text = _closed_loop_time(
+            claims["period_start"], "cost.period_start"
+        )
+        period_end, period_end_text = _closed_loop_time(
+            claims["period_end"], "cost.period_end"
+        )
+        currency = claims["currency"]
+        if (
+            not isinstance(currency, str)
+            or not _CLOSED_LOOP_CURRENCY.fullmatch(currency)
+            or period_start >= period_end
+        ):
+            raise PermissionError("Closed-loop cost claims are invalid")
+        return {
+            "agent_run_ref": _closed_loop_token(
+                claims["agent_run_ref"], "cost.agent_run_ref"
+            ),
+            "experiment_ref": _closed_loop_token(
+                claims["experiment_ref"], "cost.experiment_ref"
+            ),
+            "outcome_ref": _closed_loop_token(
+                claims["outcome_ref"], "cost.outcome_ref"
+            ),
+            "cost_ref": _closed_loop_token(claims["cost_ref"], "cost.cost_ref"),
+            "amount_minor_units": _closed_loop_int(
+                claims["amount_minor_units"],
+                "cost.amount_minor_units",
+                positive=False,
+                maximum=10**18,
+            ),
+            "currency": currency,
+            "period_start": period_start_text,
+            "period_end": period_end_text,
+            "allocation_method": _closed_loop_token(
+                claims["allocation_method"], "cost.allocation_method"
+            ),
+        }
+    interval_start, interval_start_text = _closed_loop_time(
+        claims["interval_start"], "outcome.interval_start"
+    )
+    interval_end, interval_end_text = _closed_loop_time(
+        claims["interval_end"], "outcome.interval_end"
+    )
+    decimal_value = _closed_loop_decimal(
+        claims["value_decimal"],
+        "outcome.value_decimal",
+        maximum_scale=12,
+        maximum_integer_digits=18,
+    )
+    confidence = _closed_loop_decimal(
+        claims["confidence_level_decimal"],
+        "outcome.confidence_level_decimal",
+        maximum_scale=6,
+    )
+    causal = False
+    independent_review = claims["independent_review_passed"]
+    if (
+        not isinstance(causal, bool)
+        or not isinstance(independent_review, bool)
+        or confidence <= 0
+        or confidence > 1
+        or interval_start >= interval_end
+    ):
+        raise PermissionError("Closed-loop outcome claims are invalid")
+    metric_unit = _closed_loop_token(claims["metric_unit"], "outcome.metric_unit")
+    return {
+        "agent_run_ref": _closed_loop_token(
+            claims["agent_run_ref"], "outcome.agent_run_ref"
+        ),
+        "outcome_ref": _closed_loop_token(
+            claims["outcome_ref"], "outcome.outcome_ref"
+        ),
+        "experiment_ref": _closed_loop_token(
+            claims["experiment_ref"], "outcome.experiment_ref"
+        ),
+        "metric_id": _closed_loop_token(
+            claims["metric_id"], "outcome.metric_id"
+        ),
+        "metric_unit": metric_unit,
+        "metric_currency": _closed_loop_metric_currency(
+            metric_unit=metric_unit, value=claims["metric_currency"]
+        ),
+        "method": _closed_loop_token(claims["method"], "outcome.method"),
+        "sample_size": _closed_loop_int(
+            claims["sample_size"],
+            "outcome.sample_size",
+            positive=True,
+            maximum=1_000_000_000,
+        ),
+        "interval_start": interval_start_text,
+        "interval_end": interval_end_text,
+        "value_decimal": format(decimal_value, "f"),
+        "confidence_level_decimal": format(confidence, "f"),
+        "independent_review_passed": independent_review,
+        "causal_claim_allowed": causal,
+    }
+
+
+def _closed_loop_postgres_jsonb_text(value: Any) -> str:
+    """Serialize the bounded closed-loop projections like PostgreSQL jsonb::text."""
+
+    if isinstance(value, Mapping):
+        keys = list(value)
+        if any(not isinstance(key, str) for key in keys):
+            raise TypeError("Closed-loop JSON object keys must be strings")
+        keys.sort(key=lambda key: (len(key.encode("utf-8")), key.encode("utf-8")))
+        return "{" + ", ".join(
+            f"{json.dumps(key, ensure_ascii=False)}: "
+            f"{_closed_loop_postgres_jsonb_text(value[key])}"
+            for key in keys
+        ) + "}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(
+            _closed_loop_postgres_jsonb_text(item) for item in value
+        ) + "]"
+    return json.dumps(value, ensure_ascii=False, allow_nan=False)
+
+
+def _closed_loop_postgres_jsonb_sha256(value: Any) -> str:
+    return hashlib.sha256(
+        _closed_loop_postgres_jsonb_text(value).encode("utf-8")
+    ).hexdigest()
+
+
+def _closed_loop_claims_sha256(claims: Mapping[str, Any]) -> str:
+    """Match PostgreSQL jsonb::text for the frozen scalar-only claims schemas."""
+
+    return _closed_loop_postgres_jsonb_sha256(claims)
+
+
 class TeamAgentEvidenceAuthorityAdapter:
     """Purpose-specific signer for reserved TeamAgent governance Evidence."""
 
@@ -1582,6 +2480,411 @@ class TeamAgentEvidenceAuthorityAdapter:
             _reserved_authority=_RESERVED_CAPTURE_AUTHORITY,
             _session=session,
         )
+
+
+class ClosedLoopEvidenceAuthorityAdapter:
+    """Server-only intake for independent experiment, cost, and Outcome receipts."""
+
+    def __init__(
+        self,
+        evidence: EvidenceService,
+        *,
+        scope_grants: Any,
+        attestation_authorities: Mapping[str, Any],
+        issuer_port: Any | None = None,
+        receipt_registrars: Mapping[str, Any] | None = None,
+        clock: Any | None = None,
+    ) -> None:
+        self.evidence = evidence
+        self.scope_grants = scope_grants
+        if set(attestation_authorities) != set(CLOSED_LOOP_AUTHORITY_CONTRACTS):
+            raise ValueError("Three registered closed-loop authorities are required")
+        self.attestation_authorities = dict(attestation_authorities)
+        authority_ids = []
+        for purpose, authority in self.attestation_authorities.items():
+            expected = CLOSED_LOOP_AUTHORITY_CONTRACTS[purpose]["issuer_id"]
+            if (
+                getattr(authority, "authority_id", None) != expected
+                or not callable(getattr(authority, "project", None))
+                or not callable(getattr(authority, "verify_receipt", None))
+            ):
+                raise ValueError("Closed-loop authority registration drifted")
+            authority_ids.append(expected)
+        if len(set(authority_ids)) != len(authority_ids):
+            raise ValueError("Closed-loop authorities must be independent")
+        self.issuer_port = issuer_port
+        self.receipt_registrars = dict(receipt_registrars or {})
+        if (
+            evidence.engine.dialect.name == "postgresql"
+            and not callable(getattr(issuer_port, "issue_evidence", None))
+        ):
+            raise RuntimeError("Dedicated PostgreSQL closed-loop issuer is required")
+        if evidence.engine.dialect.name == "postgresql" and (
+            set(self.receipt_registrars) != set(CLOSED_LOOP_AUTHORITY_CONTRACTS)
+            or any(
+                not callable(getattr(registrar, "register_authority_receipt", None))
+                for registrar in self.receipt_registrars.values()
+            )
+        ):
+            raise RuntimeError(
+                "Independent PostgreSQL closed-loop registrars are required"
+            )
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    def capture_experiment(self, **kwargs: Any) -> EvidenceRecord:
+        return self._capture(purpose="experiment", **kwargs)
+
+    def capture_cost(self, **kwargs: Any) -> EvidenceRecord:
+        return self._capture(purpose="cost", **kwargs)
+
+    def capture_business_outcome(self, **kwargs: Any) -> EvidenceRecord:
+        return self._capture(purpose="business_outcome", **kwargs)
+
+    def capture_review_event(self, **kwargs: Any) -> EvidenceRecord:
+        return self._capture(purpose="review_event", **kwargs)
+
+    def dispose(self) -> None:
+        for registrar in self.receipt_registrars.values():
+            dispose = getattr(registrar, "dispose", None)
+            if callable(dispose):
+                dispose()
+        dispose_issuer = getattr(self.issuer_port, "dispose", None)
+        if callable(dispose_issuer):
+            dispose_issuer()
+
+    def _capture(
+        self,
+        *,
+        purpose: str,
+        principal: Any,
+        store_ref: str,
+        data_as_of: datetime,
+        attestation_ref: str,
+        session: Session | None = None,
+    ) -> EvidenceRecord:
+        contract = CLOSED_LOOP_AUTHORITY_CONTRACTS[purpose]
+        actor_id = str(getattr(principal, "actor_id", "") or "").strip()
+        roles = frozenset(getattr(principal, "roles", ()))
+        store = str(store_ref or "").strip()
+        reference = str(attestation_ref or "").strip()
+        if not actor_id or not roles.intersection({"operator", "compliance", "admin"}):
+            raise PermissionError("Closed-loop intake signer role is not admitted")
+        can_access = getattr(principal, "can_access_store", None)
+        if not callable(can_access) or not can_access(store):
+            raise PermissionError("Closed-loop intake signer cannot access store")
+        checked_at = self.clock()
+        if not isinstance(checked_at, datetime) or checked_at.tzinfo is None:
+            raise ValueError("Closed-loop authority clock must include a timezone")
+        checked_at = checked_at.astimezone(UTC)
+        if not isinstance(data_as_of, datetime) or data_as_of.tzinfo is None:
+            raise ValueError("Closed-loop data_as_of must include a timezone")
+        cutoff = data_as_of.astimezone(UTC)
+        if cutoff > checked_at or not reference:
+            raise ValueError("Closed-loop cutoff or attestation reference is invalid")
+        authority = self.scope_grants.current(
+            principal=principal,
+            store_ref=store,
+            as_of=checked_at,
+        )
+        tenant_ref = getattr(principal, "tenant_ref", None)
+        raw_scope = {
+            "tenant_ref": authority.get("tenant_ref"),
+            "entity_ref": authority.get("entity_ref"),
+            "store_ref": authority.get("store_ref"),
+            "scope_grant_authority_sha256": authority.get("authority_sha256"),
+        }
+        if (
+            authority.get("status") != "ready"
+            or not isinstance(tenant_ref, str)
+            or any(not isinstance(value, str) for value in raw_scope.values())
+        ):
+            raise PermissionError("Closed-loop exact scope authority is invalid")
+        exact_scope = {
+            "tenant_ref": _closed_loop_token(
+                raw_scope["tenant_ref"], "tenant_ref"
+            ),
+            "entity_ref": _closed_loop_token(
+                raw_scope["entity_ref"], "entity_ref"
+            ),
+            "store_ref": _closed_loop_token(raw_scope["store_ref"], "store_ref"),
+            "scope_grant_authority_sha256": _closed_loop_sha256(
+                raw_scope["scope_grant_authority_sha256"],
+                "scope_grant_authority_sha256",
+            ),
+        }
+        if exact_scope["tenant_ref"] != tenant_ref or exact_scope["store_ref"] != store:
+            raise PermissionError("Closed-loop exact scope authority is invalid")
+        attestation_authority = self.attestation_authorities[purpose]
+        projection = attestation_authority.project(
+            purpose=purpose,
+            attestation_ref=reference,
+            exact_scope=exact_scope,
+            data_as_of=cutoff,
+            checked_at=checked_at,
+        )
+        claims = projection.get("claims")
+        issuer_actor_id = projection.get("issuer_actor_id")
+        authority_receipt_id = projection.get("authority_receipt_id")
+        if (
+            projection.get("status") != "ready"
+            or projection.get("purpose") != purpose
+            or projection.get("attestation_ref") != reference
+            or projection.get("contract_id") != contract["contract_id"]
+            or projection.get("issuer_id") != contract["issuer_id"]
+            or projection.get("issuer_contract_id")
+            != contract["issuer_contract_id"]
+            or projection.get("issuer_contract_version")
+            != contract["issuer_contract_version"]
+            or projection.get("issuer_contract_sha256")
+            != contract["issuer_contract_sha256"]
+            or projection.get("schema_sha256") != contract["schema_sha256"]
+            or projection.get("exact_scope") != exact_scope
+            or not isinstance(claims, dict)
+            or set(claims) != contract["fields"]
+            or not isinstance(issuer_actor_id, str)
+            or not isinstance(authority_receipt_id, str)
+        ):
+            raise PermissionError("Closed-loop upstream attestation is invalid")
+        issuer_actor_id = _closed_loop_token(issuer_actor_id, "issuer_actor_id")
+        authority_receipt_id = _closed_loop_token(
+            authority_receipt_id, "authority_receipt_id"
+        )
+        if issuer_actor_id == actor_id:
+            raise PermissionError("Closed-loop authority must be independent")
+        claims = _closed_loop_claims(purpose, claims)
+        if (
+            purpose == "review_event"
+            and claims["requested_by_actor_id"] == issuer_actor_id
+        ):
+            raise PermissionError(
+                "Closed-loop review requester and issuer must be independent"
+            )
+        effective_at = parse_timestamp(
+            str(projection.get("effective_at") or ""), "effective_at"
+        )
+        recorded_at = parse_timestamp(
+            str(projection.get("recorded_at") or ""), "recorded_at"
+        )
+        effective_until = parse_timestamp(
+            str(projection.get("effective_until") or ""), "effective_until"
+        )
+        review_due_at = parse_timestamp(
+            str(projection.get("review_due_at") or ""), "review_due_at"
+        )
+        if not (
+            effective_at <= recorded_at <= cutoff
+            and cutoff <= checked_at
+            and effective_at <= cutoff
+            and checked_at < review_due_at <= effective_until
+        ):
+            raise PermissionError("Closed-loop attestation chronology is invalid")
+        claims_sha256 = _closed_loop_claims_sha256(claims)
+        attestation_envelope = {
+            "contract_id": contract["contract_id"],
+            "purpose": purpose,
+            "attestation_ref": reference,
+            "authority_receipt_id": authority_receipt_id,
+            "issuer_id": contract["issuer_id"],
+            "issuer_contract_id": contract["issuer_contract_id"],
+            "issuer_contract_version": contract["issuer_contract_version"],
+            "issuer_contract_sha256": contract["issuer_contract_sha256"],
+            "schema_sha256": contract["schema_sha256"],
+            "issuer_actor_id": issuer_actor_id,
+            "exact_scope": exact_scope,
+            "data_as_of": cutoff.isoformat(),
+            "effective_at": effective_at.isoformat(),
+            "effective_until": effective_until.isoformat(),
+            "recorded_at": recorded_at.isoformat(),
+            "review_due_at": review_due_at.isoformat(),
+            "claims": claims,
+            "claims_sha256": claims_sha256,
+        }
+        attestation_sha256 = hashlib.sha256(
+            json.dumps(
+                attestation_envelope,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode()
+        ).hexdigest()
+        if projection.get("attestation_sha256") != attestation_sha256:
+            raise PermissionError("Closed-loop attestation hash drifted")
+        signature_sha256 = _closed_loop_sha256(
+            projection.get("attestation_signature_sha256"),
+            "attestation_signature_sha256",
+        )
+        verified = attestation_authority.verify_receipt(
+            attestation_sha256=attestation_sha256,
+            attestation_signature_sha256=signature_sha256,
+            expected_envelope=attestation_envelope,
+        )
+        if (
+            not isinstance(verified, Mapping)
+            or verified.get("status") != "verified"
+            or verified.get("authority_id") != contract["issuer_id"]
+            or verified.get("attestation_sha256") != attestation_sha256
+        ):
+            raise PermissionError("Closed-loop authority receipt is invalid")
+        payload = {
+            **attestation_envelope,
+            "attestation_sha256": attestation_sha256,
+            "attestation_signature_sha256": signature_sha256,
+            "payload_status": "authority_projection_only",
+            "contains_customer_data": False,
+            "external_write_allowed": False,
+        }
+        content = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+        content_sha256 = hashlib.sha256(content).hexdigest()
+        source = str(contract["source"])
+        scope_binding_sha256 = hashlib.sha256(
+            json.dumps(
+                exact_scope,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        source_ref = (
+            f"{source}://{scope_binding_sha256}/"
+            f"{claims_sha256}/{content_sha256}"
+        )
+        metadata = {
+            "contract_id": contract["contract_id"],
+            "closed_loop_purpose": purpose,
+            "closed_loop_claims_sha256": claims_sha256,
+            "closed_loop_attestation_sha256": attestation_sha256,
+            "closed_loop_attestation_signature_sha256": signature_sha256,
+            "closed_loop_attestation_ref": reference,
+            "closed_loop_authority_receipt_id": authority_receipt_id,
+            "closed_loop_issuer_id": contract["issuer_id"],
+            "closed_loop_issuer_contract_id": contract["issuer_contract_id"],
+            "closed_loop_issuer_contract_version": (
+                contract["issuer_contract_version"]
+            ),
+            "closed_loop_issuer_contract_sha256": (
+                contract["issuer_contract_sha256"]
+            ),
+            "closed_loop_schema_sha256": contract["schema_sha256"],
+            "closed_loop_issuer_actor_id": issuer_actor_id,
+            "closed_loop_data_as_of": cutoff.isoformat(),
+            "closed_loop_recorded_at": recorded_at.isoformat(),
+            "closed_loop_review_due_at": review_due_at.isoformat(),
+            "closed_loop_claims": claims,
+            "closed_loop_scope_binding_sha256": scope_binding_sha256,
+            **exact_scope,
+            "retention_class": "compliance",
+            "legal_hold": False,
+        }
+
+        def persist(target_session: Session) -> EvidenceRecord:
+            return self.evidence.capture(
+                content=content,
+                filename=f"{purpose}-{content_sha256}.json",
+                content_type="application/json",
+                source=source,
+                source_ref=source_ref,
+                grade=EvidenceGrade.A,
+                effective_at=effective_at.isoformat(),
+                effective_until=effective_until.isoformat(),
+                created_by=issuer_actor_id,
+                metadata=metadata,
+                _reserved_authority=_RESERVED_CAPTURE_AUTHORITY,
+                _session=target_session,
+                _recorded_at=recorded_at.isoformat(),
+            )
+
+        if self.evidence.engine.dialect.name == "postgresql":
+            if session is not None:
+                raise RuntimeError(
+                    "PostgreSQL closed-loop issuance uses an isolated transaction"
+                )
+            metadata_sha256 = _closed_loop_postgres_jsonb_sha256(metadata)
+            # The registrar and issuer use separate least-privilege database
+            # identities.  Deriving the Evidence identifier from their shared,
+            # immutable receipt tuple makes a crash between those transactions
+            # replayable instead of stranding the authority receipt behind a
+            # newly generated identifier.
+            evidence_id = "evd_" + hashlib.sha256(
+                json.dumps(
+                    {
+                        "authority_receipt_id": authority_receipt_id,
+                        "content_sha256": content_sha256,
+                        "metadata_sha256": metadata_sha256,
+                        "purpose": purpose,
+                        "source": source,
+                        "source_ref": source_ref,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode()
+            ).hexdigest()[:40]
+            authority_receipt = {
+                "authority_receipt_id": authority_receipt_id,
+                "purpose": purpose,
+                "evidence_id": evidence_id,
+                "content_sha256": content_sha256,
+                "metadata_sha256": metadata_sha256,
+                "source": source,
+                "source_ref": source_ref,
+                "attestation_sha256": attestation_sha256,
+                "attestation_signature_sha256": signature_sha256,
+                "issuer_id": contract["issuer_id"],
+                "issuer_contract_id": contract["issuer_contract_id"],
+                "issuer_contract_version": contract["issuer_contract_version"],
+                "issuer_contract_sha256": contract["issuer_contract_sha256"],
+                "schema_sha256": contract["schema_sha256"],
+                "issuer_actor_id": issuer_actor_id,
+                **exact_scope,
+                "data_as_of": cutoff.isoformat(),
+                "effective_at": effective_at.isoformat(),
+                "effective_until": effective_until.isoformat(),
+                "recorded_at": recorded_at.isoformat(),
+                "review_due_at": review_due_at.isoformat(),
+            }
+            registered_id = self.receipt_registrars[
+                purpose
+            ].register_authority_receipt(receipt=authority_receipt)
+            if registered_id != authority_receipt_id:
+                raise PermissionError(
+                    "Closed-loop authority registration binding drifted"
+                )
+            returned_id = self.issuer_port.issue_evidence(
+                authority_receipt_id=authority_receipt_id,
+                evidence_id=evidence_id,
+                content=content,
+                filename=f"{purpose}-{content_sha256}.json",
+                source=source,
+                source_ref=source_ref,
+                effective_at=effective_at,
+                effective_until=effective_until,
+                metadata=metadata,
+                attestation_sha256=attestation_sha256,
+                attestation_signature_sha256=signature_sha256,
+            )
+            record = self.evidence.get(returned_id)
+            if (
+                record.id != evidence_id
+                or record.sha256 != content_sha256
+                or record.source != source
+                or record.source_ref != source_ref
+                or record.metadata.get("closed_loop_authority_receipt_id")
+                != authority_receipt_id
+            ):
+                raise PermissionError("Closed-loop issuer receipt binding drifted")
+            return record
+        if session is not None:
+            return persist(session)
+        with self.evidence.transaction() as target_session:
+            return persist(target_session)
 
 
 class GlobalDataCoverageEvidenceAuthorityAdapter:

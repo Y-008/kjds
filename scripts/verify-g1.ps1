@@ -30,6 +30,11 @@ $MigrationDatabaseUrl = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/$
 $AdminDatabaseUrl = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/hermes"
 $CoverageIssuerPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
 $RuntimeDatabasePassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$ClosedLoopIssuerPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$ClosedLoopExperimentPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$ClosedLoopCostPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$ClosedLoopOutcomePassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$ClosedLoopReviewPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
 $RunToken = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
 $RunTokenSha256 = [Convert]::ToHexString(
     [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($RunToken))
@@ -46,6 +51,11 @@ $DatabaseLeaseEverAcquired = $false
 $ContractDatabaseCreated = $false
 $CoverageIssuerDatabaseUrl = "postgresql+psycopg://kjds_gdc_issuance_runtime:$CoverageIssuerPassword@127.0.0.1:5432/$DatabaseName"
 $RuntimeDatabaseUrl = "postgresql+psycopg://kjds_g1_runtime:$RuntimeDatabasePassword@127.0.0.1:5432/$DatabaseName"
+$ClosedLoopIssuerDatabaseUrl = "postgresql+psycopg://kjds_cloe_issuance_runtime:$ClosedLoopIssuerPassword@127.0.0.1:5432/$DatabaseName"
+$ClosedLoopExperimentDatabaseUrl = "postgresql+psycopg://kjds_cloe_experiment_authority:$ClosedLoopExperimentPassword@127.0.0.1:5432/$DatabaseName"
+$ClosedLoopCostDatabaseUrl = "postgresql+psycopg://kjds_cloe_cost_authority:$ClosedLoopCostPassword@127.0.0.1:5432/$DatabaseName"
+$ClosedLoopOutcomeDatabaseUrl = "postgresql+psycopg://kjds_cloe_outcome_authority:$ClosedLoopOutcomePassword@127.0.0.1:5432/$DatabaseName"
+$ClosedLoopReviewDatabaseUrl = "postgresql+psycopg://kjds_cloe_review_authority:$ClosedLoopReviewPassword@127.0.0.1:5432/$DatabaseName"
 $ContractDatabaseUrl = "postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/$ContractDatabaseName"
 $ContractDatabaseManager = @'
 import os
@@ -492,8 +502,18 @@ try {
     $env:KJDS_DATABASE_URL = $MigrationDatabaseUrl
     $env:KJDS_G1_COVERAGE_ISSUER_PASSWORD = $CoverageIssuerPassword
     $env:KJDS_G1_RUNTIME_PASSWORD = $RuntimeDatabasePassword
+    $env:KJDS_G1_CLOE_ISSUER_PASSWORD = $ClosedLoopIssuerPassword
+    $env:KJDS_G1_CLOE_EXPERIMENT_PASSWORD = $ClosedLoopExperimentPassword
+    $env:KJDS_G1_CLOE_COST_PASSWORD = $ClosedLoopCostPassword
+    $env:KJDS_G1_CLOE_OUTCOME_PASSWORD = $ClosedLoopOutcomePassword
+    $env:KJDS_G1_CLOE_REVIEW_PASSWORD = $ClosedLoopReviewPassword
     $env:KJDS_G1_RUN_TOKEN = $RunToken
     $env:KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL = $CoverageIssuerDatabaseUrl
+    $env:KJDS_CLOSED_LOOP_ISSUER_DATABASE_URL = $ClosedLoopIssuerDatabaseUrl
+    $env:KJDS_CLOSED_LOOP_EXPERIMENT_AUTHORITY_DATABASE_URL = $ClosedLoopExperimentDatabaseUrl
+    $env:KJDS_CLOSED_LOOP_COST_AUTHORITY_DATABASE_URL = $ClosedLoopCostDatabaseUrl
+    $env:KJDS_CLOSED_LOOP_OUTCOME_AUTHORITY_DATABASE_URL = $ClosedLoopOutcomeDatabaseUrl
+    $env:KJDS_CLOSED_LOOP_REVIEW_AUTHORITY_DATABASE_URL = $ClosedLoopReviewDatabaseUrl
     $env:KJDS_STRATEGIC_BENCHMARK_SEALING_KEY = $StrategicBenchmarkSealingKey
     $env:KJDS_DATABASE_PROVIDER = "local-postgres"
     # The gate must not inherit a machine-level cache path that a managed
@@ -1154,10 +1174,20 @@ try {
             Name = "coverage issuer credential environment"
             Action = {
                 Remove-Item Env:KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_CLOSED_LOOP_ISSUER_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_CLOSED_LOOP_EXPERIMENT_AUTHORITY_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_CLOSED_LOOP_COST_AUTHORITY_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_CLOSED_LOOP_OUTCOME_AUTHORITY_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_CLOSED_LOOP_REVIEW_AUTHORITY_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_RUNTIME_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_COVERAGE_ISSUER_PASSWORD -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUNTIME_PASSWORD -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_CLOE_ISSUER_PASSWORD -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_CLOE_EXPERIMENT_PASSWORD -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_CLOE_COST_PASSWORD -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_CLOE_OUTCOME_PASSWORD -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_G1_CLOE_REVIEW_PASSWORD -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUN_TOKEN -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUN_TOKEN_SHA256 -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_ADMIN_DATABASE_URL -ErrorAction SilentlyContinue

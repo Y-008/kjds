@@ -16,7 +16,7 @@ from .security import Principal
 CONTRACT_ID = "kjds-strategic-capital-dashboard-v1"
 CONTRACT_VERSION = "1.0.0"
 EXPECTED_REGISTRY_CONTENT_SHA256 = (
-    "81dac7bdd13a3553df327cf0506324654bd1c2dce362f63c8d247618c8104df0"
+    "8c0f8538008d796b2e335d49324bcfa06a61d94a1c20aeab486567312380c6a7"
 )
 REGISTRY_PATH = (
     Path(__file__).resolve().parents[2]
@@ -972,6 +972,8 @@ class ScopedDashboardCitationAuthority:
         prefixes = {
             "primary_source_coverage": "psc",
             "strategic_benchmark": "sbc",
+            "verified_outcomes": "outc",
+            "invalidation_review": "invc",
         }
         prefix = prefixes.get(section_id)
         if prefix is None:
@@ -1326,6 +1328,299 @@ class StrategicBenchmarkReadPort:
         )
 
 
+class ClosedLoopEvolutionReadPort:
+    """Projects BAS-204 bundles into one read-only dashboard section."""
+
+    _SECTIONS = frozenset({"verified_outcomes", "invalidation_review"})
+
+    def __init__(
+        self,
+        *,
+        service: Any,
+        section_id: Literal["verified_outcomes", "invalidation_review"],
+        source_contract: Mapping[str, object],
+        citation_authority: DashboardCitationAuthorityPort,
+    ) -> None:
+        if section_id not in self._SECTIONS:
+            raise StrategicCapitalDashboardContractError(
+                "closed-loop dashboard section is invalid"
+            )
+        self._service = service
+        self._section_id = section_id
+        self._source_contract = dict(source_contract)
+        self._citation_authority = citation_authority
+
+    def read(
+        self, *, principal: Principal, context: DashboardReadContext
+    ) -> SectionProjection:
+        listed = self._service.list_current(
+            principal=principal,
+            store_ref=context.store_ref,
+            as_of=context.data_as_of,
+            limit=33,
+        )
+        if not isinstance(listed, Mapping) or set(listed) != {
+            "contract_id",
+            "contract_version",
+            "registry_sha256",
+            "items",
+            "count",
+            "external_write",
+        }:
+            raise StrategicCapitalDashboardContractError(
+                "closed-loop list contract drift"
+            )
+        items = listed.get("items")
+        if (
+            listed.get("contract_id")
+            != "kjds-governed-closed-loop-evolution-v1"
+            or listed.get("contract_version") != "1.0.0"
+            or listed.get("registry_sha256")
+            != self._source_contract["contract_sha256"]
+            or listed.get("external_write") is not False
+            or not isinstance(items, list)
+            or listed.get("count") != len(items)
+        ):
+            raise StrategicCapitalDashboardContractError(
+                "closed-loop source contract drift"
+            )
+        if not items:
+            raise DashboardNoData("closed-loop projection has no current data")
+        if len(items) > 32:
+            return UnavailableSectionProjection(
+                section_id=self._section_id,
+                status="UNKNOWN",
+                reason_codes=("bounded_page_not_current",),
+            )
+
+        projections: list[Mapping[str, Any]] = []
+        citations: list[DashboardCitation] = []
+        for item in items:
+            if not isinstance(item, Mapping):
+                raise StrategicCapitalDashboardContractError(
+                    "closed-loop projection shape invalid"
+                )
+            if (
+                item.get("contract_id")
+                != "kjds-governed-closed-loop-evolution-v1"
+                or item.get("contract_version") != "1.0.0"
+                or item.get("registry_sha256")
+                != self._source_contract["contract_sha256"]
+                or item.get("tenant_ref") != context.tenant_ref
+                or item.get("entity_ref") != context.entity_ref
+                or item.get("store_ref") != context.store_ref
+                or item.get("scope_grant_authority_sha256")
+                != context.scope_grant_authority_sha256
+            ):
+                raise StrategicCapitalDashboardContractError(
+                    "closed-loop exact scope binding drift"
+                )
+            status = item.get("status")
+            if status not in {"current", "review_due", "invalidated"}:
+                raise StrategicCapitalDashboardContractError(
+                    "closed-loop state drift"
+                )
+            writes = item.get("writes")
+            if not isinstance(writes, Mapping) or any(
+                writes.get(field) != 0
+                for field in (
+                    "fact",
+                    "finance_entry",
+                    "approval",
+                    "permit",
+                    "pilot",
+                    "outbox",
+                    "external",
+                )
+            ):
+                raise StrategicCapitalDashboardContractError(
+                    "closed-loop side-effect projection drift"
+                )
+            outcome = item.get("business_outcome")
+            if not isinstance(outcome, Mapping) or not isinstance(
+                outcome.get("metric_unit"), str
+            ):
+                raise StrategicCapitalDashboardContractError(
+                    "closed-loop outcome metric drift"
+                )
+            metric_currency = outcome.get("metric_currency")
+            if (
+                outcome["metric_unit"] == "minor_currency_units"
+                and (
+                    not isinstance(metric_currency, str)
+                    or not re.fullmatch(r"[A-Z]{3}", metric_currency)
+                )
+                or outcome["metric_unit"] != "minor_currency_units"
+                and metric_currency is not None
+            ):
+                raise StrategicCapitalDashboardContractError(
+                    "closed-loop outcome currency drift"
+                )
+            for field in (
+                "latest_event_type",
+                "reason_code",
+                "bundle_sha256",
+                "event_chain_sha256",
+            ):
+                if not isinstance(item.get(field), str) or not str(item[field]):
+                    raise StrategicCapitalDashboardContractError(
+                        "closed-loop event projection drift"
+                    )
+            _aware(
+                item.get("latest_event_occurred_at"),
+                field="closed-loop latest event occurred_at",
+            )
+            _aware(
+                item.get("latest_event_recorded_at"),
+                field="closed-loop latest event recorded_at",
+            )
+            source_sha = (
+                item.get("bundle_sha256")
+                if self._section_id == "verified_outcomes"
+                else item.get("event_chain_sha256")
+            )
+            citations.append(
+                self._citation_authority.issue(
+                    section_id=self._section_id,
+                    context=context,
+                    source_ref=str(item.get("bundle_id")),
+                    source_sha256=str(source_sha),
+                )
+            )
+            projections.append(item)
+
+        states = {str(item["status"]) for item in projections}
+        if self._section_id == "verified_outcomes":
+            display_source = [
+                item for item in projections if item["status"] == "current"
+            ]
+            if display_source:
+                section_status: AvailableStatus = (
+                    "ready" if states == {"current"} else "partial"
+                )
+                reason = (
+                    "current_projection_available"
+                    if section_status == "ready"
+                    else "some_outcomes_require_review"
+                )
+            elif "review_due" in states:
+                section_status = "stale"
+                reason = "outcome_review_due"
+            else:
+                section_status = "invalidated"
+                reason = "outcome_invalidated"
+        else:
+            display_source = [
+                item for item in projections if item["status"] == "review_due"
+            ]
+            if "invalidated" in states:
+                section_status = "invalidated"
+                reason = "invalidation_recorded"
+            elif display_source:
+                section_status = "partial"
+                reason = "review_due"
+            else:
+                raise DashboardNoData("no closed-loop review is due")
+
+        if section_status in {"ready", "partial"}:
+            citation_source = display_source
+        elif section_status == "stale":
+            citation_source = [
+                item for item in projections if item["status"] == "review_due"
+            ]
+        else:
+            citation_source = [
+                item for item in projections if item["status"] == "invalidated"
+            ]
+        selected_citations = tuple(
+            citations[index]
+            for index, item in enumerate(projections)
+            if item in citation_source
+        )
+        if not selected_citations:
+            raise StrategicCapitalDashboardContractError(
+                "closed-loop section has no scoped citation"
+            )
+
+        display_items = (
+            ()
+            if section_status in {"stale", "invalidated"}
+            else tuple(
+                DashboardDisplayItem(
+                    item_ref=citations[index].token,
+                    label=(
+                        "verified outcome observation"
+                        if self._section_id == "verified_outcomes"
+                        else "invalidation review observation"
+                    ),
+                    display_text=(
+                        f"{item['status']} · {item['reason_code']} · "
+                        f"{item['business_outcome']['metric_unit']} · "
+                        f"{item['business_outcome']['metric_currency'] or 'not_applicable'}"
+                    ),
+                )
+                for index, item in enumerate(projections)
+                if item in display_source
+            )
+        )
+        return seal_available_projection(
+            section_id=self._section_id,
+            context=context,
+            source_contract_id=str(self._source_contract["contract_id"]),
+            source_contract_version=str(
+                self._source_contract["contract_version"]
+            ),
+            source_contract_sha256=str(
+                self._source_contract["contract_sha256"]
+            ),
+            status=section_status,
+            reason_codes=(reason,),
+            projection_ref="clop_"
+            + _hash_json(
+                [
+                    {
+                        "bundle_sha256": item["bundle_sha256"],
+                        "event_chain_sha256": item["event_chain_sha256"],
+                        "status": item["status"],
+                    }
+                    for item in projections
+                ]
+            )[:40],
+            data_as_of=min(
+                _aware(item["data_as_of"], field="closed-loop data_as_of")
+                for item in projections
+            ),
+            recorded_at=max(
+                _aware(
+                    item[
+                        "recorded_at"
+                        if self._section_id == "verified_outcomes"
+                        else "latest_event_recorded_at"
+                    ],
+                    field="closed-loop recorded_at",
+                )
+                for item in citation_source
+            ),
+            effective_at=max(
+                _aware(item["effective_at"], field="closed-loop effective_at")
+                for item in projections
+            ),
+            review_due_at=min(
+                _aware(item["review_due_at"], field="closed-loop review_due_at")
+                for item in citation_source
+            ),
+            citations=selected_citations,
+            display_items=display_items,
+            invalidation_conditions=(
+                "scope_authority_rotation",
+                "agent_run_terminal_not_current",
+                "supporting_evidence_expiry",
+                "review_due",
+                "closed_loop_contract_drift",
+            ),
+        )
+
+
 __all__ = [
     "CONTRACT_ID",
     "CONTRACT_VERSION",
@@ -1333,6 +1628,7 @@ __all__ = [
     "AvailableSectionProjection",
     "CurrentScopeAuthority",
     "CurrentScopeAuthorityPort",
+    "ClosedLoopEvolutionReadPort",
     "DashboardCitation",
     "DashboardCitationAuthorityPort",
     "DashboardDisplayItem",
