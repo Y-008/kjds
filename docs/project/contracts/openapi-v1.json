@@ -14005,6 +14005,1487 @@
         "title": "TeamControlAdvanceInput",
         "type": "object"
       },
+      "TeamControlBriefOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "capacity_risk": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamControlCapacityRisk"
+              },
+              {
+                "$ref": "#/components/schemas/TeamControlUnavailableCapacityRisk"
+              }
+            ],
+            "title": "Capacity Risk"
+          },
+          "cash_at_risk": {
+            "additionalProperties": true,
+            "title": "Cash At Risk",
+            "type": "object"
+          },
+          "conflicts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "contract_id": {
+            "const": "kjds-team-control-tower-v1",
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "control_envelope": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Control Envelope",
+            "type": "object"
+          },
+          "critical_path": {
+            "additionalProperties": true,
+            "title": "Critical Path",
+            "type": "object"
+          },
+          "decision_basis_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Basis Sha256"
+          },
+          "delivery_gate": {
+            "additionalProperties": true,
+            "title": "Delivery Gate",
+            "type": "object"
+          },
+          "executive_summary": {
+            "additionalProperties": true,
+            "title": "Executive Summary",
+            "type": "object"
+          },
+          "flows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Flows",
+            "type": "array"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "integration_queue": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamControlIntegrationQueue"
+              },
+              {
+                "$ref": "#/components/schemas/TeamControlUnavailableIntegrationQueue"
+              }
+            ],
+            "title": "Integration Queue"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Action"
+          },
+          "next_release_train": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamControlNextReleaseTrain"
+              },
+              {
+                "$ref": "#/components/schemas/TeamControlUnavailableNextReleaseTrain"
+              }
+            ],
+            "title": "Next Release Train"
+          },
+          "organization_readiness": {
+            "additionalProperties": true,
+            "title": "Organization Readiness",
+            "type": "object"
+          },
+          "parallel_execution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamControlParallelExecution"
+              },
+              {
+                "$ref": "#/components/schemas/TeamControlUnavailableParallelExecution"
+              }
+            ],
+            "title": "Parallel Execution"
+          },
+          "role_conflicts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamControlRoleConflicts"
+              },
+              {
+                "$ref": "#/components/schemas/TeamControlUnavailableRoleConflicts"
+              }
+            ],
+            "title": "Role Conflicts"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "snapshot_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Snapshot Sha256",
+            "type": "string"
+          },
+          "source_refs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "squad_readiness": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeamControlSquadReadiness"
+              },
+              {
+                "$ref": "#/components/schemas/TeamControlUnavailableSquadReadiness"
+              }
+            ],
+            "title": "Squad Readiness"
+          },
+          "status": {
+            "enum": [
+              "on_track",
+              "attention_required",
+              "blocked",
+              "awaiting_human",
+              "scope_invalid"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "top1_scorecard": {
+            "additionalProperties": true,
+            "title": "Top1 Scorecard",
+            "type": "object"
+          }
+        },
+        "required": [
+          "contract_id",
+          "contract_version",
+          "status",
+          "headline",
+          "scope",
+          "as_of",
+          "executive_summary",
+          "next_action",
+          "flows",
+          "conflicts",
+          "organization_readiness",
+          "critical_path",
+          "top1_scorecard",
+          "cash_at_risk",
+          "delivery_gate",
+          "squad_readiness",
+          "role_conflicts",
+          "parallel_execution",
+          "integration_queue",
+          "capacity_risk",
+          "next_release_train",
+          "source_refs",
+          "control_envelope",
+          "snapshot_sha256"
+        ],
+        "title": "TeamControlBriefOutput",
+        "type": "object"
+      },
+      "TeamControlCapacityLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "control_agent_count": {
+            "minimum": 1.0,
+            "title": "Control Agent Count",
+            "type": "integer"
+          },
+          "max_active_tasks_per_specialist": {
+            "minimum": 1.0,
+            "title": "Max Active Tasks Per Specialist",
+            "type": "integer"
+          },
+          "max_active_tasks_per_writer": {
+            "minimum": 1.0,
+            "title": "Max Active Tasks Per Writer",
+            "type": "integer"
+          },
+          "max_active_writers": {
+            "minimum": 1.0,
+            "title": "Max Active Writers",
+            "type": "integer"
+          },
+          "max_current_tasks_per_lane": {
+            "minimum": 1.0,
+            "title": "Max Current Tasks Per Lane",
+            "type": "integer"
+          },
+          "max_parallel_specialist_agents": {
+            "minimum": 1.0,
+            "title": "Max Parallel Specialist Agents",
+            "type": "integer"
+          },
+          "max_weekly_company_outcomes": {
+            "minimum": 1.0,
+            "title": "Max Weekly Company Outcomes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "control_agent_count",
+          "max_parallel_specialist_agents",
+          "max_active_writers",
+          "max_active_tasks_per_specialist",
+          "max_active_tasks_per_writer",
+          "max_current_tasks_per_lane",
+          "max_weekly_company_outcomes"
+        ],
+        "title": "TeamControlCapacityLimits",
+        "type": "object"
+      },
+      "TeamControlCapacityRisk": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "capacity_proven_available": {
+            "const": false,
+            "title": "Capacity Proven Available",
+            "type": "boolean"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/TeamControlCapacityLimits"
+          },
+          "observed_active_writers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Active Writers"
+          },
+          "observed_lane_wip": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Lane Wip"
+          },
+          "observed_specialist_wip": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Specialist Wip"
+          },
+          "observed_weekly_company_outcomes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Weekly Company Outcomes"
+          },
+          "program_contract": {
+            "$ref": "#/components/schemas/TeamControlProgramContract"
+          },
+          "projection": {
+            "const": "capacity_risk",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256",
+          "program_contract",
+          "limits",
+          "observed_active_writers",
+          "observed_specialist_wip",
+          "observed_lane_wip",
+          "observed_weekly_company_outcomes",
+          "capacity_proven_available"
+        ],
+        "title": "TeamControlCapacityRisk",
+        "type": "object"
+      },
+      "TeamControlIntegrationItem": {
+        "additionalProperties": false,
+        "properties": {
+          "dependency_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependency Refs",
+            "type": "array"
+          },
+          "execution_status": {
+            "const": "UNKNOWN",
+            "title": "Execution Status",
+            "type": "string"
+          },
+          "lane_affinity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Lane Affinity Ids",
+            "type": "array"
+          },
+          "squad_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Squad Refs",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "work_item_ref": {
+            "title": "Work Item Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "work_item_ref",
+          "title",
+          "dependency_refs",
+          "squad_refs",
+          "lane_affinity_ids",
+          "execution_status"
+        ],
+        "title": "TeamControlIntegrationItem",
+        "type": "object"
+      },
+      "TeamControlIntegrationQueue": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlIntegrationItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "parallel_waves": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Parallel Waves",
+            "type": "array"
+          },
+          "planned_initial_state": {
+            "const": "NOT_STARTED",
+            "title": "Planned Initial State",
+            "type": "string"
+          },
+          "program_contract": {
+            "$ref": "#/components/schemas/TeamControlProgramContract"
+          },
+          "projection": {
+            "const": "integration_queue",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256",
+          "program_contract",
+          "planned_initial_state",
+          "items",
+          "parallel_waves"
+        ],
+        "title": "TeamControlIntegrationQueue",
+        "type": "object"
+      },
+      "TeamControlNextReleaseTrain": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "eligible_work_item_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eligible Work Item Refs"
+          },
+          "gate_status": {
+            "const": "UNKNOWN",
+            "title": "Gate Status",
+            "type": "string"
+          },
+          "program_contract": {
+            "$ref": "#/components/schemas/TeamControlProgramContract"
+          },
+          "projection": {
+            "const": "next_release_train",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "registry_proves_schedule": {
+            "const": false,
+            "title": "Registry Proves Schedule",
+            "type": "boolean"
+          },
+          "release_trains_per_week": {
+            "minimum": 1.0,
+            "title": "Release Trains Per Week",
+            "type": "integer"
+          },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled At"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256",
+          "program_contract",
+          "release_trains_per_week",
+          "scheduled_at",
+          "eligible_work_item_refs",
+          "gate_status",
+          "registry_proves_schedule"
+        ],
+        "title": "TeamControlNextReleaseTrain",
+        "type": "object"
+      },
+      "TeamControlParallelExecution": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "observed_active_writers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Active Writers"
+          },
+          "observed_lane_current_tasks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Lane Current Tasks"
+          },
+          "observed_writer_wip": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Writer Wip"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/TeamControlParallelPolicy"
+          },
+          "program_contract": {
+            "$ref": "#/components/schemas/TeamControlProgramContract"
+          },
+          "projection": {
+            "const": "parallel_execution",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256",
+          "program_contract",
+          "policy",
+          "observed_active_writers",
+          "observed_writer_wip",
+          "observed_lane_current_tasks"
+        ],
+        "title": "TeamControlParallelExecution",
+        "type": "object"
+      },
+      "TeamControlParallelPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "control_agent_count": {
+            "minimum": 1.0,
+            "title": "Control Agent Count",
+            "type": "integer"
+          },
+          "failed_slice_blocks_independent_slices": {
+            "title": "Failed Slice Blocks Independent Slices",
+            "type": "boolean"
+          },
+          "max_active_tasks_per_specialist": {
+            "minimum": 1.0,
+            "title": "Max Active Tasks Per Specialist",
+            "type": "integer"
+          },
+          "max_active_tasks_per_writer": {
+            "minimum": 1.0,
+            "title": "Max Active Tasks Per Writer",
+            "type": "integer"
+          },
+          "max_active_writers": {
+            "minimum": 1.0,
+            "title": "Max Active Writers",
+            "type": "integer"
+          },
+          "max_current_tasks_per_lane": {
+            "minimum": 1.0,
+            "title": "Max Current Tasks Per Lane",
+            "type": "integer"
+          },
+          "max_parallel_specialist_agents": {
+            "minimum": 1.0,
+            "title": "Max Parallel Specialist Agents",
+            "type": "integer"
+          },
+          "max_weekly_company_outcomes": {
+            "minimum": 1.0,
+            "title": "Max Weekly Company Outcomes",
+            "type": "integer"
+          },
+          "path_or_hash_drift_action": {
+            "title": "Path Or Hash Drift Action",
+            "type": "string"
+          },
+          "release_trains_per_week": {
+            "minimum": 1.0,
+            "title": "Release Trains Per Week",
+            "type": "integer"
+          },
+          "shared_lease_conflict_action": {
+            "title": "Shared Lease Conflict Action",
+            "type": "string"
+          },
+          "single_integrator_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Single Integrator Domains",
+            "type": "array"
+          }
+        },
+        "required": [
+          "control_agent_count",
+          "max_parallel_specialist_agents",
+          "max_active_writers",
+          "max_active_tasks_per_specialist",
+          "max_active_tasks_per_writer",
+          "max_current_tasks_per_lane",
+          "max_weekly_company_outcomes",
+          "release_trains_per_week",
+          "single_integrator_domains",
+          "failed_slice_blocks_independent_slices",
+          "path_or_hash_drift_action",
+          "shared_lease_conflict_action"
+        ],
+        "title": "TeamControlParallelPolicy",
+        "type": "object"
+      },
+      "TeamControlProgramContract": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_id": {
+            "const": "kjds-enterprise-ai-erp-program-v1",
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "program_snapshot_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Program Snapshot Sha256",
+            "type": "string"
+          },
+          "registry_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Registry Sha256",
+            "type": "string"
+          },
+          "runtime_authority_connected": {
+            "const": false,
+            "title": "Runtime Authority Connected",
+            "type": "boolean"
+          },
+          "source_bundle_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Bundle Sha256",
+            "type": "string"
+          },
+          "static_contract_integrity": {
+            "const": "VERIFIED",
+            "title": "Static Contract Integrity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_id",
+          "contract_version",
+          "program_snapshot_sha256",
+          "registry_sha256",
+          "source_bundle_sha256",
+          "static_contract_integrity",
+          "runtime_authority_connected"
+        ],
+        "title": "TeamControlProgramContract",
+        "type": "object"
+      },
+      "TeamControlProjectionSourceRef": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "title": "TeamControlProjectionSourceRef",
+        "type": "object"
+      },
+      "TeamControlRoleConflictRule": {
+        "additionalProperties": false,
+        "properties": {
+          "identity_authority_required": {
+            "title": "Identity Authority Required",
+            "type": "boolean"
+          },
+          "left_function_ref": {
+            "title": "Left Function Ref",
+            "type": "string"
+          },
+          "right_function_ref": {
+            "title": "Right Function Ref",
+            "type": "string"
+          },
+          "rule_ref": {
+            "title": "Rule Ref",
+            "type": "string"
+          },
+          "same_principal_allowed": {
+            "title": "Same Principal Allowed",
+            "type": "boolean"
+          },
+          "same_role_allowed": {
+            "title": "Same Role Allowed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rule_ref",
+          "left_function_ref",
+          "right_function_ref",
+          "same_role_allowed",
+          "same_principal_allowed",
+          "identity_authority_required"
+        ],
+        "title": "TeamControlRoleConflictRule",
+        "type": "object"
+      },
+      "TeamControlRoleConflicts": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "contract_rules_verified": {
+            "title": "Contract Rules Verified",
+            "type": "boolean"
+          },
+          "observed_conflicts": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Conflicts"
+          },
+          "program_contract": {
+            "$ref": "#/components/schemas/TeamControlProgramContract"
+          },
+          "projection": {
+            "const": "role_conflicts",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlRoleConflictRule"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256",
+          "program_contract",
+          "contract_rules_verified",
+          "rules",
+          "observed_conflicts"
+        ],
+        "title": "TeamControlRoleConflicts",
+        "type": "object"
+      },
+      "TeamControlSquadItem": {
+        "additionalProperties": false,
+        "properties": {
+          "capability_atlas_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capability Atlas Ids",
+            "type": "array"
+          },
+          "capability_gap_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capability Gap Refs",
+            "type": "array"
+          },
+          "first_acceptance_contract": {
+            "title": "First Acceptance Contract",
+            "type": "string"
+          },
+          "owner_role_ref": {
+            "title": "Owner Role Ref",
+            "type": "string"
+          },
+          "primary_lane_id": {
+            "title": "Primary Lane Id",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "required_functions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Functions",
+            "type": "array"
+          },
+          "reviewer_role_ref": {
+            "title": "Reviewer Role Ref",
+            "type": "string"
+          },
+          "squad_ref": {
+            "title": "Squad Ref",
+            "type": "string"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          },
+          "supporting_lane_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supporting Lane Ids",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "work_item_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Work Item Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "squad_ref",
+          "title",
+          "owner_role_ref",
+          "reviewer_role_ref",
+          "primary_lane_id",
+          "supporting_lane_ids",
+          "required_functions",
+          "capability_atlas_ids",
+          "capability_gap_refs",
+          "work_item_refs",
+          "first_acceptance_contract",
+          "status",
+          "reason_codes"
+        ],
+        "title": "TeamControlSquadItem",
+        "type": "object"
+      },
+      "TeamControlSquadReadiness": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "contract_count": {
+            "minimum": 0.0,
+            "title": "Contract Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlSquadItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "program_contract": {
+            "$ref": "#/components/schemas/TeamControlProgramContract"
+          },
+          "projection": {
+            "const": "squad_readiness",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256",
+          "program_contract",
+          "contract_count",
+          "items"
+        ],
+        "title": "TeamControlSquadReadiness",
+        "type": "object"
+      },
+      "TeamControlUnavailableCapacityRisk": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "program_contract": {
+            "title": "Program Contract",
+            "type": "null"
+          },
+          "projection": {
+            "const": "capacity_risk",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256"
+        ],
+        "title": "TeamControlUnavailableCapacityRisk",
+        "type": "object"
+      },
+      "TeamControlUnavailableIntegrationQueue": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "program_contract": {
+            "title": "Program Contract",
+            "type": "null"
+          },
+          "projection": {
+            "const": "integration_queue",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256"
+        ],
+        "title": "TeamControlUnavailableIntegrationQueue",
+        "type": "object"
+      },
+      "TeamControlUnavailableNextReleaseTrain": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "program_contract": {
+            "title": "Program Contract",
+            "type": "null"
+          },
+          "projection": {
+            "const": "next_release_train",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256"
+        ],
+        "title": "TeamControlUnavailableNextReleaseTrain",
+        "type": "object"
+      },
+      "TeamControlUnavailableParallelExecution": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "program_contract": {
+            "title": "Program Contract",
+            "type": "null"
+          },
+          "projection": {
+            "const": "parallel_execution",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256"
+        ],
+        "title": "TeamControlUnavailableParallelExecution",
+        "type": "object"
+      },
+      "TeamControlUnavailableRoleConflicts": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "program_contract": {
+            "title": "Program Contract",
+            "type": "null"
+          },
+          "projection": {
+            "const": "role_conflicts",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256"
+        ],
+        "title": "TeamControlUnavailableRoleConflicts",
+        "type": "object"
+      },
+      "TeamControlUnavailableSquadReadiness": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "program_contract": {
+            "title": "Program Contract",
+            "type": "null"
+          },
+          "projection": {
+            "const": "squad_readiness",
+            "title": "Projection",
+            "type": "string"
+          },
+          "projection_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Projection Sha256",
+            "type": "string"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/TeamControlProjectionSourceRef"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "const": "UNKNOWN",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection",
+          "status",
+          "reason_codes",
+          "source_refs",
+          "as_of",
+          "projection_sha256"
+        ],
+        "title": "TeamControlUnavailableSquadReadiness",
+        "type": "object"
+      },
       "UnavailableDashboardSectionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -35592,9 +37073,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Team Control Brief V1 Team Control Brief Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TeamControlBriefOutput"
                 }
               }
             },

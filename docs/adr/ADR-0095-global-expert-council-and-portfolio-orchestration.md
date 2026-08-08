@@ -205,3 +205,22 @@ router、API、OpenAPI、Web、G-1、Fact、FinanceEntry、Approval、Permit 或
 Interface；在此之前不得建设任意插件注册框架。若未来接入真人身份、OperatingTask 容量或
 发布权威，必须分别通过独立只读 Adapter 和 exact-scope Gate，不得修改静态 Program 伪造
 动态结果。
+
+## 2026-08-08 决策加深：BAS-215C 严格 API 与老板工作台
+
+BAS-215B 已把六投影加入 Python `brief`，但 HTTP 200 仍是允许任意键的 object，Web 类型和
+老板页也没有消费这些字段。比较三种方案：继续原样 dict 透传无法让 OpenAPI 或客户端发现
+漂移；只为六字段增加包装模型会过滤或重复既有摘要；为完整 brief 建立严格顶层模型，并让
+六投影各自采用“详细合同或最小 UNKNOWN”联合类型，可以同时保持现有 Interface 和失败关闭。
+因此选择第三种。
+
+Router 只增加响应模型，不改变路径、query、权限解析或 `advance`。OpenAPI 必须引用具名完整
+模型、禁止额外顶层字段并要求六字段；scope-invalid 和 Program 缺失仍可返回最小 UNKNOWN，
+不能因为动态字段为空而伪造默认值。Web 类型冻结六字段为必需项，页面按服务端给出的顺序、
+状态与 reason code 展示，不排序 DAG、不计算冲突、容量、候选、Gate 或排期。静态
+`VERIFIED` 必须与真人/WIP/运行权威明确分开。
+
+页面采用语义 section/heading、原生 details、live region、可见 focus 和 390px 响应式网格。
+本决定不改 Tower/Program/runtime、决定哈希、continuation 或命令输入，也不新增数据库、迁移、
+依赖、G-1、Approval、Permit 或外部写。若以后生成正式 SDK，再以同一 OpenAPI snapshot 作为
+唯一代码生成输入；不得另建 Web 私有状态协议。

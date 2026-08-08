@@ -239,6 +239,7 @@ KJDS 是“确定性经营内核 + 证据优先数据层 + 受控 Agent 外层�
 | BR-142 | 90 天 Top1 大型团队总控与五类权威投影 | `TeamControlTower` v1.1 必须在保留唯一 `brief/advance` Interface、A–M 泳道及 OperatingTask/Event 真源的前提下，把 18 个核心角色、12 个 AI 专家、20–40 人专家池容量与 5 个独立控制角色编译为机器可验证但不证明真人到岗的组织合同。`brief` 必须只在 exact scope 通过后读取并投影 `organization_readiness`、四阶段 `critical_path`、12 维 `top1_scorecard`、`cash_at_risk` 与五个 `delivery_gate`；统一使用 `VERIFIED/PARTIAL/BLOCKED/STALE/CONFLICTED/UNKNOWN`、reason code、source ref、as-of 与投影哈希。Top1 只能只读映射最新同 scope `StrategicBenchmark` 既有比较组，不重排；少于 5 个合格 peer、数据过期、重复最新组或 authority drift 必须失败关闭，且 `global_top1_claim=false`。期初余额、CashPlan、FX、现金底线或最大损失缺失时不得猜测 13 周现金。日历、泳道或任务完成不得替代正式 Gate PASS。五类投影共同进入 `decision_basis_sha256`，任一人员、现金、Benchmark、Gate 或泳道变化必须使旧 continuation 失效。当前切片不得新增数据库迁移，BAS-204 继续独占 `0096`；工程交付只能标记 `DONE_ENGINEERING`，真人、现金、SKU、客户和 Top1 保持外部 Evidence Gate。详见 [ADR-0095](../adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md)、[运行手册](18_TEAM_CONTROL_TOWER.md) 与 [LG-002 Evidence](evidence/20260807_LG_002_TOP1_TEAM_CONTROL.md)。 | P0 |
 | BR-143 | 90 天 Campaign 运行调度与真实 SKU 现金闭环投影 | `TeamControlTower` v1.2 必须在不增加外部 Interface、数据库表、迁移或平行任务账的前提下，把四阶段 Campaign 运行协调复用到 exact-scope `OperatingTask/Event`。首阶段 `start` Event 只有绑定当前 scope Evidence 时才形成不可变 kickoff；实际战役日从该 Event 计算，不能从计划日期、任务状态或系统时钟倒推。阶段任务 `resolve` 只证明工作交接，不证明正式 Gate PASS；无匹配的 canonical Gate authority 时不得自动打开下一阶段。`brief` 还必须只读注入现有 `ScopedSettlementCashWorkspace`，只有同一 cycle 同时具备订单 Fact、平台结算、银行现金、`reconciled` 和 Actual Cash CM3 时，才可把“至少一个真实 SKU 现金闭环”投影为 `VERIFIED`；该事实不能补造 13 周现金、现金底线、最大损失或正式 Gate。Campaign/现金投影变化必须进入 `decision_basis_sha256` 并使旧 continuation 失效；单纯观测时间变化不得导致相邻 `brief/advance` 永久 stale，因此审计快照哈希与去除 cutoff 噪声、保留业务权威语义的决定基线哈希必须分离。exact scope 失败时任务、Benchmark 和现金权威均不得读取。 | P0 |
 | BR-144 | 全域 AI ERP 六投影与总控决定基线 | `TeamControlTower` v1.3 必须通过具名、只读 `EnterpriseAiErpProgram.project()` 依赖，在既有 `brief` 中增加 `squad_readiness`、`role_conflicts`、`parallel_execution`、`integration_queue`、`capacity_risk` 和 `next_release_train`；不得公开通用插件注册表、增加命令总线或改变 `advance`。六投影只能白名单编译 BAS-215A 已验证的结构合同，整体状态保持 `UNKNOWN`，不得把静态合同完整性、验收条件、并发上限、WBS DAG 或每周两次集成列车误报为真人到岗、运行容量、任务完成、Gate PASS 或发布排期。exact scope 失败时不得调用 Program；Program 缺失时显式 `UNKNOWN`，版本、source bundle、snapshot、动态真相或 authority envelope 漂移时失败关闭。Program registry/source bundle/snapshot 与六投影哈希必须进入 `decision_basis_sha256`，语义变化使旧 continuation 失效，单纯 `as_of` 变化不得失效。runtime 只实例化并注入，不新增 DB/migration/router/API/OpenAPI/Web/G1 或外写。详见 [ADR-0095](../adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md)、[运行手册](18_TEAM_CONTROL_TOWER.md) 与 [BAS-215B Evidence](evidence/20260808_BAS_215B_ENTERPRISE_AI_ERP_TEAM_CONTROL_PROJECTION.md)。 | P0 |
+| BR-145 | 全域 AI ERP 六投影的严格 API 与老板工作台 | `GET /v1/team-control/brief` 必须以严格、禁止额外字段的完整响应模型公开现有摘要及 BAS-215B 六投影，保存的 OpenAPI 200 响应必须引用该模型并把六字段列为 required；不得继续以任意 object 隐藏契约漂移。scope-invalid、Program 缺失和未连接运行权威时仍返回结构化 `UNKNOWN`，不能因序列化默认值晋级状态。`/team-control` 必须逐一显示六个服务端投影、reason code、Program snapshot 与运行权威未连接声明；Web 只能格式化服务端顺序和值，不得计算 Owner、成熟度、容量、依赖、发布候选、Gate 或排期。页面必须支持键盘、语义标题、状态播报与 390px 无横向溢出。`advance` 输入、幂等、权限、决定哈希和外写边界保持不变；本切片不改 Tower/Program/runtime，不新增数据库、迁移、依赖、G-1 或外部权限。详见 [ADR-0095](../adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md)、[运行手册](18_TEAM_CONTROL_TOWER.md) 与 [BAS-215C Evidence](evidence/20260808_BAS_215C_ENTERPRISE_AI_ERP_TEAM_CONTROL_API_WEB.md)。 | P0 |
 
 BR-082 精确身份补充门禁：任一身份字段或变体仍为
 `unknown/unspecified/pending/未确认` 等占位值时，不得生成或复用匹配键；历史观察在
@@ -1445,3 +1446,23 @@ decision semantics, so a contract change invalidates the old continuation. Obser
 continues to affect the audit snapshot but not the action decision when all authority semantics are
 unchanged. This increment adds no database, migration, router, API, OpenAPI, Web, G-1 or external
 write capability.
+
+## 26. Enterprise AI ERP strict API and owner workbench
+
+BAS-215C publishes the six BAS-215B leadership projections through the existing brief route and
+owner workbench. The route now uses one strict full-response model rather than an unconstrained
+object. Its saved OpenAPI response is a named `$ref`, rejects undeclared top-level fields and
+requires all six projections. The model accepts the deliberately smaller scope-invalid and
+dependency-missing `UNKNOWN` variants, so serialization cannot invent readiness or turn absence
+into an HTTP failure.
+
+The Web contract requires the same six fields and renders them in server order. Each panel shows
+the supplied status, reason codes, contract details and nullable runtime observations. The client
+does not sort the integration DAG, derive role conflicts, subtract WIP from limits, choose a
+release candidate or promote a Gate. A visible statement distinguishes verified static contract
+integrity from human staffing, active work, available capacity and a scheduled release.
+
+The surface uses semantic sections and headings, native disclosure controls, live status/error
+announcements, visible keyboard focus and responsive grids that collapse without horizontal
+overflow at 390px. The command surface and `advance` contract are unchanged. This increment adds
+no execution authority, dependency, database, migration, G-1 or provider write.

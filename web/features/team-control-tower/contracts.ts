@@ -178,6 +178,123 @@ export type DeliveryGate = TruthProjection & {
   }>;
 };
 
+export type EnterpriseAiErpProgramContract = {
+  contract_id: "kjds-enterprise-ai-erp-program-v1";
+  contract_version: string;
+  program_snapshot_sha256: string;
+  registry_sha256: string;
+  source_bundle_sha256: string;
+  static_contract_integrity: "VERIFIED";
+  runtime_authority_connected: false;
+};
+
+export type EnterpriseAiErpProjection = TruthProjection & {
+  projection:
+    | "squad_readiness"
+    | "role_conflicts"
+    | "parallel_execution"
+    | "integration_queue"
+    | "capacity_risk"
+    | "next_release_train";
+  program_contract?: EnterpriseAiErpProgramContract | null;
+};
+
+export type SquadReadiness = EnterpriseAiErpProjection & {
+  projection: "squad_readiness";
+  contract_count?: number;
+  items?: Array<{
+    squad_ref: string;
+    title: string;
+    owner_role_ref: string;
+    reviewer_role_ref: string;
+    primary_lane_id: string;
+    supporting_lane_ids: string[];
+    required_functions: string[];
+    capability_atlas_ids: string[];
+    capability_gap_refs: string[];
+    work_item_refs: string[];
+    first_acceptance_contract: string;
+    status: "UNKNOWN";
+    reason_codes: string[];
+  }>;
+};
+
+export type RoleConflicts = EnterpriseAiErpProjection & {
+  projection: "role_conflicts";
+  contract_rules_verified?: boolean;
+  rules?: Array<{
+    rule_ref: string;
+    left_function_ref: string;
+    right_function_ref: string;
+    same_role_allowed: boolean;
+    same_principal_allowed: boolean;
+    identity_authority_required: boolean;
+  }>;
+  observed_conflicts?: Array<Record<string, unknown>> | null;
+};
+
+export type ParallelExecution = EnterpriseAiErpProjection & {
+  projection: "parallel_execution";
+  policy?: {
+    control_agent_count: number;
+    max_parallel_specialist_agents: number;
+    max_active_writers: number;
+    max_active_tasks_per_specialist: number;
+    max_active_tasks_per_writer: number;
+    max_current_tasks_per_lane: number;
+    max_weekly_company_outcomes: number;
+    release_trains_per_week: number;
+    single_integrator_domains: string[];
+    failed_slice_blocks_independent_slices: boolean;
+    path_or_hash_drift_action: string;
+    shared_lease_conflict_action: string;
+  };
+  observed_active_writers?: number | null;
+  observed_writer_wip?: number | null;
+  observed_lane_current_tasks?: number | null;
+};
+
+export type IntegrationQueue = EnterpriseAiErpProjection & {
+  projection: "integration_queue";
+  planned_initial_state?: "NOT_STARTED";
+  items?: Array<{
+    work_item_ref: string;
+    title: string;
+    dependency_refs: string[];
+    squad_refs: string[];
+    lane_affinity_ids: string[];
+    execution_status: "UNKNOWN";
+  }>;
+  parallel_waves?: string[][];
+};
+
+export type CapacityRisk = EnterpriseAiErpProjection & {
+  projection: "capacity_risk";
+  limits?: {
+    control_agent_count: number;
+    max_parallel_specialist_agents: number;
+    max_active_writers: number;
+    max_active_tasks_per_specialist: number;
+    max_active_tasks_per_writer: number;
+    max_current_tasks_per_lane: number;
+    max_weekly_company_outcomes: number;
+  };
+  observed_active_writers?: number | null;
+  observed_specialist_wip?: number | null;
+  observed_lane_wip?: number | null;
+  observed_weekly_company_outcomes?: number | null;
+  capacity_proven_available?: false;
+};
+
+export type NextReleaseTrain = EnterpriseAiErpProjection & {
+  projection: "next_release_train";
+  release_trains_per_week?: number;
+  scheduled_at?: string | null;
+  eligible_work_item_refs?: string[] | null;
+  gate_status?: TruthStatus;
+  registry_proves_schedule?: false;
+};
+
 export type TeamControlBrief = {
   contract_id: "kjds-team-control-tower-v1";
   contract_version: string;
@@ -207,13 +324,19 @@ export type TeamControlBrief = {
   top1_scorecard: TruthProjection & Partial<Omit<Top1Scorecard, keyof TruthProjection>>;
   cash_at_risk: TruthProjection & Partial<Omit<CashAtRisk, keyof TruthProjection>>;
   delivery_gate: TruthProjection & Partial<Omit<DeliveryGate, keyof TruthProjection>>;
+  squad_readiness: SquadReadiness;
+  role_conflicts: RoleConflicts;
+  parallel_execution: ParallelExecution;
+  integration_queue: IntegrationQueue;
+  capacity_risk: CapacityRisk;
+  next_release_train: NextReleaseTrain;
   decision_basis_sha256: string | null;
   team?: {
     leader: string;
     specialist_count: number;
     control_role_count: number;
     escalation_chain: string[];
-  };
+  } | null;
   snapshot_sha256: string;
   control_envelope: Record<string, boolean>;
 };

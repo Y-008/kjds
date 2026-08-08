@@ -6,7 +6,7 @@
 | owner | 人类 Business Owner（待实名绑定） |
 | operator | Global Chief Commerce Officer / Chief of Staff |
 | status | Engineering ready; human and business gates pending |
-| version | 1.3 |
+| version | 1.4 |
 | reviewed_at | 2026-08-08 |
 
 ## 1. 已经搭好的系统
@@ -166,7 +166,7 @@ A、B、C、D、E、I、L、M 是主战泳道；F–H 只保持准备态。每�
 同一专家默认一个 active task，共享写域只有一个集成人。日历到期、泳道完成或任务关闭都
 不能替代正式 Gate PASS。
 
-## 11. 老板 `brief` v1.3
+## 11. 老板 `brief` v1.4
 
 第一屏只显示组织合同/绑定、13 周现金、实际战役日、最大已验证 Top1 差距和五个 Gate；
 第二屏是唯一下一动作；第三屏是四阶段关键路径；第四屏是十二维评分卡；第五屏是组织缺口、
@@ -198,6 +198,12 @@ continuation 变化后才换键。
 和 compiled snapshot；只重算自报哈希但未更新受信合同的投影仍被拒绝。正式合同升级后的
 Program 快照变化使旧 continuation 失效，单纯 `as_of`
 变化不失效。前端仍不得计算或补造这六类状态。
+
+HTTP 200 使用完整严格响应模型，保存的 OpenAPI 以具名 `$ref` 固定六字段为 required 并拒绝
+额外顶层键。scope-invalid 或 Program 未连接时允许每个字段缩减为带 reason code 的最小
+`UNKNOWN`，但不得省略字段。老板页逐一展示六个投影及 Program snapshot；页面只格式化
+服务端顺序与值，不计算角色冲突、执行波次、可用容量、发布候选、Gate 或排期。键盘焦点、
+状态播报、语义 disclosure 和 390px 无横向溢出属于发布验收。
 
 对外 `projection_sha256` 保留完整 `as_of`，用于证明每次读取的快照；推进用的
 `decision_basis_sha256` 则剔除纯观测时间和原始快照时间噪声，保留组织绑定、任务/Event、

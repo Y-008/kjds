@@ -20,6 +20,7 @@ from ..api_contracts import (
     ScopeGrantEventInput,
     ScopeGrantSourceReviewInput,
     TeamControlAdvanceInput,
+    TeamControlBriefOutput,
     current_principal,
     ensure_role,
     ensure_store_scope,
@@ -164,7 +165,7 @@ def route_global_expert_task(
     return run(lambda: runtime.global_expert_team.route(**body.model_dump()))
 
 
-@router.get("/v1/team-control/brief")
+@router.get("/v1/team-control/brief", response_model=TeamControlBriefOutput)
 def team_control_brief(
     principal: Annotated[Principal, Depends(current_principal)],
     store_ref: str = "ozon-primary",

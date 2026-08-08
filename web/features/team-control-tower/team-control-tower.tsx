@@ -257,8 +257,8 @@ export function TeamControlTowerPage() {
         <button type="button" onClick={() => void load()} disabled={busy}><RefreshCw size={15} />刷新权威快照</button>
       </section>
 
-      {error ? <div className={styles.notice}><AlertTriangle size={16} />{error}</div> : null}
-      {busy ? <div className={styles.loading}><RefreshCw size={18} />读取 exact-scope、工作流租约与任务事件…</div> : null}
+      {error ? <div className={styles.notice} role="alert"><AlertTriangle size={16} />{error}</div> : null}
+      {busy ? <div className={styles.loading} role="status" aria-live="polite"><RefreshCw size={18} />读取 exact-scope、工作流租约与任务事件…</div> : null}
 
       {brief ? (
         <>
@@ -307,7 +307,102 @@ export function TeamControlTowerPage() {
               <div className={styles.empty}><CheckCircle2 size={24} /><strong>当前没有待推进动作</strong></div>
             )}
             {!canAdvance ? <p className={styles.readOnly}>当前身份只读；只有 operator/admin 可以推进，Reviewer/Approver/Risk 保持独立。</p> : null}
-            {notice ? <div className={styles.notice}>{notice}</div> : null}
+            {notice ? <div className={styles.notice} role="status" aria-live="polite">{notice}</div> : null}
+          </section>
+
+          <section className={`${styles.controlSection} ${styles.enterpriseSection}`} aria-labelledby="enterprise-ai-erp-title" aria-describedby="enterprise-ai-erp-disclaimer">
+            <header>
+              <div><span>ENTERPRISE AI ERP · SERVER-OWNED CONTRACT</span><h2 id="enterprise-ai-erp-title">八个 Squad 与并行交付控制</h2></div>
+              <Status value={brief.squad_readiness.status} />
+            </header>
+            <p id="enterprise-ai-erp-disclaimer" className={styles.enterpriseDisclaimer}>
+              静态合同完整性 VERIFIED 不代表真人到岗、当前 WIP、容量可用、列车已排期或正式 Gate PASS。以下状态、原因和顺序均来自服务端；前端不计算晋级、依赖、候选或发布结论。
+            </p>
+            <div className={styles.enterpriseGrid}>
+              <article>
+                <header><h3>Squad readiness</h3><Status value={brief.squad_readiness.status} /></header>
+                <strong>{brief.squad_readiness.contract_count ?? "UNKNOWN"} 个 Squad 合同</strong>
+                <p>运行态：{reason(brief.squad_readiness.reason_codes)}</p>
+                <details>
+                  <summary>查看服务端 Squad 合同</summary>
+                  <div className={styles.enterpriseList}>
+                    {brief.squad_readiness.items?.map((item) => (
+                      <section key={item.squad_ref} aria-label={item.title}>
+                        <b>{item.squad_ref} · {item.title}</b>
+                        <span>Owner {item.owner_role_ref} · Reviewer {item.reviewer_role_ref}</span>
+                        <span>Lane {item.primary_lane_id} · <Status value={item.status} /></span>
+                        <small>{item.first_acceptance_contract}</small>
+                      </section>
+                    )) ?? <span>UNKNOWN · Program authority unavailable</span>}
+                  </div>
+                </details>
+              </article>
+
+              <article>
+                <header><h3>Role conflicts</h3><Status value={brief.role_conflicts.status} /></header>
+                <strong>{brief.role_conflicts.contract_rules_verified ? "静态 SoD 规则 VERIFIED" : "UNKNOWN"}</strong>
+                <p>已观察冲突：{brief.role_conflicts.observed_conflicts ? "服务端已返回" : "UNKNOWN"}</p>
+                <details>
+                  <summary>查看职责分离规则</summary>
+                  <ul>
+                    {brief.role_conflicts.rules?.map((rule) => (
+                      <li key={rule.rule_ref}>{rule.rule_ref} · {rule.left_function_ref} ≠ {rule.right_function_ref}</li>
+                    )) ?? <li>UNKNOWN · identity authority unavailable</li>}
+                  </ul>
+                </details>
+              </article>
+
+              <article>
+                <header><h3>Parallel execution</h3><Status value={brief.parallel_execution.status} /></header>
+                <dl className={styles.enterpriseFacts}>
+                  <div><dt>控制 Agent</dt><dd>{brief.parallel_execution.policy?.control_agent_count ?? "UNKNOWN"}</dd></div>
+                  <div><dt>专业 Agent 上限</dt><dd>{brief.parallel_execution.policy?.max_parallel_specialist_agents ?? "UNKNOWN"}</dd></div>
+                  <div><dt>Writer 上限</dt><dd>{brief.parallel_execution.policy?.max_active_writers ?? "UNKNOWN"}</dd></div>
+                  <div><dt>当前 Writer</dt><dd>{brief.parallel_execution.observed_active_writers ?? "UNKNOWN"}</dd></div>
+                </dl>
+                <p>{reason(brief.parallel_execution.reason_codes)}</p>
+              </article>
+
+              <article>
+                <header><h3>Integration queue</h3><Status value={brief.integration_queue.status} /></header>
+                <strong>计划初态：{brief.integration_queue.planned_initial_state ?? "UNKNOWN"}</strong>
+                <div className={styles.enterpriseList}>
+                  {brief.integration_queue.items?.map((item) => (
+                    <section key={item.work_item_ref}>
+                      <b>{item.work_item_ref} · {item.title}</b>
+                      <span>Execution <Status value={item.execution_status} /></span>
+                      <small>依赖：{item.dependency_refs.join(" · ") || "无"}</small>
+                    </section>
+                  )) ?? <span>UNKNOWN · OperatingTask authority unavailable</span>}
+                </div>
+              </article>
+
+              <article>
+                <header><h3>Capacity risk</h3><Status value={brief.capacity_risk.status} /></header>
+                <strong>{brief.capacity_risk.capacity_proven_available ? "容量已证明" : "容量未被证明"}</strong>
+                <dl className={styles.enterpriseFacts}>
+                  <div><dt>Writer policy</dt><dd>{brief.capacity_risk.limits?.max_active_writers ?? "UNKNOWN"}</dd></div>
+                  <div><dt>Writer observed</dt><dd>{brief.capacity_risk.observed_active_writers ?? "UNKNOWN"}</dd></div>
+                  <div><dt>Lane observed</dt><dd>{brief.capacity_risk.observed_lane_wip ?? "UNKNOWN"}</dd></div>
+                  <div><dt>Weekly outcomes</dt><dd>{brief.capacity_risk.observed_weekly_company_outcomes ?? "UNKNOWN"}</dd></div>
+                </dl>
+                <p>{reason(brief.capacity_risk.reason_codes)}</p>
+              </article>
+
+              <article>
+                <header><h3>Next release train</h3><Status value={brief.next_release_train.status} /></header>
+                <dl className={styles.enterpriseFacts}>
+                  <div><dt>静态政策</dt><dd>{brief.next_release_train.release_trains_per_week ?? "UNKNOWN"} 次/周</dd></div>
+                  <div><dt>计划时间</dt><dd>{brief.next_release_train.scheduled_at ?? "UNKNOWN"}</dd></div>
+                  <div><dt>Gate</dt><dd>{brief.next_release_train.gate_status ?? "UNKNOWN"}</dd></div>
+                  <div><dt>候选</dt><dd>{brief.next_release_train.eligible_work_item_refs ? "服务端已返回" : "UNKNOWN"}</dd></div>
+                </dl>
+                <p>Registry proves schedule = {String(brief.next_release_train.registry_proves_schedule ?? false)} · {reason(brief.next_release_train.reason_codes)}</p>
+              </article>
+            </div>
+            <footer className={styles.enterpriseFooter}>
+              Program snapshot · {shortHash(brief.squad_readiness.program_contract?.program_snapshot_sha256)} · runtime authority connected = false
+            </footer>
           </section>
 
           <section className={styles.controlSection} aria-labelledby="critical-path-title">

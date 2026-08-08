@@ -898,6 +898,227 @@ class GlobalExpertTaskRouteInput(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list, max_length=100)
 
 
+class TeamControlProjectionSourceRef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(min_length=1, max_length=240)
+    sha256: str | None = Field(
+        default=None,
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    as_of: str | None = None
+
+
+class TeamControlProgramContract(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    contract_id: Literal["kjds-enterprise-ai-erp-program-v1"]
+    contract_version: str
+    program_snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    registry_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_bundle_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    static_contract_integrity: Literal["VERIFIED"]
+    runtime_authority_connected: Literal[False]
+
+
+class TeamControlEnterpriseProjection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    projection: str
+    status: Literal["UNKNOWN"]
+    reason_codes: list[str]
+    source_refs: list[TeamControlProjectionSourceRef]
+    as_of: str
+    projection_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class TeamControlUnavailableSquadReadiness(TeamControlEnterpriseProjection):
+    projection: Literal["squad_readiness"]
+    program_contract: None = None
+
+
+class TeamControlUnavailableRoleConflicts(TeamControlEnterpriseProjection):
+    projection: Literal["role_conflicts"]
+    program_contract: None = None
+
+
+class TeamControlUnavailableParallelExecution(TeamControlEnterpriseProjection):
+    projection: Literal["parallel_execution"]
+    program_contract: None = None
+
+
+class TeamControlUnavailableIntegrationQueue(TeamControlEnterpriseProjection):
+    projection: Literal["integration_queue"]
+    program_contract: None = None
+
+
+class TeamControlUnavailableCapacityRisk(TeamControlEnterpriseProjection):
+    projection: Literal["capacity_risk"]
+    program_contract: None = None
+
+
+class TeamControlUnavailableNextReleaseTrain(TeamControlEnterpriseProjection):
+    projection: Literal["next_release_train"]
+    program_contract: None = None
+
+
+class TeamControlSquadItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    squad_ref: str
+    title: str
+    owner_role_ref: str
+    reviewer_role_ref: str
+    primary_lane_id: str
+    supporting_lane_ids: list[str]
+    required_functions: list[str]
+    capability_atlas_ids: list[str]
+    capability_gap_refs: list[str]
+    work_item_refs: list[str]
+    first_acceptance_contract: str
+    status: Literal["UNKNOWN"]
+    reason_codes: list[str]
+
+
+class TeamControlSquadReadiness(TeamControlEnterpriseProjection):
+    projection: Literal["squad_readiness"]
+    program_contract: TeamControlProgramContract
+    contract_count: int = Field(ge=0)
+    items: list[TeamControlSquadItem]
+
+
+class TeamControlRoleConflictRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_ref: str
+    left_function_ref: str
+    right_function_ref: str
+    same_role_allowed: bool
+    same_principal_allowed: bool
+    identity_authority_required: bool
+
+
+class TeamControlRoleConflicts(TeamControlEnterpriseProjection):
+    projection: Literal["role_conflicts"]
+    program_contract: TeamControlProgramContract
+    contract_rules_verified: bool
+    rules: list[TeamControlRoleConflictRule]
+    observed_conflicts: list[dict[str, Any]] | None
+
+
+class TeamControlParallelPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    control_agent_count: int = Field(ge=1)
+    max_parallel_specialist_agents: int = Field(ge=1)
+    max_active_writers: int = Field(ge=1)
+    max_active_tasks_per_specialist: int = Field(ge=1)
+    max_active_tasks_per_writer: int = Field(ge=1)
+    max_current_tasks_per_lane: int = Field(ge=1)
+    max_weekly_company_outcomes: int = Field(ge=1)
+    release_trains_per_week: int = Field(ge=1)
+    single_integrator_domains: list[str]
+    failed_slice_blocks_independent_slices: bool
+    path_or_hash_drift_action: str
+    shared_lease_conflict_action: str
+
+
+class TeamControlParallelExecution(TeamControlEnterpriseProjection):
+    projection: Literal["parallel_execution"]
+    program_contract: TeamControlProgramContract
+    policy: TeamControlParallelPolicy
+    observed_active_writers: int | None
+    observed_writer_wip: int | None
+    observed_lane_current_tasks: int | None
+
+
+class TeamControlIntegrationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    work_item_ref: str
+    title: str
+    dependency_refs: list[str]
+    squad_refs: list[str]
+    lane_affinity_ids: list[str]
+    execution_status: Literal["UNKNOWN"]
+
+
+class TeamControlIntegrationQueue(TeamControlEnterpriseProjection):
+    projection: Literal["integration_queue"]
+    program_contract: TeamControlProgramContract
+    planned_initial_state: Literal["NOT_STARTED"]
+    items: list[TeamControlIntegrationItem]
+    parallel_waves: list[list[str]]
+
+
+class TeamControlCapacityLimits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    control_agent_count: int = Field(ge=1)
+    max_parallel_specialist_agents: int = Field(ge=1)
+    max_active_writers: int = Field(ge=1)
+    max_active_tasks_per_specialist: int = Field(ge=1)
+    max_active_tasks_per_writer: int = Field(ge=1)
+    max_current_tasks_per_lane: int = Field(ge=1)
+    max_weekly_company_outcomes: int = Field(ge=1)
+
+
+class TeamControlCapacityRisk(TeamControlEnterpriseProjection):
+    projection: Literal["capacity_risk"]
+    program_contract: TeamControlProgramContract
+    limits: TeamControlCapacityLimits
+    observed_active_writers: int | None
+    observed_specialist_wip: int | None
+    observed_lane_wip: int | None
+    observed_weekly_company_outcomes: int | None
+    capacity_proven_available: Literal[False]
+
+
+class TeamControlNextReleaseTrain(TeamControlEnterpriseProjection):
+    projection: Literal["next_release_train"]
+    program_contract: TeamControlProgramContract
+    release_trains_per_week: int = Field(ge=1)
+    scheduled_at: str | None
+    eligible_work_item_refs: list[str] | None
+    gate_status: Literal["UNKNOWN"]
+    registry_proves_schedule: Literal[False]
+
+
+class TeamControlBriefOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    contract_id: Literal["kjds-team-control-tower-v1"]
+    contract_version: str
+    status: Literal[
+        "on_track",
+        "attention_required",
+        "blocked",
+        "awaiting_human",
+        "scope_invalid",
+    ]
+    headline: str
+    scope: dict[str, Any] | None
+    as_of: str
+    executive_summary: dict[str, Any]
+    next_action: dict[str, Any] | None
+    flows: list[dict[str, Any]]
+    conflicts: list[dict[str, Any]]
+    organization_readiness: dict[str, Any]
+    critical_path: dict[str, Any]
+    top1_scorecard: dict[str, Any]
+    cash_at_risk: dict[str, Any]
+    delivery_gate: dict[str, Any]
+    squad_readiness: TeamControlSquadReadiness | TeamControlUnavailableSquadReadiness
+    role_conflicts: TeamControlRoleConflicts | TeamControlUnavailableRoleConflicts
+    parallel_execution: TeamControlParallelExecution | TeamControlUnavailableParallelExecution
+    integration_queue: TeamControlIntegrationQueue | TeamControlUnavailableIntegrationQueue
+    capacity_risk: TeamControlCapacityRisk | TeamControlUnavailableCapacityRisk
+    next_release_train: TeamControlNextReleaseTrain | TeamControlUnavailableNextReleaseTrain
+    decision_basis_sha256: str | None = Field(
+        default=None,
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    team: dict[str, Any] | None = None
+    source_refs: list[dict[str, Any]]
+    control_envelope: dict[str, bool]
+    snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class TeamControlAdvanceInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     continuation: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")

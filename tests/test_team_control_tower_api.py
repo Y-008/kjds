@@ -4,11 +4,61 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from apps.control_plane.api import app, is_write_safety_control_path
-from apps.control_plane.api_contracts import TeamControlAdvanceInput
+from apps.control_plane.api_contracts import (
+    TeamControlAdvanceInput,
+    TeamControlBriefOutput,
+)
 from apps.control_plane.routers import system
 from apps.control_plane.security import Principal
+
+ENTERPRISE_PROJECTION_KEYS = (
+    "squad_readiness",
+    "role_conflicts",
+    "parallel_execution",
+    "integration_queue",
+    "capacity_risk",
+    "next_release_train",
+)
+
+
+def _unknown_projection(name: str) -> dict:
+    return {
+        "projection": name,
+        "status": "UNKNOWN",
+        "reason_codes": ["exact_scope_authority_unavailable"],
+        "source_refs": [],
+        "as_of": "2026-08-08T00:00:00+00:00",
+        "projection_sha256": "a" * 64,
+    }
+
+
+def _scope_invalid_brief() -> dict:
+    projection = _unknown_projection("organization_readiness")
+    return {
+        "contract_id": "kjds-team-control-tower-v1",
+        "contract_version": "1.3.0",
+        "status": "scope_invalid",
+        "headline": "exact scope unavailable",
+        "scope": None,
+        "as_of": "2026-08-08T00:00:00+00:00",
+        "executive_summary": {},
+        "next_action": None,
+        "flows": [],
+        "conflicts": [],
+        "organization_readiness": projection,
+        "critical_path": {**projection, "projection": "critical_path"},
+        "top1_scorecard": {**projection, "projection": "top1_scorecard"},
+        "cash_at_risk": {**projection, "projection": "cash_at_risk"},
+        "delivery_gate": {**projection, "projection": "delivery_gate"},
+        **{name: _unknown_projection(name) for name in ENTERPRISE_PROJECTION_KEYS},
+        "decision_basis_sha256": None,
+        "source_refs": [],
+        "control_envelope": {"external_write_allowed": False},
+        "snapshot_sha256": "b" * 64,
+    }
 
 
 class FakeScopeGrants:
@@ -139,6 +189,146 @@ def test_team_control_openapi_has_only_brief_and_advance_interfaces():
         {"tenant_ref", "entity_ref", "scope_authority_sha256", "actor_id", "credential"}
     )
     assert is_write_safety_control_path("/v1/team-control/advance") is False
+
+    brief_schema_ref = paths["/v1/team-control/brief"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]["$ref"]
+    brief_schema_name = brief_schema_ref.rsplit("/", 1)[-1]
+    assert brief_schema_name == "TeamControlBriefOutput"
+    brief_schema = app.openapi()["components"]["schemas"][brief_schema_name]
+    assert brief_schema["additionalProperties"] is False
+    assert set(ENTERPRISE_PROJECTION_KEYS).issubset(brief_schema["required"])
+    schemas = app.openapi()["components"]["schemas"]
+    assert schemas["TeamControlUnavailableSquadReadiness"]["properties"]["status"][
+        "const"
+    ] == "UNKNOWN"
+    assert schemas["TeamControlCapacityRisk"]["properties"][
+        "capacity_proven_available"
+    ]["const"] is False
+    assert schemas["TeamControlNextReleaseTrain"]["properties"]["gate_status"][
+        "const"
+    ] == "UNKNOWN"
+    assert schemas["TeamControlNextReleaseTrain"]["properties"][
+        "registry_proves_schedule"
+    ]["const"] is False
+
+
+def test_team_control_brief_contract_accepts_minimal_unknown_and_fails_closed():
+    brief = _scope_invalid_brief()
+
+    validated = TeamControlBriefOutput.model_validate(brief).model_dump()
+
+    assert validated["status"] == "scope_invalid"
+    assert all(validated[name]["status"] == "UNKNOWN" for name in ENTERPRISE_PROJECTION_KEYS)
+    assert all(validated[name]["program_contract"] is None for name in ENTERPRISE_PROJECTION_KEYS)
+
+    missing = dict(brief)
+    missing.pop("capacity_risk")
+    with pytest.raises(ValidationError):
+        TeamControlBriefOutput.model_validate(missing)
+
+    wrong_projection = _scope_invalid_brief()
+    wrong_projection["capacity_risk"] = _unknown_projection("role_conflicts")
+    with pytest.raises(ValidationError):
+        TeamControlBriefOutput.model_validate(wrong_projection)
+
+    extra = _scope_invalid_brief()
+    extra["client_computed_gate"] = "PASS"
+    with pytest.raises(ValidationError):
+        TeamControlBriefOutput.model_validate(extra)
+
+    promoted = _scope_invalid_brief()
+    promoted["squad_readiness"]["status"] = "VERIFIED"
+    with pytest.raises(ValidationError):
+        TeamControlBriefOutput.model_validate(promoted)
+
+
+def test_team_control_brief_contract_preserves_unknown_capacity_observations():
+    brief = _scope_invalid_brief()
+    brief["capacity_risk"] = {
+        "projection": "capacity_risk",
+        "status": "UNKNOWN",
+        "limits": {
+            "control_agent_count": 1,
+            "max_parallel_specialist_agents": 3,
+            "max_active_writers": 3,
+            "max_active_tasks_per_specialist": 1,
+            "max_active_tasks_per_writer": 1,
+            "max_current_tasks_per_lane": 1,
+            "max_weekly_company_outcomes": 3,
+        },
+        "observed_active_writers": None,
+        "observed_specialist_wip": None,
+        "observed_lane_wip": None,
+        "observed_weekly_company_outcomes": None,
+        "capacity_proven_available": False,
+        "program_contract": {
+            "contract_id": "kjds-enterprise-ai-erp-program-v1",
+            "contract_version": "1.0.0",
+            "program_snapshot_sha256": "c" * 64,
+            "registry_sha256": "d" * 64,
+            "source_bundle_sha256": "e" * 64,
+            "static_contract_integrity": "VERIFIED",
+            "runtime_authority_connected": False,
+        },
+        "reason_codes": ["runtime_work_authority_not_connected"],
+        "source_refs": [
+            {"ref": "enterprise_ai_erp_program_registry", "sha256": "d" * 64}
+        ],
+        "as_of": "2026-08-08T00:00:00+00:00",
+        "projection_sha256": "f" * 64,
+    }
+
+    capacity = TeamControlBriefOutput.model_validate(brief).model_dump()[
+        "capacity_risk"
+    ]
+
+    assert capacity["status"] == "UNKNOWN"
+    assert capacity["capacity_proven_available"] is False
+    assert capacity["observed_active_writers"] is None
+
+    brief["capacity_risk"]["capacity_proven_available"] = True
+    with pytest.raises(ValidationError):
+        TeamControlBriefOutput.model_validate(brief)
+
+
+def test_team_control_brief_contract_rejects_release_truth_without_authority():
+    brief = _scope_invalid_brief()
+    brief["next_release_train"] = {
+        "projection": "next_release_train",
+        "status": "UNKNOWN",
+        "release_trains_per_week": 2,
+        "scheduled_at": None,
+        "eligible_work_item_refs": None,
+        "gate_status": "UNKNOWN",
+        "registry_proves_schedule": False,
+        "program_contract": {
+            "contract_id": "kjds-enterprise-ai-erp-program-v1",
+            "contract_version": "1.0.0",
+            "program_snapshot_sha256": "c" * 64,
+            "registry_sha256": "d" * 64,
+            "source_bundle_sha256": "e" * 64,
+            "static_contract_integrity": "VERIFIED",
+            "runtime_authority_connected": False,
+        },
+        "reason_codes": ["release_authority_not_connected"],
+        "source_refs": [
+            {"ref": "enterprise_ai_erp_program_registry", "sha256": "d" * 64}
+        ],
+        "as_of": "2026-08-08T00:00:00+00:00",
+        "projection_sha256": "f" * 64,
+    }
+
+    TeamControlBriefOutput.model_validate(brief)
+
+    brief["next_release_train"]["gate_status"] = "VERIFIED"
+    with pytest.raises(ValidationError):
+        TeamControlBriefOutput.model_validate(brief)
+
+    brief["next_release_train"]["gate_status"] = "UNKNOWN"
+    brief["next_release_train"]["registry_proves_schedule"] = True
+    with pytest.raises(ValidationError):
+        TeamControlBriefOutput.model_validate(brief)
 
 
 def test_monitor_reads_brief_but_only_operator_or_admin_advances(monkeypatch):
