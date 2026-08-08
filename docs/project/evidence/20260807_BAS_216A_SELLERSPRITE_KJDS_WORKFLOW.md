@@ -169,6 +169,77 @@ KJDS proposal-only candidate observation
 human decision; no automatic Product, purchase or listing write
 ```
 
+### Reconstructed benchmark method
+
+The visible video was sampled at the operating brief, initial-screen, pool-expansion, detailed-report,
+installation, and pricing frames. The following is the reproducible method demonstrated by those
+frames; it is more specific than the post title but remains a benchmark observation rather than a
+provider or marketplace fact:
+
+| Video step | Visible operator method | Useful pattern | Missing control that KJDS adds |
+| --- | --- | --- | --- |
+| 1. Freeze a daily brief | A persistent Codex automation targets Amazon US `Home & Kitchen`, runs each morning, defines inclusion/exclusion rules, requests at least 20 initial candidates and no more than 5 final recommendations, requires rejection reasons, avoids historical duplicates, and permits a no-result day. | Make the task repeatable and let “no qualifying product” be a valid result. | Exact data cutoff, tool/call budget, source receipt, authority, and UNKNOWN propagation. |
+| 2. Build an initial table | The result table visibly includes product names/Chinese translation, image, representative ASIN, price, monthly sales and monthly revenue. | Compare candidates in one stable tabular view before writing narrative. | Field provenance, original units/currency, observation time, page coverage, and grade. |
+| 3. Expand the product pool | The narration explicitly uses other products in the store and adjacent products to extend the pool. | A seed is a discovery starting point, not a recommendation. | Stable product-family/specification identity and duplicate-family suppression across markets. |
+| 4. Produce a detailed packet | The report frames visibly separate trend judgement, keyword suggestions, Listing/PPC terms, product-positioning directions, final judgement, risks, and next evidence to collect. | Separate screening from the later decision memo. | Prevent keyword/positioning advice from being promoted to demand, profit, compliance, or listing truth. |
+| 5. Connect Codex to SellerSprite MCP | The final section shows Codex client setup and SellerSprite MCP access. A pricing frame mentions a 4,000-point annual package, while comments describe the workflow as useful but expensive. | Let an agent orchestrate narrow research tools instead of manually copying every screen. | Inventory admission, exact entitlement/cost reconciliation, revocation, immutable tool hashes, and shared-system licensing. |
+| 6. Repeat by task | The closing narration emphasizes that output depends on the task supplied to the system. | Reusable task templates improve operator speed. | Prompts are only views; they cannot change evidence, authority, budget, or write permissions. |
+
+The video does **not** provide a complete prompt transcript, immutable tool trace, page-conservation
+proof, current SellerSprite price contract, or reconciliation of its reported Amazon metrics. The
+visible numeric marketplace values and the 4,000-point mention therefore must not be copied into a
+KJDS candidate, cost ledger, or profitability model.
+
+### KJDS-owned daily operating contract
+
+KJDS reuses the existing `MarketplaceResearchWorkflow`; it does not add a separate “AI selection”
+pipeline. One daily run is a bounded projection through the following contract:
+
+1. **Freeze the question.** Bind `market`, `site`, product family, specification boundary,
+   `data_as_of`, requested metrics, candidate ceiling, provider-call/point ceiling, permitted source
+   mode, and stop policy. The run is invalid when any of those values is implicit.
+2. **Seed broadly but cheaply.** Accept seeds from an authorized store export, explicit competitor
+   ASINs, prior KJDS candidates, or operator-entered keywords. Seed origin remains visible and never
+   becomes demand evidence. Run only the `product_research` and `market_research` roles first.
+3. **Screen to a small queue.** Normalize the initial table, retain original scalars and citations,
+   log a machine-readable rejection reason for every removed candidate, suppress exact historical
+   duplicates, and allow a zero-candidate result. Do not invoke the four per-candidate tools for a
+   rejected row.
+4. **Corroborate survivors.** For at most the configured survivor ceiling, collect all four remaining
+   roles: sales trend, traffic/keyword, reviews, and trademark. Missing or contradictory roles stop
+   that candidate. Listing/PPC suggestions remain proposal text linked to their keyword receipts.
+5. **Project once.** Seal the complete pages into `MarketplaceResearchSourceReceipt` and call the
+   existing deterministic `MarketplaceResearchWorkflow.project()`. No model or provider may alter
+   the normalized values after sealing.
+6. **Bridge markets explicitly.** Treat SellerSprite Amazon observations as auxiliary discovery. A
+   candidate reaches RU review only after an explicit product-family/specification mapping to Ozon;
+   title or image similarity is insufficient.
+7. **Close the commercial loop.** Reuse the existing Ozon 28-day evidence, 1688 exact offer/SKU/tier
+   capture, frozen multi-supplier RFQ, landed-cost, compliance, media and Listing gates. The final
+   human packet shows assumptions and UNKNOWNs; it does not auto-create Product, purchase, Listing,
+   Approval, Permit or external outreach.
+
+The minimum operator-visible packet is therefore:
+
+```text
+run scope + cutoff + budget + stop reason
+seed and query lineage
+initial candidates + every rejection reason
+survivor six-role observations + original units
+provider tool/page hashes + cost/point reconciliation
+KJDS proposal score + blockers (not expected profit)
+Ozon mapping and 28-day evidence state
+1688 exact SKU/tier/RFQ state
+landed-cost/compliance/media/listing UNKNOWNs
+human decision and next cheapest evidence action
+```
+
+This design outperforms the benchmark on the dimensions that matter to KJDS: it spends expensive
+provider calls only after a cheap screen, supports several providers without changing core truth,
+distinguishes Amazon discovery from Ozon evidence, carries every source scalar to the reviewer, and
+continues through supplier quotation and listing readiness instead of stopping at an AI-generated
+recommendation.
+
 ### Stage contract
 
 | Stage | Minimal provider role | KJDS output | Stop / reject condition |
