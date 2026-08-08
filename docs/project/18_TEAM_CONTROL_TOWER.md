@@ -6,8 +6,8 @@
 | owner | 人类 Business Owner（待实名绑定） |
 | operator | Global Chief Commerce Officer / Chief of Staff |
 | status | Engineering ready; human and business gates pending |
-| version | 1.2 |
-| reviewed_at | 2026-08-07 |
+| version | 1.3 |
+| reviewed_at | 2026-08-08 |
 
 ## 1. 已经搭好的系统
 
@@ -19,6 +19,10 @@ Campaign 或任务账。
 
 这证明“组织合同、调度逻辑、权限边界和界面”已具备，不证明真人已经聘任、俄罗斯真实
 业务闭环或付费客户已经完成。系统里的 AI 角色在真人绑定前保持 proposal/shadow。
+
+BAS-215B 进一步把 14 个全域 AI ERP 领域角色、8 个 Squad 和六项 EAERP WBS 的静态合同
+接入同一张 `brief`。它只增加六个只读老板投影，不创建第二任务账或 ERP 执行权威；真人、
+运行容量、任务进展和发布排期仍由各自权威决定，因此当前全部保持 `UNKNOWN/NOT_STARTED`。
 
 ## 2. 企业组织与拍板结构
 
@@ -99,7 +103,7 @@ SKU 和一个设计伙伴分别设定最大损失与停止条件；要求所有�
 `GET /v1/team-control/brief` 可由有权查看的角色读取；
 `POST /v1/team-control/advance` 只允许 operator/admin。推进接口不是 Kill Switch 安全白名单，
 紧急停止时必须关闭。continuation 绑定注册表、当前泳道、exact scope、动作、预期状态和
-五类投影共同形成的 `decision_basis_sha256`；
+五类经营交付投影、六类全域 AI ERP 投影共同形成的 `decision_basis_sha256`；
 完成和停止必须有当前 exact-scope Evidence；战役首阶段从 `acknowledged` 进入 `in_progress`
 也必须绑定 Evidence，该 `start` Event 才是 kickoff 真源。
 
@@ -162,7 +166,7 @@ A、B、C、D、E、I、L、M 是主战泳道；F–H 只保持准备态。每�
 同一专家默认一个 active task，共享写域只有一个集成人。日历到期、泳道完成或任务关闭都
 不能替代正式 Gate PASS。
 
-## 11. 老板 `brief` v1.2
+## 11. 老板 `brief` v1.3
 
 第一屏只显示组织合同/绑定、13 周现金、实际战役日、最大已验证 Top1 差距和五个 Gate；
 第二屏是唯一下一动作；第三屏是四阶段关键路径；第四屏是十二维评分卡；第五屏是组织缺口、
@@ -176,6 +180,24 @@ StrategicBenchmark 在同一 metric/cohort/market/window 的 leader refs；至�
 现金缺期初余额、CashPlan、批准 FX、签署现金底线或最大损失时不调用预测。组织、关键路径、
 Top1、现金和 Gate 的投影哈希共同进入 continuation；网络失败重试复用同一幂等键，成功或
 continuation 变化后才换键。
+
+全域 AI ERP 增量提供六个服务端字段：
+
+| 字段 | 当前能证明 | 当前不能证明 |
+|---|---|---|
+| `squad_readiness` | 8 个 Squad 的 Owner/Reviewer、能力和首验合同完整 | 真人到岗、资质和可用工时 |
+| `role_conflicts` | 6 条职责分离规则完整 | 当前身份没有冲突 |
+| `parallel_execution` | `1 总控 + 最多 3 专业 Agent/Writer` 等上限 | 当前占用量或仍有空闲容量 |
+| `integration_queue` | EAERP-01..06 的 DAG、Squad 和泳道亲和 | OperatingTask 已启动或完成 |
+| `capacity_risk` | 容量红线和 Stop 合同 | 当前容量足够或风险已解除 |
+| `next_release_train` | 每周两次集成列车政策 | 下一班日期、候选已准入或 Gate PASS |
+
+六字段总体必须保持 `UNKNOWN`，只有嵌套 `program_contract.static_contract_integrity` 可以显示
+`VERIFIED`。scope-invalid 时不读取 Program；Program 缺失显示 UNKNOWN，合同/来源/snapshot/
+动态真相或权限边界漂移则失败关闭。Tower 固定 BAS-215A 已复核的 registry、source-bundle
+和 compiled snapshot；只重算自报哈希但未更新受信合同的投影仍被拒绝。正式合同升级后的
+Program 快照变化使旧 continuation 失效，单纯 `as_of`
+变化不失效。前端仍不得计算或补造这六类状态。
 
 对外 `projection_sha256` 保留完整 `as_of`，用于证明每次读取的快照；推进用的
 `decision_basis_sha256` 则剔除纯观测时间和原始快照时间噪声，保留组织绑定、任务/Event、
@@ -202,3 +224,16 @@ continuation 变化后才换键。
 才显示“至少一个真实 SKU 现金闭环 = VERIFIED”。老板页只显示状态和计数，不显示订单号、
 银行标识或金额。即便该闭环已验证，缺 opening balance、CashPlan、批准 FX、签署现金底线或
 最大损失时，13 周现金和正式俄罗斯经营 Gate 仍保持 `UNKNOWN/BLOCKED`。
+
+## 14. 全域 AI ERP Squad 使用规则
+
+14 个领域角色和 8 个 Squad 是可执行工作的组织合同，不是当前真人名册。每个 Squad 的
+`first_acceptance_contract` 是未来验收条件，不是已发生结果；`integration_queue` 中的
+`NOT_STARTED` 与依赖波次也不能从 Plan、日期或静态 registry 自动晋级。要开始 EAERP 工作，
+仍须在现有泳道创建唯一 OperatingTask，绑定 Owner/替补、exact scope、输入 Evidence、写集
+租约、Reviewer、预算/最大损失、Stop、回滚和交接条件。
+
+运行容量只能由 active-work authority 读取后证明；当前 Program 不连接该权威，所以
+`observed_active_writers`、专家 WIP、泳道 WIP 和周结果均为 `null`。发布列车同理：每周两次
+只是节奏上限，候选、日期和 Gate 由现有 Release/QA 权威决定。任何 Squad 不得因静态合同
+获得数据库、资金、平台写、Approval、Permit 或真人身份。

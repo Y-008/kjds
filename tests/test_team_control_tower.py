@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+import apps.control_plane.team_control_tower as team_control_tower_module
+from apps.control_plane.enterprise_ai_erp_program import EnterpriseAiErpProgram
 from apps.control_plane.global_expert_team import GlobalPortfolioOrchestrator
 from apps.control_plane.operating_intelligence import OperatingIntelligenceService
 from apps.control_plane.security import Principal
@@ -32,6 +35,31 @@ WORKSTREAM_PATH = (
     / "registries"
     / "active_workstream_assignments.json"
 )
+_DEFAULT_ENTERPRISE_PROGRAM = object()
+
+
+def _canonical_hash(value) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _reseal_program_projection(projection: dict) -> None:
+    source_map = {
+        item["source_ref"]: item["sha256"]
+        for item in projection["source_hashes"]
+    }
+    projection["contract_integrity"]["source_bundle_sha256"] = _canonical_hash(
+        source_map
+    )
+    basis = deepcopy(projection)
+    basis.pop("snapshot_sha256", None)
+    projection["snapshot_sha256"] = _canonical_hash(basis)
 
 
 class FakeLedger:
@@ -172,6 +200,16 @@ class FakeSettlementCash:
         return core
 
 
+class FakeEnterpriseAiErpProgram:
+    def __init__(self, projection: dict | None = None) -> None:
+        self.projection = projection or EnterpriseAiErpProgram().project()
+        self.reads = 0
+
+    def project(self) -> dict:
+        self.reads += 1
+        return deepcopy(self.projection)
+
+
 def benchmark_group(
     *,
     peer_count: int = 5,
@@ -218,6 +256,7 @@ def build_service(
     *,
     strategic_benchmark=None,
     settlement_cash=None,
+    enterprise_ai_erp_program=_DEFAULT_ENTERPRISE_PROGRAM,
     clock=None,
 ) -> tuple[TeamControlTower, OperatingIntelligenceService]:
     engine = create_engine(
@@ -235,6 +274,11 @@ def build_service(
         scoped_evidence=scoped,
     )
     control_now = datetime.now(UTC) + timedelta(days=1)
+    program = (
+        EnterpriseAiErpProgram()
+        if enterprise_ai_erp_program is _DEFAULT_ENTERPRISE_PROGRAM
+        else enterprise_ai_erp_program
+    )
     return (
         TeamControlTower(
             expert_team=GlobalPortfolioOrchestrator(),
@@ -242,6 +286,7 @@ def build_service(
             scoped_evidence=scoped,
             strategic_benchmark=strategic_benchmark,
             settlement_cash=settlement_cash,
+            enterprise_ai_erp_program=program,
             clock=clock or (lambda: control_now),
         ),
         tasks,
@@ -373,6 +418,216 @@ def test_brief_projects_top1_organization_cash_campaign_and_five_gates_without_c
     assert result["next_action"]["decision_basis_sha256"] == result["decision_basis_sha256"]
 
 
+def test_brief_projects_six_enterprise_ai_erp_contracts_without_runtime_claims():
+    tower, _ = build_service()
+
+    result = tower.brief(**scope())
+
+    projection_names = (
+        "squad_readiness",
+        "role_conflicts",
+        "parallel_execution",
+        "integration_queue",
+        "capacity_risk",
+        "next_release_train",
+    )
+    assert all(result[name]["projection"] == name for name in projection_names)
+    assert all(result[name]["status"] == "UNKNOWN" for name in projection_names)
+    assert all(
+        result[name]["program_contract"]["static_contract_integrity"]
+        == "VERIFIED"
+        for name in projection_names
+    )
+    assert all(
+        result[name]["program_contract"]["runtime_authority_connected"] is False
+        for name in projection_names
+    )
+    assert result["squad_readiness"]["contract_count"] == 8
+    assert len(result["squad_readiness"]["items"]) == 8
+    assert len(result["role_conflicts"]["rules"]) == 6
+    assert result["parallel_execution"]["policy"]["max_active_writers"] == 3
+    assert result["integration_queue"]["planned_initial_state"] == "NOT_STARTED"
+    assert len(result["integration_queue"]["items"]) == 6
+    assert result["capacity_risk"]["capacity_proven_available"] is False
+    assert result["next_release_train"]["scheduled_at"] is None
+    assert result["next_release_train"]["gate_status"] == "UNKNOWN"
+    rendered = json.dumps(
+        {name: result[name] for name in projection_names},
+        ensure_ascii=False,
+    )
+    for forbidden in (
+        '"primary_human_ref"',
+        '"current_task"',
+        '"verified_evidence_refs"',
+        '"gate_passed"',
+        '"maturity_status"',
+        '"external_write_allowed": true',
+    ):
+        assert forbidden not in rendered
+
+
+def test_missing_enterprise_ai_erp_dependency_is_explicit_unknown():
+    tower, _ = build_service(enterprise_ai_erp_program=None)
+
+    result = tower.brief(**scope())
+
+    for name in (
+        "squad_readiness",
+        "role_conflicts",
+        "parallel_execution",
+        "integration_queue",
+        "capacity_risk",
+        "next_release_train",
+    ):
+        assert result[name]["status"] == "UNKNOWN"
+        assert result[name]["reason_codes"] == [
+            "enterprise_ai_erp_program_unavailable"
+        ]
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (
+            lambda projection: projection.update(contract_id="future-contract"),
+            "contract drift",
+        ),
+        (
+            lambda projection: projection["squad_readiness"].update(
+                status="VERIFIED"
+            ),
+            "dynamic truth drift",
+        ),
+        (
+            lambda projection: projection["control_envelope"].update(
+                external_write_allowed=True
+            ),
+            "authority boundary drift",
+        ),
+        (
+            lambda projection: projection["squad_readiness"]["items"][0].pop(
+                "title"
+            ),
+            "squad truth drift",
+        ),
+        (
+            lambda projection: projection["parallel_execution"]["policy"].update(
+                max_active_writers=4
+            ),
+            "parallel policy drift",
+        ),
+    ],
+)
+def test_enterprise_ai_erp_contract_or_truth_drift_fails_closed(mutate, match: str):
+    program = FakeEnterpriseAiErpProgram()
+    mutate(program.projection)
+    _reseal_program_projection(program.projection)
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+
+    with pytest.raises(TeamControlTowerError, match=match):
+        tower.brief(**scope())
+
+
+def test_enterprise_ai_erp_snapshot_tampering_fails_closed():
+    program = FakeEnterpriseAiErpProgram()
+    program.projection["snapshot_sha256"] = "0" * 64
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+
+    with pytest.raises(TeamControlTowerError, match="snapshot drift"):
+        tower.brief(**scope())
+
+
+def test_resealed_untrusted_enterprise_ai_erp_source_change_fails_closed():
+    program = FakeEnterpriseAiErpProgram()
+    changed_registry_sha256 = "f" * 64
+    program.projection["contract_integrity"][
+        "registry_sha256"
+    ] = changed_registry_sha256
+    for source in program.projection["source_hashes"]:
+        if source["source_ref"] == "enterprise_ai_erp_program":
+            source["sha256"] = changed_registry_sha256
+    _reseal_program_projection(program.projection)
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+
+    with pytest.raises(TeamControlTowerError, match="trusted contract drift"):
+        tower.brief(**scope())
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda projection: projection["squad_readiness"]["items"][0].update(
+            title="Forged Squad title"
+        ),
+        lambda projection: projection["squad_readiness"]["items"][0].update(
+            owner_role_ref="risk_authority"
+        ),
+        lambda projection: projection["role_conflicts"]["rules"][0].update(
+            same_role_allowed=True
+        ),
+        lambda projection: projection["integration_queue"]["items"][3].update(
+            dependency_refs=[]
+        ),
+        lambda projection: projection["squad_readiness"].update(
+            reason_codes=["forged_reason"]
+        ),
+    ],
+)
+def test_resealed_program_semantic_forgery_fails_trusted_contract(mutate):
+    program = FakeEnterpriseAiErpProgram()
+    mutate(program.projection)
+    _reseal_program_projection(program.projection)
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+
+    with pytest.raises(TeamControlTowerError, match="trusted contract drift"):
+        tower.brief(**scope())
+
+
+def test_approved_enterprise_ai_erp_upgrade_invalidates_old_continuation(
+    monkeypatch,
+):
+    program = FakeEnterpriseAiErpProgram()
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+    first = tower.brief(**scope())
+
+    changed_registry_sha256 = "f" * 64
+    program.projection["contract_integrity"][
+        "registry_sha256"
+    ] = changed_registry_sha256
+    for source in program.projection["source_hashes"]:
+        if source["source_ref"] == "enterprise_ai_erp_program":
+            source["sha256"] = changed_registry_sha256
+    _reseal_program_projection(program.projection)
+    monkeypatch.setattr(
+        team_control_tower_module,
+        "ENTERPRISE_AI_ERP_TRUSTED_REGISTRY_SHA256",
+        changed_registry_sha256,
+    )
+    monkeypatch.setattr(
+        team_control_tower_module,
+        "ENTERPRISE_AI_ERP_TRUSTED_SOURCE_BUNDLE_SHA256",
+        program.projection["contract_integrity"]["source_bundle_sha256"],
+    )
+    monkeypatch.setattr(
+        team_control_tower_module,
+        "ENTERPRISE_AI_ERP_TRUSTED_SNAPSHOT_SHA256",
+        program.projection["snapshot_sha256"],
+    )
+    second = tower.brief(**scope())
+
+    assert first["decision_basis_sha256"] != second["decision_basis_sha256"]
+    assert first["next_action"]["continuation"] != second["next_action"]["continuation"]
+    with pytest.raises(TeamControlTowerError, match="continuation is stale"):
+        tower.advance(
+            **scope(),
+            continuation=first["next_action"]["continuation"],
+            result="take",
+            rationale="使用已失效的 Enterprise AI ERP 决策基线",
+            evidence_ids=(),
+            idempotency_key="stale-enterprise-ai-erp-basis",
+        )
+
+
 def test_registry_has_exact_machine_verifiable_team_contract():
     payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
     organization = payload["organization_model"]
@@ -396,9 +651,11 @@ def test_registry_has_exact_machine_verifiable_team_contract():
 def test_scope_invalid_brief_reads_no_operating_tasks_and_exposes_no_continuation():
     benchmark = FakeBenchmark(groups=[benchmark_group()])
     settlement = FakeSettlementCash(verified=True)
+    program = FakeEnterpriseAiErpProgram()
     tower, tasks = build_service(
         strategic_benchmark=benchmark,
         settlement_cash=settlement,
+        enterprise_ai_erp_program=program,
     )
     values = scope()
     values["entity_scope"] = {"status": "no_data", "reason": "grant_missing"}
@@ -412,8 +669,11 @@ def test_scope_invalid_brief_reads_no_operating_tasks_and_exposes_no_continuatio
     assert tasks.tasks() == []
     assert benchmark.reads == 0
     assert settlement.reads == 0
+    assert program.reads == 0
     assert result["decision_basis_sha256"] is None
     assert result["top1_scorecard"]["status"] == "UNKNOWN"
+    assert result["squad_readiness"]["status"] == "UNKNOWN"
+    assert result["next_release_train"]["status"] == "UNKNOWN"
 
 
 @pytest.mark.parametrize(

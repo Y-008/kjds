@@ -161,3 +161,47 @@ scope 的 canonical authority 时，总控保持 `formal_gate_pass=false`，也�
 Benchmark leader refs、三账 reconciliation/profit snapshot 语义与 Gate readiness。否则两个
 相邻 HTTP 请求只因毫秒时间差就会让 continuation 永久 stale。时钟刷新不得失效动作，业务
 权威变化必须失效动作。
+
+## 2026-08-08 决策加深：BAS-215B 全域 AI ERP 六投影
+
+BAS-215A 已经用独立 `EnterpriseAiErpProgram` 冻结 14 个领域角色、8 个 Squad、六项 EAERP
+WBS、M0–M4 Evidence 要求、职责分离和并发上限，但该模块仍是孤立的静态合同。BAS-215B
+要让老板在既有总控摘要中看见这些结构，同时不能把“合同存在”误报为“团队、任务或发布
+已经运行”。
+
+本次比较三种方案：
+
+| 方案 | 优点 | 风险与决定 |
+|---|---|---|
+| 直接透传完整 `project()` | 修改最少、信息完整 | Interface 过宽，静态 `VERIFIED` 容易被误读为运行成功；不采用 |
+| 具名依赖 + Tower 私有白名单编译器 | 只暴露六个老板投影，可集中校验真相状态与决定哈希 | 少量重复合同校验；采用 |
+| 通用 `project() -> dict` 插件框架 | 表面扩展容易 | 把版本、权威和安全语义推给调用者，并提前制造第二扩展总线；拒绝 |
+
+最终通过具名构造依赖接入 `EnterpriseAiErpProgram`。`brief` 增加
+`squad_readiness`、`role_conflicts`、`parallel_execution`、`integration_queue`、
+`capacity_risk` 和 `next_release_train` 六个顶层字段；`advance`、router、HTTP 路径和 Web
+合同不变。Tower 每次 valid-scope 读取零参数、构造后零 I/O 的 Program 投影，校验 contract
+ID/version、四来源 bundle、内容寻址 snapshot、固定计数、动态 `UNKNOWN/NOT_STARTED` 和
+fail-closed authority envelope，再白名单复制给老板摘要。
+
+“哈希内部自洽”不足以证明来源可信：任意注入对象都可以修改 Squad、SoD 或 DAG 后重算自己
+的 bundle/snapshot。Tower 因此同时固定 BAS-215A 已复核的 registry、source-bundle 与编译
+snapshot 三个受信 SHA-256。自洽但未被该受信合同接受的重封投影必须失败关闭；正式升级须在
+同一工程切片中更新 Program、受信哈希、负测、ADR 和 Evidence，升级后的 snapshot 才能进入
+新的决定基线。
+
+Program 未注入时六投影显式 `UNKNOWN`；Program 已注入但合同漂移时抛错，不能把安全漂移
+降级成普通“无数据”。scope-invalid 分支不得调用 Program，也不得生成 continuation。
+`static_contract_integrity=VERIFIED` 只放在明确命名的嵌套合同元数据中，六投影总体仍为
+`UNKNOWN`；WBS、并发上限和每周两次发布列车只是合同，不是 active task、可用容量或日历
+排期。
+
+六投影的决定语义哈希以及 Program registry/source-bundle/snapshot 哈希进入现有
+`decision_basis_sha256`。合同语义变化会让旧 continuation 失效；`as_of` 和每次投影的审计
+SHA 仍从决定语义中剔除，避免纯时间推进制造永久 stale。本切片不新增数据库、migration、
+router、API、OpenAPI、Web、G-1、Fact、FinanceEntry、Approval、Permit 或外部写。
+
+若未来至少出现第二个具备相同稳定语义的静态能力合同，再评估抽取内部专用 Projection
+Interface；在此之前不得建设任意插件注册框架。若未来接入真人身份、OperatingTask 容量或
+发布权威，必须分别通过独立只读 Adapter 和 exact-scope Gate，不得修改静态 Program 伪造
+动态结果。

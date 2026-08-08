@@ -168,6 +168,44 @@ def test_sod_and_parallel_limits_are_policy_not_observed_identity_or_wip():
     assert parallel["observed_lane_current_tasks"] is None
 
 
+def test_integration_capacity_and_release_train_are_static_unknown_contracts():
+    projection = EnterpriseAiErpProgram().project()
+
+    queue = projection["integration_queue"]
+    assert queue["status"] == "UNKNOWN"
+    assert queue["planned_initial_state"] == "NOT_STARTED"
+    assert [item["work_item_ref"] for item in queue["items"]] == [
+        "EAERP-01",
+        "EAERP-02",
+        "EAERP-04",
+        "EAERP-03",
+        "EAERP-05",
+        "EAERP-06",
+    ]
+    assert all(item["execution_status"] == "UNKNOWN" for item in queue["items"])
+    assert queue["parallel_waves"] == projection["parallel_waves"]
+
+    capacity = projection["capacity_risk"]
+    assert capacity["status"] == "UNKNOWN"
+    assert capacity["limits"]["max_active_writers"] == 3
+    assert capacity["limits"]["max_weekly_company_outcomes"] == 3
+    assert capacity["observed_active_writers"] is None
+    assert capacity["observed_specialist_wip"] is None
+    assert capacity["observed_lane_wip"] is None
+    assert capacity["capacity_proven_available"] is False
+
+    release_train = projection["next_release_train"]
+    assert release_train == {
+        "status": "UNKNOWN",
+        "release_trains_per_week": 2,
+        "scheduled_at": None,
+        "eligible_work_item_refs": None,
+        "gate_status": "UNKNOWN",
+        "registry_proves_schedule": False,
+        "reason_codes": ["release_authority_not_connected"],
+    }
+
+
 def test_project_is_deterministic_content_bound_and_returns_defensive_copy():
     service = EnterpriseAiErpProgram()
     first = service.project()
@@ -338,6 +376,27 @@ def test_program_rejects_role_and_header_contract_drift(tmp_path: Path, mutate, 
 )
 def test_program_rejects_squad_contract_drift(tmp_path: Path, mutate, match: str):
     with pytest.raises(EnterpriseAiErpProgramError, match=match):
+        _program(tmp_path, mutate)
+
+
+@pytest.mark.parametrize(
+    "acceptance_contract",
+    [
+        "首个 SKU 已完成发布并通过回读。",
+        "验收要求：首个 SKU 已通过发布 Gate。",
+    ],
+)
+def test_program_rejects_completed_acceptance_language(
+    tmp_path: Path,
+    acceptance_contract: str,
+):
+    def mutate(payload):
+        payload["squads"][0]["first_acceptance_contract"] = acceptance_contract
+
+    with pytest.raises(
+        EnterpriseAiErpProgramError,
+        match="acceptance contract must be a future requirement",
+    ):
         _program(tmp_path, mutate)
 
 

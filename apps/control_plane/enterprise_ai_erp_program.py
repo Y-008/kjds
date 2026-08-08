@@ -713,10 +713,23 @@ class EnterpriseAiErpProgram:
                 raise EnterpriseAiErpProgramError(
                     f"{squad_ref} references an unknown work item"
                 )
-            self._text(
+            acceptance_contract = self._text(
                 squad["first_acceptance_contract"],
                 f"{squad_ref} acceptance contract",
             )
+            if not acceptance_contract.startswith("验收要求：") or any(
+                completed_phrase in acceptance_contract
+                for completed_phrase in (
+                    "已完成",
+                    "已通过",
+                    "已取得",
+                    "已经完成",
+                    "已经通过",
+                )
+            ):
+                raise EnterpriseAiErpProgramError(
+                    f"{squad_ref} acceptance contract must be a future requirement"
+                )
 
     def _validate_work_items(
         self,
@@ -1149,6 +1162,57 @@ class EnterpriseAiErpProgram:
                 "observed_writer_wip": None,
                 "observed_lane_current_tasks": None,
                 "reason_codes": ["runtime_work_authority_not_connected"],
+            },
+            "integration_queue": {
+                "status": "UNKNOWN",
+                "planned_initial_state": "NOT_STARTED",
+                "items": [
+                    {
+                        "work_item_ref": item["work_item_ref"],
+                        "title": item["title"],
+                        "dependency_refs": deepcopy(item["dependency_refs"]),
+                        "squad_refs": deepcopy(item["squad_refs"]),
+                        "lane_affinity_ids": deepcopy(item["lane_affinity_ids"]),
+                        "execution_status": "UNKNOWN",
+                    }
+                    for item in work_program
+                ],
+                "parallel_waves": self._parallel_waves(
+                    self._registry["work_items"]
+                ),
+                "reason_codes": ["operating_task_authority_not_connected"],
+            },
+            "capacity_risk": {
+                "status": "UNKNOWN",
+                "limits": {
+                    key: deepcopy(self._registry["execution_policy"][key])
+                    for key in (
+                        "control_agent_count",
+                        "max_parallel_specialist_agents",
+                        "max_active_writers",
+                        "max_active_tasks_per_specialist",
+                        "max_active_tasks_per_writer",
+                        "max_current_tasks_per_lane",
+                        "max_weekly_company_outcomes",
+                    )
+                },
+                "observed_active_writers": None,
+                "observed_specialist_wip": None,
+                "observed_lane_wip": None,
+                "observed_weekly_company_outcomes": None,
+                "capacity_proven_available": False,
+                "reason_codes": ["runtime_capacity_authority_not_connected"],
+            },
+            "next_release_train": {
+                "status": "UNKNOWN",
+                "release_trains_per_week": self._registry["execution_policy"][
+                    "release_trains_per_week"
+                ],
+                "scheduled_at": None,
+                "eligible_work_item_refs": None,
+                "gate_status": "UNKNOWN",
+                "registry_proves_schedule": False,
+                "reason_codes": ["release_authority_not_connected"],
             },
             "control_envelope": {
                 "read_only": True,

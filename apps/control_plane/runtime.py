@@ -59,6 +59,7 @@ from .database import (
 from .decision_contracts import DecisionContractService
 from .decision_lifecycle import DecisionLifecycleService
 from .demand_report_gate import DemandReportGateService
+from .enterprise_ai_erp_program import EnterpriseAiErpProgram
 from .evidence import (
     ClosedLoopEvidenceAuthorityAdapter,
     EvidenceService,
@@ -670,6 +671,7 @@ def build_runtime() -> RuntimeServices:
     automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
     loop_engineering = LoopEngineeringService()
     global_expert_team = GlobalPortfolioOrchestrator()
+    enterprise_ai_erp_program = EnterpriseAiErpProgram()
     sourcing_store = SqlSourcingStore(engine)
     logistics_store = SqlLogisticsStore(engine)
     logistics = LogisticsQuoteWorkspace(
@@ -855,6 +857,7 @@ def build_runtime() -> RuntimeServices:
         scoped_evidence=scoped_evidence,
         strategic_benchmark=strategic_benchmark,
         settlement_cash=scoped_settlement_cash,
+        enterprise_ai_erp_program=enterprise_ai_erp_program,
     )
     governance_scope = GovernanceScopeAuthority(
         governance=governance,

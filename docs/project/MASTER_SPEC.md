@@ -238,6 +238,7 @@ KJDS 是“确定性经营内核 + 证据优先数据层 + 受控 Agent 外层�
 | BR-141 | Exact-scope 团队总控塔与唯一下一动作 | 唯一 `TeamControlTower` 必须把“项目总控与商业化、SKU 闭环、双轮商业化、LG-001 Exact-scope”四条用户主线编译为当前 authenticated tenant/entity/store/authority hash 下的领导者 `brief`，且任何时刻最多公开一个状态绑定的下一动作。`advance` 只接受 opaque continuation、有限结果、理由、Evidence IDs 与幂等键；过期 continuation、跨 scope、同键内容漂移、无 Evidence 的完成/停止、角色越权和注册表/泳道漂移全部失败关闭。运行写入只复用既有 OperatingTask/Event 权威，不创建第二任务、Fact、Finance、Approval、Permit 或审计账，不持有凭据或外写；Kill Switch 生效时推进接口必须关闭。总负责人可领取、开始、完成、阻断、升级或停止内部协作，但真人任命、高风险双签、硬 Gate 和外部 Executor 权威不被替代。详见 [团队总控运行手册](18_TEAM_CONTROL_TOWER.md) 与 [ADR-0095](../adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md)。 | P0 |
 | BR-142 | 90 天 Top1 大型团队总控与五类权威投影 | `TeamControlTower` v1.1 必须在保留唯一 `brief/advance` Interface、A–M 泳道及 OperatingTask/Event 真源的前提下，把 18 个核心角色、12 个 AI 专家、20–40 人专家池容量与 5 个独立控制角色编译为机器可验证但不证明真人到岗的组织合同。`brief` 必须只在 exact scope 通过后读取并投影 `organization_readiness`、四阶段 `critical_path`、12 维 `top1_scorecard`、`cash_at_risk` 与五个 `delivery_gate`；统一使用 `VERIFIED/PARTIAL/BLOCKED/STALE/CONFLICTED/UNKNOWN`、reason code、source ref、as-of 与投影哈希。Top1 只能只读映射最新同 scope `StrategicBenchmark` 既有比较组，不重排；少于 5 个合格 peer、数据过期、重复最新组或 authority drift 必须失败关闭，且 `global_top1_claim=false`。期初余额、CashPlan、FX、现金底线或最大损失缺失时不得猜测 13 周现金。日历、泳道或任务完成不得替代正式 Gate PASS。五类投影共同进入 `decision_basis_sha256`，任一人员、现金、Benchmark、Gate 或泳道变化必须使旧 continuation 失效。当前切片不得新增数据库迁移，BAS-204 继续独占 `0096`；工程交付只能标记 `DONE_ENGINEERING`，真人、现金、SKU、客户和 Top1 保持外部 Evidence Gate。详见 [ADR-0095](../adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md)、[运行手册](18_TEAM_CONTROL_TOWER.md) 与 [LG-002 Evidence](evidence/20260807_LG_002_TOP1_TEAM_CONTROL.md)。 | P0 |
 | BR-143 | 90 天 Campaign 运行调度与真实 SKU 现金闭环投影 | `TeamControlTower` v1.2 必须在不增加外部 Interface、数据库表、迁移或平行任务账的前提下，把四阶段 Campaign 运行协调复用到 exact-scope `OperatingTask/Event`。首阶段 `start` Event 只有绑定当前 scope Evidence 时才形成不可变 kickoff；实际战役日从该 Event 计算，不能从计划日期、任务状态或系统时钟倒推。阶段任务 `resolve` 只证明工作交接，不证明正式 Gate PASS；无匹配的 canonical Gate authority 时不得自动打开下一阶段。`brief` 还必须只读注入现有 `ScopedSettlementCashWorkspace`，只有同一 cycle 同时具备订单 Fact、平台结算、银行现金、`reconciled` 和 Actual Cash CM3 时，才可把“至少一个真实 SKU 现金闭环”投影为 `VERIFIED`；该事实不能补造 13 周现金、现金底线、最大损失或正式 Gate。Campaign/现金投影变化必须进入 `decision_basis_sha256` 并使旧 continuation 失效；单纯观测时间变化不得导致相邻 `brief/advance` 永久 stale，因此审计快照哈希与去除 cutoff 噪声、保留业务权威语义的决定基线哈希必须分离。exact scope 失败时任务、Benchmark 和现金权威均不得读取。 | P0 |
+| BR-144 | 全域 AI ERP 六投影与总控决定基线 | `TeamControlTower` v1.3 必须通过具名、只读 `EnterpriseAiErpProgram.project()` 依赖，在既有 `brief` 中增加 `squad_readiness`、`role_conflicts`、`parallel_execution`、`integration_queue`、`capacity_risk` 和 `next_release_train`；不得公开通用插件注册表、增加命令总线或改变 `advance`。六投影只能白名单编译 BAS-215A 已验证的结构合同，整体状态保持 `UNKNOWN`，不得把静态合同完整性、验收条件、并发上限、WBS DAG 或每周两次集成列车误报为真人到岗、运行容量、任务完成、Gate PASS 或发布排期。exact scope 失败时不得调用 Program；Program 缺失时显式 `UNKNOWN`，版本、source bundle、snapshot、动态真相或 authority envelope 漂移时失败关闭。Program registry/source bundle/snapshot 与六投影哈希必须进入 `decision_basis_sha256`，语义变化使旧 continuation 失效，单纯 `as_of` 变化不得失效。runtime 只实例化并注入，不新增 DB/migration/router/API/OpenAPI/Web/G1 或外写。详见 [ADR-0095](../adr/ADR-0095-global-expert-council-and-portfolio-orchestration.md)、[运行手册](18_TEAM_CONTROL_TOWER.md) 与 [BAS-215B Evidence](evidence/20260808_BAS_215B_ENTERPRISE_AI_ERP_TEAM_CONTROL_PROJECTION.md)。 | P0 |
 
 BR-082 精确身份补充门禁：任一身份字段或变体仍为
 `unknown/unspecified/pending/未确认` 等占位值时，不得生成或复用匹配键；历史观察在
@@ -1416,3 +1417,31 @@ workstream and conflict state in `decision_basis_sha256`; `advance` accepts only
 bound to that exact basis. Engineering completion proves that this control projection, Web surface
 and negative controls work. It does not prove real staffing, a real SKU cash reconciliation, a C0
 design partner, production SLO/RPO/RTO or any market-leading claim.
+
+## 25. Enterprise AI ERP leadership projections
+
+The BAS-215B increment connects the BAS-215A static Enterprise AI ERP contract to the existing
+`TeamControlTower`; it does not create an ERP execution authority. After exact-scope validation,
+`brief(...)` reads the in-process, zero-argument `EnterpriseAiErpProgram.project()` contract and
+white-lists six leadership projections: `squad_readiness`, `role_conflicts`,
+`parallel_execution`, `integration_queue`, `capacity_risk` and `next_release_train`. The external
+Interface remains `brief/advance`; runtime only constructs and injects the named dependency.
+
+Every one of the six projections remains `UNKNOWN` until the corresponding human identity,
+OperatingTask, runtime capacity or release authority is connected. A verified static contract means
+only that the 14 roles, eight Squads, six EAERP work contracts, SoD rules, concurrency limits and
+release-train policy are internally consistent. It does not prove appointment, WIP, available
+capacity, achieved maturity, Gate PASS, a scheduled release or any customer or operating result.
+The integration queue starts as `NOT_STARTED`; its dependency graph and parallel waves are planning
+contracts, not execution facts.
+
+Scope-invalid requests return six explicit `UNKNOWN` projections without calling the Program.
+Missing optional injection also returns `UNKNOWN`; a malformed contract ID/version, inconsistent
+source bundle, invalid snapshot, promoted dynamic truth or permissive authority envelope raises a
+fail-closed control error. The BAS-215A registry, source-bundle and compiled snapshot hashes are
+pinned in the Tower contract, so a self-consistent but unapproved resealed projection is also
+rejected. Those trusted hashes remain inside the
+decision semantics, so a contract change invalidates the old continuation. Observation `as_of`
+continues to affect the audit snapshot but not the action decision when all authority semantics are
+unchanged. This increment adds no database, migration, router, API, OpenAPI, Web, G-1 or external
+write capability.

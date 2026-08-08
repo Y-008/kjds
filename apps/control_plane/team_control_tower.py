@@ -29,6 +29,25 @@ BENCHMARK_SCHEMA_VERSION = "kjds-strategic-benchmark-contracts-v1"
 SETTLEMENT_CASH_CONTRACT_ID = (
     "kjds-native-exact-scope-settlement-cash-control-v1"
 )
+ENTERPRISE_AI_ERP_CONTRACT_ID = "kjds-enterprise-ai-erp-program-v1"
+ENTERPRISE_AI_ERP_CONTRACT_VERSION = "1.0.0"
+ENTERPRISE_AI_ERP_TRUSTED_REGISTRY_SHA256 = (
+    "8ba3f6a2a3293a66416dd474223d538c7dc1ff5a3c57789c34d994be0aa26657"
+)
+ENTERPRISE_AI_ERP_TRUSTED_SOURCE_BUNDLE_SHA256 = (
+    "5a19123b858752d8a7611e542e918a5b81a9c7b24131291116135736f12b93f5"
+)
+ENTERPRISE_AI_ERP_TRUSTED_SNAPSHOT_SHA256 = (
+    "13a712c75a2b781584ccfdfbf138816c8913f3198bb92b929b6a2100b6333184"
+)
+ENTERPRISE_AI_ERP_PROJECTION_KEYS = (
+    "squad_readiness",
+    "role_conflicts",
+    "parallel_execution",
+    "integration_queue",
+    "capacity_risk",
+    "next_release_train",
+)
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_.:-]+")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -53,6 +72,7 @@ class TeamControlTower:
         scoped_evidence: Any | None = None,
         strategic_benchmark: Any | None = None,
         settlement_cash: Any | None = None,
+        enterprise_ai_erp_program: Any | None = None,
         registry_path: str | Path | None = None,
         workstream_path: str | Path | None = None,
         benchmark_contract_path: str | Path | None = None,
@@ -79,6 +99,7 @@ class TeamControlTower:
         self.scoped_evidence = scoped_evidence
         self.strategic_benchmark = strategic_benchmark
         self.settlement_cash = settlement_cash
+        self.enterprise_ai_erp_program = enterprise_ai_erp_program
         self.clock = clock or (lambda: datetime.now(UTC))
         self.registry = self._read_json(self.registry_path, "team control registry")
         self.workstreams = self._read_json(
@@ -164,6 +185,7 @@ class TeamControlTower:
                     "top1_scorecard",
                     "cash_at_risk",
                     "delivery_gate",
+                    *ENTERPRISE_AI_ERP_PROJECTION_KEYS,
                 )
             }
             result = {
@@ -206,6 +228,9 @@ class TeamControlTower:
         organization_readiness = self._organization_readiness(
             team_snapshot=team_snapshot,
             checked_at=checked_at,
+        )
+        enterprise_ai_erp = self._enterprise_ai_erp_projections(
+            checked_at=checked_at
         )
         benchmark = self._benchmark_authority(
             principal=principal,
@@ -266,6 +291,10 @@ class TeamControlTower:
                     "delivery_gate": self._decision_projection_sha256(
                         delivery_gate
                     ),
+                    **{
+                        name: self._decision_projection_sha256(projection)
+                        for name, projection in enterprise_ai_erp.items()
+                    },
                 },
             }
         )
@@ -324,6 +353,7 @@ class TeamControlTower:
             "top1_scorecard": top1_scorecard,
             "cash_at_risk": cash_at_risk,
             "delivery_gate": delivery_gate,
+            **enterprise_ai_erp,
             "decision_basis_sha256": decision_basis_sha256,
             "team": {
                 "leader": team_snapshot["leader"]["role_id"],
@@ -1889,6 +1919,515 @@ class TeamControlTower:
                 }
             )
         return refs
+
+    def _enterprise_ai_erp_projections(
+        self,
+        *,
+        checked_at: datetime,
+    ) -> dict[str, dict[str, Any]]:
+        if self.enterprise_ai_erp_program is None:
+            return {
+                name: self._unknown_projection(
+                    name=name,
+                    checked_at=checked_at,
+                    reason_code="enterprise_ai_erp_program_unavailable",
+                )
+                for name in ENTERPRISE_AI_ERP_PROJECTION_KEYS
+            }
+        try:
+            raw = self.enterprise_ai_erp_program.project()
+        except Exception as exc:
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program projection unavailable"
+            ) from exc
+        self._validate_enterprise_ai_erp_projection(raw)
+
+        integrity = raw["contract_integrity"]
+        snapshot_sha256 = str(raw["snapshot_sha256"])
+        source_refs = [
+            {
+                "ref": "enterprise_ai_erp_program_registry",
+                "sha256": integrity["registry_sha256"],
+            },
+            {
+                "ref": "enterprise_ai_erp_source_bundle",
+                "sha256": integrity["source_bundle_sha256"],
+            },
+            {
+                "ref": "enterprise_ai_erp_program_snapshot",
+                "sha256": snapshot_sha256,
+            },
+        ]
+        program_contract = {
+            "contract_id": raw["contract_id"],
+            "contract_version": raw["contract_version"],
+            "program_snapshot_sha256": snapshot_sha256,
+            "registry_sha256": integrity["registry_sha256"],
+            "source_bundle_sha256": integrity["source_bundle_sha256"],
+            "static_contract_integrity": "VERIFIED",
+            "runtime_authority_connected": False,
+        }
+
+        squads = raw["squad_readiness"]
+        squad_readiness = self._seal_projection(
+            {
+                "projection": "squad_readiness",
+                "status": "UNKNOWN",
+                "contract_count": raw["counts"]["squads"],
+                "items": [
+                    {
+                        key: self._clone(item[key])
+                        for key in (
+                            "squad_ref",
+                            "title",
+                            "owner_role_ref",
+                            "reviewer_role_ref",
+                            "primary_lane_id",
+                            "supporting_lane_ids",
+                            "required_functions",
+                            "capability_atlas_ids",
+                            "capability_gap_refs",
+                            "work_item_refs",
+                            "first_acceptance_contract",
+                            "status",
+                            "reason_codes",
+                        )
+                    }
+                    for item in squads["items"]
+                ],
+                "program_contract": self._clone(program_contract),
+                "reason_codes": self._clone(squads["reason_codes"]),
+                "source_refs": self._clone(source_refs),
+                "as_of": self._iso(checked_at),
+            }
+        )
+
+        conflicts = raw["role_conflicts"]
+        role_conflicts = self._seal_projection(
+            {
+                "projection": "role_conflicts",
+                "status": "UNKNOWN",
+                "contract_rules_verified": True,
+                "rules": [
+                    {
+                        key: self._clone(rule[key])
+                        for key in (
+                            "rule_ref",
+                            "left_function_ref",
+                            "right_function_ref",
+                            "same_role_allowed",
+                            "same_principal_allowed",
+                            "identity_authority_required",
+                        )
+                    }
+                    for rule in conflicts["rules"]
+                ],
+                "observed_conflicts": None,
+                "program_contract": self._clone(program_contract),
+                "reason_codes": self._clone(conflicts["reason_codes"]),
+                "source_refs": self._clone(source_refs),
+                "as_of": self._iso(checked_at),
+            }
+        )
+
+        parallel = raw["parallel_execution"]
+        parallel_execution = self._seal_projection(
+            {
+                "projection": "parallel_execution",
+                "status": "UNKNOWN",
+                "policy": {
+                    key: self._clone(parallel["policy"][key])
+                    for key in (
+                        "control_agent_count",
+                        "max_parallel_specialist_agents",
+                        "max_active_writers",
+                        "max_active_tasks_per_specialist",
+                        "max_active_tasks_per_writer",
+                        "max_current_tasks_per_lane",
+                        "max_weekly_company_outcomes",
+                        "release_trains_per_week",
+                        "single_integrator_domains",
+                        "failed_slice_blocks_independent_slices",
+                        "path_or_hash_drift_action",
+                        "shared_lease_conflict_action",
+                    )
+                },
+                "observed_active_writers": None,
+                "observed_writer_wip": None,
+                "observed_lane_current_tasks": None,
+                "program_contract": self._clone(program_contract),
+                "reason_codes": self._clone(parallel["reason_codes"]),
+                "source_refs": self._clone(source_refs),
+                "as_of": self._iso(checked_at),
+            }
+        )
+
+        queue = raw["integration_queue"]
+        integration_queue = self._seal_projection(
+            {
+                "projection": "integration_queue",
+                "status": "UNKNOWN",
+                "planned_initial_state": "NOT_STARTED",
+                "items": [
+                    {
+                        key: self._clone(item[key])
+                        for key in (
+                            "work_item_ref",
+                            "title",
+                            "dependency_refs",
+                            "squad_refs",
+                            "lane_affinity_ids",
+                            "execution_status",
+                        )
+                    }
+                    for item in queue["items"]
+                ],
+                "parallel_waves": self._clone(queue["parallel_waves"]),
+                "program_contract": self._clone(program_contract),
+                "reason_codes": self._clone(queue["reason_codes"]),
+                "source_refs": self._clone(source_refs),
+                "as_of": self._iso(checked_at),
+            }
+        )
+
+        capacity = raw["capacity_risk"]
+        capacity_risk = self._seal_projection(
+            {
+                "projection": "capacity_risk",
+                "status": "UNKNOWN",
+                "limits": self._clone(capacity["limits"]),
+                "observed_active_writers": None,
+                "observed_specialist_wip": None,
+                "observed_lane_wip": None,
+                "observed_weekly_company_outcomes": None,
+                "capacity_proven_available": False,
+                "program_contract": self._clone(program_contract),
+                "reason_codes": self._clone(capacity["reason_codes"]),
+                "source_refs": self._clone(source_refs),
+                "as_of": self._iso(checked_at),
+            }
+        )
+
+        release_train = raw["next_release_train"]
+        next_release_train = self._seal_projection(
+            {
+                "projection": "next_release_train",
+                "status": "UNKNOWN",
+                "release_trains_per_week": release_train[
+                    "release_trains_per_week"
+                ],
+                "scheduled_at": None,
+                "eligible_work_item_refs": None,
+                "gate_status": "UNKNOWN",
+                "registry_proves_schedule": False,
+                "program_contract": self._clone(program_contract),
+                "reason_codes": self._clone(release_train["reason_codes"]),
+                "source_refs": self._clone(source_refs),
+                "as_of": self._iso(checked_at),
+            }
+        )
+        return {
+            "squad_readiness": squad_readiness,
+            "role_conflicts": role_conflicts,
+            "parallel_execution": parallel_execution,
+            "integration_queue": integration_queue,
+            "capacity_risk": capacity_risk,
+            "next_release_train": next_release_train,
+        }
+
+    def _validate_enterprise_ai_erp_projection(self, value: Any) -> None:
+        if not isinstance(value, Mapping):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program contract drift"
+            )
+        if (
+            value.get("contract_id") != ENTERPRISE_AI_ERP_CONTRACT_ID
+            or value.get("contract_version")
+            != ENTERPRISE_AI_ERP_CONTRACT_VERSION
+            or value.get("status") != "UNKNOWN"
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program contract drift"
+            )
+        snapshot_sha256 = self._sha256(
+            value.get("snapshot_sha256"),
+            "enterprise_ai_erp_program.snapshot_sha256",
+        )
+        basis = self._clone(value)
+        basis.pop("snapshot_sha256", None)
+        if snapshot_sha256 != self._hash(basis):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program snapshot drift"
+            )
+
+        integrity = value.get("contract_integrity")
+        if not isinstance(integrity, Mapping) or integrity.get("status") != "VERIFIED":
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program integrity drift"
+            )
+        registry_sha256 = self._sha256(
+            integrity.get("registry_sha256"),
+            "enterprise_ai_erp_program.registry_sha256",
+        )
+        source_bundle_sha256 = self._sha256(
+            integrity.get("source_bundle_sha256"),
+            "enterprise_ai_erp_program.source_bundle_sha256",
+        )
+        source_hashes = value.get("source_hashes")
+        if not isinstance(source_hashes, Sequence) or isinstance(
+            source_hashes, (str, bytes)
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program source contract drift"
+            )
+        source_map: dict[str, str] = {}
+        for item in source_hashes:
+            if not isinstance(item, Mapping):
+                raise TeamControlTowerError(
+                    "Enterprise AI ERP program source contract drift"
+                )
+            source_ref = self._identifier(
+                item.get("source_ref"),
+                "enterprise_ai_erp_program.source_ref",
+            )
+            if source_ref in source_map:
+                raise TeamControlTowerError(
+                    "Enterprise AI ERP program source contract drift"
+                )
+            source_map[source_ref] = self._sha256(
+                item.get("sha256"),
+                "enterprise_ai_erp_program.source_sha256",
+            )
+        if set(source_map) != {
+            "capability_atlas",
+            "enterprise_ai_erp_program",
+            "global_expert_team",
+            "team_control_tower",
+        }:
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program source contract drift"
+            )
+        if (
+            source_map["enterprise_ai_erp_program"] != registry_sha256
+            or self._hash(source_map) != source_bundle_sha256
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program source hash drift"
+            )
+
+        counts = value.get("counts")
+        if not isinstance(counts, Mapping) or counts != {
+            "existing_core_roles": 18,
+            "ai_specialists": 12,
+            "enterprise_domain_roles": 14,
+            "squads": 8,
+            "day_0_30_work_items": 6,
+            "independent_control_roles": 5,
+            "expert_pool_capacity_minimum": 30,
+            "expert_pool_capacity_maximum": 60,
+            "sod_rules": 6,
+            "maturity_levels": 5,
+        }:
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program counts drift"
+            )
+        envelope = value.get("control_envelope")
+        if envelope != {
+            "read_only": True,
+            "static_registry_is_runtime_authority": False,
+            "registry_proves_human_appointment": False,
+            "registry_proves_active_wip": False,
+            "registry_proves_maturity": False,
+            "resolved_task_promotes_maturity": False,
+            "operating_task_created": False,
+            "fact_created": False,
+            "finance_entry_created": False,
+            "approval_created": False,
+            "permit_created": False,
+            "external_write_allowed": False,
+        }:
+            raise TeamControlTowerError(
+                "Enterprise AI ERP program authority boundary drift"
+            )
+
+        sections = {
+            name: value.get(name) for name in ENTERPRISE_AI_ERP_PROJECTION_KEYS
+        }
+        if any(
+            not isinstance(section, Mapping)
+            or section.get("status") != "UNKNOWN"
+            for section in sections.values()
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP dynamic truth drift"
+            )
+        if any(
+            not isinstance(section.get("reason_codes"), list)
+            or not section["reason_codes"]
+            for section in sections.values()
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP reason contract drift"
+            )
+        squads = sections["squad_readiness"]
+        squad_fields = {
+            "squad_ref",
+            "title",
+            "owner_role_ref",
+            "reviewer_role_ref",
+            "primary_lane_id",
+            "supporting_lane_ids",
+            "required_functions",
+            "capability_atlas_ids",
+            "capability_gap_refs",
+            "work_item_refs",
+            "first_acceptance_contract",
+            "status",
+            "reason_codes",
+        }
+        if (
+            not isinstance(squads.get("items"), list)
+            or len(squads["items"]) != 8
+            or any(
+                not isinstance(item, Mapping)
+                or not squad_fields.issubset(item)
+                or item.get("status") != "UNKNOWN"
+                for item in squads["items"]
+            )
+        ):
+            raise TeamControlTowerError("Enterprise AI ERP squad truth drift")
+        conflicts = sections["role_conflicts"]
+        rule_fields = {
+            "rule_ref",
+            "left_function_ref",
+            "right_function_ref",
+            "same_role_allowed",
+            "same_principal_allowed",
+            "identity_authority_required",
+        }
+        if (
+            conflicts.get("contract_rules_verified") is not True
+            or conflicts.get("observed_conflicts") is not None
+            or not isinstance(conflicts.get("rules"), list)
+            or len(conflicts["rules"]) != 6
+            or any(
+                not isinstance(rule, Mapping)
+                or not rule_fields.issubset(rule)
+                for rule in conflicts["rules"]
+            )
+        ):
+            raise TeamControlTowerError("Enterprise AI ERP SoD truth drift")
+        parallel = sections["parallel_execution"]
+        expected_parallel_policy = {
+            "control_agent_count": 1,
+            "max_parallel_specialist_agents": 3,
+            "max_active_writers": 3,
+            "max_active_tasks_per_specialist": 1,
+            "max_active_tasks_per_writer": 1,
+            "max_current_tasks_per_lane": 1,
+            "max_weekly_company_outcomes": 3,
+            "release_trains_per_week": 2,
+            "single_integrator_domains": [
+                "registry",
+                "runtime",
+                "router",
+                "openapi",
+                "alembic_migration",
+                "release",
+            ],
+            "runtime_assignment_authority_connected": False,
+            "failed_slice_blocks_independent_slices": False,
+            "path_or_hash_drift_action": "STOP_ZERO_WRITE",
+            "shared_lease_conflict_action": "STOP_ZERO_WRITE",
+        }
+        if parallel.get("policy") != expected_parallel_policy:
+            raise TeamControlTowerError(
+                "Enterprise AI ERP parallel policy drift"
+            )
+        if any(
+            parallel.get(field) is not None
+            for field in (
+                "observed_active_writers",
+                "observed_writer_wip",
+                "observed_lane_current_tasks",
+            )
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP parallel truth drift"
+            )
+        queue = sections["integration_queue"]
+        queue_item_fields = {
+            "work_item_ref",
+            "title",
+            "dependency_refs",
+            "squad_refs",
+            "lane_affinity_ids",
+            "execution_status",
+        }
+        if (
+            queue.get("planned_initial_state") != "NOT_STARTED"
+            or not isinstance(queue.get("items"), list)
+            or len(queue["items"]) != 6
+            or any(
+                not isinstance(item, Mapping)
+                or not queue_item_fields.issubset(item)
+                or item.get("execution_status") != "UNKNOWN"
+                for item in queue["items"]
+            )
+            or not isinstance(queue.get("parallel_waves"), list)
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP integration truth drift"
+            )
+        capacity = sections["capacity_risk"]
+        if (
+            capacity.get("limits")
+            != {
+                key: expected_parallel_policy[key]
+                for key in (
+                    "control_agent_count",
+                    "max_parallel_specialist_agents",
+                    "max_active_writers",
+                    "max_active_tasks_per_specialist",
+                    "max_active_tasks_per_writer",
+                    "max_current_tasks_per_lane",
+                    "max_weekly_company_outcomes",
+                )
+            }
+            or capacity.get("capacity_proven_available") is not False
+            or any(
+                capacity.get(field) is not None
+                for field in (
+                    "observed_active_writers",
+                    "observed_specialist_wip",
+                    "observed_lane_wip",
+                    "observed_weekly_company_outcomes",
+                )
+            )
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP capacity truth drift"
+            )
+        release_train = sections["next_release_train"]
+        if (
+            release_train.get("release_trains_per_week") != 2
+            or release_train.get("scheduled_at") is not None
+            or release_train.get("eligible_work_item_refs") is not None
+            or release_train.get("gate_status") != "UNKNOWN"
+            or release_train.get("registry_proves_schedule") is not False
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP release truth drift"
+            )
+        if (
+            registry_sha256 != ENTERPRISE_AI_ERP_TRUSTED_REGISTRY_SHA256
+            or source_bundle_sha256
+            != ENTERPRISE_AI_ERP_TRUSTED_SOURCE_BUNDLE_SHA256
+            or snapshot_sha256 != ENTERPRISE_AI_ERP_TRUSTED_SNAPSHOT_SHA256
+        ):
+            raise TeamControlTowerError(
+                "Enterprise AI ERP trusted contract drift"
+            )
 
     def _unknown_projection(
         self,
