@@ -170,7 +170,10 @@ from .scoped_procurement_receiving import (
     ScopedProcurementReceivingWorkspace,
 )
 from .scoped_product_content import ScopedProductContentAuthority
-from .scoped_profit_ledger import ScopedProfitLedgerAuthority
+from .scoped_profit_ledger import (
+    ScopedProfitLedgerAuthority,
+    ScopedProfitOrderSkuReceiptAuthority,
+)
 from .scoped_read_only_claims import ScopedReadOnlyClaimAuthority
 from .scoped_read_only_pilots import ScopedReadOnlyPilotAuthority
 from .scoped_returns_aftersales import ScopedReturnsAfterSalesWorkspace
@@ -821,11 +824,18 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
         scoped_evidence=scoped_evidence,
     )
+    profit_receipt_authority = ScopedProfitOrderSkuReceiptAuthority(
+        engine=engine,
+        finance=finance,
+        evidence=evidence,
+        scoped_evidence=scoped_evidence,
+    )
     scoped_settlement_cash = ScopedSettlementCashWorkspace(
         finance=finance,
         evidence=evidence,
         scoped_evidence=scoped_evidence,
         profit_ledger=profit_ledger,
+        profit_receipt_authority=profit_receipt_authority,
     )
     scoped_returns_aftersales = ScopedReturnsAfterSalesWorkspace(
         oms=scoped_oms,

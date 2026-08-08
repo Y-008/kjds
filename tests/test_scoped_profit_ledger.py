@@ -100,11 +100,31 @@ class FakeFinance:
 
     def read_scoped_sources(self, **_values):
         self.source_calls += 1
-        return copy.deepcopy(self.source)
+        result = copy.deepcopy(self.source)
+        result["as_of"] = _values["as_of"]
+        result["scope"]["as_of"] = _values["as_of"]
+        result["snapshot_sha256"] = ScopedProfitLedgerAuthority._hash(
+            {
+                key: value
+                for key, value in result.items()
+                if key != "snapshot_sha256"
+            }
+        )
+        return result
 
     def read_scoped_profit_authorities(self, **_values):
         self.authority_calls += 1
-        return copy.deepcopy(self.authorities)
+        result = copy.deepcopy(self.authorities)
+        result["as_of"] = _values["as_of"]
+        result["scope"]["as_of"] = _values["as_of"]
+        result["snapshot_sha256"] = ScopedProfitLedgerAuthority._hash(
+            {
+                key: value
+                for key, value in result.items()
+                if key != "snapshot_sha256"
+            }
+        )
+        return result
 
 
 def engine_with_product():
@@ -523,11 +543,120 @@ def test_native_exact_scope_profit_is_deterministic_and_conserves():
     assert len(first["rows"][0]["cost_legs"]) == 15
     assert first["rows"][0]["cost_coverage"]["unknown"] == 0
     assert first["rows"][0]["cash_conservation"]["conserved"] is True
+    receipt = first["rows"][0]["canonical_order_sku_receipt"]
+    assert receipt["contract_id"] == "canonical_order_sku_receipt_v1"
+    assert receipt["issuer_contract_id"] == first["contract_id"]
+    assert receipt["scope_grant_authority_sha256"] == (
+        SCOPE["scope_grant_authority_sha256"]
+    )
+    assert receipt["receipt_sha256"] == ScopedProfitLedgerAuthority._hash(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_sha256"
+        }
+    )
+    assert "product-1" not in str(receipt)
+    assert "SKU-1" not in str(receipt)
+    assert "order-1" not in str(receipt)
+    verification = authority.verify_order_sku_receipt(
+        receipt=receipt,
+        principal=principal(),
+        entity_scope=ENTITY_SCOPE,
+        store_ref=SCOPE["store_ref"],
+        order_id="order-1",
+        as_of=AS_OF,
+    )
+    assert verification["status"] == "verified"
+    assert verification["receipt_sha256"] == receipt["receipt_sha256"]
     assert erosion["conserved"] is True
     assert erosion["baseline"] == "100"
     assert erosion["result"] == "80"
-    assert finance.source_calls == 3
-    assert finance.authority_calls == 3
+    assert finance.source_calls == 4
+    assert finance.authority_calls == 4
+
+
+def test_order_sku_receipt_excludes_observation_time_noise():
+    source, authorities, hashes = build_sources()
+    authority, _, _, _ = authority_for(
+        source=source,
+        authorities=authorities,
+        hashes=hashes,
+    )
+    later = (
+        datetime.fromisoformat(AS_OF) + timedelta(seconds=5)
+    ).isoformat()
+
+    first = authority.snapshot(
+        principal=principal(),
+        entity_scope=ENTITY_SCOPE,
+        store_ref=SCOPE["store_ref"],
+        as_of=AS_OF,
+    )
+    second = authority.snapshot(
+        principal=principal(),
+        entity_scope=ENTITY_SCOPE,
+        store_ref=SCOPE["store_ref"],
+        as_of=later,
+    )
+
+    assert first["snapshot_sha256"] != second["snapshot_sha256"]
+    assert first["rows"][0]["snapshot_sha256"] == second["rows"][0][
+        "snapshot_sha256"
+    ]
+    assert first["rows"][0]["canonical_order_sku_receipt"] == second[
+        "rows"
+    ][0]["canonical_order_sku_receipt"]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "scope_sha256",
+        "scope_grant_authority_sha256",
+        "order_ref_sha256",
+        "product_sha256",
+        "sku_sha256",
+        "issuer_contract_id",
+    ],
+)
+def test_order_sku_receipt_authority_rejects_resigned_identity_drift(field):
+    source, authorities, hashes = build_sources()
+    authority, _, _, _ = authority_for(
+        source=source,
+        authorities=authorities,
+        hashes=hashes,
+    )
+    profit = authority.snapshot(
+        principal=principal(),
+        entity_scope=ENTITY_SCOPE,
+        store_ref=SCOPE["store_ref"],
+        as_of=AS_OF,
+        order_id="order-1",
+    )
+    receipt = copy.deepcopy(
+        profit["rows"][0]["canonical_order_sku_receipt"]
+    )
+    receipt[field] = (
+        "wrong-profit-contract"
+        if field == "issuer_contract_id"
+        else "9" * 64
+    )
+    receipt.pop("receipt_sha256")
+    receipt["receipt_sha256"] = authority._hash(receipt)
+
+    verification = authority.verify_order_sku_receipt(
+        receipt=receipt,
+        principal=principal(),
+        entity_scope=ENTITY_SCOPE,
+        store_ref=SCOPE["store_ref"],
+        order_id="order-1",
+        as_of=AS_OF,
+    )
+
+    assert verification["status"] == "no_data"
+    assert verification["receipt"] is None
+    assert verification["receipt_sha256"] is None
 
 
 def test_missing_fifteenth_cost_leg_fails_closed_without_business_values():

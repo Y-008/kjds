@@ -572,6 +572,9 @@
       "requires_platform_settlement": true,
       "requires_bank_cash": true,
       "requires_actual_cash_cm3": true,
+      "requires_single_sku_attribution": true,
+      "offer_mapping_proven": false,
+      "return_window_closed_proven": false,
       "satisfies_thirteen_week_forecast": false,
       "satisfies_cash_floor": false,
       "satisfies_maximum_loss": false

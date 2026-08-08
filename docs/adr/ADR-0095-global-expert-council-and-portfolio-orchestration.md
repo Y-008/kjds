@@ -146,19 +146,26 @@ LG-002 证明了五类总控投影可以在同一 `brief/advance` Interface 内�
 协作进展，日历到期和 `resolved` 均不能产生 Gate PASS。没有与五个交付 Gate 精确匹配、同
 scope 的 canonical authority 时，总控保持 `formal_gate_pass=false`，也不自动打开下一阶段。
 
-俄罗斯现金闭环通过构造注入只读 `ScopedSettlementCashWorkspace`。总控只消费其 exact-scope
+俄罗斯现金归因通过构造注入只读 `ScopedSettlementCashWorkspace`。总控只消费其 exact-scope
 控制合同、状态、计数和 cycle 状态；仅当同一 cycle 具备订单 Fact、平台结算、银行现金、
-`reconciled` 与 Actual Cash CM3 时，投影“至少一个真实 SKU 现金闭环”为 `VERIFIED`。原始金额、
-订单号、结算号和银行标识不进入老板摘要；该投影不构成 13 周现金、现金底线、最大损失或
-正式 Gate 权威。
+`reconciled`、Actual Cash CM3，以及由严格 Profit authority 独立发行并回读验证的
+`canonical_order_sku_receipt_v1` 所绑定的唯一 hashed canonical Product/SKU lineage 时，独立字段
+`single_sku_attribution_status` 才为 `VERIFIED`。该回读由 runtime 从 canonical dependencies 独立
+构造的 server-owned `ScopedProfitOrderSkuReceiptAuthority` 完成，不能来自可变 Profit adapter；
+回读 source snapshot 必须与实际消费 Profit snapshot 相同。source 非 ready、分页/排除不完整、存在 gap/blocker
+或 `order_count/identity_count` 不等于一时两个 verified count 均归零。兼容既有老板
+页标签的外层 `actual_cash_truth.status` 仍保持 `PARTIAL`，俄罗斯经营 readiness 不得晋级。缺少
+SKU lineage 的普通 reconciled cycle 同样保持 `PARTIAL`。原始 Product、SKU、金额、订单号、
+结算号和银行标识不进入老板摘要；此投影不证明 offer 映射、退货退款终局、13 周现金、现金底线、
+最大损失或正式 Gate。
 
 此次仍不新增 Interface、表或迁移。若未来出现精确匹配五个交付 Gate 的现有 authority，
 通过新的只读依赖缝接入；不得把全局/非 exact-scope Gate、Harness M0–M4、任务完成或日期状态
 重命名为正式 PASS。
 
-运行时使用两类哈希：完整投影哈希保留 `as_of` 和原始权威快照引用用于审计；continuation
+运行时使用两类哈希：完整投影哈希保留 `as_of` 和顶层 Profit 权威快照引用用于审计；continuation
 绑定的决定语义哈希去除纯观测时间和上游 cutoff 噪声，但保留任务/Event、状态、计数、
-Benchmark leader refs、三账 reconciliation/profit snapshot 语义与 Gate readiness。否则两个
+Benchmark leader refs、三账 reconciliation、稳定 Profit receipt/row 语义与 Gate readiness。否则两个
 相邻 HTTP 请求只因毫秒时间差就会让 continuation 永久 stale。时钟刷新不得失效动作，业务
 权威变化必须失效动作。
 

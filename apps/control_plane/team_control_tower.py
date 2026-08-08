@@ -35,10 +35,10 @@ ENTERPRISE_AI_ERP_TRUSTED_REGISTRY_SHA256 = (
     "8ba3f6a2a3293a66416dd474223d538c7dc1ff5a3c57789c34d994be0aa26657"
 )
 ENTERPRISE_AI_ERP_TRUSTED_SOURCE_BUNDLE_SHA256 = (
-    "5a19123b858752d8a7611e542e918a5b81a9c7b24131291116135736f12b93f5"
+    "8bd8d4092508308259f7b6916898d47572af6141875411dbf334f90a0c1a70b1"
 )
 ENTERPRISE_AI_ERP_TRUSTED_SNAPSHOT_SHA256 = (
-    "13a712c75a2b781584ccfdfbf138816c8913f3198bb92b929b6a2100b6333184"
+    "e9eec2be33b0c7179e7fcd17d41a556969c9427794c2a1fe308ebb96fc0cdbf9"
 )
 ENTERPRISE_AI_ERP_PROJECTION_KEYS = (
     "squad_readiness",
@@ -1289,6 +1289,8 @@ class TeamControlTower:
                     "reason_codes": ["settlement_cash_authority_unavailable"],
                     "source_status": "unavailable",
                     "verified_cycle_count": 0,
+                    "verified_single_sku_cycle_count": 0,
+                    "single_sku_attribution_status": "UNKNOWN",
                     "minimum_reconciled_cycles": policy[
                         "minimum_reconciled_cycles"
                     ],
@@ -1315,6 +1317,8 @@ class TeamControlTower:
                     "reason_codes": ["settlement_cash_authority_drift"],
                     "source_status": "error",
                     "verified_cycle_count": 0,
+                    "verified_single_sku_cycle_count": 0,
+                    "single_sku_attribution_status": "UNKNOWN",
                     "minimum_reconciled_cycles": policy[
                         "minimum_reconciled_cycles"
                     ],
@@ -1331,8 +1335,8 @@ class TeamControlTower:
         if source_status not in {"ready", "partial", "blocked", "no_data"}:
             raise TeamControlTowerError("Settlement cash status drift")
         source_as_of = self._datetime(result.get("as_of"))
-        if source_as_of > checked_at:
-            raise TeamControlTowerError("Settlement cash as-of exceeds control cutoff")
+        if source_as_of != checked_at:
+            raise TeamControlTowerError("Settlement cash as-of authority drift")
         source_scope = result.get("scope")
         if not isinstance(source_scope, Mapping) or {
             "tenant_ref": source_scope.get("tenant_ref"),
@@ -1379,6 +1383,8 @@ class TeamControlTower:
             "cash_cycles",
             "reconciled",
             "actual_cash_cm3_available",
+            "filtered",
+            "page",
         }
         if not isinstance(counts, Mapping) or not required_counts <= set(counts):
             raise TeamControlTowerError("Settlement cash count shape drift")
@@ -1388,10 +1394,19 @@ class TeamControlTower:
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise TeamControlTowerError("Settlement cash count value drift")
             projected_counts[key] = value
+        pagination = result.get("pagination")
+        if (
+            not isinstance(pagination, Mapping)
+            or set(pagination) != {"page_size", "next_cursor"}
+            or pagination.get("page_size") != 100
+            or pagination.get("next_cursor") is not None
+        ):
+            raise TeamControlTowerError("Settlement cash pagination drift")
         cycles = result.get("cycles")
         if not isinstance(cycles, Sequence) or isinstance(cycles, (str, bytes)):
             raise TeamControlTowerError("Settlement cash cycle shape drift")
-        verified_cycles = 0
+        candidate_verified_cycles = 0
+        candidate_verified_single_sku_cycles = 0
         authority_cycles: list[dict[str, Any]] = []
         for cycle in cycles:
             if not isinstance(cycle, Mapping):
@@ -1429,13 +1444,136 @@ class TeamControlTower:
             ):
                 raise TeamControlTowerError("Settlement cash cycle control drift")
             key_hash = str(cycle.get("reconciliation_key_sha256") or "")
-            if not _SHA256.fullmatch(key_hash):
-                key = str(cycle.get("reconciliation_key") or "")
-                if not key:
-                    raise TeamControlTowerError(
-                        "Settlement cash reconciliation identity drift"
+            key = str(cycle.get("reconciliation_key") or "")
+            if (
+                not _SHA256.fullmatch(key_hash)
+                or not key
+                or self._hash(key) != key_hash
+            ):
+                raise TeamControlTowerError(
+                    "Settlement cash reconciliation identity drift"
+                )
+            attribution = actual_cash.get("single_sku_attribution")
+            if attribution is None:
+                attribution = {
+                    "schema_version": "single-sku-attribution/2",
+                    "status": "no_data",
+                    "identity_count": 0,
+                    "scope_sha256": None,
+                    "scope_grant_authority_sha256": None,
+                    "product_sha256": None,
+                    "sku_sha256": None,
+                    "order_ref_sha256": None,
+                    "order_fact_receipt_sha256": None,
+                    "profit_row_basis_sha256": None,
+                    "profit_row_sha256": None,
+                    "profit_receipt_sha256": None,
+                    "lineage_sha256": None,
+                }
+            attribution_fields = {
+                "schema_version",
+                "status",
+                "identity_count",
+                "scope_sha256",
+                "scope_grant_authority_sha256",
+                "product_sha256",
+                "sku_sha256",
+                "order_ref_sha256",
+                "order_fact_receipt_sha256",
+                "profit_row_basis_sha256",
+                "profit_row_sha256",
+                "profit_receipt_sha256",
+                "lineage_sha256",
+            }
+            if (
+                not isinstance(attribution, Mapping)
+                or set(attribution) != attribution_fields
+                or attribution.get("schema_version")
+                != "single-sku-attribution/2"
+                or attribution.get("status") not in {"verified", "no_data"}
+                or attribution.get("identity_count") not in {0, 1}
+            ):
+                raise TeamControlTowerError(
+                    "Settlement cash SKU attribution drift"
+                )
+            attribution_verified = attribution.get("status") == "verified"
+            if attribution_verified:
+                if attribution.get("identity_count") != 1 or any(
+                    not _SHA256.fullmatch(str(attribution.get(field) or ""))
+                    for field in (
+                        "scope_sha256",
+                        "scope_grant_authority_sha256",
+                        "product_sha256",
+                        "sku_sha256",
+                        "order_ref_sha256",
+                        "order_fact_receipt_sha256",
+                        "profit_row_basis_sha256",
+                        "profit_row_sha256",
+                        "profit_receipt_sha256",
+                        "lineage_sha256",
                     )
-                key_hash = self._hash(key)
+                ):
+                    raise TeamControlTowerError(
+                        "Settlement cash SKU attribution identity drift"
+                    )
+                scope_receipt = {
+                    "tenant_ref": scope["tenant_ref"],
+                    "entity_ref": scope["entity_ref"],
+                    "store_ref": scope["store_ref"],
+                    "scope_grant_authority_sha256": scope[
+                        "scope_authority_sha256"
+                    ],
+                }
+                receipt_payload = {
+                    "contract_id": "canonical_order_sku_receipt_v1",
+                    "issuer_contract_id": (
+                        "kjds-native-exact-scope-actual-profit-ledger-v1"
+                    ),
+                    "scope_sha256": attribution["scope_sha256"],
+                    "scope_grant_authority_sha256": attribution[
+                        "scope_grant_authority_sha256"
+                    ],
+                    "order_ref_sha256": attribution["order_ref_sha256"],
+                    "product_sha256": attribution["product_sha256"],
+                    "sku_sha256": attribution["sku_sha256"],
+                    "order_fact_receipt_sha256": attribution[
+                        "order_fact_receipt_sha256"
+                    ],
+                    "profit_row_basis_sha256": attribution[
+                        "profit_row_basis_sha256"
+                    ],
+                }
+                lineage_payload = {
+                    field: attribution[field]
+                    for field in attribution_fields
+                    if field != "lineage_sha256"
+                }
+                if (
+                    order_count != 1
+                    or attribution["order_ref_sha256"] != key_hash
+                    or attribution["scope_sha256"] != self._hash(scope_receipt)
+                    or attribution["scope_grant_authority_sha256"]
+                    != scope["scope_authority_sha256"]
+                    or attribution["profit_receipt_sha256"]
+                    != self._hash(receipt_payload)
+                    or attribution["lineage_sha256"]
+                    != self._hash(lineage_payload)
+                ):
+                    raise TeamControlTowerError(
+                        "Settlement cash SKU attribution lineage drift"
+                    )
+            elif (
+                attribution.get("identity_count") != 0
+                or any(
+                    attribution.get(field) is not None
+                    for field in attribution_fields
+                    if field
+                    not in {"schema_version", "status", "identity_count"}
+                )
+            ):
+                raise TeamControlTowerError(
+                    "Settlement cash unavailable SKU attribution drift"
+                )
             latest_reconciliation = cycle.get("latest_reconciliation")
             authority_cycles.append(
                 {
@@ -1446,8 +1584,36 @@ class TeamControlTower:
                     "platform_settlement_status": settlement_book.get("status"),
                     "bank_cash_status": bank_book.get("status"),
                     "actual_cash_cm3_status": actual_cash.get("status"),
-                    "profit_snapshot_sha256": actual_cash.get(
-                        "profit_snapshot_sha256"
+                    "single_sku_attribution_status": attribution.get(
+                        "status"
+                    ),
+                    "single_sku_lineage_sha256": attribution.get(
+                        "lineage_sha256"
+                    ),
+                    "single_sku_product_sha256": attribution.get(
+                        "product_sha256"
+                    ),
+                    "single_sku_sha256": attribution.get("sku_sha256"),
+                    "single_sku_order_ref_sha256": attribution.get(
+                        "order_ref_sha256"
+                    ),
+                    "single_sku_scope_sha256": attribution.get(
+                        "scope_sha256"
+                    ),
+                    "single_sku_scope_authority_sha256": attribution.get(
+                        "scope_grant_authority_sha256"
+                    ),
+                    "single_sku_order_fact_receipt_sha256": attribution.get(
+                        "order_fact_receipt_sha256"
+                    ),
+                    "single_sku_profit_row_basis_sha256": attribution.get(
+                        "profit_row_basis_sha256"
+                    ),
+                    "single_sku_profit_row_sha256": attribution.get(
+                        "profit_row_sha256"
+                    ),
+                    "single_sku_profit_receipt_sha256": attribution.get(
+                        "profit_receipt_sha256"
                     ),
                     "reconciliation_input_sha256": (
                         latest_reconciliation.get("input_sha256")
@@ -1463,31 +1629,92 @@ class TeamControlTower:
             )
             if (
                 cycle.get("stage") == "reconciled"
-                and order_count > 0
+                and order_count == 1
                 and settlement_book.get("status") == "observed"
                 and bank_book.get("status") == "observed"
                 and actual_cash.get("status") == "available"
+                and attribution_verified
                 and evidence.get("all_current_and_exact_scope") is True
                 and not cycle.get("blockers")
             ):
-                verified_cycles += 1
+                candidate_verified_cycles += 1
+                candidate_verified_single_sku_cycles += 1
         excluded = result.get("excluded")
         excluded_count = (
             excluded.get("count") if isinstance(excluded, Mapping) else None
         )
+        exclusion_reasons = (
+            excluded.get("reason_counts")
+            if isinstance(excluded, Mapping)
+            else None
+        )
         if (
+            not isinstance(excluded, Mapping)
+            or set(excluded)
+            != {"count", "reason_counts", "business_values_exposed"}
+            or
             isinstance(excluded_count, bool)
             or not isinstance(excluded_count, int)
             or excluded_count < 0
+            or not isinstance(exclusion_reasons, Mapping)
+            or any(
+                not isinstance(key, str)
+                or not key
+                or isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                for key, value in (
+                    exclusion_reasons.items()
+                    if isinstance(exclusion_reasons, Mapping)
+                    else []
+                )
+            )
+            or (
+                isinstance(exclusion_reasons, Mapping)
+                and sum(exclusion_reasons.values()) != excluded_count
+            )
+            or (excluded_count == 0 and exclusion_reasons != {})
+            or excluded.get("business_values_exposed") is not False
         ):
             raise TeamControlTowerError("Settlement cash exclusion shape drift")
         total_cycles = projected_counts["total_cycles"]
-        if len(cycles) > total_cycles or any(
-            projected_counts[key] > total_cycles
-            for key in required_counts
-            if key != "total_cycles"
+        if (
+            len(cycles)
+            != projected_counts["page"]
+            or projected_counts["page"] != projected_counts["filtered"]
+            or projected_counts["filtered"] != total_cycles
+            or len(cycles) > 100
+            or len(cycles) > total_cycles
+            or any(
+                projected_counts[key] > total_cycles
+                for key in required_counts
+                if key != "total_cycles"
+            )
         ):
             raise TeamControlTowerError("Settlement cash count relationship drift")
+        source_gaps = result.get("source_gaps")
+        source_blockers = result.get("blockers")
+        if (
+            not isinstance(source_gaps, list)
+            or not all(isinstance(item, str) for item in source_gaps)
+            or not isinstance(source_blockers, list)
+            or (source_status == "ready" and (source_gaps or source_blockers))
+        ):
+            raise TeamControlTowerError("Settlement cash source control drift")
+        complete_source_authority = (
+            source_status == "ready"
+            and excluded_count == 0
+            and not source_gaps
+            and not source_blockers
+        )
+        verified_cycles = (
+            candidate_verified_cycles if complete_source_authority else 0
+        )
+        verified_single_sku_cycles = (
+            candidate_verified_single_sku_cycles
+            if complete_source_authority
+            else 0
+        )
         if verified_cycles > min(
             projected_counts["order_fact_cycles"],
             projected_counts["settlement_cycles"],
@@ -1496,6 +1723,10 @@ class TeamControlTower:
             projected_counts["actual_cash_cm3_available"],
         ):
             raise TeamControlTowerError("Settlement cash verified count drift")
+        if verified_cycles != verified_single_sku_cycles:
+            raise TeamControlTowerError(
+                "Settlement cash verified SKU count drift"
+            )
         if source_status == "no_data" and total_cycles:
             raise TeamControlTowerError("Settlement cash no-data count drift")
         authority_state_sha256 = self._hash(
@@ -1506,20 +1737,32 @@ class TeamControlTower:
                 "counts": projected_counts,
                 "cycles": authority_cycles,
                 "excluded_count": excluded_count,
-                "source_gaps": list(result.get("source_gaps") or []),
+                "source_gaps": list(source_gaps),
             }
         )
         minimum = int(policy["minimum_reconciled_cycles"])
         if source_status == "blocked" or excluded_count:
             status = "BLOCKED"
             reasons = ["settlement_cash_source_blocked"]
+        elif candidate_verified_cycles and not complete_source_authority:
+            status = "PARTIAL"
+            reasons = ["settlement_cash_source_incomplete"]
         elif verified_cycles >= minimum:
-            status = "VERIFIED"
-            reasons = (
-                ["additional_settlement_cycles_incomplete"]
-                if source_status == "partial"
-                else []
-            )
+            status = "PARTIAL"
+            reasons = [
+                "offer_mapping_and_return_window_authority_missing",
+                *(
+                    ["settlement_cash_source_incomplete"]
+                    if source_status != "ready"
+                    else []
+                ),
+            ]
+        elif (
+            projected_counts["actual_cash_cm3_available"]
+            and not verified_single_sku_cycles
+        ):
+            status = "PARTIAL"
+            reasons = ["single_sku_cash_attribution_missing"]
         elif projected_counts["total_cycles"]:
             status = "PARTIAL"
             reasons = ["reconciled_actual_cash_cycle_missing"]
@@ -1532,6 +1775,18 @@ class TeamControlTower:
                 "reason_codes": reasons,
                 "source_status": source_status,
                 "verified_cycle_count": verified_cycles,
+                "verified_single_sku_cycle_count": (
+                    verified_single_sku_cycles
+                ),
+                "single_sku_attribution_status": (
+                    "VERIFIED"
+                    if verified_single_sku_cycles >= minimum
+                    and source_status == "ready"
+                    and excluded_count == 0
+                    and not source_gaps
+                    and not source_blockers
+                    else "UNKNOWN"
+                ),
                 "minimum_reconciled_cycles": minimum,
                 "counts": projected_counts,
                 "source_refs": [
@@ -1586,11 +1841,22 @@ class TeamControlTower:
                 ),
             }
         missing_authorities = list(policy["required_inputs"])
-        if settlement_cash["status"] == "VERIFIED":
+        settlement_counts = settlement_cash.get("counts")
+        if (
+            settlement_cash["status"] not in {"CONFLICTED", "BLOCKED", "STALE"}
+            and isinstance(settlement_counts, Mapping)
+        ):
             missing_authorities = [
                 item
                 for item in missing_authorities
-                if item not in {"platform_settlement", "bank_cash"}
+                if not (
+                    item == "platform_settlement"
+                    and settlement_counts.get("settlement_cycles", 0) > 0
+                )
+                and not (
+                    item == "bank_cash"
+                    and settlement_counts.get("cash_cycles", 0) > 0
+                )
             ]
         cash_status = "UNKNOWN"
         if benchmark["status"] in {"CONFLICTED", "STALE"}:
@@ -3232,6 +3498,9 @@ class TeamControlTower:
             "requires_platform_settlement": True,
             "requires_bank_cash": True,
             "requires_actual_cash_cm3": True,
+            "requires_single_sku_attribution": True,
+            "offer_mapping_proven": False,
+            "return_window_closed_proven": False,
             "satisfies_thirteen_week_forecast": False,
             "satisfies_cash_floor": False,
             "satisfies_maximum_loss": False,

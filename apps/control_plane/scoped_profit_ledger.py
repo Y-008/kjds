@@ -60,6 +60,10 @@ class ScopedProfitLedgerAuthority:
         "kjds-scoped-profit-authority-source-v1"
     )
     ARTIFACT_CONTRACT_ID = "kjds-profit-steward-artifact-v1"
+    ORDER_SKU_RECEIPT_CONTRACT_ID = "canonical_order_sku_receipt_v1"
+    ORDER_SKU_RECEIPT_AUTHORITY_CONTRACT_ID = (
+        "kjds-profit-order-sku-receipt-authority-v1"
+    )
     native_exact_scope = True
 
     def __init__(
@@ -834,6 +838,39 @@ class ScopedProfitLedgerAuthority:
             ),
             "next_workspace": "/finance-control",
         }
+        order_ref_sha256 = self._hash(key)
+        product_sha256 = self._hash(product["id"])
+        sku_sha256 = self._hash(product["sku"])
+        scope_receipt = {
+            "tenant_ref": context["scope"]["tenant_ref"],
+            "entity_ref": context["scope"]["entity_ref"],
+            "store_ref": context["scope"]["store_ref"],
+            "scope_grant_authority_sha256": context["scope"][
+                "scope_grant_authority_sha256"
+            ],
+        }
+        order_fact_receipt = {
+            "fact_id_sha256": self._hash(fact["id"]),
+            "payload_sha256": fact["payload_hash"],
+            "order_ref_sha256": order_ref_sha256,
+            "product_sha256": product_sha256,
+            "sku_sha256": sku_sha256,
+        }
+        receipt = {
+            "contract_id": self.ORDER_SKU_RECEIPT_CONTRACT_ID,
+            "issuer_contract_id": self.CONTRACT_ID,
+            "scope_sha256": self._hash(scope_receipt),
+            "scope_grant_authority_sha256": scope_receipt[
+                "scope_grant_authority_sha256"
+            ],
+            "order_ref_sha256": order_ref_sha256,
+            "product_sha256": product_sha256,
+            "sku_sha256": sku_sha256,
+            "order_fact_receipt_sha256": self._hash(order_fact_receipt),
+            "profit_row_basis_sha256": self._hash(row),
+        }
+        receipt["receipt_sha256"] = self._hash(receipt)
+        row["canonical_order_sku_receipt"] = receipt
         row["snapshot_sha256"] = self._hash(row)
         return row, []
 
@@ -1519,6 +1556,94 @@ class ScopedProfitLedgerAuthority:
             result.append(row)
         return result
 
+    def verify_order_sku_receipt(
+        self,
+        *,
+        receipt: dict[str, Any],
+        store_ref: str,
+        order_id: str,
+        as_of: str,
+        principal: Principal,
+        entity_scope: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Verify a receipt by replaying the canonical Profit authority."""
+        profit = self.snapshot(
+            store_ref=store_ref,
+            order_id=order_id,
+            grain="order",
+            currency="CNY",
+            as_of=as_of,
+            principal=principal,
+            entity_scope=entity_scope,
+        )
+        rows = profit.get("rows") if isinstance(profit, dict) else None
+        matched = []
+        if isinstance(rows, list):
+            matched = [
+                row
+                for row in rows
+                if isinstance(row, dict)
+                and row.get("order_ref") == order_id
+                and row.get("canonical_order_sku_receipt") == receipt
+            ]
+        scope = profit.get("scope") if isinstance(profit, dict) else None
+        verified = (
+            profit.get("contract_id") == self.CONTRACT_ID
+            and profit.get("status") == "reconciled"
+            and profit.get("grain") == "order"
+            and profit.get("currency") == "CNY"
+            and profit.get("as_of") == as_of
+            and isinstance(scope, dict)
+            and len(matched) == 1
+            and len(rows) == 1
+            and isinstance(receipt, dict)
+            and receipt.get("contract_id")
+            == self.ORDER_SKU_RECEIPT_CONTRACT_ID
+            and receipt.get("issuer_contract_id") == self.CONTRACT_ID
+            and receipt.get("receipt_sha256")
+            == self._hash(
+                {
+                    field: value
+                    for field, value in receipt.items()
+                    if field != "receipt_sha256"
+                }
+            )
+        )
+        projection = {
+            "contract_id": self.ORDER_SKU_RECEIPT_AUTHORITY_CONTRACT_ID,
+            "status": "verified" if verified else "no_data",
+            "as_of": as_of,
+            "scope": (
+                {
+                    "tenant_ref": scope.get("tenant_ref"),
+                    "entity_ref": scope.get("entity_ref"),
+                    "store_ref": scope.get("store_ref"),
+                    "scope_grant_authority_sha256": scope.get(
+                        "scope_grant_authority_sha256"
+                    ),
+                }
+                if isinstance(scope, dict)
+                else None
+            ),
+            "issuer_contract_id": self.CONTRACT_ID,
+            "receipt": receipt if verified else None,
+            "receipt_sha256": (
+                receipt.get("receipt_sha256") if verified else None
+            ),
+            "source_profit_snapshot_sha256": (
+                profit.get("snapshot_sha256")
+                if isinstance(profit, dict)
+                else None
+            ),
+            "control_envelope": {
+                "read_only": True,
+                "native_exact_scope": True,
+                "external_write_allowed": False,
+            },
+        }
+        projection["snapshot_sha256"] = self._hash(projection)
+        return projection
+
     @staticmethod
     def _erosion(
         *,
@@ -2035,3 +2160,43 @@ class ScopedProfitLedgerAuthority:
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()
+
+
+class ScopedProfitOrderSkuReceiptAuthority:
+    """Server-owned verifier isolated from mutable Profit projection adapters."""
+
+    CONTRACT_ID = "kjds-profit-order-sku-receipt-authority-v1"
+
+    def __init__(
+        self,
+        *,
+        engine,
+        finance,
+        evidence,
+        scoped_evidence,
+    ) -> None:
+        self.__canonical_profit = ScopedProfitLedgerAuthority(
+            engine=engine,
+            finance=finance,
+            evidence=evidence,
+            scoped_evidence=scoped_evidence,
+        )
+
+    def verify_order_sku_receipt(
+        self,
+        *,
+        receipt: dict[str, Any],
+        store_ref: str,
+        order_id: str,
+        as_of: str,
+        principal: Principal,
+        entity_scope: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self.__canonical_profit.verify_order_sku_receipt(
+            receipt=receipt,
+            store_ref=store_ref,
+            order_id=order_id,
+            as_of=as_of,
+            principal=principal,
+            entity_scope=entity_scope,
+        )

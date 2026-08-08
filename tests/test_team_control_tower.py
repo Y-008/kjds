@@ -128,8 +128,20 @@ class DriftingBenchmark(FakeBenchmark):
 
 
 class FakeSettlementCash:
-    def __init__(self, *, verified: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        verified: bool = False,
+        sku_attribution: bool = True,
+        product_sha256: str = "1" * 64,
+        profit_snapshot_sha256: str = "7" * 64,
+        order_count: int = 1,
+    ) -> None:
         self.verified = verified
+        self.sku_attribution = sku_attribution
+        self.product_sha256 = product_sha256
+        self.profit_snapshot_sha256 = profit_snapshot_sha256
+        self.order_count = order_count
         self.reads = 0
 
     def project(self, **kwargs) -> dict:
@@ -137,18 +149,86 @@ class FakeSettlementCash:
         assert kwargs["entity_scope"]["authority_sha256"] == "a" * 64
         cycles = []
         if self.verified:
+            profit_snapshot_sha256 = self.profit_snapshot_sha256
+            profit_row_sha256 = "4" * 64
+            order_ref_sha256 = _canonical_hash("private-order-ref")
+            scope_receipt = {
+                "tenant_ref": kwargs["principal"].tenant_ref,
+                "entity_ref": kwargs["entity_scope"]["entity_ref"],
+                "store_ref": kwargs["store_ref"],
+                "scope_grant_authority_sha256": kwargs["entity_scope"][
+                    "authority_sha256"
+                ],
+            }
+            receipt_payload = {
+                "contract_id": "canonical_order_sku_receipt_v1",
+                "issuer_contract_id": (
+                    "kjds-native-exact-scope-actual-profit-ledger-v1"
+                ),
+                "scope_sha256": _canonical_hash(scope_receipt),
+                "scope_grant_authority_sha256": kwargs[
+                    "entity_scope"
+                ]["authority_sha256"],
+                "order_ref_sha256": order_ref_sha256,
+                "product_sha256": self.product_sha256,
+                "sku_sha256": "2" * 64,
+                "order_fact_receipt_sha256": "3" * 64,
+                "profit_row_basis_sha256": "5" * 64,
+            }
+            profit_receipt_sha256 = _canonical_hash(receipt_payload)
+            attribution = {
+                "schema_version": "single-sku-attribution/2",
+                "status": "verified",
+                "identity_count": 1,
+                "scope_sha256": receipt_payload["scope_sha256"],
+                "scope_grant_authority_sha256": receipt_payload[
+                    "scope_grant_authority_sha256"
+                ],
+                "product_sha256": self.product_sha256,
+                "sku_sha256": "2" * 64,
+                "order_ref_sha256": order_ref_sha256,
+                "order_fact_receipt_sha256": receipt_payload[
+                    "order_fact_receipt_sha256"
+                ],
+                "profit_row_basis_sha256": receipt_payload[
+                    "profit_row_basis_sha256"
+                ],
+                "profit_row_sha256": profit_row_sha256,
+                "profit_receipt_sha256": profit_receipt_sha256,
+            }
+            attribution["lineage_sha256"] = hashlib.sha256(
+                json.dumps(
+                    attribution,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
             cycles = [
                 {
                     "reconciliation_key": "private-order-ref",
+                    "reconciliation_key_sha256": attribution[
+                        "order_ref_sha256"
+                    ],
                     "stage": "reconciled",
                     "books": {
-                        "order_accrual": {"order_fact_count": 1},
+                        "order_accrual": {
+                            "order_fact_count": self.order_count
+                        },
                         "platform_settlement": {"status": "observed"},
                         "bank_cash": {"status": "observed"},
                     },
                     "actual_cash_cm3": {
                         "status": "available",
                         "amount": "321.00",
+                        "profit_snapshot_sha256": profit_snapshot_sha256,
+                        **(
+                            {
+                                "single_sku_attribution": attribution
+                            }
+                            if self.sku_attribution
+                            else {}
+                        ),
                     },
                     "evidence": {"all_current_and_exact_scope": True},
                     "blockers": [],
@@ -174,9 +254,18 @@ class FakeSettlementCash:
                 "cash_cycles": count,
                 "reconciled": count,
                 "actual_cash_cm3_available": count,
+                "filtered": count,
+                "page": count,
             },
+            "pagination": {"page_size": 100, "next_cursor": None},
             "cycles": cycles,
-            "excluded": {"count": 0},
+            "excluded": {
+                "count": 0,
+                "reason_counts": {},
+                "business_values_exposed": False,
+            },
+            "source_gaps": [],
+            "blockers": [],
             "control_envelope": {
                 "read_only": True,
                 "scoped_input_read": True,
@@ -825,8 +914,13 @@ def test_exact_scope_reconciled_cash_cycle_is_projected_without_raw_values():
     result = tower.brief(**scope())
     truth = result["cash_at_risk"]["actual_cash_truth"]
 
-    assert truth["status"] == "VERIFIED"
+    assert truth["status"] == "PARTIAL"
     assert truth["verified_cycle_count"] == 1
+    assert truth["verified_single_sku_cycle_count"] == 1
+    assert truth["single_sku_attribution_status"] == "VERIFIED"
+    assert truth["reason_codes"] == [
+        "offer_mapping_and_return_window_authority_missing"
+    ]
     assert "platform_settlement" not in result["cash_at_risk"]["missing_authorities"]
     assert "bank_cash" not in result["cash_at_risk"]["missing_authorities"]
     assert result["cash_at_risk"]["status"] == "UNKNOWN"
@@ -839,8 +933,245 @@ def test_exact_scope_reconciled_cash_cycle_is_projected_without_raw_values():
         for gate in result["delivery_gate"]["gates"]
         if gate["gate_ref"] == "russia_operating_truth_gate"
     )
-    assert russia_gate["readiness_status"] == "VERIFIED"
+    assert russia_gate["readiness_status"] != "VERIFIED"
     assert russia_gate["formal_gate_pass"] is False
+
+
+def test_reconciled_order_cycle_without_sku_attribution_never_verifies_sku_truth():
+    settlement = FakeSettlementCash(
+        verified=True,
+        sku_attribution=False,
+    )
+    tower, _ = build_service(settlement_cash=settlement)
+
+    result = tower.brief(**scope())
+    truth = result["cash_at_risk"]["actual_cash_truth"]
+
+    assert truth["status"] == "PARTIAL"
+    assert truth["verified_cycle_count"] == 0
+    assert truth["verified_single_sku_cycle_count"] == 0
+    assert truth["reason_codes"] == [
+        "single_sku_cash_attribution_missing"
+    ]
+    russia_gate = next(
+        gate
+        for gate in result["delivery_gate"]["gates"]
+        if gate["gate_ref"] == "russia_operating_truth_gate"
+    )
+    assert russia_gate["readiness_status"] != "VERIFIED"
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        "product_without_lineage",
+        "product_resigned",
+        "sku_resigned",
+        "product_sku_resigned",
+        "wrong_order_resigned",
+        "wrong_profit_basis_resigned",
+        "arbitrary_lineage",
+    ],
+)
+def test_resealed_sku_attribution_drift_never_verifies(drift):
+    class DriftingSettlement(FakeSettlementCash):
+        def project(self, **kwargs):
+            result = super().project(**kwargs)
+            cycle = result["cycles"][0]
+            actual = cycle["actual_cash_cm3"]
+            attribution = actual["single_sku_attribution"]
+            if drift == "product_without_lineage":
+                attribution["product_sha256"] = "9" * 64
+            elif drift == "arbitrary_lineage":
+                attribution["lineage_sha256"] = "9" * 64
+            else:
+                if drift == "product_resigned":
+                    attribution["product_sha256"] = "6" * 64
+                if drift == "sku_resigned":
+                    attribution["sku_sha256"] = "5" * 64
+                if drift == "product_sku_resigned":
+                    attribution["product_sha256"] = "6" * 64
+                    attribution["sku_sha256"] = "5" * 64
+                if drift == "wrong_order_resigned":
+                    attribution["order_ref_sha256"] = "9" * 64
+                if drift == "wrong_profit_basis_resigned":
+                    attribution["profit_row_basis_sha256"] = "7" * 64
+                attribution.pop("lineage_sha256")
+                attribution["lineage_sha256"] = _canonical_hash(attribution)
+            result.pop("snapshot_sha256")
+            result["snapshot_sha256"] = _canonical_hash(result)
+            return result
+
+    tower, _ = build_service(
+        settlement_cash=DriftingSettlement(verified=True)
+    )
+
+    with pytest.raises(TeamControlTowerError, match="attribution"):
+        tower.brief(**scope())
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ["old_as_of", "next_cursor", "hidden_page", "excluded_reason_drift"],
+)
+def test_incomplete_or_historical_cash_projection_never_verifies(drift):
+    class DriftingSettlement(FakeSettlementCash):
+        def project(self, **kwargs):
+            result = super().project(**kwargs)
+            if drift == "old_as_of":
+                result["as_of"] = "2026-08-06T00:00:00+00:00"
+            elif drift == "next_cursor":
+                result["pagination"]["next_cursor"] = "opaque-more"
+            elif drift == "hidden_page":
+                result["counts"]["total_cycles"] = 2
+                result["counts"]["filtered"] = 2
+            else:
+                result["excluded"]["reason_counts"] = {
+                    "hidden_exclusion": 1
+                }
+            result.pop("snapshot_sha256")
+            result["snapshot_sha256"] = _canonical_hash(result)
+            return result
+
+    tower, _ = build_service(
+        settlement_cash=DriftingSettlement(verified=True)
+    )
+
+    with pytest.raises(TeamControlTowerError, match="cash|pagination|count"):
+        tower.brief(**scope())
+
+
+def test_partial_source_with_blocked_back_page_cannot_verify_attribution():
+    class PartialSettlement(FakeSettlementCash):
+        def project(self, **kwargs):
+            result = super().project(**kwargs)
+            result["status"] = "partial"
+            result["source_gaps"] = ["blocked_cycle_not_projected"]
+            result["blockers"] = [
+                {"code": "blocked_cycle_not_projected"}
+            ]
+            result.pop("snapshot_sha256")
+            result["snapshot_sha256"] = _canonical_hash(result)
+            return result
+
+    tower, _ = build_service(
+        settlement_cash=PartialSettlement(verified=True)
+    )
+    result = tower.brief(**scope())
+    truth = result["cash_at_risk"]["actual_cash_truth"]
+
+    assert truth["status"] == "PARTIAL"
+    assert truth["single_sku_attribution_status"] == "UNKNOWN"
+    assert truth["verified_cycle_count"] == 0
+    assert truth["verified_single_sku_cycle_count"] == 0
+    assert "settlement_cash_source_incomplete" in truth["reason_codes"]
+
+
+@pytest.mark.parametrize("source_status", ["blocked", "no_data"])
+def test_non_ready_cash_source_always_reports_zero_verified_counts(
+    source_status,
+):
+    if source_status == "no_data":
+        settlement = FakeSettlementCash(verified=False)
+    else:
+        class BlockedSettlement(FakeSettlementCash):
+            def project(self, **kwargs):
+                result = super().project(**kwargs)
+                result["status"] = "blocked"
+                result["source_gaps"] = ["blocked_source"]
+                result["blockers"] = [{"code": "blocked_source"}]
+                result.pop("snapshot_sha256")
+                result["snapshot_sha256"] = _canonical_hash(result)
+                return result
+
+        settlement = BlockedSettlement(verified=True)
+    tower, _ = build_service(settlement_cash=settlement)
+
+    truth = tower.brief(**scope())["cash_at_risk"]["actual_cash_truth"]
+
+    assert truth["verified_cycle_count"] == 0
+    assert truth["verified_single_sku_cycle_count"] == 0
+    assert truth["single_sku_attribution_status"] == "UNKNOWN"
+
+
+def test_multiple_order_facts_cannot_verify_single_sku_attribution():
+    tower, _ = build_service(
+        settlement_cash=FakeSettlementCash(
+            verified=True,
+            order_count=2,
+        )
+    )
+
+    with pytest.raises(TeamControlTowerError, match="attribution"):
+        tower.brief(**scope())
+
+
+def test_cash_truth_projection_exposes_no_business_canaries():
+    canaries = {
+        "PRODUCT-CANARY",
+        "SKU-CANARY",
+        "ORDER-CANARY",
+        "BANK-CANARY",
+        "AMOUNT-CANARY",
+    }
+
+    class CanarySettlement(FakeSettlementCash):
+        def project(self, **kwargs):
+            result = super().project(**kwargs)
+            cycle = result["cycles"][0]
+            cycle["product_id"] = "PRODUCT-CANARY"
+            cycle["sku"] = "SKU-CANARY"
+            cycle["customer_order"] = "ORDER-CANARY"
+            cycle["books"]["bank_cash"]["amount"] = "BANK-CANARY"
+            cycle["actual_cash_cm3"]["amount"] = "AMOUNT-CANARY"
+            result.pop("snapshot_sha256")
+            result["snapshot_sha256"] = _canonical_hash(result)
+            return result
+
+    tower, _ = build_service(
+        settlement_cash=CanarySettlement(verified=True)
+    )
+    result = tower.brief(**scope())
+    serialized = json.dumps(result, ensure_ascii=False)
+
+    assert all(canary not in serialized for canary in canaries)
+    assert result["cash_at_risk"]["actual_cash_truth"][
+        "single_sku_attribution_status"
+    ] == "VERIFIED"
+    assert result["cash_at_risk"]["actual_cash_truth"]["status"] == "PARTIAL"
+
+
+def test_settlement_exception_business_canaries_are_never_projected():
+    canaries = {
+        "PRODUCT-ERROR-CANARY",
+        "SKU-ERROR-CANARY",
+        "ORDER-ERROR-CANARY",
+        "BANK-ERROR-CANARY",
+        "AMOUNT-ERROR-CANARY",
+    }
+
+    class ExplodingSettlement:
+        def project(self, **_kwargs):
+            raise RuntimeError(" | ".join(sorted(canaries)))
+
+    tower, _ = build_service(settlement_cash=ExplodingSettlement())
+    result = tower.brief(**scope())
+    truth = result["cash_at_risk"]["actual_cash_truth"]
+    russia_gate = next(
+        gate
+        for gate in result["delivery_gate"]["gates"]
+        if gate["gate_ref"] == "russia_operating_truth_gate"
+    )
+    serialized = json.dumps(result, ensure_ascii=False)
+
+    assert truth["status"] == "CONFLICTED"
+    assert truth["reason_codes"] == ["settlement_cash_authority_drift"]
+    assert truth["source_refs"] == []
+    assert truth["single_sku_attribution_status"] == "UNKNOWN"
+    assert russia_gate["readiness_status"] != "VERIFIED"
+    assert result["decision_basis_sha256"]
+    assert result["next_action"]["continuation"]
+    assert all(canary not in serialized for canary in canaries)
 
 
 def test_cash_authority_change_invalidates_old_continuation():
@@ -864,14 +1195,42 @@ def test_cash_authority_change_invalidates_old_continuation():
         )
 
 
+def test_single_sku_lineage_change_invalidates_old_continuation():
+    settlement = FakeSettlementCash(
+        verified=True,
+        product_sha256="1" * 64,
+    )
+    tower, _ = build_service(settlement_cash=settlement)
+    first = tower.brief(**scope())
+    settlement.product_sha256 = "6" * 64
+
+    second = tower.brief(**scope())
+
+    assert first["decision_basis_sha256"] != second["decision_basis_sha256"]
+    assert first["next_action"]["continuation"] != second["next_action"][
+        "continuation"
+    ]
+    with pytest.raises(TeamControlTowerError, match="continuation is stale"):
+        tower.advance(
+            **scope(),
+            continuation=first["next_action"]["continuation"],
+            result="take",
+            rationale="使用 SKU lineage 变化前的 continuation",
+            evidence_ids=(),
+            idempotency_key="stale-sku-lineage",
+        )
+
+
 def test_observation_time_change_keeps_decision_basis_and_continuation_stable():
     observed_at = [datetime.now(UTC) + timedelta(days=1)]
+    settlement = FakeSettlementCash(verified=True)
     tower, _ = build_service(
-        settlement_cash=FakeSettlementCash(verified=True),
+        settlement_cash=settlement,
         clock=lambda: observed_at[0],
     )
     first = tower.brief(**scope())
     observed_at[0] += timedelta(seconds=5)
+    settlement.profit_snapshot_sha256 = "8" * 64
 
     second = tower.brief(**scope())
 

@@ -85,6 +85,33 @@ Actual Cash CM3 remains `no_data` unless the existing scoped profit ledger is
 reconciled at the same scope and cutoff, the three books conserve and all
 current Evidence is valid.
 
+The profit dependency is a typed authority, not a boolean capability flag.
+Settlement validates its contract ID, exact scope, cutoff, snapshot, read-only
+control envelope, complete order-grain pagination, one reconciled row, row
+hash and cash conservation. The Profit authority must issue
+`canonical_order_sku_receipt_v1`; a separate server-owned
+`ScopedProfitOrderSkuReceiptAuthority`, constructed from canonical dependencies
+rather than the mutable projection adapter, independently replays and verifies
+it. Runtime injects both objects and Settlement never discovers a verifier on
+the adapter. The receipt binds current scope/grant,
+the Order Fact receipt, unique `product_id` and SKU, and a stable Profit-row
+basis. A projection adapter cannot replace that verification by resealing its
+own snapshot, supplying a verified-looking method or asserting
+`native_exact_scope=true`. The verifier's `source_profit_snapshot_sha256` must
+equal the exact Profit snapshot consumed by Settlement. Only then may the cycle
+expose a hashed `single_sku_attribution`; its semantic lineage excludes the
+observation cutoff and top-level Profit snapshot while retaining every
+receipt identity and row hash. Raw
+Product, SKU, Order and amount values are not copied into the leadership
+projection. A weak, paginated, historical or mixed identity remains
+`no_data/blocked` even when the three books otherwise reconcile.
+
+This establishes an as-of order-to-canonical-SKU attribution. It does not by
+itself prove an Ozon offer mapping or that the return/refund observation window
+has closed; those require later independent authorities. Therefore the
+independent attribution status may be `VERIFIED`, while the legacy outer “real
+SKU cash loop” status and Russia readiness remain `PARTIAL/UNKNOWN`.
+
 ### Failure policy
 
 The affected business payload is withheld on:

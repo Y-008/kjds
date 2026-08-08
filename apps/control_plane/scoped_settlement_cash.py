@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .finance import FinanceEntryKind
+from .scoped_profit_ledger import ScopedProfitOrderSkuReceiptAuthority
 from .security import Principal
 
 
@@ -61,11 +62,13 @@ class ScopedSettlementCashWorkspace:
         evidence,
         scoped_evidence,
         profit_ledger,
+        profit_receipt_authority,
     ) -> None:
         self.finance = finance
         self.evidence = evidence
         self.scoped_evidence = scoped_evidence
         self.profit_ledger = profit_ledger
+        self.profit_receipt_authority = profit_receipt_authority
 
     def project(
         self,
@@ -405,12 +408,22 @@ class ScopedSettlementCashWorkspace:
         if review_required:
             blockers.append("finance_entry_review_required")
         if len(order_facts) > 1:
-            payload_hashes = {
-                str(item.get("payload_hash") or "")
+            order_identities = {
+                (
+                    str(item.get("payload_hash") or ""),
+                    str(item.get("product_id") or "").strip(),
+                    str((item.get("payload") or {}).get("sku") or "").strip(),
+                )
                 for item in order_facts
             }
-            if len(payload_hashes) > 1:
+            if len(order_identities) > 1:
                 blockers.append("finance_order_fact_current_conflict")
+        if order_facts and any(
+            not str(item.get("product_id") or "").strip()
+            or not str((item.get("payload") or {}).get("sku") or "").strip()
+            for item in order_facts
+        ):
+            blockers.append("finance_order_product_sku_binding_missing")
         if latest_run and latest_run["status"] in {
             "blocked_missing_fx",
             "blocked_review_required",
@@ -446,6 +459,7 @@ class ScopedSettlementCashWorkspace:
         actual_cash = self._actual_cash_cm3(
             key=key,
             stage=stage,
+            order_facts=order_facts,
             context=context,
         )
         evidence_ids = sorted(
@@ -561,26 +575,19 @@ class ScopedSettlementCashWorkspace:
         *,
         key: str,
         stage: str,
+        order_facts: list[dict[str, Any]],
         context: dict[str, Any],
     ) -> dict[str, Any]:
         if stage != "reconciled":
-            return {
-                "status": "no_data",
-                "amount": None,
-                "currency": None,
-                "reason": "three_book_reconciliation_incomplete",
-                "profit_snapshot_sha256": None,
-            }
+            return self._actual_cash_no_data(
+                "three_book_reconciliation_incomplete"
+            )
         if not bool(
             getattr(self.profit_ledger, "native_exact_scope", False)
         ):
-            return {
-                "status": "no_data",
-                "amount": None,
-                "currency": None,
-                "reason": "native_exact_scope_profit_source_missing",
-                "profit_snapshot_sha256": None,
-            }
+            return self._actual_cash_no_data(
+                "native_exact_scope_profit_source_missing"
+            )
         profit = self.profit_ledger.snapshot(
             store_ref=context["scope"]["store_ref"],
             order_id=key,
@@ -590,34 +597,350 @@ class ScopedSettlementCashWorkspace:
             principal=context["principal"],
             entity_scope=context["entity_scope"],
         )
+        if not isinstance(profit, dict):
+            return self._actual_cash_no_data(
+                "scoped_profit_authority_contract_invalid"
+            )
+        profit_hash = str(profit.get("snapshot_sha256") or "")
+        expected_scope = {
+            "tenant_ref": context["scope"]["tenant_ref"],
+            "entity_ref": context["scope"]["entity_ref"],
+            "store_ref": context["scope"]["store_ref"],
+            "scope_grant_authority_sha256": context["scope"][
+                "scope_grant_authority_sha256"
+            ],
+        }
+        profit_scope = profit.get("scope")
+        envelope = profit.get("control_envelope")
+        pagination = profit.get("pagination")
+        counts = profit.get("counts")
+        filters = profit.get("filters")
+        rows = profit.get("rows")
+        try:
+            profit_cutoff = self._timestamp(
+                profit.get("as_of"),
+                "profit.as_of",
+            )
+        except ValueError:
+            profit_cutoff = None
+        if (
+            profit.get("contract_id")
+            != "kjds-native-exact-scope-actual-profit-ledger-v1"
+            or not self._valid_snapshot(profit)
+            or profit.get("status") != "reconciled"
+            or profit.get("grain") != "order"
+            or profit.get("store_ref") != context["scope"]["store_ref"]
+            or profit.get("currency") != "CNY"
+            or profit_cutoff != context["cutoff"]
+            or not isinstance(profit_scope, dict)
+            or {
+                field: profit_scope.get(field)
+                for field in expected_scope
+            }
+            != expected_scope
+            or not isinstance(envelope, dict)
+            or envelope.get("read_only") is not True
+            or envelope.get("native_exact_scope") is not True
+            or envelope.get("scoped_input_read") is not True
+            or envelope.get("explicit_order_binding_only") is not True
+            or envelope.get("proportional_allocation_allowed") is not False
+            or envelope.get("actual_profit_requires_reconciliation") is not True
+            or envelope.get("external_write_allowed") is not False
+            or not isinstance(pagination, dict)
+            or pagination.get("page_size") != 100
+            or pagination.get("next_cursor") is not None
+            or not isinstance(counts, dict)
+            or {
+                field: counts.get(field)
+                for field in (
+                    "order_candidates",
+                    "considered",
+                    "reconciled",
+                    "excluded",
+                    "filtered",
+                    "page",
+                )
+            }
+            != {
+                "order_candidates": 1,
+                "considered": 1,
+                "reconciled": 1,
+                "excluded": 0,
+                "filtered": 1,
+                "page": 1,
+            }
+            or not isinstance(filters, dict)
+            or filters.get("order_id") != key
+            or any(
+                filters.get(field) is not None
+                for field in ("sku", "date_from", "date_to", "query")
+            )
+            or not isinstance(rows, list)
+            or len(rows) != 1
+            or profit.get("source_gaps") != []
+            or profit.get("blockers") != []
+        ):
+            return self._actual_cash_no_data(
+                "scoped_profit_authority_contract_invalid",
+                profit_snapshot_sha256=(profit_hash or None),
+            )
         matches = [
             row
-            for row in profit.get("rows", [])
-            if row.get("order_ref") == key
+            for row in rows
+            if isinstance(row, dict)
+            and row.get("order_ref") == key
             and row.get("status") == "reconciled"
             and row.get("actual_profit") is not None
         ]
         if (
             profit.get("status") != "reconciled"
             or len(matches) != 1
+            or len(order_facts) != 1
             or profit.get("unallocated")
-            or profit.get("excluded", {}).get("count")
+            or not isinstance(profit.get("excluded"), dict)
+            or profit["excluded"].get("count") != 0
         ):
-            return {
-                "status": "no_data",
-                "amount": None,
-                "currency": None,
-                "reason": "scoped_profit_reconciliation_incomplete",
-                "profit_snapshot_sha256": profit.get(
-                    "snapshot_sha256"
-                ),
+            return self._actual_cash_no_data(
+                "scoped_profit_reconciliation_incomplete",
+                profit_snapshot_sha256=(profit_hash or None),
+            )
+        row = matches[0]
+        row_cash = row.get("actual_cash_cm3")
+        conservation = row.get("cash_conservation")
+        receipt = row.get("canonical_order_sku_receipt")
+        product_id = str(row.get("product_id") or "").strip()
+        sku = str(row.get("sku") or "").strip()
+        identities = {
+            (
+                str(item.get("product_id") or "").strip(),
+                str((item.get("payload") or {}).get("sku") or "").strip(),
+            )
+            for item in order_facts
+        }
+        order_fact = order_facts[0] if len(order_facts) == 1 else None
+        scope_receipt = {
+            "tenant_ref": context["scope"]["tenant_ref"],
+            "entity_ref": context["scope"]["entity_ref"],
+            "store_ref": context["scope"]["store_ref"],
+            "scope_grant_authority_sha256": context["scope"][
+                "scope_grant_authority_sha256"
+            ],
+        }
+        expected_order_fact_receipt = (
+            self._hash(
+                {
+                    "fact_id_sha256": self._hash(order_fact["id"]),
+                    "payload_sha256": order_fact["payload_hash"],
+                    "order_ref_sha256": self._hash(key),
+                    "product_sha256": self._hash(product_id),
+                    "sku_sha256": self._hash(sku),
+                }
+            )
+            if isinstance(order_fact, dict)
+            else None
+        )
+        receipt_fields = {
+            "contract_id",
+            "issuer_contract_id",
+            "scope_sha256",
+            "scope_grant_authority_sha256",
+            "order_ref_sha256",
+            "product_sha256",
+            "sku_sha256",
+            "order_fact_receipt_sha256",
+            "profit_row_basis_sha256",
+            "receipt_sha256",
+        }
+        receipt_valid = (
+            isinstance(receipt, dict)
+            and set(receipt) == receipt_fields
+            and receipt.get("contract_id")
+            == "canonical_order_sku_receipt_v1"
+            and receipt.get("issuer_contract_id")
+            == "kjds-native-exact-scope-actual-profit-ledger-v1"
+            and all(
+                self._sha256(str(receipt.get(field) or ""))
+                for field in receipt_fields
+                if field not in {"contract_id", "issuer_contract_id"}
+            )
+            and receipt.get("scope_sha256") == self._hash(scope_receipt)
+            and receipt.get("scope_grant_authority_sha256")
+            == scope_receipt["scope_grant_authority_sha256"]
+            and receipt.get("order_ref_sha256") == self._hash(key)
+            and receipt.get("product_sha256") == self._hash(product_id)
+            and receipt.get("sku_sha256") == self._hash(sku)
+            and receipt.get("order_fact_receipt_sha256")
+            == expected_order_fact_receipt
+            and receipt.get("profit_row_basis_sha256")
+            == self._hash(
+                {
+                    field: value
+                    for field, value in row.items()
+                    if field
+                    not in {
+                        "canonical_order_sku_receipt",
+                        "snapshot_sha256",
+                    }
+                }
+            )
+            and receipt.get("receipt_sha256")
+            == self._hash(
+                {
+                    field: value
+                    for field, value in receipt.items()
+                    if field != "receipt_sha256"
+                }
+            )
+        )
+        receipt_authority = None
+        verifier = self.profit_receipt_authority
+        if (
+            receipt_valid
+            and type(verifier) is ScopedProfitOrderSkuReceiptAuthority
+        ):
+            try:
+                receipt_authority = verifier.verify_order_sku_receipt(
+                    receipt=receipt,
+                    store_ref=context["scope"]["store_ref"],
+                    order_id=key,
+                    as_of=context["cutoff"].isoformat(),
+                    principal=context["principal"],
+                    entity_scope=context["entity_scope"],
+                )
+            except Exception:
+                receipt_authority = None
+        receipt_authority_fields = {
+            "contract_id",
+            "status",
+            "as_of",
+            "scope",
+            "issuer_contract_id",
+            "receipt",
+            "receipt_sha256",
+            "source_profit_snapshot_sha256",
+            "control_envelope",
+            "snapshot_sha256",
+        }
+        receipt_authority_scope = (
+            receipt_authority.get("scope")
+            if isinstance(receipt_authority, dict)
+            else None
+        )
+        receipt_authority_envelope = (
+            receipt_authority.get("control_envelope")
+            if isinstance(receipt_authority, dict)
+            else None
+        )
+        receipt_authority_valid = (
+            isinstance(receipt_authority, dict)
+            and set(receipt_authority) == receipt_authority_fields
+            and self._valid_snapshot(receipt_authority)
+            and receipt_authority.get("contract_id")
+            == "kjds-profit-order-sku-receipt-authority-v1"
+            and receipt_authority.get("status") == "verified"
+            and receipt_authority.get("as_of")
+            == context["cutoff"].isoformat()
+            and receipt_authority.get("issuer_contract_id")
+            == "kjds-native-exact-scope-actual-profit-ledger-v1"
+            and receipt_authority.get("receipt") == receipt
+            and receipt_authority.get("receipt_sha256")
+            == receipt.get("receipt_sha256")
+            and receipt_authority.get("source_profit_snapshot_sha256")
+            == profit_hash
+            and isinstance(receipt_authority_scope, dict)
+            and {
+                field: receipt_authority_scope.get(field)
+                for field in expected_scope
             }
+            == expected_scope
+            and isinstance(receipt_authority_envelope, dict)
+            and receipt_authority_envelope.get("read_only") is True
+            and receipt_authority_envelope.get("native_exact_scope") is True
+            and receipt_authority_envelope.get("external_write_allowed")
+            is False
+        )
+        if (
+            row.get("order_count") != 1
+            or not product_id
+            or not sku
+            or identities != {(product_id, sku)}
+            or not self._valid_snapshot(row)
+            or not receipt_valid
+            or not receipt_authority_valid
+            or row.get("currency") != "CNY"
+            or not self._decimal(row.get("actual_profit"))
+            or not isinstance(row_cash, dict)
+            or row_cash.get("status") != "available"
+            or not self._decimal(row_cash.get("amount"))
+            or Decimal(str(row_cash.get("amount")))
+            != Decimal(str(row.get("actual_profit")))
+            or row_cash.get("currency") != "CNY"
+            or not isinstance(conservation, dict)
+            or conservation.get("conserved") is not True
+            or not self._decimal(conservation.get("conservation_delta"))
+            or Decimal(str(conservation.get("conservation_delta"))) != 0
+        ):
+            return self._actual_cash_no_data(
+                "single_sku_profit_attribution_invalid",
+                profit_snapshot_sha256=profit_hash,
+            )
+        attribution = {
+            "schema_version": "single-sku-attribution/2",
+            "status": "verified",
+            "identity_count": 1,
+            "scope_sha256": receipt["scope_sha256"],
+            "scope_grant_authority_sha256": receipt[
+                "scope_grant_authority_sha256"
+            ],
+            "product_sha256": receipt["product_sha256"],
+            "sku_sha256": receipt["sku_sha256"],
+            "order_ref_sha256": receipt["order_ref_sha256"],
+            "order_fact_receipt_sha256": receipt[
+                "order_fact_receipt_sha256"
+            ],
+            "profit_row_basis_sha256": receipt[
+                "profit_row_basis_sha256"
+            ],
+            "profit_row_sha256": row["snapshot_sha256"],
+            "profit_receipt_sha256": receipt["receipt_sha256"],
+        }
+        attribution["lineage_sha256"] = self._hash(attribution)
         return {
             "status": "available",
-            "amount": matches[0]["actual_profit"],
+            "amount": row["actual_profit"],
             "currency": profit["currency"],
             "reason": None,
-            "profit_snapshot_sha256": profit["snapshot_sha256"],
+            "profit_snapshot_sha256": profit_hash,
+            "single_sku_attribution": attribution,
+        }
+
+    @staticmethod
+    def _actual_cash_no_data(
+        reason: str,
+        *,
+        profit_snapshot_sha256: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "status": "no_data",
+            "amount": None,
+            "currency": None,
+            "reason": reason,
+            "profit_snapshot_sha256": profit_snapshot_sha256,
+            "single_sku_attribution": {
+                "schema_version": "single-sku-attribution/2",
+                "status": "no_data",
+                "identity_count": 0,
+                "scope_sha256": None,
+                "scope_grant_authority_sha256": None,
+                "product_sha256": None,
+                "sku_sha256": None,
+                "order_ref_sha256": None,
+                "order_fact_receipt_sha256": None,
+                "profit_row_basis_sha256": None,
+                "profit_row_sha256": None,
+                "profit_receipt_sha256": None,
+                "lineage_sha256": None,
+            },
         }
 
     def _fact_issues(
@@ -1160,7 +1483,14 @@ class ScopedSettlementCashWorkspace:
         if not cycles:
             return "no_data"
         if all(item["stage"] == "reconciled" for item in cycles):
-            return "ready"
+            return (
+                "ready"
+                if all(
+                    item["actual_cash_cm3"]["status"] == "available"
+                    for item in cycles
+                )
+                else "partial"
+            )
         if all(item["stage"] == "blocked" for item in cycles):
             return "blocked"
         return "partial"

@@ -217,7 +217,7 @@ HTTP 200 使用完整严格响应模型，保存的 OpenAPI 以具名 `$ref` 固
 →老板 Web→外部权威，且每片可独立测试/回滚。新增外部权限、真实付款、合同、平台写、
 真人任命或重大范围变化才暂停请求决定；测试通过不得升级任何未到达的经营 Evidence。
 
-## 13. Campaign 调度与真实现金闭环
+## 13. Campaign 调度与 as-of SKU 现金归因
 
 四阶段不是第二套 flow。每个阶段按需编译为 `team_control:campaign:*` OperatingTask；打开和
 领取只表示责任接管，首阶段带 Evidence 的 `start` 才把 kickoff 从 `UNKNOWN` 变为
@@ -227,9 +227,23 @@ HTTP 200 使用完整严格响应模型，保存的 OpenAPI 以具名 `$ref` 固
 
 现金面只读现有 `ScopedSettlementCashWorkspace`。同一 cycle 必须同时满足订单 Fact、平台
 结算、银行现金、三账 `reconciled`、Actual Cash CM3 available、Evidence 当前且 exact scope，
-才显示“至少一个真实 SKU 现金闭环 = VERIFIED”。老板页只显示状态和计数，不显示订单号、
-银行标识或金额。即便该闭环已验证，缺 opening balance、CashPlan、批准 FX、签署现金底线或
-最大损失时，13 周现金和正式俄罗斯经营 Gate 仍保持 `UNKNOWN/BLOCKED`。
+并由严格同 scope/current-authority 的 order-grain Profit 权威发行 `canonical_order_sku_receipt_v1`，
+再由 runtime 从 canonical dependencies 独立构造的 server-owned
+`ScopedProfitOrderSkuReceiptAuthority` 回读验证。该对象必须与可变 Profit adapter 不同，Settlement
+不得从 adapter 动态取得 verifier，且回读 source snapshot 必须等于实际消费 Profit snapshot。
+receipt 绑定唯一 Order Fact、canonical Product/SKU、稳定 Profit row
+basis 与现金守恒，
+才把独立字段 `single_sku_attribution_status` 显示为 `VERIFIED`。兼容老板页既有“真实 SKU
+现金闭环”标签的外层 `actual_cash_truth.status` 必须保持 `PARTIAL`；老板页只显示状态、计数和
+hashed lineage，不显示 Product、SKU、订单号、银行标识或金额。缺 SKU 归因的 reconciled cycle
+同样为 `PARTIAL`；offer 映射和退货退款观察窗终结仍为 `BLOCKED_EVIDENCE`，因此不得称最终全
+生命周期闭环。即便当前归因已验证，俄罗斯经营 readiness、13 周现金和正式 Gate 仍保持
+`UNKNOWN/BLOCKED`，直至相应独立权威全部到达。
+
+归因 verified count 还要求 source=`ready`、完整单页、excluded=0、无 gap/blocker，且
+`order_count=identity_count=1`；partial/blocked/no_data 一律归零。完整审计 snapshot 保留观测
+`as_of` 与顶层 Profit snapshot，语义 lineage 则排除这两类时间噪声，所以同一业务 T/T+5 不会
+使 continuation 过期，而 Order/Product/SKU/row/current-authority 任一变化仍会使旧动作 stale。
 
 ## 14. 全域 AI ERP Squad 使用规则
 
