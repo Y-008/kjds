@@ -215,15 +215,28 @@
       "id": "M",
       "name": "global_data_coverage",
       "accountable_role": "global_data_coverage_owner",
-      "current_task": null,
+      "current_task": {
+        "task_id": "BAS-215C",
+        "state": "in_progress",
+        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
+        "write_scope": [
+          "team_control_brief_response_contract",
+          "team_control_openapi_snapshot",
+          "enterprise_ai_erp_web_contract",
+          "team_control_enterprise_ai_erp_panels",
+          "master_spec_and_control_docs",
+          "bas215c_tests_and_evidence"
+        ],
+        "blocked_on": []
+      },
       "next_task_id": null
     }
   ],
   "shared_write_leases": {
     "alembic_migration": "BAS-183",
     "api_aggregation_root": null,
-    "master_spec": null,
-    "openapi_snapshot": null
+    "master_spec": "BAS-215C",
+    "openapi_snapshot": "BAS-215C"
   },
   "control_boundary": {
     "registry_grants_business_authority": false,
