@@ -420,6 +420,7 @@ def test_bas217_claim_is_exact_and_does_not_take_runtime_or_schema_leases():
             "focused_finance_control_tests",
             "engineering_evidence",
             "profit_row_identity_receipt",
+            "runtime_owned_profit_receipt_authority",
         ],
         "blocked_on": [],
     }
@@ -436,8 +437,13 @@ def test_bas217_claim_is_exact_and_does_not_take_runtime_or_schema_leases():
     assert "canonical_order_sku_receipt_v1" in row
     assert "apps/control_plane/scoped_profit_ledger.py" in row
     assert "tests/test_scoped_profit_ledger.py" in row
+    assert "apps/control_plane/runtime.py" in row
+    assert "tests/test_profit_receipt_runtime_composition.py" in row
+    assert "ScopedProfitOrderSkuReceiptAuthority" in row
+    assert "source_profit_snapshot_sha256" in row
+    assert "恶意 adapter" in row
     assert "排除观测 `as_of` 和顶层 Profit snapshot" in row
     assert "Ozon offer 映射" in row
     assert "BLOCKED_EVIDENCE" in row
-    assert "不改 DB/migration/runtime/router/API/OpenAPI/Web/G1" in row
+    assert "不改 DB/migration/router/API/OpenAPI/Web/G1" in row
     assert row.endswith("| IN_PROGRESS |")

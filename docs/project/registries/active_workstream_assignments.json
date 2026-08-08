@@ -67,7 +67,8 @@
           "master_spec_and_control_docs",
           "focused_finance_control_tests",
           "engineering_evidence",
-          "profit_row_identity_receipt"
+          "profit_row_identity_receipt",
+          "runtime_owned_profit_receipt_authority"
         ],
         "blocked_on": []
       },
