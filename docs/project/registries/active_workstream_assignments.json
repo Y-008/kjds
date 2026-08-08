@@ -196,7 +196,19 @@
       "id": "J",
       "name": "media_agent_platform",
       "accountable_role": "media_agent_platform_owner",
-      "current_task": null,
+      "current_task": {
+        "task_id": "BAS-184",
+        "state": "in_progress",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "write_scope": [
+          "commander_tool_gateway_contract",
+          "campaign_brief_compilation",
+          "versioned_media_tool_dispatch",
+          "media_job_safe_projection",
+          "bas184_tests_and_evidence"
+        ],
+        "blocked_on": []
+      },
       "next_task_id": null
     },
     {

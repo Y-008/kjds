@@ -16,6 +16,22 @@ def _registry():
     return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
 
 
+def _bas184_current_task():
+    return {
+        "task_id": "BAS-184",
+        "state": "in_progress",
+        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "write_scope": [
+            "commander_tool_gateway_contract",
+            "campaign_brief_compilation",
+            "versioned_media_tool_dispatch",
+            "media_job_safe_projection",
+            "bas184_tests_and_evidence",
+        ],
+        "blocked_on": [],
+    }
+
+
 def test_workstream_registry_has_thirteen_single_wip_lanes():
     registry = _registry()
     lanes = registry["lanes"]
@@ -116,12 +132,12 @@ def test_social_platform_and_channel_operations_have_separate_lanes():
     assert lanes["I"]["name"] == "russia_market_intelligence"
 
 
-def test_bas183_release_frees_media_lane_and_migration_lease():
+def test_bas184_claims_media_lane_after_bas183_release():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     media = lanes["J"]
 
-    assert media["current_task"] is None
+    assert media["current_task"] == _bas184_current_task()
     assert media["next_task_id"] is None
     assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
@@ -138,6 +154,13 @@ def test_bas183_release_frees_media_lane_and_migration_lease():
     assert "9066a3fc" in bas183_row
     assert "本切片未运行 G1" in bas183_row
     assert bas183_row.endswith("| DONE_ENGINEERING |")
+    bas184_row = next(
+        line for line in plan.splitlines() if line.startswith("| BAS-184 |")
+    )
+    assert "CommanderToolGateway" in bas184_row
+    assert "UNKNOWN_OUTCOME" in bas184_row
+    assert "不新增数据库/迁移/API/router/OpenAPI/Web/runtime/compose" in bas184_row
+    assert bas184_row.endswith("| IN_PROGRESS |")
 
 
 def test_bas196_release_frees_local_demo_lane():
