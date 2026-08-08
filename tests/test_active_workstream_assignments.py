@@ -419,6 +419,7 @@ def test_bas217_claim_is_exact_and_does_not_take_runtime_or_schema_leases():
             "master_spec_and_control_docs",
             "focused_finance_control_tests",
             "engineering_evidence",
+            "profit_row_identity_receipt",
         ],
         "blocked_on": [],
     }
@@ -432,6 +433,10 @@ def test_bas217_claim_is_exact_and_does_not_take_runtime_or_schema_leases():
     plan = PLAN_PATH.read_text(encoding="utf-8")
     row = next(line for line in plan.splitlines() if line.startswith("| BAS-217 |"))
     assert "ScopedProfitLedgerAuthority" in row
+    assert "canonical_order_sku_receipt_v1" in row
+    assert "apps/control_plane/scoped_profit_ledger.py" in row
+    assert "tests/test_scoped_profit_ledger.py" in row
+    assert "排除观测 `as_of` 和顶层 Profit snapshot" in row
     assert "Ozon offer 映射" in row
     assert "BLOCKED_EVIDENCE" in row
     assert "不改 DB/migration/runtime/router/API/OpenAPI/Web/G1" in row
