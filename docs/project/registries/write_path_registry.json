@@ -218,6 +218,7 @@
     }
   ],
   "outbound_http_modules": [
+    "apps/control_plane/marketplace_research_mcp.py",
     "apps/control_plane/providers.py",
     "apps/control_plane/ozon_read_worker.py",
     "apps/control_plane/ozon_worker.py"
