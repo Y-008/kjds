@@ -90,6 +90,9 @@ UNIQUE_SOURCE_REF_SOURCES = {
     "seller_erp_bridge_source",
     "supplier_rfq_dispatch",
     "supplier_rfq_package",
+    "governed-media-job-request",
+    "governed-media-job-transition",
+    "governed-media-job-usage",
 }
 
 CHANNEL_ACCOUNT_RESERVED_SOURCES = frozenset(
@@ -178,6 +181,20 @@ CLOSED_LOOP_RESERVED_CONTRACTS = frozenset(
         "kjds-closed-loop-business-outcome-receipt-v1",
         "kjds-closed-loop-review-authority-receipt-v1",
         "kjds-governed-closed-loop-evolution-event-v1",
+    }
+)
+MEDIA_JOB_RESERVED_SOURCES = frozenset(
+    {
+        "governed-media-job-request",
+        "governed-media-job-transition",
+        "governed-media-job-usage",
+    }
+)
+MEDIA_JOB_RESERVED_CONTRACTS = frozenset(
+    {
+        "kjds-governed-media-job-request-v1",
+        "kjds-governed-media-job-transition-v1",
+        "kjds-governed-media-job-usage-v1",
     }
 )
 CLOSED_LOOP_AUTHORITY_SCHEMA_MANIFESTS: dict[str, dict[str, Any]] = {
@@ -455,8 +472,10 @@ COVERAGE_INTAKE_CONTRACTS: dict[str, dict[str, str]] = {
 }
 _RESERVED_CAPTURE_AUTHORITY = object()
 _RESEARCH_CAPTURE_AUTHORITY = object()
+_MEDIA_JOB_CAPTURE_AUTHORITY = object()
 RESEARCH_SIGNAL_EVIDENCE_ROLE = "research_signal"
 RESEARCH_CAPTURE_CONTRACT_ID = "kjds-research-capture-request-v1"
+MEDIA_JOB_EVIDENCE_CONTRACT_ID = "kjds-governed-media-job-request-v1"
 
 TEAM_AGENT_AUTHORITY_CONTRACTS: dict[str, dict[str, Any]] = {
     "eval_set": {
@@ -708,6 +727,20 @@ class EvidenceRecordRow(Base):
                 "'closed-loop-business-outcome-receipt',"
                 "'closed-loop-review-authority-receipt',"
                 "'governed-closed-loop-evolution')"
+            ),
+        ),
+        Index(
+            "uq_media_job_evidence_source_ref",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text(
+                "source IN ('governed-media-job-request',"
+                "'governed-media-job-transition','governed-media-job-usage')"
+            ),
+            sqlite_where=text(
+                "source IN ('governed-media-job-request',"
+                "'governed-media-job-transition','governed-media-job-usage')"
             ),
         ),
         Index(
@@ -973,7 +1006,8 @@ class EvidenceService:
             text(
                 "SELECT pg_advisory_xact_lock("
                 "hashtextextended("
-                "concat_ws(chr(31), :tenant_ref, :store_ref, :subject_actor_id), 0"
+                "concat_ws(chr(31), CAST(:tenant_ref AS text), "
+                "CAST(:store_ref AS text), CAST(:subject_actor_id AS text)), 0"
                 ")"
                 ")"
             ),
@@ -1292,6 +1326,14 @@ class EvidenceService:
                 "Reserved closed-loop Evidence requires its dedicated authority adapter"
             )
         if (
+            source.strip().lower() in MEDIA_JOB_RESERVED_SOURCES
+            or str(metadata.get("contract_id") or "").strip()
+            in MEDIA_JOB_RESERVED_CONTRACTS
+        ) and _reserved_authority is not _MEDIA_JOB_CAPTURE_AUTHORITY:
+            raise ValueError(
+                "Reserved media-job Evidence requires its dedicated authority adapter"
+            )
+        if (
             str(metadata.get("evidence_role") or "").strip()
             == RESEARCH_SIGNAL_EVIDENCE_ROLE
             or str(metadata.get("research_capture_contract_id") or "").strip()
@@ -1311,7 +1353,10 @@ class EvidenceService:
 
         digest = hashlib.sha256(content).hexdigest()
         if _recorded_at is not None:
-            if _reserved_authority is not _RESERVED_CAPTURE_AUTHORITY:
+            if _reserved_authority not in {
+                _RESERVED_CAPTURE_AUTHORITY,
+                _MEDIA_JOB_CAPTURE_AUTHORITY,
+            }:
                 raise ValueError("Explicit Evidence recorded_at is reserved")
             now = parse_timestamp(_recorded_at, "recorded_at")
         else:
@@ -1444,6 +1489,7 @@ class EvidenceService:
         source_ref: str,
         grade: EvidenceGrade,
         effective_at: str,
+        recorded_at: str,
         created_by: str,
         metadata: dict[str, Any],
         session: Session,
@@ -1469,6 +1515,78 @@ class EvidenceService:
             metadata=metadata,
             _reserved_authority=_RESEARCH_CAPTURE_AUTHORITY,
             _session=session,
+        )
+
+    def capture_media_job_evidence(
+        self,
+        *,
+        content: bytes,
+        filename: str,
+        content_type: str,
+        source: str,
+        source_ref: str,
+        grade: EvidenceGrade,
+        effective_at: str,
+        recorded_at: str,
+        created_by: str,
+        metadata: dict[str, Any],
+        session: Session,
+    ) -> EvidenceRecord:
+        """Capture a job-owned Evidence record without opening generic capture."""
+
+        if source not in MEDIA_JOB_RESERVED_SOURCES:
+            raise ValueError("Invalid media-job Evidence source")
+        contracts = {
+            "governed-media-job-request": (
+                "kjds-governed-media-job-request-v1",
+                "media_job_request_fingerprint_sha256",
+            ),
+            "governed-media-job-transition": (
+                "kjds-governed-media-job-transition-v1",
+                "event_sha256",
+            ),
+            "governed-media-job-usage": (
+                "kjds-governed-media-job-usage-v1",
+                "usage_receipt_sha256",
+            ),
+        }
+        expected_contract, binding_field = contracts[source]
+        expected_keys = {
+            "contract_id",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "subject_actor_id",
+            binding_field,
+        }
+        if set(metadata) != expected_keys or any(
+            not isinstance(metadata[key], str) or not metadata[key].strip()
+            for key in expected_keys
+        ):
+            raise ValueError("Invalid media-job Evidence metadata")
+        if metadata["contract_id"] != expected_contract:
+            raise ValueError("Invalid media-job Evidence contract")
+        for hash_field in ("scope_grant_authority_sha256", binding_field):
+            value = metadata[hash_field].lower()
+            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+                raise ValueError("Invalid media-job Evidence metadata hash")
+        if not source_ref.startswith("media-job://"):
+            raise ValueError("Invalid media-job Evidence source reference")
+        return self.capture(
+            content=content,
+            filename=filename,
+            content_type=content_type,
+            source=source,
+            source_ref=source_ref,
+            grade=grade,
+            effective_at=effective_at,
+            effective_until=None,
+            created_by=created_by,
+            metadata=metadata,
+            _reserved_authority=_MEDIA_JOB_CAPTURE_AUTHORITY,
+            _session=session,
+            _recorded_at=recorded_at,
         )
     def get(self, evidence_id: str) -> EvidenceRecord:
         with Session(self.engine) as session:

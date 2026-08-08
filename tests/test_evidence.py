@@ -77,6 +77,32 @@ def test_execution_evidence_source_ref_rejects_conflicting_content():
         assert session.query(EvidenceRecordRow).count() == 1
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "governed-media-job-request",
+        "governed-media-job-transition",
+        "governed-media-job-usage",
+    ],
+)
+def test_generic_capture_cannot_forge_media_job_evidence(source):
+    _, service = make_service()
+
+    with pytest.raises(ValueError, match="dedicated authority adapter"):
+        service.capture(
+            content=b"{}",
+            filename="forged.json",
+            content_type="application/json",
+            source=source,
+            source_ref="media-job://forged",
+            grade=EvidenceGrade.A,
+            effective_at="2026-08-08T00:00:00+00:00",
+            effective_until=None,
+            created_by="attacker",
+            metadata={},
+        )
+
+
 def test_governed_agent_run_evidence_source_ref_is_globally_immutable():
     engine, service = make_service()
     common = {
