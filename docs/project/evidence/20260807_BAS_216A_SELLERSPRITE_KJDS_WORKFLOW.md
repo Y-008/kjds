@@ -132,6 +132,102 @@ proves deterministic pagination conservation inside this test artifact, not that
 live account or UI contained exactly that number. Independent real-sample reconciliation remains a
 later production Gate.
 
+## Operator Workflow Benchmark And KJDS Improvement
+
+The Xiaohongshu benchmark was re-opened on 2026-08-08 and inspected as the actual 3 minute 33 second
+note, rather than inferred from its title. The visible post and author replies support three limited
+observations: the author still uses the workflow, considers product research useful, and reports a
+meaningful cost trade-off; a direct-AI alternative is described as possible but less accurate and
+less efficient. The note does not expose a reproducible source receipt, exact prompt, complete tool
+trace, cost ledger, or marketplace reconciliation. KJDS therefore adopts the useful orchestration
+pattern while replacing the unverified result path with the following owned funnel.
+
+```text
+Ozon candidate family / explicit research question
+        |
+        v
+Stage 0: exact scope + budget + stop policy
+        |
+        v
+Stage 1: SellerSprite product and market screen (Amazon auxiliary signal)
+        |
+        v
+Stage 2: trend, traffic, review and trademark corroboration
+        |
+        v
+MarketplaceResearchSourceReceipt -> MarketplaceResearchWorkflow.project()
+        |
+        v
+KJDS proposal-only candidate observation
+        |
+        +--> Ozon 28-day demand/competition/return evidence
+        +--> 1688 exact offer/SKU/spec/tier comparison
+        +--> written RFQ reply and landed-cost evidence
+        +--> compliance, media and listing readiness
+        |
+        v
+human decision; no automatic Product, purchase or listing write
+```
+
+### Stage contract
+
+| Stage | Minimal provider role | KJDS output | Stop / reject condition |
+| --- | --- | --- | --- |
+| 0. Question | no provider call | one market, one product family, one time window, one metric set, one call budget | scope, license, cost approval or exact authority missing |
+| 1. Screen | `product_research`, `market_research` | small ASIN shortlist plus immutable query/field/page receipt | no candidate clears transparent demand, growth and competition thresholds |
+| 2. Corroborate | `asin_sales_trend`, `traffic_keyword`, `review`, `trademark_list` | six-role normalized observation set for each surviving ASIN | missing page, schema drift, stale observation, trademark uncertainty or contradictory identity |
+| 3. Project | no live provider call | proposal-only KJDS candidate observation with blockers and citations | receipt/hash/authority/idempotency validation fails |
+| 4. Ozon reconcile | Ozon read-only evidence only | RU-market 28-day comparison on the same stable product family | Amazon-only demand, title similarity, or seller presence is the only support |
+| 5. Source | existing 1688 capture and RFQ flow | exact offer/SKU/spec/MOQ/tier matrix plus dated written quote evidence | SKU ambiguity, cross-row tier leakage, unknown reply, captcha, or no written formal quote |
+| 6. Decide | no provider ownership | human review packet containing margin assumptions, compliance and media/listing blockers | landed cost, FX/date, fee, return risk or compliance remains unknown |
+
+SellerSprite data is deliberately not normalized as Ozon truth. ASIN, Amazon site, source timestamp,
+provider tool/version and original scalar values remain visible so a reviewer can distinguish an
+Amazon corroboration signal from RU-market evidence. Title similarity alone cannot merge a
+SellerSprite ASIN with an Ozon offer or a 1688 SKU; the mapping must bind stable identifiers and an
+explicit product-family/specification comparison.
+
+### Cost and context controls
+
+- Start with the two cheapest information-gain calls: product screen and market screen. Do not run
+  trend, traffic, review or trademark tools for rejected candidates.
+- Request only the registry-selected scalar fields. `returnFields` is a provider optimization, not
+  permission to omit fields required for conservation or reconciliation.
+- Cache only immutable content-addressed receipts by exact query, site, time window, provider/tool
+  version and page checkpoint. A cache hit never refreshes current authority or makes stale data
+  current.
+- Use a fixed per-run candidate ceiling and per-candidate tool budget. Any page failure, ambiguous
+  identity, exhausted entitlement or schema change stops that candidate without substituting model
+  guesses.
+- Rank proposals only after all six semantic roles are present. The heuristic is an investigation
+  order, not expected profit, purchase authority or listing approval.
+- Preserve raw provider cost/visit metadata outside prompts when a future live contract exposes it;
+  reconcile the run receipt against the account statement before increasing the budget.
+
+### Operating prompts are views, not contracts
+
+An operator may ask, for example, for low-concentration products with growing demand and review
+pain points. Codex must translate that request into the frozen stage contract, show the exact scope
+and estimated call budget before live execution, and return a proposal packet containing inputs,
+tool/page receipts, normalized observations, blockers and unresolved unknowns. Changing prompt
+wording cannot relax the selected tools, authority checks, evidence grade, call budget, stop rules
+or zero-write envelope.
+
+### Production entry sequence
+
+The personal MCP product may be used by one operator only after its current terms and entitlement
+are verified. SellerSprite's published key policy says internal-system integration or shared use
+must use its API service instead of a personal MCP key. KJDS therefore keeps two distinct future
+entry paths that converge on the same receipt contract:
+
+1. single-operator pilot: read-only MCP inventory approval, one bounded real sample, UI/export
+   reconciliation and revocation test;
+2. KJDS production/shared workflow: separately contracted API adapter with the same source receipt,
+   scope, cost, rate, lineage and rollback gates.
+
+Neither path is active in the current environment. `credential_missing` is the expected preflight
+result, and it proves only that no secret was configured and no network or tool call occurred.
+
 ## Frontier Review
 
 Relevant frontier candidates were reviewed against the existing registry. Stable MCP core and
