@@ -33,13 +33,21 @@ def _program_from(tmp_path: Path, value: dict) -> RequirementsTraceabilityProgra
     return RequirementsTraceabilityProgram(_write_registry(tmp_path, value))
 
 
+def _entry(value: dict, trace_ref: str) -> dict:
+    return next(
+        item
+        for item in value["traceability_entries"]
+        if item["trace_ref"] == trace_ref
+    )
+
+
 def test_project_compiles_every_historical_requirement_status():
     projection = RequirementsTraceabilityProgram().project()
 
     assert projection["contract_id"] == "kjds-requirements-traceability-program-v1"
     assert projection["contract_integrity"]["status"] == "VERIFIED"
-    assert projection["counts"]["total"] == 12
-    assert sum(projection["counts"]["by_status"].values()) == 12
+    assert projection["counts"]["total"] == 13
+    assert sum(projection["counts"]["by_status"].values()) == 13
     assert set(projection["counts"]["by_status"]) == set(
         RequirementsTraceabilityProgram.STATUS_VOCABULARY
     )
@@ -69,14 +77,23 @@ def test_every_entry_contains_the_user_requested_traceability_fields():
         assert entry["business_truth_proven"] is False
 
 
-def test_isolated_automation_is_not_reported_as_mainline_integration():
+def test_automation_core_and_isolated_runtime_are_traced_separately():
     projection = RequirementsTraceabilityProgram().project()
+    core = next(
+        item
+        for item in projection["traceability_entries"]
+        if item["trace_ref"] == "TRACE-005A"
+    )
     isolated = next(
         item
         for item in projection["traceability_entries"]
-        if item["trace_ref"] == "TRACE-005"
+        if item["trace_ref"] == "TRACE-005B"
     )
 
+    assert core["status"] == "ADOPTED_ENGINEERING"
+    assert core["current_version"]["ref"] == "bas-219a-mainline-core@1.0.0"
+    assert all(not path.startswith("isolated:") for path in core["implementation_paths"])
+    assert "runtime_api_web_integration" in core["unfinished_items"]
     assert isolated["status"] == "ISOLATED_IMPLEMENTED"
     assert isolated["current_version"]["branch"] == (
         "feat/automated-commerce-linkback-20260808"
@@ -202,7 +219,7 @@ def test_missing_repository_reference_fails_closed(tmp_path):
 
 def test_isolated_entry_cannot_claim_mainline_or_drop_integration_gate(tmp_path):
     registry = _registry()
-    isolated = registry["traceability_entries"][4]
+    isolated = _entry(registry, "TRACE-005B")
     isolated["current_version"]["mainline_integration_status"] = "DONE"
     isolated["gate_refs"].remove("selective_mainline_integration_gate")
 
@@ -222,7 +239,7 @@ def test_non_isolated_entry_cannot_reference_isolated_implementation(tmp_path):
 
 def test_pilot_pending_requires_entry_and_exit_gates(tmp_path):
     registry = _registry()
-    del registry["traceability_entries"][5]["pilot"]
+    del _entry(registry, "TRACE-006")["pilot"]
 
     with pytest.raises(RequirementsTraceabilityError, match="pilot gate contract"):
         _program_from(tmp_path, registry)
@@ -230,7 +247,7 @@ def test_pilot_pending_requires_entry_and_exit_gates(tmp_path):
 
 def test_blocked_evidence_requires_named_missing_authorities(tmp_path):
     registry = _registry()
-    del registry["traceability_entries"][9]["blocking_evidence_refs"]
+    del _entry(registry, "TRACE-010")["blocking_evidence_refs"]
 
     with pytest.raises(RequirementsTraceabilityError, match="blocking_evidence_refs"):
         _program_from(tmp_path, registry)
@@ -238,7 +255,7 @@ def test_blocked_evidence_requires_named_missing_authorities(tmp_path):
 
 def test_rejected_duplicate_requires_canonical_owner_and_reason(tmp_path):
     registry = _registry()
-    del registry["traceability_entries"][10]["canonical_owner_ref"]
+    del _entry(registry, "TRACE-011")["canonical_owner_ref"]
 
     with pytest.raises(RequirementsTraceabilityError, match="canonical_owner_ref"):
         _program_from(tmp_path, registry)
@@ -264,9 +281,7 @@ def test_truth_boundary_must_remain_all_false(tmp_path):
 
 def test_contract_only_cannot_be_relabelled_as_an_engineering_version(tmp_path):
     registry = _registry()
-    registry["traceability_entries"][6]["current_version"]["kind"] = (
-        "engineering_commit"
-    )
+    _entry(registry, "TRACE-007")["current_version"]["kind"] = "engineering_commit"
 
     with pytest.raises(RequirementsTraceabilityError, match="incompatible with status"):
         _program_from(tmp_path, registry)
@@ -274,7 +289,7 @@ def test_contract_only_cannot_be_relabelled_as_an_engineering_version(tmp_path):
 
 def test_blocked_entry_cannot_be_relabelled_as_adopted_engineering(tmp_path):
     registry = _registry()
-    blocked = registry["traceability_entries"][9]
+    blocked = _entry(registry, "TRACE-010")
     blocked["status"] = "ADOPTED_ENGINEERING"
 
     with pytest.raises(RequirementsTraceabilityError, match="incompatible with status"):

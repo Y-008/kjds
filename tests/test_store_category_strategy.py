@@ -12,6 +12,7 @@ from apps.control_plane.security import Principal
 from apps.control_plane.sql_repository import Base
 from apps.control_plane.store_category_strategy import (
     StoreCategoryStrategyConflict,
+    StoreCategoryStrategyRegistry,
     StoreCategoryStrategyWorkspace,
     StoreOperatingPlanSnapshotRow,
     StoreOperatingProfileRow,
@@ -196,6 +197,199 @@ def test_exact_official_category_routes_to_primary_store_without_guessing() -> N
     assert route["external_write_allowed"] is False
 
 
+def test_research_backed_playbook_registry_is_open_ended_and_source_bound() -> None:
+    registry = StoreCategoryStrategyRegistry()
+
+    assert len(registry.operating_playbooks) >= 10
+    assert "evidence_first_micro_pilot" in registry.operating_playbooks
+    assert "controlled_paid_growth" in registry.operating_playbooks
+    assert "aging_stock_exit" in registry.operating_playbooks
+    assert all(
+        contract["source_refs"]
+        for contract in registry.operating_playbooks.values()
+    )
+    assert registry.snapshot()["operating_playbook_semantics"].startswith(
+        "open_ended_research_backed"
+    )
+
+
+def test_candidate_gets_stage_specific_playbooks_without_external_authority() -> None:
+    workspace, _ = service()
+    captured = workspace.capture_profile(
+        profile_request(),
+        principal=principal(),
+        entity_scope=scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+    )
+
+    result = workspace.compile_candidate(candidate(), profile=captured["profile"])
+    portfolio = result["store_category_route"]["operating_portfolio"]
+    items = {item["playbook_id"]: item for item in portfolio["items"]}
+
+    assert portfolio["recommended_playbook_id"] == "supplier_evidence_sprint"
+    assert items["supplier_evidence_sprint"]["status"] == "proposal_ready"
+    assert items["supplier_evidence_sprint"]["action_status"] == (
+        "pending_human_decision"
+    )
+    assert items["recursive_seller_store_discovery"]["status"] == "proposal_ready"
+    assert items["controlled_paid_growth"]["status"] == "awaiting_inputs"
+    assert items["controlled_paid_growth"]["action_status"] == "awaiting_evidence"
+    assert items["price_and_margin_guard"]["proposal_type"] == (
+        "price_change_proposal"
+    )
+    assert set(items["price_and_margin_guard"]["allowed_human_decisions"]) == {
+        "approve_for_existing_gate_flow",
+        "reject_with_reason",
+        "defer_until",
+        "request_more_evidence",
+    }
+    assert all(item["external_write_allowed"] is False for item in items.values())
+
+
+def test_automation_master_off_keeps_requested_action_manual_and_ungranted() -> None:
+    workspace, _ = service()
+    captured = workspace.capture_profile(
+        profile_request(
+            automation_preferences=[
+                {
+                    "playbook_id": "media_readiness_and_conversion",
+                    "enabled": True,
+                    "mode": "policy_bound_autonomous",
+                }
+            ]
+        ),
+        principal=principal(),
+        entity_scope=scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+    )
+
+    result = workspace.compile_candidate(candidate(), profile=captured["profile"])
+    items = {
+        item["playbook_id"]: item
+        for item in result["store_category_route"]["operating_portfolio"]["items"]
+    }
+    control = items["media_readiness_and_conversion"]["automation_control"]
+
+    assert control["checkbox_visible"] is True
+    assert control["master_enabled"] is False
+    assert control["action_enabled"] is True
+    assert control["requested_mode"] == "policy_bound_autonomous"
+    assert control["effective_mode"] == "manual_each_action"
+    assert control["effective_mode_reason"] == "automation_master_disabled"
+    assert control["automatic_execution_requested"] is False
+    assert control["runtime_state"] == "planned"
+    assert control["runtime_execution_enabled"] is False
+    assert control["grant_ready"] is False
+    assert control["preference_is_grant"] is False
+    assert items["media_readiness_and_conversion"]["external_write_allowed"] is False
+
+
+def test_automation_master_and_action_record_bounded_request_without_grant() -> None:
+    workspace, _ = service()
+    captured = workspace.capture_profile(
+        profile_request(
+            automation_master_enabled=True,
+            automation_default_mode="supervised_batch",
+            automation_preferences=[
+                {
+                    "playbook_id": "media_readiness_and_conversion",
+                    "enabled": True,
+                    "mode": "policy_bound_autonomous",
+                    "caps": {
+                        "max_actions_per_day": 5,
+                        "max_budget_cny": "800.00",
+                        "max_price_change_percent": "8.5",
+                        "max_quantity": 40,
+                        "max_loss_cny": "100.00",
+                        "valid_until": "2026-08-31T23:59:59+08:00",
+                    },
+                }
+            ],
+        ),
+        principal=principal(),
+        entity_scope=scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+    )
+
+    result = workspace.compile_candidate(candidate(), profile=captured["profile"])
+    items = {
+        item["playbook_id"]: item
+        for item in result["store_category_route"]["operating_portfolio"]["items"]
+    }
+    control = items["media_readiness_and_conversion"]["automation_control"]
+    unconfigured = items["controlled_paid_growth"]["automation_control"]
+
+    assert control["master_enabled"] is True
+    assert control["action_enabled"] is True
+    assert control["automatic_execution_requested"] is True
+    assert control["requested_mode"] == "policy_bound_autonomous"
+    assert control["effective_mode"] == "manual_each_action"
+    assert control["effective_mode_reason"] == "requested_mode_not_runtime_enabled"
+    assert control["caps"] == {
+        "max_actions_per_day": 5,
+        "max_budget_cny": "800.00",
+        "max_price_change_percent": "8.5",
+        "max_quantity": 40,
+        "max_loss_cny": "100.00",
+        "valid_until": "2026-08-31T15:59:59+00:00",
+    }
+    assert control["bounded_caps_configured"] is True
+    assert control["grant_ready"] is False
+    assert control["runtime_execution_enabled"] is False
+    assert unconfigured["action_enabled"] is False
+    assert unconfigured["requested_mode"] == "supervised_batch"
+    assert unconfigured["automatic_execution_requested"] is False
+    assert unconfigured["effective_mode_reason"] == "playbook_automation_disabled"
+
+
+def test_automation_preference_defaults_action_off_and_rejects_invalid_caps() -> None:
+    workspace, _ = service()
+    captured = workspace.capture_profile(
+        profile_request(
+            automation_master_enabled=True,
+            automation_preferences=[
+                {"playbook_id": "price_and_margin_guard"}
+            ],
+        ),
+        principal=principal(),
+        entity_scope=scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+    )
+    item = next(
+        item
+        for item in workspace.compile_candidate(
+            candidate(), profile=captured["profile"]
+        )["store_category_route"]["operating_portfolio"]["items"]
+        if item["playbook_id"] == "price_and_margin_guard"
+    )
+    assert item["automation_control"]["action_enabled"] is False
+    assert item["automation_control"]["automatic_execution_requested"] is False
+
+    with pytest.raises(ValueError, match="max_price_change_percent"):
+        workspace.capture_profile(
+            profile_request(
+                idempotency_key="bad-automation-cap",
+                automation_master_enabled=True,
+                automation_preferences=[
+                    {
+                        "playbook_id": "price_and_margin_guard",
+                        "enabled": True,
+                        "mode": "policy_bound_autonomous",
+                        "caps": {"max_price_change_percent": "101"},
+                    }
+                ],
+            ),
+            principal=principal(),
+            entity_scope=scope(),
+            store_ref="store-a",
+            as_of=AS_OF,
+        )
+
+
 def test_exclusion_wins_and_derived_tag_alone_cannot_create_platform_route() -> None:
     workspace, _ = service()
     excluded_profile = profile_request()["category_paths"][0]
@@ -259,6 +453,14 @@ def test_profit_state_drives_lifecycle_but_never_authorizes_execution() -> None:
     playbook = result["store_category_route"]["playbook"]
     assert playbook["lifecycle"] == "growth"
     assert playbook["traffic"] == "scale_only_on_positive_incremental_cash_cm3"
+    portfolio = result["store_category_route"]["operating_portfolio"]
+    operating = {item["playbook_id"]: item for item in portfolio["items"]}
+    assert portfolio["recommended_playbook_id"] == "portfolio_cash_compounding"
+    assert operating["controlled_paid_growth"]["status"] == "proposal_ready"
+    assert operating["controlled_paid_growth"]["action_status"] == (
+        "pending_human_decision"
+    )
+    assert operating["aging_stock_exit"]["status"] == "awaiting_inputs"
     assert result["store_category_route"]["external_write_allowed"] is False
 
 

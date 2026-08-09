@@ -31,6 +31,8 @@
 | A-I 泳道执行租约 | [registries/active_workstream_assignments.json](registries/active_workstream_assignments.json) | 当前真正占用 WIP 与共享写域的机器真源；历史 `IN_PROGRESS` 不自动获得写租约 |
 | TeamAgent 进化 Loop | [registries/loop_engineering_registry.json](registries/loop_engineering_registry.json) | 定义角色边界、Eval→Shadow→Review→Promotion/Rollback、Graph 学习和持续更新边界 |
 | 前沿技术采用雷达 | [registries/frontier_technology_adoption.json](registries/frontier_technology_adoption.json) | `adopt_now/pilot/watch/reject_now` 的机器真源；注册不等于实现或生产放行 |
+| 历史需求追溯矩阵 | [registries/requirements_traceability.json](registries/requirements_traceability.json) | 逐项绑定需求来源、机器合同、实现版本、Owner、Gate、Evidence、状态和未完成项；工程状态不证明业务结果 |
+| AI 自动经营与递归扩品 | [19_AUTOMATED_COMMERCE_AND_RECURSIVE_STORE_MINING_PRD.md](19_AUTOMATED_COMMERCE_AND_RECURSIVE_STORE_MINING_PRD.md)、[ADR-0097](../adr/ADR-0097-automated-commerce-loop-and-source-linkback.md) | BAS-219A 主线核心与 BAS-219B 隔离 runtime/API/Web 分期；外写仍走既有治理链 |
 | 社媒来源采用注册表 | [registries/social_commerce_source_adoption.json](registries/social_commerce_source_adoption.json) | 固化官方来源、GitHub 候选、固定版本、许可证、全量采集与 campaign 能力选择 |
 | 俄罗斯市场来源注册表 | [registries/russia_market_intelligence_sources.json](registries/russia_market_intelligence_sources.json) | 固化站内需求、搜索、社媒、平台与宏观事件来源、限制和下一 Gate |
 | 思维与前沿研究 Evidence | [evidence/20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md](evidence/20260803_DOUYIN_MINDSET_AND_FRONTIER_TECH_RESEARCH.md) | 区分 Observation、一手来源、Inference 与 UNKNOWN |

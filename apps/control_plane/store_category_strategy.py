@@ -212,6 +212,58 @@ class StoreCategoryStrategyRegistry:
         self.category_roles = frozenset(self.raw["category_roles"])
         self.growth_channels = frozenset(self.raw["growth_channels"])
         self.archetypes = self.raw["derived_archetypes"]
+        self.operating_playbooks = self.raw["operating_playbooks"]
+        self.human_decision_contract = self.raw["human_decision_contract"]
+        self.automation_mode_contract = self.raw["automation_mode_contract"]
+        expected_truth_states = [
+            "observe",
+            "identity",
+            "qualify",
+            "item_draft",
+            "content",
+            "listing_approval",
+            "publish",
+            "order",
+            "procurement_review",
+            "fulfill",
+            "settle",
+            "reconcile",
+            "learn",
+        ]
+        if self.raw["operating_graph"]["truth_states"] != expected_truth_states:
+            raise RuntimeError("Operating graph must reuse the Commerce OS truth states")
+        unknown_technology_sources = set(
+            self.raw["technology_profile"]["source_refs"]
+        ) - set(self.raw["source_catalog"])
+        if unknown_technology_sources:
+            raise RuntimeError(
+                "Technology profile has unknown sources: "
+                f"{sorted(unknown_technology_sources)}"
+            )
+        proposal_mapping = self.human_decision_contract[
+            "proposal_type_by_playbook"
+        ]
+        if set(proposal_mapping) != set(self.operating_playbooks):
+            raise RuntimeError(
+                "Every operating playbook must map to one human decision proposal"
+            )
+        for playbook_id, contract in self.operating_playbooks.items():
+            if not contract.get("applicable_lifecycles"):
+                raise RuntimeError(
+                    f"Operating playbook {playbook_id} has no lifecycle admission"
+                )
+            if not contract.get("source_refs"):
+                raise RuntimeError(
+                    f"Operating playbook {playbook_id} has no research source"
+                )
+            unknown_sources = set(contract["source_refs"]) - set(
+                self.raw["source_catalog"]
+            )
+            if unknown_sources:
+                raise RuntimeError(
+                    f"Operating playbook {playbook_id} has unknown sources: "
+                    f"{sorted(unknown_sources)}"
+                )
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -227,6 +279,16 @@ class StoreCategoryStrategyRegistry:
             "derived_tag_semantics": self.raw["derived_tag_semantics"],
             "derived_archetypes": self.archetypes,
             "routing_precedence": self.raw["routing_precedence"],
+            "operating_playbook_semantics": self.raw[
+                "operating_playbook_semantics"
+            ],
+            "source_catalog": self.raw["source_catalog"],
+            "source_refresh_policy": self.raw["source_refresh_policy"],
+            "operating_graph": self.raw["operating_graph"],
+            "technology_profile": self.raw["technology_profile"],
+            "human_decision_contract": self.human_decision_contract,
+            "automation_mode_contract": self.automation_mode_contract,
+            "operating_playbooks": self.operating_playbooks,
             "control_envelope": self.raw["control_envelope"],
         }
 
@@ -586,6 +648,11 @@ class StoreCategoryStrategyWorkspace:
             "budget_limit": candidate.get("budget_limit"),
             "stop_loss_condition": candidate.get("stop_loss_condition"),
         }
+        operating_portfolio = self._operating_playbook_portfolio(
+            decision=decision,
+            lifecycle=lifecycle,
+            profile=profile,
+        )
         strategy = {
             "decision": decision,
             "confidence": confidence,
@@ -601,6 +668,7 @@ class StoreCategoryStrategyWorkspace:
             "derived_tags_are_official_taxonomy": False,
             "reason_codes": sorted(set(reasons)),
             "playbook": playbook,
+            "operating_portfolio": operating_portfolio,
             "external_write_allowed": False,
         }
         return {
@@ -843,6 +911,9 @@ class StoreCategoryStrategyWorkspace:
             "customer_segments",
             "operational_capabilities",
             "category_paths",
+            "automation_master_enabled",
+            "automation_default_mode",
+            "automation_preferences",
         }
         unknown = sorted(set(values) - allowed)
         if unknown:
@@ -865,6 +936,21 @@ class StoreCategoryStrategyWorkspace:
         )
         if not set(channels) <= self.registry.growth_channels:
             raise ValueError("planned_growth_channels contains an unregistered channel")
+        automation_master_enabled = values.get("automation_master_enabled", False)
+        if not isinstance(automation_master_enabled, bool):
+            raise ValueError("automation_master_enabled must be a boolean")
+        automation_default_mode = _required(
+            values.get(
+                "automation_default_mode",
+                self.registry.automation_mode_contract["default_mode"],
+            ),
+            "automation_default_mode",
+            80,
+        )
+        if automation_default_mode not in self.registry.automation_mode_contract[
+            "modes"
+        ]:
+            raise ValueError("automation_default_mode is not registered")
         paths_raw = values.get("category_paths")
         if not isinstance(paths_raw, list) or not paths_raw or len(paths_raw) > 200:
             raise ValueError("category_paths must contain between 1 and 200 paths")
@@ -895,8 +981,119 @@ class StoreCategoryStrategyWorkspace:
                 "operational_capabilities",
                 maximum=100,
             ),
+            "automation_master_enabled": automation_master_enabled,
+            "automation_default_mode": automation_default_mode,
+            "automation_preferences": self._normalize_automation_preferences(
+                values.get("automation_preferences") or [],
+                default_mode=automation_default_mode,
+            ),
             "category_paths": paths,
         }
+
+    def _normalize_automation_preferences(
+        self,
+        value: Any,
+        *,
+        default_mode: str,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(value, list) or len(value) > len(
+            self.registry.operating_playbooks
+        ):
+            raise ValueError(
+                "automation_preferences must be a bounded list of playbook modes"
+            )
+        modes = set(self.registry.automation_mode_contract["modes"])
+        result: dict[str, dict[str, Any]] = {}
+        for item in value:
+            if not isinstance(item, dict) or set(item) - {
+                "playbook_id",
+                "enabled",
+                "mode",
+                "caps",
+            }:
+                raise ValueError(
+                    "Every automation preference supports only playbook_id, enabled, mode, and caps"
+                )
+            playbook_id = _required(
+                item.get("playbook_id"), "automation playbook_id", 160
+            )
+            enabled = item.get("enabled", False)
+            if not isinstance(enabled, bool):
+                raise ValueError("automation preference enabled must be a boolean")
+            mode = _required(
+                item.get("mode") or default_mode, "automation mode", 80
+            )
+            if playbook_id not in self.registry.operating_playbooks:
+                raise ValueError("automation preference playbook_id is not registered")
+            if mode not in modes:
+                raise ValueError("automation preference mode is not registered")
+            if playbook_id in result:
+                raise ValueError("automation playbook preferences must be unique")
+            result[playbook_id] = {
+                "playbook_id": playbook_id,
+                "enabled": enabled,
+                "mode": mode,
+                "caps": self._normalize_automation_caps(item.get("caps")),
+            }
+        return [result[key] for key in sorted(result)]
+
+    @staticmethod
+    def _normalize_automation_caps(value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        allowed = {
+            "max_actions_per_day",
+            "max_budget_cny",
+            "max_unit_price_cny",
+            "max_price_change_percent",
+            "max_quantity",
+            "max_loss_cny",
+            "valid_until",
+        }
+        if not isinstance(value, dict) or set(value) - allowed:
+            raise ValueError("automation caps contain unsupported fields")
+        normalized: dict[str, Any] = {}
+        integer_bounds = {
+            "max_actions_per_day": 10000,
+            "max_quantity": 1000000,
+        }
+        for field, maximum in integer_bounds.items():
+            raw = value.get(field)
+            if raw is None:
+                continue
+            if isinstance(raw, bool) or not isinstance(raw, int) or not 1 <= raw <= maximum:
+                raise ValueError(f"{field} must be an integer between 1 and {maximum}")
+            normalized[field] = raw
+        decimal_bounds = {
+            "max_budget_cny": (Decimal("0"), None, False),
+            "max_unit_price_cny": (Decimal("0"), None, False),
+            "max_price_change_percent": (Decimal("0"), Decimal("100"), False),
+            "max_loss_cny": (Decimal("0"), None, True),
+        }
+        for field, (minimum, maximum, minimum_inclusive) in decimal_bounds.items():
+            raw = value.get(field)
+            if raw is None:
+                continue
+            parsed = _decimal(raw)
+            below_minimum = (
+                parsed is None
+                or parsed < minimum
+                or (parsed == minimum and not minimum_inclusive)
+            )
+            if below_minimum or (maximum is not None and parsed > maximum):
+                raise ValueError(f"{field} is outside the registered bound")
+            normalized[field] = format(parsed, "f")
+        valid_until = value.get("valid_until")
+        if valid_until is not None:
+            text = _required(valid_until, "automation caps valid_until", 80)
+            try:
+                parsed_until = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError(
+                    "automation caps valid_until must be an ISO-8601 timestamp"
+                ) from exc
+            normalized["valid_until"] = _utc(parsed_until).isoformat()
+        return normalized
 
     def _normalize_path(self, value: Any) -> dict[str, Any]:
         if not isinstance(value, dict):
@@ -1196,6 +1393,170 @@ class StoreCategoryStrategyWorkspace:
         if lifecycle in {"qualified", "pilot"}:
             return "jit_or_small_pilot_with_frozen_stop_loss"
         return "cash_constrained_replenishment_proposal"
+
+    def _operating_playbook_portfolio(
+        self,
+        *,
+        decision: str,
+        lifecycle: str,
+        profile: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        automation_contract = self.registry.automation_mode_contract
+        master_enabled = bool(
+            (profile or {}).get(
+                "automation_master_enabled",
+                automation_contract["master_switch_default"],
+            )
+        )
+        default_mode = (profile or {}).get(
+            "automation_default_mode", automation_contract["default_mode"]
+        )
+        preferences = {
+            item["playbook_id"]: item
+            for item in (profile or {}).get("automation_preferences", [])
+        }
+        items = []
+        for playbook_id, contract in sorted(
+            self.registry.operating_playbooks.items(),
+            key=lambda item: (item[1]["priority"], item[0]),
+        ):
+            reasons = []
+            if lifecycle not in contract["applicable_lifecycles"]:
+                status = "awaiting_inputs"
+                reasons.append("lifecycle_not_in_playbook_admission")
+            elif decision == "blocked" and lifecycle != "exit":
+                status = "blocked"
+                reasons.append("store_category_route_blocked")
+            elif decision == "needs_category_data" and contract[
+                "requires_store_route"
+            ]:
+                status = "awaiting_inputs"
+                reasons.append("official_store_category_route_missing")
+            else:
+                status = "proposal_ready"
+                reasons.append("external_execution_still_requires_evidence_and_gates")
+            action_status = {
+                "proposal_ready": "pending_human_decision",
+                "awaiting_inputs": "awaiting_evidence",
+                "blocked": "blocked_by_route",
+            }[status]
+            preference = preferences.get(playbook_id) or {}
+            action_enabled = bool(
+                preference.get(
+                    "enabled", automation_contract["action_switch_default"]
+                )
+            )
+            requested_mode = preference.get("mode") or default_mode
+            caps = preference.get("caps") or {}
+            mode_contract = automation_contract["modes"][requested_mode]
+            automatic_execution_requested = (
+                master_enabled
+                and action_enabled
+                and requested_mode != "manual_each_action"
+            )
+            effective_mode = "manual_each_action"
+            if not master_enabled:
+                effective_mode_reason = "automation_master_disabled"
+            elif not action_enabled:
+                effective_mode_reason = "playbook_automation_disabled"
+            elif requested_mode == "manual_each_action":
+                effective_mode_reason = "manual_mode_selected"
+            elif status != "proposal_ready":
+                effective_mode_reason = "playbook_not_admitted"
+            elif mode_contract["runtime_state"] != "enabled":
+                effective_mode_reason = "requested_mode_not_runtime_enabled"
+            else:
+                effective_mode_reason = "existing_execution_grant_not_evaluated"
+            items.append(
+                {
+                    "playbook_id": playbook_id,
+                    **contract,
+                    "status": status,
+                    "proposal_type": self.registry.human_decision_contract[
+                        "proposal_type_by_playbook"
+                    ][playbook_id],
+                    "action_status": action_status,
+                    "allowed_human_decisions": self.registry.human_decision_contract[
+                        "allowed_decisions"
+                    ],
+                    "automation_control": {
+                        "checkbox_visible": automation_contract["checkbox_visible"],
+                        "master_enabled": master_enabled,
+                        "action_enabled": action_enabled,
+                        "requested_mode": requested_mode,
+                        "effective_mode": effective_mode,
+                        "effective_mode_reason": effective_mode_reason,
+                        "automatic_execution_requested": automatic_execution_requested,
+                        "runtime_state": mode_contract["runtime_state"],
+                        "runtime_execution_enabled": False,
+                        "grant_ready": False,
+                        "preference_is_grant": False,
+                        "caps": caps,
+                        "bounded_caps_configured": bool(caps),
+                        "selection_effect": automation_contract["selection_semantics"],
+                        "grant_requirements": automation_contract["grant_requirements"],
+                        "out_of_bounds_effect": automation_contract["out_of_bounds_effect"],
+                    },
+                    "evidence_gate_status": "requires_runtime_evaluation",
+                    "external_execution_status": "blocked_until_existing_gates",
+                    "reason_codes": reasons,
+                    "external_write_allowed": False,
+                }
+            )
+
+        status_counts = {
+            status: sum(item["status"] == status for item in items)
+            for status in ("proposal_ready", "awaiting_inputs", "blocked")
+        }
+        action_status_counts = {
+            status: sum(item["action_status"] == status for item in items)
+            for status in (
+                "pending_human_decision",
+                "awaiting_evidence",
+                "blocked_by_route",
+            )
+        }
+        preferred_by_lifecycle = {
+            "research": "supplier_evidence_sprint",
+            "pilot": "evidence_first_micro_pilot",
+            "qualified": "evidence_first_micro_pilot",
+            "growth": "portfolio_cash_compounding",
+            "exit": "aging_stock_exit",
+        }
+        preferred = preferred_by_lifecycle.get(lifecycle)
+        recommended = next(
+            (
+                item["playbook_id"]
+                for item in items
+                if item["playbook_id"] == preferred
+                and item["status"] == "proposal_ready"
+            ),
+            None,
+        )
+        if recommended is None:
+            recommended = next(
+                (
+                    item["playbook_id"]
+                    for item in items
+                    if item["status"] == "proposal_ready"
+                ),
+                None,
+            )
+        return {
+            "semantics": self.registry.raw["operating_playbook_semantics"],
+            "recommended_playbook_id": recommended,
+            "automation_master_enabled": master_enabled,
+            "automation_default_mode": default_mode,
+            "automation_contract": {
+                "preference_is_grant": False,
+                "external_execution_requires_existing_gate_flow": True,
+            },
+            "status_counts": status_counts,
+            "action_status_counts": action_status_counts,
+            "human_decision_contract": self.registry.human_decision_contract,
+            "items": items,
+            "external_write_allowed": False,
+        }
 
     @staticmethod
     def _category_tree(
