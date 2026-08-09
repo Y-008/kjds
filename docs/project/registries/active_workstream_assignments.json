@@ -182,22 +182,7 @@
       "id": "J",
       "name": "media_agent_platform",
       "accountable_role": "media_agent_platform_owner",
-      "current_task": {
-        "task_id": "BAS-184",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-          "commander_tool_gateway_contract",
-          "campaign_brief_compilation",
-          "versioned_media_tool_dispatch",
-          "media_job_safe_projection",
-          "media_job_campaign_brief_exact_scope_binding",
-          "immutable_media_tool_descriptor_replay",
-          "media_job_provider_attempt_authority_concurrency",
-          "bas184_tests_and_evidence"
-        ],
-        "blocked_on": []
-      },
+      "current_task": null,
       "next_task_id": null
     },
     {

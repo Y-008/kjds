@@ -135,12 +135,12 @@ def test_social_platform_and_channel_operations_have_separate_lanes():
     assert lanes["I"]["name"] == "russia_market_intelligence"
 
 
-def test_bas184_claims_media_lane_after_bas183_release():
+def test_bas184_release_frees_media_lane():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     media = lanes["J"]
 
-    assert media["current_task"] == _bas184_current_task()
+    assert media["current_task"] is None
     assert media["next_task_id"] is None
     assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
@@ -172,7 +172,10 @@ def test_bas184_claims_media_lane_after_bas183_release():
     assert "tests/test_media_jobs_postgres.py" in bas184_row
     assert "scope-authority advisory lock" in bas184_row
     assert "真实 PostgreSQL 双连接" in bas184_row
-    assert bas184_row.endswith("| IN_PROGRESS |")
+    assert "ab2c66d6fb8c5ea7b03c97e81edd92c522f11b81" in bas184_row
+    assert "FD8807B07BABA76F0664E14FD34BE1CAF137B44DE973163635F7E44571FD4FAF" in bas184_row
+    assert "本切片未运行 G1" in bas184_row
+    assert bas184_row.endswith("| DONE_ENGINEERING |")
 
 
 def test_bas196_release_frees_local_demo_lane():
@@ -419,22 +422,7 @@ def test_bas217_release_frees_lane_c_and_preserves_bas184():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     assert lanes["C"]["current_task"] is None
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] == {
-        "task_id": "BAS-184",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-            "commander_tool_gateway_contract",
-            "campaign_brief_compilation",
-            "versioned_media_tool_dispatch",
-            "media_job_safe_projection",
-            "media_job_campaign_brief_exact_scope_binding",
-            "immutable_media_tool_descriptor_replay",
-            "media_job_provider_attempt_authority_concurrency",
-            "bas184_tests_and_evidence",
-        ],
-        "blocked_on": [],
-    }
+    assert lanes["J"]["current_task"] is None
     assert lanes["J"]["next_task_id"] is None
     assert lanes["M"]["current_task"] is None
     assert registry["shared_write_leases"] == {
