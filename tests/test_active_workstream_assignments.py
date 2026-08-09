@@ -26,6 +26,8 @@ def _bas184_current_task():
             "campaign_brief_compilation",
             "versioned_media_tool_dispatch",
             "media_job_safe_projection",
+            "media_job_campaign_brief_exact_scope_binding",
+            "immutable_media_tool_descriptor_replay",
             "bas184_tests_and_evidence",
         ],
         "blocked_on": [],
@@ -158,8 +160,14 @@ def test_bas184_claims_media_lane_after_bas183_release():
         line for line in plan.splitlines() if line.startswith("| BAS-184 |")
     )
     assert "CommanderToolGateway" in bas184_row
+    assert "exact tenant/entity/store/current-authority/subject/scope-binding" in bas184_row
+    assert "事务紧邻持久化前重验 current scope" in bas184_row
+    assert "refs/hash/version/count/safe codes" in bas184_row
+    assert "immutable tool descriptor" in bas184_row
     assert "UNKNOWN_OUTCOME" in bas184_row
     assert "不新增数据库/迁移/API/router/OpenAPI/Web/runtime/compose" in bas184_row
+    assert "apps/control_plane/media_jobs.py" in bas184_row
+    assert "tests/test_media_jobs.py" in bas184_row
     assert bas184_row.endswith("| IN_PROGRESS |")
 
 
@@ -416,6 +424,8 @@ def test_bas217_release_frees_lane_c_and_preserves_bas184():
             "campaign_brief_compilation",
             "versioned_media_tool_dispatch",
             "media_job_safe_projection",
+            "media_job_campaign_brief_exact_scope_binding",
+            "immutable_media_tool_descriptor_replay",
             "bas184_tests_and_evidence",
         ],
         "blocked_on": [],

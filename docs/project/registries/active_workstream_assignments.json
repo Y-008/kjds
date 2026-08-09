@@ -191,6 +191,8 @@
           "campaign_brief_compilation",
           "versioned_media_tool_dispatch",
           "media_job_safe_projection",
+          "media_job_campaign_brief_exact_scope_binding",
+          "immutable_media_tool_descriptor_replay",
           "bas184_tests_and_evidence"
         ],
         "blocked_on": []
