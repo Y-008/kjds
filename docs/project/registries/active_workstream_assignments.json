@@ -194,6 +194,9 @@
           "content_asset_evidence_manifest_handoff",
           "unknown_outcome_same_connector_readback",
           "remotion_watch_license_gap_gate",
+          "production_editing_source_authority",
+          "reserved_media_worker_evidence",
+          "governed_media_worker_runtime_composition",
           "bas186_tests_and_evidence"
         ],
         "blocked_on": []
