@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
-from .evidence import EvidenceGrade, EvidenceService
+from .evidence import EvidenceBlobRow, EvidenceGrade, EvidenceRecordRow, EvidenceService
 from .security import Principal
 from .sql_repository import Base
 
@@ -78,6 +78,62 @@ MEDIA_JOB_SAFE_REASON_BY_STATE = {
 EVENT_FUTURE_TOLERANCE = timedelta(minutes=5)
 REQUEST_SOURCE = "governed-media-job-request"
 REQUEST_CONTRACT = "kjds-governed-media-job-request-v1"
+COMMANDER_REQUEST_CONTRACT = "kjds-commander-media-job-request-v1"
+TOOL_DESCRIPTOR_CONTRACT = "kjds-media-tool-descriptor-seal-v1"
+CAMPAIGN_BRIEF_CONTRACT = "kjds-campaign-brief-v1"
+CAMPAIGN_BRIEF_VERSION = "1.0.0"
+_COMMANDER_REQUEST_FIELDS = frozenset(
+    {
+        "contract_id",
+        "tool_name",
+        "tool_version",
+        "project_ref",
+        "brief_ref",
+        "campaign_brief_sha256",
+        "provider",
+        "connector_ref",
+        "connector_binding_sha256",
+        "idempotency_sha256",
+        "output_contract",
+        "tool_descriptor_sha256",
+        "tool_inputs_sha256",
+        "tool_input_ref_count",
+        "safe_reason_codes",
+    }
+)
+_CAMPAIGN_BRIEF_CONTENT_FIELDS = frozenset(
+    {
+        "contract_id",
+        "contract_version",
+        "project_ref",
+        "graph_snapshot_sha256",
+        "tenant_ref",
+        "entity_ref",
+        "store_ref",
+        "authority_sha256",
+        "subject_actor_id",
+        "scope_binding_sha256",
+        "objective",
+        "audiences",
+        "channel",
+        "constraints",
+        "content_asset_refs",
+    }
+)
+_TOOL_DESCRIPTOR_FIELDS = frozenset(
+    {
+        "contract_id",
+        "registry_sha256",
+        "tool_name",
+        "tool_version",
+        "capabilities",
+        "cost_upper_bound",
+        "output_contract",
+        "provider",
+        "connector_ref",
+        "connector_binding_sha256",
+    }
+)
 
 
 def _validate_json(value: Any, *, depth: int = 0) -> None:
@@ -213,6 +269,19 @@ class MediaJobProjection:
     created_at: str
     last_event_ordinal: int
     safe_reason_code: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MediaJobBindingProjection:
+    job_ref: str
+    tool_name: str
+    tool_version: str
+    provider: str
+    connector_ref: str
+    connector_binding_sha256: str
+    tool_descriptor_sha256: str
+    campaign_brief_sha256: str
+    request_sha256: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -417,6 +486,109 @@ class GovernedMediaJobWorkspace:
             subject_actor_id=principal.actor_id,
         ).normalized()
 
+    def current_scope(self, *, principal: Principal, store_ref: str) -> MediaJobScope:
+        """Return only the server-derived current scope used by Job intake."""
+
+        return self._resolve_current(principal=principal, store_ref=store_ref)
+
+    @staticmethod
+    def _scope_payload(scope: MediaJobScope) -> dict[str, str]:
+        return {
+            "tenant_ref": scope.tenant_ref,
+            "entity_ref": scope.entity_ref,
+            "store_ref": scope.store_ref,
+            "authority_sha256": scope.authority_sha256,
+            "subject_actor_id": scope.subject_actor_id,
+        }
+
+    @classmethod
+    def _validate_campaign_brief(
+        cls,
+        *,
+        brief: Mapping[str, Any],
+        scope: MediaJobScope,
+        request: Mapping[str, Any],
+    ) -> None:
+        expected_fields = _CAMPAIGN_BRIEF_CONTENT_FIELDS | {
+            "brief_ref",
+            "content_sha256",
+            "external_write_allowed",
+        }
+        if not isinstance(brief, Mapping) or set(brief) != expected_fields:
+            raise ValueError("media_job_campaign_brief_shape_invalid")
+        scope_payload = cls._scope_payload(scope)
+        if any(brief.get(key) != value for key, value in scope_payload.items()):
+            raise PermissionError("media_job_campaign_brief_scope_invalid")
+        scope_binding_sha256 = sha256_bytes(canonical_json(scope_payload))
+        if brief.get("scope_binding_sha256") != scope_binding_sha256:
+            raise PermissionError("media_job_campaign_brief_scope_binding_invalid")
+        if (
+            brief.get("contract_id") != CAMPAIGN_BRIEF_CONTRACT
+            or brief.get("contract_version") != CAMPAIGN_BRIEF_VERSION
+            or brief.get("external_write_allowed") is not False
+        ):
+            raise ValueError("media_job_campaign_brief_contract_invalid")
+        content = {key: brief[key] for key in _CAMPAIGN_BRIEF_CONTENT_FIELDS}
+        content_sha256 = sha256_bytes(canonical_json(content))
+        if (
+            brief.get("content_sha256") != content_sha256
+            or brief.get("brief_ref") != f"campaign_brief_{content_sha256[:32]}"
+            or request.get("brief_ref") != brief.get("brief_ref")
+            or request.get("campaign_brief_sha256") != content_sha256
+            or request.get("project_ref") != brief.get("project_ref")
+        ):
+            raise ValueError("media_job_campaign_brief_seal_invalid")
+
+    @staticmethod
+    def _validate_tool_descriptor(
+        *,
+        descriptor: Mapping[str, Any],
+        request: Mapping[str, Any],
+    ) -> str:
+        if not isinstance(descriptor, Mapping) or set(descriptor) != (
+            _TOOL_DESCRIPTOR_FIELDS | {"descriptor_sha256"}
+        ):
+            raise ValueError("media_job_tool_descriptor_shape_invalid")
+        content = {key: descriptor[key] for key in _TOOL_DESCRIPTOR_FIELDS}
+        descriptor_sha256 = sha256_bytes(canonical_json(content))
+        if (
+            descriptor.get("contract_id") != TOOL_DESCRIPTOR_CONTRACT
+            or descriptor.get("descriptor_sha256") != descriptor_sha256
+            or request.get("tool_descriptor_sha256") != descriptor_sha256
+        ):
+            raise ValueError("media_job_tool_descriptor_seal_invalid")
+        mirrors = {
+            "tool_name": "tool_name",
+            "tool_version": "tool_version",
+            "provider": "provider",
+            "connector_ref": "connector_ref",
+            "connector_binding_sha256": "connector_binding_sha256",
+            "output_contract": "output_contract",
+        }
+        if any(descriptor.get(left) != request.get(right) for left, right in mirrors.items()):
+            raise ValueError("media_job_tool_descriptor_binding_invalid")
+        return descriptor_sha256
+
+    @staticmethod
+    def _validate_commander_request(request: Mapping[str, Any]) -> None:
+        if set(request) != _COMMANDER_REQUEST_FIELDS:
+            raise ValueError("media_job_commander_request_shape_invalid")
+        if request.get("contract_id") != COMMANDER_REQUEST_CONTRACT:
+            raise ValueError("media_job_commander_request_contract_invalid")
+        for field in (
+            "campaign_brief_sha256",
+            "connector_binding_sha256",
+            "idempotency_sha256",
+            "tool_descriptor_sha256",
+            "tool_inputs_sha256",
+        ):
+            _sha256_hex(request.get(field), field)
+        count = request.get("tool_input_ref_count")
+        if not isinstance(count, int) or isinstance(count, bool) or not 0 <= count <= 1000:
+            raise ValueError("media_job_tool_input_ref_count_invalid")
+        if request.get("safe_reason_codes") != []:
+            raise ValueError("media_job_safe_reason_codes_invalid")
+
     @staticmethod
     def _request_bytes(request: Mapping[str, Any]) -> bytes:
         if not isinstance(request, Mapping) or not request:
@@ -441,8 +613,15 @@ class GovernedMediaJobWorkspace:
         principal: Principal,
         store_ref: str,
         request: Mapping[str, Any],
+        campaign_brief: Mapping[str, Any] | None = None,
+        tool_descriptor: Mapping[str, Any] | None = None,
     ) -> MediaJobProjection:
         scope = self._resolve_current(principal=principal, store_ref=store_ref)
+        secure_submission = campaign_brief is not None or tool_descriptor is not None
+        if secure_submission:
+            if campaign_brief is None or tool_descriptor is None:
+                raise ValueError("media_job_secure_submission_incomplete")
+            self._validate_commander_request(request)
         request_bytes = self._request_bytes(request)
         request_sha = sha256_bytes(request_bytes)
         tool_name = _required_text(request.get("tool_name"), "tool_name")
@@ -453,13 +632,7 @@ class GovernedMediaJobWorkspace:
         connector_ref = _required_text(request.get("connector_ref"), "connector_ref")
         connector_binding = _sha256_hex(request.get("connector_binding_sha256"), "connector_binding_sha256")
         idempotency = _sha256_hex(request.get("idempotency_sha256"), "idempotency_sha256")
-        scope_payload = {
-            "tenant_ref": scope.tenant_ref,
-            "entity_ref": scope.entity_ref,
-            "store_ref": scope.store_ref,
-            "authority_sha256": scope.authority_sha256,
-            "subject_actor_id": scope.subject_actor_id,
-        }
+        scope_payload = self._scope_payload(scope)
         fingerprint = sha256_bytes(
             canonical_json({"scope": scope_payload, "request": request})
         )
@@ -480,6 +653,30 @@ class GovernedMediaJobWorkspace:
             fresh_scope = self._resolve_current(principal=principal, store_ref=store_ref)
             if fresh_scope != scope:
                 raise PermissionError("scope_authority_changed")
+            if secure_submission:
+                assert campaign_brief is not None and tool_descriptor is not None
+                self._validate_campaign_brief(
+                    brief=campaign_brief,
+                    scope=fresh_scope,
+                    request=request,
+                )
+                self._validate_tool_descriptor(
+                    descriptor=tool_descriptor,
+                    request=request,
+                )
+                prior_scope = session.scalar(
+                    select(MediaJobRow).where(
+                        MediaJobRow.tenant_ref == scope.tenant_ref,
+                        MediaJobRow.store_ref == scope.store_ref,
+                        MediaJobRow.idempotency_sha256 == idempotency,
+                    )
+                )
+                if prior_scope is not None and (
+                    prior_scope.entity_ref != scope.entity_ref
+                    or prior_scope.scope_grant_authority_sha256 != scope.authority_sha256
+                    or prior_scope.subject_actor_id != scope.subject_actor_id
+                ):
+                    raise ValueError("media_job_idempotency_scope_conflict")
             existing = session.scalar(
                 select(MediaJobRow).where(
                     MediaJobRow.tenant_ref == scope.tenant_ref,
@@ -493,6 +690,8 @@ class GovernedMediaJobWorkspace:
                 if existing.request_fingerprint_sha256 != fingerprint:
                     raise ValueError("media_job_idempotency_conflict")
                 event = self._validate_event_chain(session, existing, scope)[-1]
+                if secure_submission:
+                    self._request_binding(session, existing)
                 return self._projection(existing, event)
             evidence_record = self.evidence.capture_media_job_evidence(
                 content=request_bytes,
@@ -554,6 +753,8 @@ class GovernedMediaJobWorkspace:
                 if winner is None or winner.request_fingerprint_sha256 != fingerprint:
                     raise ValueError("media_job_idempotency_conflict") from None
                 winner_event = self._validate_event_chain(session, winner, scope)[-1]
+                if secure_submission:
+                    self._request_binding(session, winner)
                 return self._projection(winner, winner_event)
             event = self._append_event(
                 session=session,
@@ -763,12 +964,173 @@ class GovernedMediaJobWorkspace:
             raise RuntimeError("media_job_event_missing")
         return rows
 
+    def _request_binding(
+        self,
+        session: Session,
+        row: MediaJobRow,
+    ) -> MediaJobBindingProjection:
+        record = session.get(EvidenceRecordRow, row.request_evidence_id)
+        if record is None or record.blob_sha256 != row.request_evidence_sha256:
+            raise RuntimeError("media_job_request_evidence_drifted")
+        blob = session.get(EvidenceBlobRow, record.blob_sha256)
+        scope_binding = sha256_bytes(
+            canonical_json(
+                {
+                    "tenant_ref": row.tenant_ref,
+                    "entity_ref": row.entity_ref,
+                    "store_ref": row.store_ref,
+                    "authority_sha256": row.scope_grant_authority_sha256,
+                    "subject_actor_id": row.subject_actor_id,
+                }
+            )
+        )
+        expected_source_ref = (
+            f"media-job://{scope_binding}/{row.idempotency_sha256}/request"
+        )
+        link = session.scalar(
+            select(MediaJobEvidenceLinkRow).where(
+                MediaJobEvidenceLinkRow.job_ref == row.job_ref,
+                MediaJobEvidenceLinkRow.event_ref.is_(None),
+                MediaJobEvidenceLinkRow.purpose == "request_input",
+            )
+        )
+        metadata = record.metadata_json if isinstance(record.metadata_json, dict) else {}
+        if (
+            blob is None
+            or sha256_bytes(blob.content_bytes) != blob.sha256
+            or blob.sha256 != row.request_evidence_sha256
+            or row.request_sha256 != blob.sha256
+            or record.source != REQUEST_SOURCE
+            or record.source_ref != expected_source_ref
+            or record.created_by != row.subject_actor_id
+            or metadata
+            != {
+                "contract_id": REQUEST_CONTRACT,
+                "media_job_request_fingerprint_sha256": row.request_fingerprint_sha256,
+                "tenant_ref": row.tenant_ref,
+                "entity_ref": row.entity_ref,
+                "store_ref": row.store_ref,
+                "scope_grant_authority_sha256": row.scope_grant_authority_sha256,
+                "subject_actor_id": row.subject_actor_id,
+            }
+            or link is None
+            or link.evidence_id != record.id
+            or link.blob_sha256 != blob.sha256
+            or link.source != record.source
+            or link.source_ref != record.source_ref
+            or link.tenant_ref != row.tenant_ref
+            or link.entity_ref != row.entity_ref
+            or link.store_ref != row.store_ref
+            or link.scope_grant_authority_sha256
+            != row.scope_grant_authority_sha256
+        ):
+            raise RuntimeError("media_job_request_evidence_drifted")
+        try:
+            request = json.loads(blob.content_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("media_job_request_evidence_drifted") from exc
+        if not isinstance(request, dict):
+            raise RuntimeError("media_job_request_evidence_drifted")
+        try:
+            self._validate_commander_request(request)
+        except ValueError as exc:
+            raise RuntimeError("media_job_request_contract_drifted") from exc
+        if (
+            request.get("tool_name") != row.tool_name
+            or request.get("tool_version") != row.tool_version
+            or request.get("project_ref") != row.project_ref
+            or request.get("brief_ref") != row.brief_ref
+            or request.get("provider") != row.provider
+            or request.get("connector_ref") != row.connector_ref
+            or request.get("connector_binding_sha256")
+            != row.connector_binding_sha256
+            or request.get("idempotency_sha256") != row.idempotency_sha256
+        ):
+            raise RuntimeError("media_job_request_header_drifted")
+        return MediaJobBindingProjection(
+            job_ref=row.job_ref,
+            tool_name=row.tool_name,
+            tool_version=row.tool_version,
+            provider=row.provider,
+            connector_ref=row.connector_ref,
+            connector_binding_sha256=row.connector_binding_sha256,
+            tool_descriptor_sha256=request["tool_descriptor_sha256"],
+            campaign_brief_sha256=request["campaign_brief_sha256"],
+            request_sha256=row.request_sha256,
+        )
+
     def read(self, *, principal: Principal, store_ref: str, job_ref: str) -> MediaJobProjection:
         scope = self._resolve_current(principal=principal, store_ref=store_ref)
         with Session(self.engine) as session:
             row = self._load_job(session, scope, job_ref)
             event = self._validate_event_chain(session, row, scope)[-1]
             return self._projection(row, event)
+
+    def read_bound(
+        self,
+        *,
+        principal: Principal,
+        store_ref: str,
+        job_ref: str,
+    ) -> tuple[MediaJobProjection, MediaJobBindingProjection]:
+        scope = self._resolve_current(principal=principal, store_ref=store_ref)
+        with Session(self.engine) as session:
+            row = self._load_job(session, scope, job_ref)
+            event = self._validate_event_chain(session, row, scope)[-1]
+            return self._projection(row, event), self._request_binding(session, row)
+
+    def claim_provider_attempt(
+        self,
+        *,
+        principal: Principal,
+        store_ref: str,
+        job_ref: str,
+    ) -> tuple[MediaJobProjection, bool]:
+        """Durably claim the sole provider attempt without executing a provider."""
+
+        scope = self._resolve_current(principal=principal, store_ref=store_ref)
+        with Session(self.engine, expire_on_commit=False) as session, session.begin():
+            EvidenceService.lock_scope_authority_in_session(
+                tenant_ref=scope.tenant_ref,
+                store_ref=scope.store_ref,
+                subject_actor_id=scope.subject_actor_id,
+                session=session,
+            )
+            fresh_scope = self._resolve_current(
+                principal=principal,
+                store_ref=store_ref,
+            )
+            if fresh_scope != scope:
+                raise PermissionError("scope_authority_changed")
+            row = session.scalar(
+                select(MediaJobRow)
+                .where(
+                    MediaJobRow.job_ref == _required_text(job_ref, "job_ref"),
+                    MediaJobRow.tenant_ref == scope.tenant_ref,
+                    MediaJobRow.entity_ref == scope.entity_ref,
+                    MediaJobRow.store_ref == scope.store_ref,
+                    MediaJobRow.scope_grant_authority_sha256
+                    == scope.authority_sha256,
+                    MediaJobRow.subject_actor_id == scope.subject_actor_id,
+                )
+                .with_for_update()
+            )
+            if row is None:
+                raise KeyError("media_job_not_visible")
+            latest = self._validate_event_chain(session, row, scope)[-1]
+            if latest.state != "QUEUED":
+                return self._projection(row, latest), False
+            dispatched = self._append_event(
+                session=session,
+                job=row,
+                scope=scope,
+                state="DISPATCHED",
+                reason=None,
+                now=self._now(),
+                command_idempotency_sha256=row.idempotency_sha256,
+                command_request_sha256=row.request_sha256,
+            )
+            return self._projection(row, dispatched), True
 
     def events(
         self,

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Event
 from typing import Any
 from uuid import uuid4
 
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from apps.control_plane.evidence import (
     EvidenceBlobRow,
+    EvidenceGrade,
     EvidenceRecordRow,
     EvidenceService,
 )
@@ -29,6 +31,7 @@ from apps.control_plane.media_jobs import (
     event_seal,
     sha256_bytes,
 )
+from apps.control_plane.scope_grants import ScopeGrantEventRow
 from apps.control_plane.security import Principal
 
 MIGRATION = (
@@ -55,6 +58,45 @@ class _ScopeAuthority:
             "tenant_ref": principal.tenant_ref,
             "entity_ref": "entity-media-pg",
             "store_ref": kwargs["store_ref"],
+            "authority_sha256": AUTHORITY,
+        }
+
+
+class _DatabaseScopeAuthority:
+    """Read the committed revoke marker so the lock test observes real state."""
+
+    def __init__(self, engine, *, tenant_ref: str, actor_id: str) -> None:
+        self.engine = engine
+        self.tenant_ref = tenant_ref
+        self.actor_id = actor_id
+
+    def current(self, **kwargs):
+        store_ref = kwargs["store_ref"]
+        with Session(self.engine) as session:
+            revoked = session.scalar(
+                select(ScopeGrantEventRow.sequence)
+                .where(
+                    ScopeGrantEventRow.tenant_ref == self.tenant_ref,
+                    ScopeGrantEventRow.store_ref == store_ref,
+                    ScopeGrantEventRow.subject_actor_id == self.actor_id,
+                    ScopeGrantEventRow.event_type == "revoke",
+                )
+                .order_by(ScopeGrantEventRow.sequence.desc())
+                .limit(1)
+            )
+        if revoked is not None:
+            return {
+                "status": "no_data",
+                "tenant_ref": self.tenant_ref,
+                "entity_ref": None,
+                "store_ref": store_ref,
+                "authority_sha256": None,
+            }
+        return {
+            "status": "ready",
+            "tenant_ref": self.tenant_ref,
+            "entity_ref": "entity-media-pg",
+            "store_ref": store_ref,
             "authority_sha256": AUTHORITY,
         }
 
@@ -136,6 +178,66 @@ def _workspace(engine, *, tick: int = 0) -> GovernedMediaJobWorkspace:
         authority=_ScopeAuthority(),
         clock=lambda: NOW + timedelta(seconds=tick),
     )
+
+
+def _authority_workspace(engine, principal: Principal) -> GovernedMediaJobWorkspace:
+    return GovernedMediaJobWorkspace(
+        engine,
+        evidence=EvidenceService(engine),
+        authority=_DatabaseScopeAuthority(
+            engine,
+            tenant_ref=principal.tenant_ref,
+            actor_id=principal.actor_id,
+        ),
+        clock=lambda: NOW,
+    )
+
+
+def _capture_rotation_evidence(engine, suffix: str):
+    return EvidenceService(engine).capture(
+        content=f"rotation-{suffix}".encode(),
+        filename=f"rotation-{suffix}.json",
+        content_type="application/json",
+        source="media-job-authority-test",
+        source_ref=f"media-job-authority-test://{suffix}",
+        grade=EvidenceGrade.B,
+        effective_at=NOW.isoformat(),
+        effective_until=None,
+        created_by="bas184-pg-test",
+    )
+
+
+def _hold_revoke(
+    engine,
+    principal: Principal,
+    evidence,
+    started: Event,
+    acquired: Event,
+    release: Event,
+) -> None:
+    started.set()
+    with Session(engine, expire_on_commit=False) as session, session.begin():
+        session.add(
+            ScopeGrantEventRow(
+                id=f"scope-revoke-{uuid4().hex}",
+                tenant_ref=principal.tenant_ref,
+                entity_ref="entity-media-pg",
+                store_ref="store-media-pg",
+                subject_actor_id=principal.actor_id,
+                event_type="revoke",
+                effective_at=NOW,
+                evidence_id=evidence.id,
+                evidence_sha256=evidence.sha256,
+                reason="BAS-184 concurrency test rotation",
+                idempotency_key=f"revoke-{uuid4().hex}",
+                request_sha256=sha256_bytes(uuid4().hex.encode()),
+                created_by="bas184-pg-test",
+                recorded_at=NOW,
+            )
+        )
+        session.flush()
+        acquired.set()
+        assert release.wait(timeout=10)
 
 
 def _surface_counts(engine) -> tuple[int, ...]:
@@ -250,13 +352,31 @@ def _insert_state_event(engine, **kwargs: Any) -> None:
 
 
 def test_00_migration_replays_empty_0096_to_0097(engine):
-    assert _surface_counts(engine) == (0, 0, 0, 0, 0)
-    _migrate("downgrade", "20260805_0096")
-    assert not {
+    with engine.connect() as connection:
+        has_version_table = bool(
+            connection.scalar(
+                text("SELECT to_regclass('public.alembic_version')")
+            )
+        )
+        version = (
+            connection.scalar(text("SELECT version_num FROM alembic_version"))
+            if has_version_table
+            else None
+        )
+    target_tables = {
         "media_jobs",
         "media_job_events",
         "media_job_evidence_links",
-    } & set(inspect(engine).get_table_names())
+    }
+    initial_tables = set(inspect(engine).get_table_names())
+    if version is None:
+        _migrate("upgrade", "20260805_0096")
+    elif version != "20260805_0096":
+        _migrate("downgrade", "20260805_0096")
+    if target_tables <= initial_tables:
+        assert _surface_counts(engine) == (0, 0, 0, 0, 0)
+    else:
+        assert not target_tables & set(inspect(engine).get_table_names())
 
     _migrate("upgrade", "20260808_0097")
     first = _catalog_state(engine)
@@ -932,6 +1052,131 @@ def test_08_two_session_actor_drift_has_one_winner_and_zero_loser_residue(engine
         1,
         1,
         1,
+    )
+
+
+def test_09_rotation_committed_before_claim_blocks_stale_dispatch(engine):
+    suffix = uuid4().hex
+    tenant = f"tenant-claim-rotation-{suffix}"
+    principal = _principal(f"actor-claim-rotation-{suffix}", tenant)
+    service = _authority_workspace(engine, principal)
+    created = service.submit(
+        principal=principal,
+        store_ref="store-media-pg",
+        request=_request(sha256_bytes(f"claim-rotation-{suffix}".encode())),
+    )
+    evidence = _capture_rotation_evidence(engine, suffix)
+    before = _surface_counts(engine)
+    rotation_started = Event()
+    rotation_acquired = Event()
+    release_rotation = Event()
+    claim_started = Event()
+    provider_attempts = []
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        rotation = executor.submit(
+            _hold_revoke,
+            engine,
+            principal,
+            evidence,
+            rotation_started,
+            rotation_acquired,
+            release_rotation,
+        )
+        assert rotation_acquired.wait(timeout=10)
+
+        def claim():
+            claim_started.set()
+            projection, claimed = service.claim_provider_attempt(
+                principal=principal,
+                store_ref="store-media-pg",
+                job_ref=created.job_ref,
+            )
+            if claimed:
+                provider_attempts.append(projection.job_ref)
+            return projection, claimed
+
+        claim_future = executor.submit(claim)
+        assert claim_started.wait(timeout=10)
+        with pytest.raises(FuturesTimeoutError):
+            claim_future.result(timeout=0.25)
+        release_rotation.set()
+        rotation.result(timeout=10)
+        with pytest.raises(PermissionError, match="scope_authority_not_current"):
+            claim_future.result(timeout=10)
+
+    assert provider_attempts == []
+    assert _surface_counts(engine) == before
+
+
+def test_10_claim_authority_lock_blocks_rotation_until_dispatch_commit(engine, monkeypatch):
+    suffix = uuid4().hex
+    tenant = f"tenant-claim-first-{suffix}"
+    principal = _principal(f"actor-claim-first-{suffix}", tenant)
+    service = _authority_workspace(engine, principal)
+    created = service.submit(
+        principal=principal,
+        store_ref="store-media-pg",
+        request=_request(sha256_bytes(f"claim-first-{suffix}".encode())),
+    )
+    evidence = _capture_rotation_evidence(engine, suffix)
+    before = _surface_counts(engine)
+    claim_at_event = Event()
+    allow_claim = Event()
+    rotation_started = Event()
+    rotation_acquired = Event()
+    release_rotation = Event()
+    provider_attempts = []
+    original_validate = service._validate_event_chain
+
+    def pause_after_chain(session, row, scope):
+        result = original_validate(session, row, scope)
+        claim_at_event.set()
+        assert allow_claim.wait(timeout=10)
+        return result
+
+    monkeypatch.setattr(service, "_validate_event_chain", pause_after_chain)
+
+    def claim():
+        projection, claimed = service.claim_provider_attempt(
+            principal=principal,
+            store_ref="store-media-pg",
+            job_ref=created.job_ref,
+        )
+        if claimed:
+            provider_attempts.append(projection.job_ref)
+        return projection, claimed
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        claim_future = executor.submit(claim)
+        assert claim_at_event.wait(timeout=10)
+        rotation = executor.submit(
+            _hold_revoke,
+            engine,
+            principal,
+            evidence,
+            rotation_started,
+            rotation_acquired,
+            release_rotation,
+        )
+        assert rotation_started.wait(timeout=10)
+        assert not rotation_acquired.wait(timeout=0.25)
+        allow_claim.set()
+        projection, claimed = claim_future.result(timeout=10)
+        assert projection.job_ref == created.job_ref
+        assert claimed is True
+        assert rotation_acquired.wait(timeout=10)
+        release_rotation.set()
+        rotation.result(timeout=10)
+
+    assert provider_attempts == [created.job_ref]
+    after = _surface_counts(engine)
+    assert tuple(end - start for start, end in zip(before, after, strict=True)) == (
+        0,
+        1,
+        0,
+        0,
+        0,
     )
 
 

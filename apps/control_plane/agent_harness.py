@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -259,6 +260,8 @@ class GraphNodeStatusBindingRow(Base):
 
 class AgentHarnessService:
     CONTRACT_ID = "kjds-agent-harness-graph-v1"
+    CAMPAIGN_BRIEF_CONTRACT_ID = "kjds-campaign-brief-v1"
+    CAMPAIGN_BRIEF_CONTRACT_VERSION = "1.0.0"
     OPERATING_SUBJECT_CONTRACT_ID = (
         "kjds-graph-project-operating-subject-events-v1"
     )
@@ -1052,6 +1055,121 @@ class AgentHarnessService:
         }
         snapshot["snapshot_sha256"] = _sha(snapshot)
         return snapshot
+
+    def compile_campaign_brief(
+        self,
+        *,
+        project_id: str,
+        principal: Principal,
+        store_ref: str,
+        as_of: datetime,
+        campaign: Mapping[str, Any],
+        current_scope: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Compile a versioned brief without creating a second campaign truth."""
+
+        if as_of.tzinfo is None:
+            raise ValueError("campaign_brief_as_of_timezone_required")
+        expected = {
+            "objective",
+            "audiences",
+            "channel",
+            "constraints",
+            "content_asset_refs",
+        }
+        if not isinstance(campaign, Mapping) or set(campaign) != expected:
+            raise ValueError("campaign_brief_shape_invalid")
+        objective = campaign["objective"]
+        channel = campaign["channel"]
+        if not isinstance(objective, str) or not 0 < len(objective.strip()) <= 2000:
+            raise ValueError("campaign_brief_objective_invalid")
+        if not isinstance(channel, str) or not 0 < len(channel.strip()) <= 120:
+            raise ValueError("campaign_brief_channel_invalid")
+
+        def normalized_texts(name: str, *, maximum: int) -> list[str]:
+            values = campaign[name]
+            if (
+                not isinstance(values, list)
+                or len(values) > maximum
+                or any(
+                    not isinstance(item, str)
+                    or not item.strip()
+                    or len(item.strip()) > 500
+                    for item in values
+                )
+            ):
+                raise ValueError(f"campaign_brief_{name}_invalid")
+            normalized = [item.strip() for item in values]
+            if len(set(normalized)) != len(normalized):
+                raise ValueError(f"campaign_brief_{name}_invalid")
+            return normalized
+
+        audiences = normalized_texts("audiences", maximum=20)
+        constraints = normalized_texts("constraints", maximum=40)
+        content_asset_refs = normalized_texts("content_asset_refs", maximum=100)
+        snapshot = self.workspace(
+            project_id,
+            principal=principal,
+            store_ref=store_ref,
+            as_of=as_of,
+        )
+        if snapshot["status"] != "ready":
+            raise ValueError(f"campaign_brief_graph_{snapshot['status']}")
+        expected_scope_fields = {
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "authority_sha256",
+            "subject_actor_id",
+        }
+        if not isinstance(current_scope, Mapping) or set(current_scope) != expected_scope_fields:
+            raise ValueError("campaign_brief_scope_shape_invalid")
+        scope = {
+            key: current_scope[key].strip()
+            if isinstance(current_scope[key], str)
+            else current_scope[key]
+            for key in expected_scope_fields
+        }
+        if any(not isinstance(value, str) or not value for value in scope.values()):
+            raise ValueError("campaign_brief_scope_invalid")
+        if (
+            scope["tenant_ref"] != principal.tenant_ref
+            or scope["store_ref"] != store_ref
+            or scope["subject_actor_id"] != principal.actor_id
+            or snapshot["scope"]
+            != {
+                "tenant_ref": scope["tenant_ref"],
+                "entity_ref": scope["entity_ref"],
+                "store_ref": scope["store_ref"],
+            }
+        ):
+            raise PermissionError("campaign_brief_scope_not_current")
+        if len(scope["authority_sha256"]) != 64 or any(
+            char not in "0123456789abcdef" for char in scope["authority_sha256"].lower()
+        ):
+            raise ValueError("campaign_brief_authority_invalid")
+        scope["authority_sha256"] = scope["authority_sha256"].lower()
+        scope_binding_sha256 = _sha(scope)
+        content = {
+            "contract_id": self.CAMPAIGN_BRIEF_CONTRACT_ID,
+            "contract_version": self.CAMPAIGN_BRIEF_CONTRACT_VERSION,
+            "project_ref": project_id,
+            "graph_snapshot_sha256": snapshot["snapshot_sha256"],
+            **scope,
+            "scope_binding_sha256": scope_binding_sha256,
+            "objective": objective.strip(),
+            "audiences": audiences,
+            "channel": channel.strip(),
+            "constraints": constraints,
+            "content_asset_refs": content_asset_refs,
+        }
+        content_sha256 = _sha(content)
+        return {
+            **content,
+            "brief_ref": f"campaign_brief_{content_sha256[:32]}",
+            "content_sha256": content_sha256,
+            "external_write_allowed": False,
+        }
 
     def temporal_graph_projection(
         self,

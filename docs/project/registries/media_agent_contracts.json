@@ -57,17 +57,38 @@
     "evidence_body_secret_capture_allowed": false
   },
   "tool_gateway": {
-    "contract_id": "kjds-media-tool-gateway-v1",
+    "contract_id": "kjds-commander-tool-gateway-v1",
+    "contract_version": "1.0.0",
     "commander_owner": "AgentHarness",
+    "campaign_brief_contract": {
+      "contract_id": "kjds-campaign-brief-v1",
+      "contract_version": "1.0.0"
+    },
     "common_allowed_inputs": [
       "project_ref",
-      "brief_ref",
+      "campaign",
       "provider",
       "connector_ref",
+      "connector_binding_sha256",
       "idempotency_key",
       "output_contract"
     ],
-    "immediate_result_required_fields": ["contract_version", "job_ref", "status"],
+    "model_projection_fields": [
+      "contract_version",
+      "tool_name",
+      "tool_version",
+      "capabilities",
+      "state",
+      "cost_upper_bound",
+      "job_ref",
+      "content_asset_ref",
+      "safe_reason_code"
+    ],
+    "immediate_result_required_fields": [
+      "contract_version",
+      "job_ref",
+      "status"
+    ],
     "immediate_result_additional_fields_allowed": false,
     "immediate_result_status": "QUEUED",
     "tools": [
@@ -80,7 +101,13 @@
         "additional_allowed_inputs": ["prompt", "size", "count", "reference_asset_refs"],
         "accepted_providers": ["codex_oauth", "comfyui"],
         "result_kind": "image_artifact_evidence",
-        "external_side_effect": "provider_media_generation_only"
+        "external_side_effect": "provider_media_generation_only",
+        "state": "job_intake_only",
+        "cost_upper_bound": {
+          "amount_minor": 250,
+          "currency": "USD",
+          "basis": "engineering_dispatch_ceiling_not_invoice"
+        }
       },
       {
         "name": "media.image_edit",
@@ -91,7 +118,13 @@
         "additional_allowed_inputs": ["prompt", "size", "count", "reference_asset_refs", "preservation_constraints"],
         "accepted_providers": ["codex_oauth", "comfyui"],
         "result_kind": "image_artifact_evidence",
-        "external_side_effect": "provider_media_generation_only"
+        "external_side_effect": "provider_media_generation_only",
+        "state": "job_intake_only",
+        "cost_upper_bound": {
+          "amount_minor": 300,
+          "currency": "USD",
+          "basis": "engineering_dispatch_ceiling_not_invoice"
+        }
       },
       {
         "name": "media.video_blueprint",
@@ -102,7 +135,13 @@
         "additional_allowed_inputs": ["reference_asset_refs", "analysis_contract", "target_channels"],
         "accepted_providers": ["codex_oauth"],
         "result_kind": "editing_blueprint_evidence",
-        "external_side_effect": "analysis_only"
+        "external_side_effect": "analysis_only",
+        "state": "job_intake_only",
+        "cost_upper_bound": {
+          "amount_minor": 500,
+          "currency": "USD",
+          "basis": "engineering_dispatch_ceiling_not_invoice"
+        }
       },
       {
         "name": "media.video_render",
@@ -113,7 +152,13 @@
         "additional_allowed_inputs": ["editing_blueprint_ref", "source_asset_refs", "audio_asset_refs", "render_profile"],
         "accepted_providers": ["ffmpeg", "remotion"],
         "result_kind": "video_artifact_evidence",
-        "external_side_effect": "local_media_render_only"
+        "external_side_effect": "local_media_render_only",
+        "state": "job_intake_only",
+        "cost_upper_bound": {
+          "amount_minor": 1000,
+          "currency": "USD",
+          "basis": "engineering_dispatch_ceiling_not_invoice"
+        }
       },
       {
         "name": "tutorial.build",
@@ -124,7 +169,13 @@
         "additional_allowed_inputs": ["application_ref", "feature_nodes", "capture_policy", "narration_profile"],
         "accepted_providers": ["windows_agent"],
         "result_kind": "tutorial_graph_and_media_evidence",
-        "external_side_effect": "approved_local_application_control_only"
+        "external_side_effect": "approved_local_application_control_only",
+        "state": "job_intake_only",
+        "cost_upper_bound": {
+          "amount_minor": 1500,
+          "currency": "USD",
+          "basis": "engineering_dispatch_ceiling_not_invoice"
+        }
       }
     ]
   },

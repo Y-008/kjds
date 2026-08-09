@@ -401,6 +401,115 @@ def test_inferred_edge_is_exploratory_and_scope_fails_closed():
         )
 
 
+def test_campaign_brief_compiles_from_ready_harness_snapshot_deterministically():
+    service = harness()
+    observed_at = datetime.now(UTC)
+    service.record_observation(
+        {
+            "project_id": "kjds-059",
+            "task_id": "task-pytest",
+            "verifier_id": "pytest",
+            "verifier_version": "1",
+            "source": "pytest process log",
+            "scope": {"tenant_ref": "tenant-a", "store_ref": "store-a"},
+            "state": "passed",
+            "summary": "campaign prerequisites passed",
+            "input_sha256": "7" * 64,
+            "artifact_ref": "output/pytest/campaign.log",
+            "evidence_ref": "evidence/campaign.md",
+            "observed_at": observed_at.isoformat(),
+            "store_ref": "store-a",
+        },
+        principal=principal(),
+    )
+    campaign = {
+        "objective": "Create a governed product proposal.",
+        "audiences": ["buyer-a"],
+        "channel": "listing-draft",
+        "constraints": ["proposal only", "no external write"],
+        "content_asset_refs": ["content_asset_1"],
+    }
+    kwargs = {
+        "project_id": "kjds-059",
+        "principal": principal(roles=frozenset({"operator"})),
+        "store_ref": "store-a",
+        "as_of": observed_at + timedelta(seconds=1),
+        "campaign": campaign,
+        "current_scope": {
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "authority_sha256": "f" * 64,
+            "subject_actor_id": "monitor-a",
+        },
+    }
+
+    first = service.compile_campaign_brief(**kwargs)
+    replay = service.compile_campaign_brief(**kwargs)
+
+    assert replay == first
+    assert set(first) == {
+        "contract_id",
+        "contract_version",
+        "project_ref",
+        "graph_snapshot_sha256",
+        "tenant_ref",
+        "entity_ref",
+        "store_ref",
+        "authority_sha256",
+        "subject_actor_id",
+        "scope_binding_sha256",
+        "objective",
+        "audiences",
+        "channel",
+        "constraints",
+        "content_asset_refs",
+        "brief_ref",
+        "content_sha256",
+        "external_write_allowed",
+    }
+    assert first["brief_ref"].startswith("campaign_brief_")
+    assert first["external_write_allowed"] is False
+    with pytest.raises(PermissionError, match="scope_not_current"):
+        service.compile_campaign_brief(
+            **{
+                **kwargs,
+                "current_scope": {
+                    **kwargs["current_scope"],
+                    "entity_ref": "entity-b",
+                },
+            }
+        )
+
+
+def test_campaign_brief_fails_closed_before_ready_or_on_shape_drift():
+    service = harness()
+    base = {
+        "objective": "Create a proposal.",
+        "audiences": [],
+        "channel": "listing-draft",
+        "constraints": [],
+        "content_asset_refs": [],
+    }
+    kwargs = {
+        "project_id": "kjds-059",
+        "principal": principal(roles=frozenset({"operator"})),
+        "store_ref": "store-a",
+        "as_of": datetime.now(UTC),
+        "current_scope": {
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "authority_sha256": "f" * 64,
+            "subject_actor_id": "monitor-a",
+        },
+    }
+    with pytest.raises(ValueError, match="campaign_brief_graph_pending"):
+        service.compile_campaign_brief(**kwargs, campaign=base)
+    with pytest.raises(ValueError, match="campaign_brief_shape_invalid"):
+        service.compile_campaign_brief(**kwargs, campaign={**base, "secret": "no"})
+
+
 def test_temporal_projection_requires_exact_scope_authority_and_evidence():
     service = harness()
     now = datetime.now(UTC)
