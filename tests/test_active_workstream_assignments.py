@@ -38,6 +38,22 @@ def _bas186_current_task():
     }
 
 
+def _bas218_current_task():
+    return {
+        "task_id": "BAS-218",
+        "state": "in_progress",
+        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
+        "write_scope": [
+            "requirements_traceability_registry",
+            "requirements_traceability_projection",
+            "automation_control_contracts",
+            "isolated_implementation_integration_gate",
+            "bas218_tests_docs_and_evidence",
+        ],
+        "blocked_on": [],
+    }
+
+
 def test_workstream_registry_has_thirteen_single_wip_lanes():
     registry = _registry()
     lanes = registry["lanes"]
@@ -148,7 +164,7 @@ def test_bas186_claims_media_lane_and_migration_lease():
     assert registry["shared_write_leases"]["alembic_migration"] == "BAS-186"
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
-    assert registry["shared_write_leases"]["master_spec"] is None
+    assert registry["shared_write_leases"]["master_spec"] == "BAS-218"
     plan = PLAN_PATH.read_text(encoding="utf-8")
     bas183_row = next(
         line for line in plan.splitlines() if line.startswith("| BAS-183 |")
@@ -238,11 +254,11 @@ def test_bas204_release_frees_closed_loop_and_migration_leases():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] is None
+    assert engineering["current_task"] == _bas218_current_task()
     assert engineering["next_task_id"] is None
     assert registry["shared_write_leases"]["alembic_migration"] == "BAS-186"
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
-    assert registry["shared_write_leases"]["master_spec"] is None
+    assert registry["shared_write_leases"]["master_spec"] == "BAS-218"
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert "BAS-204" not in registry["shared_write_leases"].values()
 
@@ -251,12 +267,12 @@ def test_bas210_release_frees_lane_c_and_shared_api_leases():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] is None
+    assert engineering["current_task"] == _bas218_current_task()
     assert engineering["next_task_id"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert registry["shared_write_leases"]["alembic_migration"] == "BAS-186"
-    assert registry["shared_write_leases"]["master_spec"] is None
+    assert registry["shared_write_leases"]["master_spec"] == "BAS-218"
     plan = PLAN_PATH.read_text(encoding="utf-8")
     bas210_row = next(
         line for line in plan.splitlines() if line.startswith("| BAS-210 |")
@@ -278,7 +294,7 @@ def test_bas211_release_record_and_bas210_release_are_preserved():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] is None
+    assert engineering["current_task"] == _bas218_current_task()
     assert engineering["next_task_id"] is None
     assert "BAS-211" not in registry["shared_write_leases"].values()
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -293,13 +309,13 @@ def test_bas212_release_record_and_bas210_release_are_preserved():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     engineering = lanes["C"]
 
-    assert engineering["current_task"] is None
+    assert engineering["current_task"] == _bas218_current_task()
     assert engineering["next_task_id"] is None
     assert "BAS-212" not in registry["shared_write_leases"].values()
     assert registry["shared_write_leases"] == {
         "alembic_migration": "BAS-186",
         "api_aggregation_root": None,
-        "master_spec": None,
+        "master_spec": "BAS-218",
         "openapi_snapshot": None,
     }
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -320,12 +336,12 @@ def test_bas213_release_frees_lane_e_and_preserves_bas210_release():
 
     assert risk["current_task"] is None
     assert risk["next_task_id"] is None
-    assert engineering["current_task"] is None
+    assert engineering["current_task"] == _bas218_current_task()
     assert engineering["next_task_id"] is None
     assert registry["shared_write_leases"] == {
         "alembic_migration": "BAS-186",
         "api_aggregation_root": None,
-        "master_spec": None,
+        "master_spec": "BAS-218",
         "openapi_snapshot": None,
     }
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -346,11 +362,11 @@ def test_bas215c_release_frees_lane_m_and_document_leases():
 
     assert coverage["current_task"] is None
     assert coverage["next_task_id"] is None
-    assert engineering["current_task"] is None
+    assert engineering["current_task"] == _bas218_current_task()
     assert registry["shared_write_leases"] == {
         "alembic_migration": "BAS-186",
         "api_aggregation_root": None,
-        "master_spec": None,
+        "master_spec": "BAS-218",
         "openapi_snapshot": None,
     }
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -393,12 +409,12 @@ def test_bas216b_release_frees_lane_l_without_shared_write_leases():
 
     assert intelligence["current_task"] is None
     assert intelligence["next_task_id"] is None
-    assert engineering["current_task"] is None
+    assert engineering["current_task"] == _bas218_current_task()
     assert coverage["current_task"] is None
     assert registry["shared_write_leases"] == {
         "alembic_migration": "BAS-186",
         "api_aggregation_root": None,
-        "master_spec": None,
+        "master_spec": "BAS-218",
         "openapi_snapshot": None,
     }
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -434,17 +450,17 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
     assert registry["shared_write_leases"]["alembic_migration"] == "BAS-186"
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
-    assert registry["shared_write_leases"]["master_spec"] is None
+    assert registry["shared_write_leases"]["master_spec"] == "BAS-218"
     assert registry["policy"]["legacy_in_progress_is_execution_lease"] is False
     assert registry["policy"]["current_task_is_execution_lease"] is True
     assert registry["policy"]["external_write_allowed"] is False
     assert all(value is False for value in registry["control_boundary"].values())
 
 
-def test_bas217_release_frees_lane_c_and_preserves_bas186():
+def test_bas217_release_is_preserved_while_bas218_claims_lane_c():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
-    assert lanes["C"]["current_task"] is None
+    assert lanes["C"]["current_task"] == _bas218_current_task()
     assert lanes["C"]["next_task_id"] is None
     assert lanes["J"]["current_task"] == _bas186_current_task()
     assert lanes["J"]["next_task_id"] is None
@@ -452,7 +468,7 @@ def test_bas217_release_frees_lane_c_and_preserves_bas186():
     assert registry["shared_write_leases"] == {
         "alembic_migration": "BAS-186",
         "api_aggregation_root": None,
-        "master_spec": None,
+        "master_spec": "BAS-218",
         "openapi_snapshot": None,
     }
     released_claim = {
@@ -496,3 +512,30 @@ def test_bas217_release_frees_lane_c_and_preserves_bas186():
     assert "双路 `P0=0/P1=0/PASS`" in row
     assert "G-1 未运行" in row
     assert row.endswith("| DONE_ENGINEERING |")
+
+
+def test_bas218_claims_traceability_scope_without_touching_bas186():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+
+    assert lanes["C"]["current_task"] == _bas218_current_task()
+    assert lanes["C"]["next_task_id"] is None
+    assert lanes["J"]["current_task"] == _bas186_current_task()
+    assert registry["shared_write_leases"] == {
+        "alembic_migration": "BAS-186",
+        "api_aggregation_root": None,
+        "master_spec": "BAS-218",
+        "openapi_snapshot": None,
+    }
+
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    row = next(line for line in plan.splitlines() if line.startswith("| BAS-218 |"))
+    assert "RequirementsTraceabilityProgram.project()" in row
+    assert "ADOPTED_ENGINEERING" in row
+    assert "ISOLATED_IMPLEMENTED" in row
+    assert "BLOCKED_EVIDENCE" in row
+    assert "隔离自动经营" in row
+    assert "不接 runtime/router/API/OpenAPI/Web/DB/migration/G1/外写" in row
+    assert "requirements_traceability.json" in row
+    assert "ADR-0096-requirements-traceability-and-automation-control.md" in row
+    assert row.endswith("| IN_PROGRESS |")
