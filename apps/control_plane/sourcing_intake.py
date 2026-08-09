@@ -191,6 +191,26 @@ class SupplierComparisonIntakeService:
         }
         if "" in supplier_refs or len(supplier_refs) != 3:
             raise ValueError("Supplier comparison requires three distinct supplier references")
+        selected_quantities = [
+            self.quote_authority.offer_data(record)
+            .get("attributes", {})
+            .get("selected_quantity")
+            for record in source_records
+        ]
+        comparison_quantity = None
+        if any(value is not None for value in selected_quantities):
+            if any(value is None for value in selected_quantities):
+                raise ValueError(
+                    "Tiered supplier comparison requires a selected quantity "
+                    "for every quote"
+                )
+            normalized_quantities = {int(value) for value in selected_quantities}
+            if len(normalized_quantities) != 1:
+                raise ValueError(
+                    "Tiered supplier comparison requires the same selected "
+                    "quantity for all quotes"
+                )
+            comparison_quantity = normalized_quantities.pop()
 
         assumption_digest = hashlib.sha256(assumption_content).hexdigest()
         quote_set_digest = hashlib.sha256(
@@ -304,11 +324,14 @@ class SupplierComparisonIntakeService:
                 )
             captured_offers.append(offer)
             scenarios.append(scenario)
+        comparison = self.sourcing.compare_product_offers(product_id)
+        if comparison_quantity is not None:
+            comparison["comparison_quantity"] = comparison_quantity
         return {
             "offers": captured_offers,
             "scenarios": scenarios,
             "evidence": [assumption, *source_records],
-            "comparison": self.sourcing.compare_product_offers(product_id),
+            "comparison": comparison,
             "authority": {
                 "quote_evidence_ids": normalized_quote_ids,
                 "all_independently_accepted": True,
