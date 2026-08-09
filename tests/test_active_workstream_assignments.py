@@ -20,7 +20,7 @@ def _bas184_current_task():
     return {
         "task_id": "BAS-184",
         "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
         "write_scope": [
             "commander_tool_gateway_contract",
             "campaign_brief_compilation",
@@ -28,6 +28,7 @@ def _bas184_current_task():
             "media_job_safe_projection",
             "media_job_campaign_brief_exact_scope_binding",
             "immutable_media_tool_descriptor_replay",
+            "media_job_provider_attempt_authority_concurrency",
             "bas184_tests_and_evidence",
         ],
         "blocked_on": [],
@@ -168,6 +169,9 @@ def test_bas184_claims_media_lane_after_bas183_release():
     assert "不新增数据库/迁移/API/router/OpenAPI/Web/runtime/compose" in bas184_row
     assert "apps/control_plane/media_jobs.py" in bas184_row
     assert "tests/test_media_jobs.py" in bas184_row
+    assert "tests/test_media_jobs_postgres.py" in bas184_row
+    assert "scope-authority advisory lock" in bas184_row
+    assert "真实 PostgreSQL 双连接" in bas184_row
     assert bas184_row.endswith("| IN_PROGRESS |")
 
 
@@ -418,7 +422,7 @@ def test_bas217_release_frees_lane_c_and_preserves_bas184():
     assert lanes["J"]["current_task"] == {
         "task_id": "BAS-184",
         "state": "in_progress",
-        "owner_thread_id": "019fc514-1b68-7503-afe3-50f1511c52de",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
         "write_scope": [
             "commander_tool_gateway_contract",
             "campaign_brief_compilation",
@@ -426,6 +430,7 @@ def test_bas217_release_frees_lane_c_and_preserves_bas184():
             "media_job_safe_projection",
             "media_job_campaign_brief_exact_scope_binding",
             "immutable_media_tool_descriptor_replay",
+            "media_job_provider_attempt_authority_concurrency",
             "bas184_tests_and_evidence",
         ],
         "blocked_on": [],
