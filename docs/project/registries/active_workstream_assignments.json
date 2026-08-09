@@ -55,23 +55,7 @@
       "id": "C",
       "name": "product_engineering",
       "accountable_role": "engineering_owner",
-      "current_task": {
-        "task_id": "BAS-217",
-        "state": "in_progress",
-        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
-        "write_scope": [
-          "single_sku_cash_attribution_contract",
-          "settlement_cash_projection",
-          "team_control_cash_truth_projection",
-          "team_control_registry_policy",
-          "master_spec_and_control_docs",
-          "focused_finance_control_tests",
-          "engineering_evidence",
-          "profit_row_identity_receipt",
-          "runtime_owned_profit_receipt_authority"
-        ],
-        "blocked_on": []
-      },
+      "current_task": null,
       "next_task_id": null
     },
     {
@@ -238,7 +222,7 @@
   "shared_write_leases": {
     "alembic_migration": null,
     "api_aggregation_root": null,
-    "master_spec": "BAS-217",
+    "master_spec": null,
     "openapi_snapshot": null
   },
   "control_boundary": {
