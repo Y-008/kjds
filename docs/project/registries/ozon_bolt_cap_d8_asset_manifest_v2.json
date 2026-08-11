@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "asset_set_id": "KJDS-OZ-RU-RCAP-D08-BLK-Q050-R02",
+  "schema_version": 3,
+  "asset_set_id": "KJDS-OZ-RU-RCAP-D08-BLK-Q050-R03",
   "offer_id": "KJDS-OZ-RU-RCAP-D08-BLK-Q050-R01",
   "generation_mode": "built_in_imagegen_edit_from_public_seller_reference",
   "source_reference": "docs/project/assets/ozon/bolt_caps_d8_black/source/source_01_product.jpg",
@@ -42,6 +42,24 @@
       "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/05_quantity_ru.png",
       "sha256": "ad96955be608507943ba091be84e3db0fdd3c812de9e083d1370b9bdb1954e3c",
       "quantity_claim": 50
+    },
+    {
+      "sequence": 6,
+      "role": "parameter_summary",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/06_parameters_ru.png",
+      "sha256": "027043a7dd4b62a1baa5b492058ffbe97ea84cec446bd379f87e8a17440ae6ff"
+    },
+    {
+      "sequence": 7,
+      "role": "compatibility_checklist",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/07_compatibility_ru.png",
+      "sha256": "df1f15f6bdd5909d78910f03b2affad3b719d891bb800bf67eb41b2148827334"
+    },
+    {
+      "sequence": 8,
+      "role": "faq",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/08_faq_ru.png",
+      "sha256": "331905869905942bcf9c2fdac061ef81cfd472b233ba3d35f122a625fbb1eb7e"
     }
   ],
   "excluded_claims": [
