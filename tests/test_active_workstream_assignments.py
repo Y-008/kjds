@@ -20,7 +20,7 @@ def _bas186_current_task():
     return {
         "task_id": "BAS-186",
         "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "owner_thread_id": "019fd4c1-60c9-79a0-9338-8c204ba0f312",
         "write_scope": [
             "editing_blueprint_canonical_contract",
             "reference_video_rights_and_observation_binding",
