@@ -32,6 +32,7 @@ def _bas186_current_task():
             "production_editing_source_authority",
             "reserved_media_worker_evidence",
             "governed_media_worker_runtime_composition",
+            "internal_blueprint_provider_connector_contract",
             "bas186_tests_and_evidence",
         ],
         "blocked_on": [],
@@ -193,7 +194,10 @@ def test_bas186_claims_media_lane_and_migration_lease():
     assert "apps/control_plane/evidence.py" in bas186_row
     assert "apps/control_plane/media_worker.py" in bas186_row
     assert "apps/control_plane/runtime.py" in bas186_row
+    assert "apps/control_plane/media_connectors.py" in bas186_row
+    assert "tests/test_media_connectors.py" in bas186_row
     assert "tests/test_editing_blueprint_runtime_composition.py" in bas186_row
+    assert "internal blueprint compiler" in bas186_row
     assert "reserved worker-input receipt" in bas186_row
     assert "dedicated reserved authority capture" in bas186_row
     assert "禁止复用 `MediaExecutionRow`" in bas186_row

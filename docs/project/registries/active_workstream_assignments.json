@@ -197,6 +197,7 @@
           "production_editing_source_authority",
           "reserved_media_worker_evidence",
           "governed_media_worker_runtime_composition",
+          "internal_blueprint_provider_connector_contract",
           "bas186_tests_and_evidence"
         ],
         "blocked_on": []
