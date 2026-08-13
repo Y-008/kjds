@@ -159,6 +159,16 @@ export function ProfitCommandConsole({
   const [notice, setNotice] = useState("正在读取授权经营作用域…");
 
   useEffect(() => {
+    const requested = new URLSearchParams(window.location.search)
+      .get("query")
+      ?.trim();
+    if (requested) {
+      setQueryDraft(requested);
+      setQuery(requested);
+    }
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const loadScope = async () => {
       const response = await fetchJson<StrategyPacks>("/backend/v1/seller-os/strategy-packs");

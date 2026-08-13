@@ -105,6 +105,13 @@ export function SourcingIntelligenceConsole() {
   const [readiness, setReadiness] = useState("");
   const [cursor, setCursor] = useState<string | null>(null);
 
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search)
+      .get("query")
+      ?.trim();
+    if (requested) setQuery(requested);
+  }, []);
+
   const load = useCallback(async (requestedCursor: string | null = cursor) => {
     setLoading(true);
     setError("");
