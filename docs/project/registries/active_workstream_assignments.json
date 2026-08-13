@@ -182,26 +182,7 @@
       "id": "J",
       "name": "media_agent_platform",
       "accountable_role": "media_agent_platform_owner",
-      "current_task": {
-        "task_id": "BAS-186",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-          "editing_blueprint_canonical_contract",
-          "reference_video_rights_and_observation_binding",
-          "media_job_worker_input_and_result_receipt",
-          "ffmpeg_only_deterministic_render_plan",
-          "content_asset_evidence_manifest_handoff",
-          "unknown_outcome_same_connector_readback",
-          "remotion_watch_license_gap_gate",
-          "production_editing_source_authority",
-          "reserved_media_worker_evidence",
-          "governed_media_worker_runtime_composition",
-          "internal_blueprint_provider_connector_contract",
-          "bas186_tests_and_evidence"
-        ],
-        "blocked_on": []
-      },
+      "current_task": null,
       "next_task_id": null
     },
     {
@@ -227,7 +208,7 @@
     }
   ],
   "shared_write_leases": {
-    "alembic_migration": "BAS-186",
+    "alembic_migration": null,
     "api_aggregation_root": null,
     "master_spec": null,
     "openapi_snapshot": null

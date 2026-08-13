@@ -16,29 +16,6 @@ def _registry():
     return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
 
 
-def _bas186_current_task():
-    return {
-        "task_id": "BAS-186",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-            "editing_blueprint_canonical_contract",
-            "reference_video_rights_and_observation_binding",
-            "media_job_worker_input_and_result_receipt",
-            "ffmpeg_only_deterministic_render_plan",
-            "content_asset_evidence_manifest_handoff",
-            "unknown_outcome_same_connector_readback",
-            "remotion_watch_license_gap_gate",
-            "production_editing_source_authority",
-            "reserved_media_worker_evidence",
-            "governed_media_worker_runtime_composition",
-            "internal_blueprint_provider_connector_contract",
-            "bas186_tests_and_evidence",
-        ],
-        "blocked_on": [],
-    }
-
-
 def test_workstream_registry_has_thirteen_single_wip_lanes():
     registry = _registry()
     lanes = registry["lanes"]
@@ -139,14 +116,14 @@ def test_social_platform_and_channel_operations_have_separate_lanes():
     assert lanes["I"]["name"] == "russia_market_intelligence"
 
 
-def test_bas186_claims_media_lane_and_migration_lease():
+def test_bas186_release_frees_media_lane_and_migration_lease():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     media = lanes["J"]
 
-    assert media["current_task"] == _bas186_current_task()
+    assert media["current_task"] is None
     assert media["next_task_id"] is None
-    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-186"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
@@ -203,7 +180,14 @@ def test_bas186_claims_media_lane_and_migration_lease():
     assert "禁止复用 `MediaExecutionRow`" in bas186_row
     assert "不改 router/API/OpenAPI/Web/compose/auto-commerce" in bas186_row
     assert "不运行 G1" in bas186_row
-    assert bas186_row.endswith("| IN_PROGRESS |")
+    assert "53da4ea242ce4fbd5ffba37d3aa0db4510308ed7" in bas186_row
+    assert "D0B255A7D80072A39DE7ADCA822EF05FC9C7498442ADF4D92C8B955A0A454C3A" in bas186_row
+    assert "142 passed" in bas186_row
+    assert "20 passed, 1 skipped" in bas186_row
+    assert "56 passed" in bas186_row
+    assert "74 passed" in bas186_row
+    assert "本切片未运行 G1" in bas186_row
+    assert bas186_row.endswith("| DONE_ENGINEERING |")
 
 
 def test_bas196_release_frees_local_demo_lane():
@@ -244,7 +228,7 @@ def test_bas204_release_frees_closed_loop_and_migration_leases():
 
     assert engineering["current_task"] is None
     assert engineering["next_task_id"] is None
-    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-186"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
@@ -259,7 +243,7 @@ def test_bas210_release_frees_lane_c_and_shared_api_leases():
     assert engineering["next_task_id"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
-    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-186"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
     plan = PLAN_PATH.read_text(encoding="utf-8")
     bas210_row = next(
@@ -301,7 +285,7 @@ def test_bas212_release_record_and_bas210_release_are_preserved():
     assert engineering["next_task_id"] is None
     assert "BAS-212" not in registry["shared_write_leases"].values()
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-186",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
         "openapi_snapshot": None,
@@ -327,7 +311,7 @@ def test_bas213_release_frees_lane_e_and_preserves_bas210_release():
     assert engineering["current_task"] is None
     assert engineering["next_task_id"] is None
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-186",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
         "openapi_snapshot": None,
@@ -352,7 +336,7 @@ def test_bas215c_release_frees_lane_m_and_document_leases():
     assert coverage["next_task_id"] is None
     assert engineering["current_task"] is None
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-186",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
         "openapi_snapshot": None,
@@ -400,7 +384,7 @@ def test_bas216b_release_frees_lane_l_without_shared_write_leases():
     assert engineering["current_task"] is None
     assert coverage["current_task"] is None
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-186",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
         "openapi_snapshot": None,
@@ -435,7 +419,7 @@ def test_shared_write_leases_and_authority_stay_fail_closed():
         "master_spec",
         "openapi_snapshot",
     }
-    assert registry["shared_write_leases"]["alembic_migration"] == "BAS-186"
+    assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["openapi_snapshot"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
     assert registry["shared_write_leases"]["master_spec"] is None
@@ -450,11 +434,11 @@ def test_bas217_and_bas218_releases_are_preserved_while_bas186_runs():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     assert lanes["C"]["current_task"] is None
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] == _bas186_current_task()
+    assert lanes["J"]["current_task"] is None
     assert lanes["J"]["next_task_id"] is None
     assert lanes["M"]["current_task"] is None
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-186",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
         "openapi_snapshot": None,
@@ -508,9 +492,9 @@ def test_bas218_release_frees_traceability_scope_without_touching_bas186():
 
     assert lanes["C"]["current_task"] is None
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] == _bas186_current_task()
+    assert lanes["J"]["current_task"] is None
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-186",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
         "openapi_snapshot": None,
@@ -540,9 +524,9 @@ def test_bas219a_release_preserves_selective_core_integration_evidence():
 
     assert lanes["C"]["current_task"] is None
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] == _bas186_current_task()
+    assert lanes["J"]["current_task"] is None
     assert registry["shared_write_leases"] == {
-        "alembic_migration": "BAS-186",
+        "alembic_migration": None,
         "api_aggregation_root": None,
         "master_spec": None,
         "openapi_snapshot": None,
