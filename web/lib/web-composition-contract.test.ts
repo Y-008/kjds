@@ -105,8 +105,11 @@ test("batch opportunity workbench uses only server-owned scans and safety contra
   assert.match(panel, /min_downside_cm3_rate/);
   assert.match(panel, /selected_for_kjds_item_master_review/);
   assert.match(panel, /\/kjds-item-master/);
-  assert.match(panel, /KJDS 是唯一商品、利润、证据和审批真源/);
-  assert.match(panel, /第三方 ERP\s*仅可作为后续可选出口/);
+  assert.match(panel, /KJDS 自研 ERP 是唯一商品、利润、证据和审批真源/);
+  assert.match(panel, /竞标商品/);
+  assert.match(panel, /主货源候选/);
+  assert.match(panel, /备选货源/);
+  assert.match(panel, /未同步第三方 ERP/);
   assert.doesNotMatch(panel, /\/backend\/v1\/erp\/profit-items/);
   assert.doesNotMatch(
     panel,

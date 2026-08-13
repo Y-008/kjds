@@ -259,6 +259,25 @@ type BatchView = {
   };
 };
 
+type ItemMasterResult = {
+  created: number;
+  already_exists: number;
+  items: Array<{
+    candidate_id: string;
+    product_id: string;
+    sku: string;
+    status: "created" | "already_exists";
+    references: {
+      competitive_market_url: string | null;
+      primary_supplier_url: string | null;
+      backup_supplier_urls: string[];
+      authority: "immutable_batch_candidate_evidence";
+      links_are_observations_not_orders: true;
+      external_sync_performed: false;
+    };
+  }>;
+};
+
 const stageLabels: Record<string, string> = {
   observe: "观察",
   match: "精确匹配",
@@ -333,11 +352,14 @@ export function BatchOpportunityPanel() {
   const [minDownsideRate, setMinDownsideRate] = useState("0.15");
   const [maxMoq, setMaxMoq] = useState("3");
   const [notice, setNotice] = useState("正在读取最近一次批量扫描…");
+  const [itemMasterResult, setItemMasterResult] =
+    useState<ItemMasterResult | null>(null);
 
   const load = useCallback(async (requestedStore?: string) => {
     const store = requestedStore || storeRef;
     if (!store) return;
     setBusy(true);
+    setItemMasterResult(null);
     const response = await fetchJson<BatchView>(
       `/backend/v1/batch-opportunities/latest?store_ref=${encodeURIComponent(store)}`,
     );
@@ -375,6 +397,7 @@ export function BatchOpportunityPanel() {
 
   const scan = async () => {
     setBusy(true);
+    setItemMasterResult(null);
     setNotice("服务端正在重放最新 Observation、FX、十五项成本与治理门…");
     const hour = new Date().toISOString().slice(0, 13).replaceAll(/[-T:]/g, "");
     const batchKey = [
@@ -445,7 +468,8 @@ export function BatchOpportunityPanel() {
         }),
       },
     );
-    const payload = await response.json();
+    const payload = await response.json() as ItemMasterResult;
+    setItemMasterResult(response.ok ? payload : null);
     setNotice(
       response.ok
         ? `KJDS 商品主档完成：新建 ${payload.created}，已存在 ${payload.already_exists}；均为 candidate，未调用第三方 ERP 或 Ozon。`
@@ -612,9 +636,39 @@ export function BatchOpportunityPanel() {
           将本批入围项加入 KJDS 商品主档
         </button>
         <small>
-          KJDS 是唯一商品、利润、证据和审批真源；第三方 ERP
-          仅可作为后续可选出口。筛选不等于建档、发布或盈利事实。
+          KJDS 自研 ERP 是唯一商品、利润、证据和审批真源；竞品工具仅用于能力参考。
+          筛选不等于询价、下单、发布或盈利事实。
         </small>
+        {itemMasterResult && itemMasterResult.items.length > 0 ? (
+          <div className="item-master-reference-list" aria-label="KJDS 商品主档来源映射">
+            {itemMasterResult.items.map((item) => (
+              <article key={item.product_id}>
+                <header>
+                  <strong>{item.sku}</strong>
+                  <span>{item.status === "created" ? "新建 candidate" : "已有 candidate"}</span>
+                </header>
+                <nav aria-label={`${item.sku} 来源链接`}>
+                  {item.references.competitive_market_url ? (
+                    <a href={item.references.competitive_market_url} target="_blank" rel="noreferrer">
+                      竞标商品
+                    </a>
+                  ) : <span>竞标商品 no_data</span>}
+                  {item.references.primary_supplier_url ? (
+                    <a href={item.references.primary_supplier_url} target="_blank" rel="noreferrer">
+                      主货源候选
+                    </a>
+                  ) : <span>主货源 no_data</span>}
+                  {item.references.backup_supplier_urls.map((url, index) => (
+                    <a key={url} href={url} target="_blank" rel="noreferrer">
+                      备选货源 {index + 1}
+                    </a>
+                  ))}
+                </nav>
+                <small>证据快照链接 · 未同步第三方 ERP · 未创建采购或上架</small>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="batch-official-flow" aria-label="Ozon Global CN 官方经营闭环">

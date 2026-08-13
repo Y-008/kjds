@@ -1346,6 +1346,7 @@ class BatchOpportunityWorkspace:
         pending: list[tuple[BatchOpportunityCandidateRow, Product]] = []
         for row in selected:
             sku = f"KJDS-{row.fingerprint[:16].upper()}"
+            references = self._item_master_references(row.payload_json)
             existing = by_sku.get(sku)
             if existing is not None:
                 if (
@@ -1362,6 +1363,7 @@ class BatchOpportunityWorkspace:
                         "product_id": existing.id,
                         "sku": existing.sku,
                         "status": "already_exists",
+                        "references": references,
                     }
                 )
                 continue
@@ -1399,6 +1401,9 @@ class BatchOpportunityWorkspace:
                                 "kjds_canonical_product_candidate_only"
                             ),
                             "external_write_allowed": False,
+                            "references": self._item_master_references(
+                                row.payload_json
+                            ),
                         },
                         actor_id=actor,
                         source_evidence_id=evidence_id,
@@ -1409,6 +1414,9 @@ class BatchOpportunityWorkspace:
                             "product_id": product.id,
                             "sku": product.sku,
                             "status": "created",
+                            "references": self._item_master_references(
+                                row.payload_json
+                            ),
                         }
                     )
         result_items.sort(key=lambda item: item["candidate_id"])
@@ -1436,6 +1444,45 @@ class BatchOpportunityWorkspace:
                 "ozon_write_performed": False,
                 "external_write_allowed": False,
             },
+        }
+
+    @staticmethod
+    def _item_master_references(candidate: dict[str, Any]) -> dict[str, Any]:
+        """Project evidence-bound market and sourcing links for KJDS PIM."""
+
+        market = candidate.get("market") or {}
+        supply = candidate.get("supply") or {}
+        if not isinstance(market, dict):
+            market = {}
+        if not isinstance(supply, dict):
+            supply = {}
+        selection = supply.get("selection") or {}
+        if not isinstance(selection, dict):
+            selection = {}
+        alternatives = selection.get("alternatives") or []
+        if not isinstance(alternatives, list):
+            alternatives = []
+        backup_urls = sorted(
+            {
+                str(item.get("source_url") or "").strip()
+                for item in alternatives
+                if isinstance(item, dict)
+                and str(item.get("source_url") or "").strip()
+            }
+        )
+        return {
+            "competitive_market_url": str(
+                market.get("source_url") or ""
+            ).strip()
+            or None,
+            "primary_supplier_url": str(
+                supply.get("source_url") or ""
+            ).strip()
+            or None,
+            "backup_supplier_urls": backup_urls,
+            "authority": "immutable_batch_candidate_evidence",
+            "links_are_observations_not_orders": True,
+            "external_sync_performed": False,
         }
 
     def _load_observations(

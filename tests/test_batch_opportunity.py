@@ -1599,7 +1599,23 @@ def test_selected_batch_candidates_create_idempotent_kjds_item_master_only():
     fingerprint = "c" * 64
     candidate_payload = {
         "fingerprint": fingerprint,
-        "market": {"title": "Cable organizer"},
+        "market": {
+            "title": "Cable organizer",
+            "source_url": "https://www.ozon.ru/product/cable-organizer/",
+        },
+        "supply": {
+            "source_url": "https://detail.1688.com/offer/cable-primary.html",
+            "selection": {
+                "alternatives": [
+                    {
+                        "source_url": (
+                            "https://www.yiwugo.com/product/detail/"
+                            "cable-backup.html"
+                        )
+                    }
+                ]
+            },
+        },
         "screening": {
             "accepted": True,
             "selection_status": (
@@ -1697,6 +1713,31 @@ def test_selected_batch_candidates_create_idempotent_kjds_item_master_only():
     assert len(products) == 1
     assert products[0].status.value == "candidate"
     assert products[0].sku.startswith("KJDS-")
+    assert created["items"][0]["references"] == {
+        "competitive_market_url": (
+            "https://www.ozon.ru/product/cable-organizer/"
+        ),
+        "primary_supplier_url": (
+            "https://detail.1688.com/offer/cable-primary.html"
+        ),
+        "backup_supplier_urls": [
+            "https://www.yiwugo.com/product/detail/cable-backup.html"
+        ],
+        "authority": "immutable_batch_candidate_evidence",
+        "links_are_observations_not_orders": True,
+        "external_sync_performed": False,
+    }
+    assert replay["items"][0]["references"] == created["items"][0][
+        "references"
+    ]
+    created_event = next(
+        event
+        for event in repository.events
+        if event["type"] == "product.created_from_batch_opportunity"
+    )
+    assert created_event["payload"]["references"] == created["items"][0][
+        "references"
+    ]
     assert created["authority"] == {
         "system_of_record": "kjds_canonical_product_pim",
         "product_status": "candidate",

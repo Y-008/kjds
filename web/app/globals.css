@@ -2863,6 +2863,44 @@ body {
   background: color-mix(in srgb, var(--surface) 86%, var(--accent));
 }
 
+.batch-official-flow > .item-master-reference-list {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.item-master-reference-list > article {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.item-master-reference-list > article > header {
+  align-items: center;
+}
+
+.item-master-reference-list nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.item-master-reference-list nav a,
+.item-master-reference-list nav span {
+  min-height: auto;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--accent);
+  font-size: .72rem;
+  text-decoration: none;
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent));
+}
+
+.item-master-reference-list article > small {
+  color: var(--muted);
+}
+
 @media (max-width: 720px) {
   .batch-official-flow header {
     display: block;
