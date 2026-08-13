@@ -335,6 +335,19 @@ class BatchOpportunityPrepareInput(BaseModel):
     as_of: str | None = None
 
 
+class BatchOpportunityItemMasterInput(BaseModel):
+    """Authorize one internal, evidence-bound KJDS PIM draft action."""
+
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+    as_of: str | None = None
+
+
 class ProfitPilotProposalInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)

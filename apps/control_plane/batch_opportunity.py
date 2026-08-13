@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from .domain import ContentStatus, PassportType, new_id
+from .domain import ContentStatus, PassportType, Product, new_id
 from .evidence import EvidenceGrade
 from .evidence_class import classify_evidence_class, policy_for
 from .marketplace_observation import exact_identity_complete
@@ -1221,6 +1221,223 @@ class BatchOpportunityWorkspace:
             )
         return result
 
+    def create_kjds_item_master_candidates(
+        self,
+        *,
+        run_id: str,
+        store_ref: str,
+        tenant_ref: str,
+        entity_ref: str,
+        scope_grant_authority_sha256: str,
+        idempotency_key: str,
+        actor_id: str,
+        as_of: datetime,
+    ) -> dict[str, Any]:
+        """Create candidate Products from an immutable KJDS shortlist."""
+
+        run_ref = _required_text(run_id, "run_id", max_length=160)
+        store = _required_text(store_ref, "store_ref", max_length=160)
+        tenant = _required_text(tenant_ref, "tenant_ref", max_length=160)
+        entity = _required_text(entity_ref, "entity_ref", max_length=160)
+        authority = _sha256_text(
+            scope_grant_authority_sha256,
+            "scope_grant_authority_sha256",
+        )
+        actor = _required_text(actor_id, "actor_id", max_length=160)
+        key = _required_text(
+            idempotency_key,
+            "idempotency_key",
+            max_length=160,
+        )
+        cutoff = _timestamp(as_of, "as_of")
+        with Session(self.engine) as session:
+            run = session.scalar(
+                select(BatchOpportunityRunRow).where(
+                    BatchOpportunityRunRow.id == run_ref,
+                    BatchOpportunityRunRow.store_ref == store,
+                    BatchOpportunityRunRow.tenant_ref == tenant,
+                    BatchOpportunityRunRow.entity_ref == entity,
+                    BatchOpportunityRunRow.scope_grant_authority_sha256
+                    == authority,
+                    BatchOpportunityRunRow.as_of <= cutoff,
+                )
+            )
+            if run is None:
+                raise KeyError(
+                    "Batch opportunity run not found in authorized scope"
+                )
+            rows = list(
+                session.scalars(
+                    select(BatchOpportunityCandidateRow)
+                    .where(BatchOpportunityCandidateRow.run_id == run.id)
+                    .order_by(
+                        BatchOpportunityCandidateRow.rank,
+                        BatchOpportunityCandidateRow.fingerprint,
+                    )
+                )
+            )
+            evidence_id = run.evidence_id
+
+        self.evidence.require_current([evidence_id], as_of=cutoff)
+        artifact_bytes, _ = self.evidence.content(evidence_id)
+        try:
+            artifact = json.loads(artifact_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                "Batch opportunity Evidence is not valid JSON"
+            ) from exc
+        artifact_scope = artifact.get("scope") or {}
+        if (
+            artifact.get("run_id") != run_ref
+            or artifact.get("store_ref") != store
+            or artifact_scope.get("tenant_ref") != tenant
+            or artifact_scope.get("entity_ref") != entity
+            or artifact_scope.get("scope_grant_authority_sha256")
+            != authority
+        ):
+            raise ValueError(
+                "Batch opportunity Evidence scope or run binding mismatch"
+            )
+        artifact_candidates = artifact.get("candidates")
+        if not isinstance(artifact_candidates, list):
+            raise ValueError("Batch opportunity candidate Evidence is missing")
+        candidates_by_fingerprint = {
+            item.get("fingerprint"): item
+            for item in artifact_candidates
+            if isinstance(item, dict) and item.get("fingerprint")
+        }
+        if (
+            len(candidates_by_fingerprint) != len(artifact_candidates)
+            or set(candidates_by_fingerprint)
+            != {row.fingerprint for row in rows}
+            or any(
+                _canonical_json(candidates_by_fingerprint[row.fingerprint])
+                != _canonical_json(row.payload_json)
+                for row in rows
+            )
+        ):
+            raise ValueError(
+                "Batch opportunity candidate Evidence does not match storage"
+            )
+        selection_target = artifact.get("screening", {}).get(
+            "selection_target"
+        )
+        if selection_target not in SELECTION_TARGETS:
+            raise ValueError("Batch opportunity selection target is invalid")
+        selected = [
+            row
+            for row in rows
+            if candidates_by_fingerprint[row.fingerprint]
+            .get("screening", {})
+            .get("accepted")
+            is True
+            and candidates_by_fingerprint[row.fingerprint]
+            .get("screening", {})
+            .get("selection_status")
+            == "selected_for_kjds_item_master_review"
+        ]
+        if len(selected) > selection_target:
+            raise ValueError("Batch opportunity shortlist exceeds its target")
+
+        by_sku = {
+            product.sku: product for product in self.repository.list_products()
+        }
+        result_items: list[dict[str, Any]] = []
+        pending: list[tuple[BatchOpportunityCandidateRow, Product]] = []
+        for row in selected:
+            sku = f"KJDS-{row.fingerprint[:16].upper()}"
+            existing = by_sku.get(sku)
+            if existing is not None:
+                if (
+                    existing.tenant_ref,
+                    existing.entity_ref,
+                    existing.store_ref,
+                ) != (tenant, entity, store):
+                    raise ValueError(
+                        "Stable KJDS candidate SKU belongs to another scope"
+                    )
+                result_items.append(
+                    {
+                        "candidate_id": row.id,
+                        "product_id": existing.id,
+                        "sku": existing.sku,
+                        "status": "already_exists",
+                    }
+                )
+                continue
+            title = str(
+                row.payload_json.get("market", {}).get("title")
+                or f"KJDS candidate {row.rank}"
+            ).strip()[:300]
+            product = Product(
+                sku=sku,
+                name=title,
+                tenant_ref=tenant,
+                entity_ref=entity,
+                store_ref=store,
+                scope_grant_authority_sha256=authority,
+                scope_as_of=cutoff.isoformat(),
+                created_by=actor,
+            )
+            pending.append((row, product))
+            by_sku[sku] = product
+
+        if pending:
+            with self.repository.transaction():
+                for row, product in pending:
+                    self.repository.add_product(product)
+                    self.repository.append_event(
+                        "product.created_from_batch_opportunity",
+                        product.id,
+                        {
+                            "sku": product.sku,
+                            "run_id": run_ref,
+                            "candidate_id": row.id,
+                            "candidate_fingerprint": row.fingerprint,
+                            "idempotency_key": key,
+                            "authority": (
+                                "kjds_canonical_product_candidate_only"
+                            ),
+                            "external_write_allowed": False,
+                        },
+                        actor_id=actor,
+                        source_evidence_id=evidence_id,
+                    )
+                    result_items.append(
+                        {
+                            "candidate_id": row.id,
+                            "product_id": product.id,
+                            "sku": product.sku,
+                            "status": "created",
+                        }
+                    )
+        result_items.sort(key=lambda item: item["candidate_id"])
+        return {
+            "contract_version": "kjds-item-master-batch/1.0.0",
+            "run_id": run_ref,
+            "store_ref": store,
+            "selection_target": selection_target,
+            "selected": len(selected),
+            "created": sum(
+                item["status"] == "created" for item in result_items
+            ),
+            "already_exists": sum(
+                item["status"] == "already_exists" for item in result_items
+            ),
+            "items": result_items,
+            "authority": {
+                "system_of_record": "kjds_canonical_product_pim",
+                "product_status": "candidate",
+                "third_party_erp_called": False,
+                "supplier_offer_created": False,
+                "inventory_created": False,
+                "purchase_created": False,
+                "listing_created": False,
+                "ozon_write_performed": False,
+                "external_write_allowed": False,
+            },
+        }
+
     def _load_observations(
         self,
         *,
@@ -1860,6 +2077,9 @@ class BatchOpportunityWorkspace:
             return {
                 "external_item_id": row["item"]["external_item_id"],
                 "supplier_ref": row["item"]["supplier_ref"],
+                "platform": row["item"].get("marketplace", "unknown"),
+                "source_url": row["item"].get("source_url"),
+                "exact_variant": row["item"]["variant_key"],
                 "displayed_price": row["item"]["displayed_price"],
                 "price_scope": row["item"]["price_scope"],
                 "unit_price": str(row["unit_price"]),

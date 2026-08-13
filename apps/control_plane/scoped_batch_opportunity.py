@@ -170,6 +170,38 @@ class ScopedBatchOpportunityAuthority:
             run=run,
         )
 
+    def create_kjds_item_master_candidates(
+        self,
+        *,
+        principal: Principal,
+        entity_scope: dict[str, Any],
+        store_ref: str,
+        run_id: str,
+        idempotency_key: str,
+        actor_id: str,
+        as_of: datetime,
+    ) -> dict[str, Any]:
+        context = self._context(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+            as_of=as_of,
+        )
+        if context["status"] != "ready":
+            raise ValueError("KJDS item master requires current exact scope")
+        return self.batch.create_kjds_item_master_candidates(
+            run_id=run_id,
+            store_ref=store_ref,
+            tenant_ref=context["scope"]["tenant_ref"],
+            entity_ref=context["scope"]["entity_ref"],
+            scope_grant_authority_sha256=context["scope"][
+                "scope_grant_authority_sha256"
+            ],
+            idempotency_key=idempotency_key,
+            actor_id=actor_id,
+            as_of=context["cutoff"],
+        )
+
     def latest(
         self,
         *,

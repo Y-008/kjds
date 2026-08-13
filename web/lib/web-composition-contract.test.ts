@@ -98,10 +98,16 @@ test("batch opportunity workbench uses only server-owned scans and safety contra
   assert.match(panel, /sale-triggered JIT/);
   assert.match(panel, /sale_triggered_procurement/);
   assert.match(panel, /出单前采购/);
-  assert.match(panel, /\/backend\/v1\/erp\/profit-items/);
-  assert.match(panel, /利润款写入 ERP/);
-  assert.match(panel, /opening_stock=0/);
-  assert.match(panel, /不会把观察价写成 ERP 利润商品/);
+  assert.match(panel, /selectionTarget/);
+  assert.match(panel, /\[50, 100, 200, 500, 1000\]/);
+  assert.match(panel, /lightweight_fast_mover_v1/);
+  assert.match(panel, /competition_gap_v1/);
+  assert.match(panel, /min_downside_cm3_rate/);
+  assert.match(panel, /selected_for_kjds_item_master_review/);
+  assert.match(panel, /\/kjds-item-master/);
+  assert.match(panel, /KJDS 是唯一商品、利润、证据和审批真源/);
+  assert.match(panel, /第三方 ERP\s*仅可作为后续可选出口/);
+  assert.doesNotMatch(panel, /\/backend\/v1\/erp\/profit-items/);
   assert.doesNotMatch(
     panel,
     /Math\.random|listing_price\s*[-+*/]|observed_checkout_price\s*[-+*/]|\/commands|\/write-attempt|\/receipt/,

@@ -37,6 +37,9 @@ type CountSet = {
   official_rule_ready?: number;
   unmatched_ozon?: number;
   unmatched_supplier?: number;
+  screening_accepted?: number;
+  selected_for_kjds_item_master_review?: number;
+  screening_rejected?: number;
 };
 
 type CostCase = {
@@ -172,6 +175,15 @@ type BatchCandidate = {
     blockers: string[];
     next_action: string;
   };
+  screening?: {
+    contract_version: string;
+    profile_id: string;
+    accepted: boolean;
+    reasons: string[];
+    selection_status: string;
+    kjds_item_master_created: false;
+    external_write_allowed: false;
+  };
 };
 
 type BatchView = {
@@ -229,29 +241,22 @@ type BatchView = {
     permit_created: false;
     ozon_write_performed: false;
     automatic_execution: false;
+    kjds_item_master_created?: false;
+    third_party_erp_is_system_of_record?: false;
   };
-};
-
-type ErpProfitWorkspace = {
-  state: "ready" | "no_data";
-  tenant_ref: string;
-  store_ref: string;
-  counts: {
-    evaluated_candidates: number;
-    profit_qualified: number;
-    sync_records: number;
-    succeeded: number;
+  screening?: {
+    contract_version: string;
+    profile_id: string;
+    selection_target: 50 | 100 | 200 | 500 | 1000;
+    min_score: string;
+    min_downside_cm3_rate: string;
+    min_supplier_density: number;
+    max_moq: number | null;
+    min_demand_proxy: string;
+    selection_semantics: string;
+    external_write_allowed: false;
+    third_party_erp_target: false;
   };
-  connector: { configured: boolean; write_scope: string };
-  blockers: string[];
-  next: string;
-  eligible_items: Array<{
-    run_id: string;
-    candidate_id: string;
-    product_id: string;
-    downside_cm3_cny: string;
-    candidate_key: string;
-  }>;
 };
 
 const stageLabels: Record<string, string> = {
@@ -318,8 +323,15 @@ export function BatchOpportunityPanel() {
   const [busy, setBusy] = useState(true);
   const [storeRef, setStoreRef] = useState("");
   const [authorizedStores, setAuthorizedStores] = useState<string[]>([]);
-  const [erp, setErp] = useState<ErpProfitWorkspace | null>(null);
-  const [tenantRef, setTenantRef] = useState("");
+  const [selectionTarget, setSelectionTarget] = useState<
+    50 | 100 | 200 | 500 | 1000
+  >(50);
+  const [screeningProfile, setScreeningProfile] = useState(
+    "lightweight_fast_mover_v1",
+  );
+  const [minScore, setMinScore] = useState("55");
+  const [minDownsideRate, setMinDownsideRate] = useState("0.15");
+  const [maxMoq, setMaxMoq] = useState("3");
   const [notice, setNotice] = useState("正在读取最近一次批量扫描…");
 
   const load = useCallback(async (requestedStore?: string) => {
@@ -336,10 +348,6 @@ export function BatchOpportunityPanel() {
       return;
     }
     setView(payload);
-    const erpResponse = await fetchJson<ErpProfitWorkspace>(
-      `/backend/v1/erp/profit-items?store_ref=${encodeURIComponent(store)}`,
-    );
-    if (erpResponse.ok) setErp(await erpResponse.json());
     setNotice(
       payload.state === "no_data"
         ? "暂无批量扫描 run；页面不会用演示候选填充。"
@@ -359,7 +367,6 @@ export function BatchOpportunityPanel() {
         return;
       }
       setAuthorizedStores(payload.authorized_scope.store_refs);
-      setTenantRef((payload.authorized_scope as { tenant_ref?: string }).tenant_ref ?? "");
       const store = payload.authorized_scope.store_refs[0];
       setStoreRef(store);
       await load(store);
@@ -370,19 +377,36 @@ export function BatchOpportunityPanel() {
     setBusy(true);
     setNotice("服务端正在重放最新 Observation、FX、十五项成本与治理门…");
     const hour = new Date().toISOString().slice(0, 13).replaceAll(/[-T:]/g, "");
+    const batchKey = [
+      "batch-opportunity",
+      hour,
+      selectionTarget,
+      screeningProfile,
+      minScore,
+      minDownsideRate,
+      maxMoq,
+    ].join("-");
     const response = await fetchJson<BatchView>("/backend/v1/batch-market-scans", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         store_ref: storeRef,
         policy_id: "cn-ozon-observed-cost-v1",
-        idempotency_key: `batch-opportunity-${hour}`,
-        candidate_limit: 500,
+        idempotency_key: batchKey,
+        candidate_limit: Math.max(500, selectionTarget * 5),
+        full_evaluate_limit: selectionTarget,
         pilot_limit: 3,
         target_purchase_quantity: 1,
         max_age_hours: 72,
         max_inventory_cash_cny: "3000.00",
         cm3_floor_cny: "0.00",
+        screening: {
+          profile_id: screeningProfile,
+          selection_target: selectionTarget,
+          min_score: minScore,
+          min_downside_cm3_rate: minDownsideRate,
+          max_moq: Number(maxMoq),
+        },
       }),
     });
     const payload = await response.json();
@@ -393,7 +417,7 @@ export function BatchOpportunityPanel() {
     }
     setView(payload);
     setNotice(
-      `扫描完成：观察 ${payload.counts.observed}，跨市场精确身份 ${payload.counts.exact_identity_matched ?? payload.counts.exact_matched}，结算成本可评估 ${payload.counts.checkout_cost_eligible ?? 0}，可进审批 ${payload.counts.eligible_for_approval ?? 0}，审批预算槽位 ${payload.counts.approval_allocation_selected ?? 0}，Pilot ready ${payload.counts.pilot_ready}。`,
+      `扫描完成：观察 ${payload.counts.observed}，跨市场精确身份 ${payload.counts.exact_identity_matched ?? payload.counts.exact_matched}，筛选通过 ${payload.counts.screening_accepted ?? 0}，进入 KJDS 商品主档复核 ${payload.counts.selected_for_kjds_item_master_review ?? 0}，Pilot ready ${payload.counts.pilot_ready}。`,
     );
     setBusy(false);
   };
@@ -406,24 +430,28 @@ export function BatchOpportunityPanel() {
     pilot_ready: 0,
   };
 
-  const prepareErpSync = async (item: ErpProfitWorkspace["eligible_items"][number]) => {
+  const createKjdsItemMasterCandidates = async () => {
+    if (!view?.run_id) return;
     setBusy(true);
-    const response = await fetchJson("/backend/v1/erp/profit-items/syncs", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        tenant_ref: tenantRef,
-        store_ref: storeRef,
-        run_id: item.run_id,
-        candidate_id: item.candidate_id,
-        idempotency_key: `erp-profit-item-${item.candidate_id}`,
-      }),
-    });
+    setNotice("正在把本次入围项写入 KJDS 自研商品主档 candidate 区…");
+    const response = await fetchJson(
+      `/backend/v1/batch-opportunities/${encodeURIComponent(view.run_id)}/kjds-item-master`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          store_ref: storeRef,
+          idempotency_key: `kjds-item-master-${view.run_id}`,
+        }),
+      },
+    );
     const payload = await response.json();
-    setNotice(response.ok
-      ? `ERP Item 同步记录已建立：${payload.status}。库存仍为 0，未创建采购单。`
-      : `ERP Item 同步被阻断（HTTP ${response.status || "offline"}）。`);
-    await load(storeRef);
+    setNotice(
+      response.ok
+        ? `KJDS 商品主档完成：新建 ${payload.created}，已存在 ${payload.already_exists}；均为 candidate，未调用第三方 ERP 或 Ozon。`
+        : `KJDS 商品主档创建被阻断（HTTP ${response.status || "offline"}）。`,
+    );
+    setBusy(false);
   };
   const supplyRegions = view?.supply_map ?? [];
   const positionedSupply = supplyRegions.filter(
@@ -473,6 +501,73 @@ export function BatchOpportunityPanel() {
               ))}
             </select>
           </label>
+          <label>
+            <span>批次目标</span>
+            <select
+              aria-label="批次筛选目标"
+              value={selectionTarget}
+              onChange={(event) =>
+                setSelectionTarget(
+                  Number(event.target.value) as 50 | 100 | 200 | 500 | 1000,
+                )
+              }
+              disabled={busy}
+            >
+              {[50, 100, 200, 500, 1000].map((target) => (
+                <option key={target} value={target}>{target} 个</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>筛选打法</span>
+            <select
+              aria-label="批量筛选打法"
+              value={screeningProfile}
+              onChange={(event) => setScreeningProfile(event.target.value)}
+              disabled={busy}
+            >
+              <option value="lightweight_fast_mover_v1">轻小件快周转</option>
+              <option value="competition_gap_v1">竞品缺口</option>
+              <option value="evidence_first_v1">证据优先</option>
+              <option value="custom_v1">自定义组合</option>
+            </select>
+          </label>
+          <label>
+            <span>最低评分</span>
+            <input
+              aria-label="最低评分"
+              type="number"
+              min="0"
+              max="100"
+              value={minScore}
+              onChange={(event) => setMinScore(event.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <label>
+            <span>最低悲观毛利率</span>
+            <input
+              aria-label="最低悲观毛利率"
+              type="number"
+              min="0"
+              max="1"
+              step="0.01"
+              value={minDownsideRate}
+              onChange={(event) => setMinDownsideRate(event.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <label>
+            <span>最高 MOQ</span>
+            <input
+              aria-label="最高 MOQ"
+              type="number"
+              min="1"
+              value={maxMoq}
+              onChange={(event) => setMaxMoq(event.target.value)}
+              disabled={busy}
+            />
+          </label>
           <button type="button" className="secondary" onClick={() => void load()} disabled={busy}>
             <RefreshCw size={14} /> 刷新
           </button>
@@ -487,33 +582,39 @@ export function BatchOpportunityPanel() {
         <article><GitBranch size={18} /><span>跨市场精确身份</span><strong>{counts.exact_identity_matched ?? counts.exact_matched}</strong></article>
         <article><Factory size={18} /><span>结算成本可评估</span><strong>{counts.checkout_cost_eligible ?? 0}</strong></article>
         <article><ChartNoAxesCombined size={18} /><span>downside 正</span><strong>{counts.downside_positive}</strong></article>
-        <article><Sparkles size={18} /><span>审批预算槽位</span><strong>{counts.approval_allocation_selected ?? 0}</strong></article>
+        <article><Sparkles size={18} /><span>KJDS 主档复核</span><strong>{counts.selected_for_kjds_item_master_review ?? 0}</strong></article>
         <article className={counts.pilot_ready ? "ready" : "blocked"}>
           <ShieldAlert size={18} /><span>Pilot 就绪</span><strong>{counts.pilot_ready}</strong>
         </article>
       </section>
 
-      <section className="batch-official-flow" aria-label="利润款 ERP 同步">
+      <section className="batch-official-flow" aria-label="KJDS 自研商品主档候选">
         <header>
           <div>
-            <span>PROFIT-QUALIFIED → ERP ITEM DRAFT</span>
-            <h3>利润款写入 ERP，同步状态由服务端权威判定</h3>
+            <span>COMPETITOR PRODUCT → KJDS CANONICAL PRODUCT</span>
+            <h3>竞品商品筛选后进入 KJDS 自研 PIM/ERP 商品主档</h3>
           </div>
-          <strong>{erp?.counts.profit_qualified ?? 0} 可同步</strong>
+          <strong>{counts.selected_for_kjds_item_master_review ?? 0} 待主档复核</strong>
         </header>
         <p>
-          已评估 {erp?.counts.evaluated_candidates ?? 0} · 同步记录 {erp?.counts.sync_records ?? 0} ·
-          成功 {erp?.counts.succeeded ?? 0} · 连接器 {erp?.connector.configured ? "已配置" : "未配置"}
+          目标 {view?.screening?.selection_target ?? selectionTarget} · 筛选通过 {counts.screening_accepted ?? 0} ·
+          淘汰 {counts.screening_rejected ?? 0} · 策略 {view?.screening?.profile_id ?? screeningProfile}
         </p>
-        {(erp?.eligible_items ?? []).map((item) => (
-          <button key={item.candidate_id} type="button" disabled={busy} onClick={() => void prepareErpSync(item)}>
-            建立 ERP Item 草稿 · CM3 {item.downside_cm3_cny} CNY
-          </button>
-        ))}
-        {(erp?.eligible_items.length ?? 0) === 0 ? (
-          <p className="batch-no-data">no_data · {erp?.next ?? "尚无服务端证实的利润款"}；不会把观察价写成 ERP 利润商品。</p>
-        ) : null}
-        <small>固定 opening_stock=0；不创建采购单、付款、广告或 Ozon 写入。</small>
+        <button
+          type="button"
+          disabled={
+            busy
+            || !view?.run_id
+            || (counts.selected_for_kjds_item_master_review ?? 0) === 0
+          }
+          onClick={() => void createKjdsItemMasterCandidates()}
+        >
+          将本批入围项加入 KJDS 商品主档
+        </button>
+        <small>
+          KJDS 是唯一商品、利润、证据和审批真源；第三方 ERP
+          仅可作为后续可选出口。筛选不等于建档、发布或盈利事实。
+        </small>
       </section>
 
       <section className="batch-official-flow" aria-label="Ozon Global CN 官方经营闭环">
@@ -658,6 +759,16 @@ export function BatchOpportunityPanel() {
                 {candidate.strategy.tactics?.length ? ` · 战术：${candidate.strategy.tactics.join(" / ")}` : ""}
               </p>
               <div>{candidate.blockers.slice(0, 5).map((item) => <span key={item}>{item}</span>)}</div>
+            </div>
+            <div className="batch-state-row" aria-label="KJDS 商品主档筛选状态">
+              <span data-status={candidate.screening?.accepted ? "current" : "blocked"}>
+                KJDS 主档 · {candidate.screening?.selection_status ?? "未执行筛选"}
+              </span>
+              <span>
+                {candidate.screening?.reasons.length
+                  ? `淘汰依据：${candidate.screening.reasons.join(" / ")}`
+                  : "筛选指标通过；仍需人工复核后建档"}
+              </span>
             </div>
             <div className="batch-state-row" aria-label="出单后采购状态">
               <span data-status={candidate.sale_triggered_procurement?.state === "eligible_for_procurement_review" ? "current" : "blocked"}>

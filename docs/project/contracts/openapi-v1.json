@@ -451,6 +451,42 @@
         "title": "AssetReviewInput",
         "type": "object"
       },
+      "BatchOpportunityItemMasterInput": {
+        "additionalProperties": false,
+        "description": "Authorize one internal, evidence-bound KJDS PIM draft action.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "idempotency_key": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "BatchOpportunityItemMasterInput",
+        "type": "object"
+      },
       "BatchOpportunityPrepareInput": {
         "additionalProperties": false,
         "properties": {
@@ -18672,6 +18708,58 @@
         "summary": "Latest Batch Opportunities"
       }
     },
+    "/v1/batch-opportunities/{run_id}/kjds-item-master": {
+      "post": {
+        "operationId": "create_batch_kjds_item_master_candidates_v1_batch_opportunities__run_id__kjds_item_master_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchOpportunityItemMasterInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Create Batch Kjds Item Master Candidates"
+      }
+    },
     "/v1/browser-capture-inbox/preflight": {
       "post": {
         "operationId": "preflight_browser_capture_v1_browser_capture_inbox_preflight_post",
@@ -26122,6 +26210,48 @@
           }
         ],
         "summary": "Create Execution Observation Window"
+      }
+    },
+    "/v1/limited-execution-commands/{command_id}/preread-grant": {
+      "post": {
+        "operationId": "allocate_limited_execution_preread_grant_v1_limited_execution_commands__command_id__preread_grant_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "command_id",
+            "required": true,
+            "schema": {
+              "title": "Command Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Allocate Limited Execution Preread Grant"
       }
     },
     "/v1/limited-execution-commands/{command_id}/receipt": {
