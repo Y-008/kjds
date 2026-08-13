@@ -1072,6 +1072,10 @@ class ScopedProductContentAuthority:
                 "created_at": value.created_at,
             },
             "scope_authority": authority,
+            "source_lineage": self._source_lineage(
+                product_id=value.id,
+                as_of=context["cutoff"],
+            ),
             "passports": passport_rows,
             "content_assets": asset_rows,
             "evidence_ids": evidence_ids,
@@ -1084,6 +1088,57 @@ class ScopedProductContentAuthority:
         }
         payload["snapshot_sha256"] = self._hash(payload)
         return payload
+
+    def _source_lineage(
+        self, *, product_id: str, as_of: datetime
+    ) -> dict[str, Any]:
+        reader = getattr(
+            self.repository, "latest_product_source_lineage", None
+        )
+        event = reader(product_id, as_of=as_of) if reader else None
+        if event is None:
+            return {
+                "status": "no_data",
+                "competitive_market_url": None,
+                "primary_supplier_url": None,
+                "backup_supplier_urls": [],
+                "source_evidence_id": None,
+                "authority": "product_event_ledger",
+                "links_are_observations_not_orders": True,
+                "external_sync_performed": False,
+            }
+        payload = event.get("payload") or {}
+        references = payload.get("references") or {}
+        if not isinstance(references, dict):
+            references = {}
+        backups = references.get("backup_supplier_urls") or []
+        if not isinstance(backups, list):
+            backups = []
+        return {
+            "status": "observed",
+            "competitive_market_url": self._url_or_none(
+                references.get("competitive_market_url")
+            ),
+            "primary_supplier_url": self._url_or_none(
+                references.get("primary_supplier_url")
+            ),
+            "backup_supplier_urls": sorted(
+                {
+                    url
+                    for value in backups
+                    if (url := self._url_or_none(value)) is not None
+                }
+            ),
+            "source_evidence_id": event.get("source_evidence_id"),
+            "authority": "product_event_ledger",
+            "links_are_observations_not_orders": True,
+            "external_sync_performed": False,
+        }
+
+    @staticmethod
+    def _url_or_none(value: Any) -> str | None:
+        url = str(value or "").strip()
+        return url if url.startswith(("https://", "http://")) else None
 
     def _approval_plan(
         self,

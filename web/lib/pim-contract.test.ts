@@ -30,6 +30,9 @@ test("PIM renders list detail no-data error retry and governed Agent limits at m
   assert.match(source, /role="alert"/);
   assert.match(source, />重试</);
   assert.match(source, /不能自批、发 Permit 或外部写/);
-  assert.match(css, /@media\(max-width:420px\)/);
-  assert.match(css, /overflow-x:hidden/);
+  assert.match(source, /source_lineage/);
+  assert.match(source, /竞标与货源映射/);
+  assert.match(source, /未同步第三方 ERP/);
+  assert.match(css, /@media\s*\(max-width:\s*420px\)/);
+  assert.match(css, /overflow-x:\s*hidden/);
 });
