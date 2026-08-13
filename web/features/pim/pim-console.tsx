@@ -143,6 +143,7 @@ export function PimConsole() {
                     {group.source_lineage.backup_supplier_urls.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">备选货源 {index + 1}</a>)}
                     <small>事件账本证据快照 · 未询价/下单 · 未同步第三方 ERP</small>
                   </section>
+                  <Link href={`/sourcing-intelligence?query=${encodeURIComponent(group.product.sku)}`}>查看三家 RFQ、回复与报价状态 →</Link>
                   <Link href={`/profit-command?query=${encodeURIComponent(group.product.sku)}`}>进入该 SKU 十五项成本与利润补证 →</Link>
                   <p>SLA · {group.sla}</p><p>Next · {group.next}</p>
                   <code>{group.group_snapshot_sha256}</code>

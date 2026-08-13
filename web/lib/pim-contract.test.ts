@@ -35,6 +35,8 @@ test("PIM renders list detail no-data error retry and governed Agent limits at m
   assert.match(source, /未同步第三方 ERP/);
   assert.match(source, /href=\{`\/profit-command\?query=/);
   assert.match(source, /进入该 SKU 十五项成本与利润补证/);
+  assert.match(source, /href=\{`\/sourcing-intelligence\?query=/);
+  assert.match(source, /查看三家 RFQ、回复与报价状态/);
   assert.match(css, /@media\s*\(max-width:\s*420px\)/);
   assert.match(css, /overflow-x:\s*hidden/);
 });
