@@ -182,7 +182,16 @@
       "id": "J",
       "name": "media_agent_platform",
       "accountable_role": "media_agent_platform_owner",
-      "current_task": null,
+      "current_task": {
+        "task_id": "BAS-220",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "write_scope": [
+          "closed_loop_0096_revision_isolation",
+          "g1_migration_head_currentness_evidence"
+        ],
+        "blocked_on": []
+      },
       "next_task_id": null
     },
     {

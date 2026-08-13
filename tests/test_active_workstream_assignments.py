@@ -121,7 +121,7 @@ def test_bas186_release_frees_media_lane_and_migration_lease():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     media = lanes["J"]
 
-    assert media["current_task"] is None
+    assert media["current_task"]["task_id"] != "BAS-186"
     assert media["next_task_id"] is None
     assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] is None
@@ -434,7 +434,7 @@ def test_bas217_and_bas218_releases_are_preserved_while_bas186_runs():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     assert lanes["C"]["current_task"] is None
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] is None
+    assert lanes["J"]["current_task"]["task_id"] != "BAS-217"
     assert lanes["J"]["next_task_id"] is None
     assert lanes["M"]["current_task"] is None
     assert registry["shared_write_leases"] == {
@@ -492,7 +492,7 @@ def test_bas218_release_frees_traceability_scope_without_touching_bas186():
 
     assert lanes["C"]["current_task"] is None
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] is None
+    assert lanes["J"]["current_task"]["task_id"] != "BAS-218"
     assert registry["shared_write_leases"] == {
         "alembic_migration": None,
         "api_aggregation_root": None,
@@ -524,7 +524,7 @@ def test_bas219a_release_preserves_selective_core_integration_evidence():
 
     assert lanes["C"]["current_task"] is None
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] is None
+    assert lanes["J"]["current_task"]["task_id"] != "BAS-219A"
     assert registry["shared_write_leases"] == {
         "alembic_migration": None,
         "api_aggregation_root": None,
@@ -545,3 +545,36 @@ def test_bas219a_release_preserves_selective_core_integration_evidence():
     assert "DB/G-1 未运行" in row
     assert "继续 `BLOCKED_EVIDENCE`" in row
     assert row.endswith("| DONE_ENGINEERING |")
+
+
+def test_bas220_claims_only_closed_loop_g1_currentness_scope():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+
+    assert lanes["J"]["current_task"] == {
+        "task_id": "BAS-220",
+        "state": "in_progress",
+        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
+        "write_scope": [
+            "closed_loop_0096_revision_isolation",
+            "g1_migration_head_currentness_evidence",
+        ],
+        "blocked_on": [],
+    }
+    assert lanes["J"]["next_task_id"] is None
+    assert lanes["C"]["current_task"] is None
+    assert registry["shared_write_leases"] == {
+        "alembic_migration": None,
+        "api_aggregation_root": None,
+        "master_spec": None,
+        "openapi_snapshot": None,
+    }
+
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    row = next(line for line in plan.splitlines() if line.startswith("| BAS-220 |"))
+    assert "tests/test_closed_loop_evolution_postgres.py" in row
+    assert "20260805_0096" in row
+    assert "20260809_0098" in row
+    assert "不修改 0096/0097/0098 migration" in row
+    assert "不抢 shared lease" in row
+    assert row.endswith("| IN_PROGRESS |")
