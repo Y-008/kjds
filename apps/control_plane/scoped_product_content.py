@@ -7,6 +7,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .domain import ContentStatus, PassportType, Product, ProductStatus
+from .media_jobs import (
+    EDITING_MAX_SCENE_DURATION_MS,
+    EDITING_MAX_TIMELINE_DURATION_MS,
+    EDITING_TARGET_CHANNELS,
+    FFMPEG_RENDER_PROFILE_SHA256,
+    canonical_json,
+    sha256_bytes,
+)
 from .security import Principal
 
 
@@ -23,11 +31,15 @@ class ScopedProductContentAuthority:
         scoped_catalog,
         scoped_evidence,
         sourcing,
+        evidence=None,
+        media_jobs=None,
     ) -> None:
         self.repository = repository
         self.scoped_catalog = scoped_catalog
         self.scoped_evidence = scoped_evidence
         self.sourcing = sourcing
+        self.evidence = evidence
+        self.media_jobs = media_jobs
 
     def project(
         self,
@@ -236,6 +248,460 @@ class ScopedProductContentAuthority:
             if item["product"]["id"] == asset.product_id
         )
         return asset, product_projection, projection
+
+    def read_editing_source(
+        self,
+        *,
+        principal: Principal,
+        store_ref: str,
+        job_ref: str,
+        scope: Any,
+        as_of: datetime,
+    ) -> dict[str, Any]:
+        """Build a source receipt only from current scoped assets and Evidence."""
+
+        if self.media_jobs is None or self.evidence is None:
+            raise RuntimeError("editing_source_authority_not_admitted")
+        if as_of.tzinfo is None:
+            raise ValueError("editing_source_as_of_timezone_required")
+        expected_scope = {
+            "tenant_ref": principal.tenant_ref,
+            "entity_ref": str(scope.entity_ref),
+            "store_ref": store_ref,
+            "authority_sha256": str(scope.authority_sha256),
+            "subject_actor_id": principal.actor_id,
+        }
+        actual_scope = {
+            "tenant_ref": str(scope.tenant_ref),
+            "entity_ref": str(scope.entity_ref),
+            "store_ref": str(scope.store_ref),
+            "authority_sha256": str(scope.authority_sha256),
+            "subject_actor_id": str(scope.subject_actor_id),
+        }
+        current_scope = self.media_jobs.current_scope(
+            principal=principal,
+            store_ref=store_ref,
+        )
+        server_scope = {
+            "tenant_ref": str(current_scope.tenant_ref),
+            "entity_ref": str(current_scope.entity_ref),
+            "store_ref": str(current_scope.store_ref),
+            "authority_sha256": str(current_scope.authority_sha256),
+            "subject_actor_id": str(current_scope.subject_actor_id),
+        }
+        if actual_scope != expected_scope or server_scope != actual_scope:
+            raise PermissionError("editing_source_scope_binding_invalid")
+        worker = self.media_jobs.read_worker_input(
+            principal=principal,
+            store_ref=store_ref,
+            job_ref=job_ref,
+        )
+        payload = worker.payload
+        tool_name = worker.tool_name
+        if tool_name == "media.video_render":
+            reference_refs = list(payload["source_asset_refs"])
+            audio_refs = list(payload["audio_asset_refs"])
+            if (
+                len(audio_refs) != 1
+                or payload.get("render_profile_sha256")
+                != FFMPEG_RENDER_PROFILE_SHA256
+            ):
+                raise ValueError("editing_source_render_profile_invalid")
+            analysis_evidence_ref = None
+        elif tool_name == "media.video_blueprint":
+            reference_refs = list(payload["reference_asset_refs"])
+            audio_refs = list(payload["audio_asset_refs"])
+            analysis_evidence_ref = payload.get("analysis_evidence_ref")
+            if (
+                not isinstance(analysis_evidence_ref, str)
+                or len(audio_refs) != 1
+                or payload.get("render_profile_sha256")
+                != FFMPEG_RENDER_PROFILE_SHA256
+                or payload.get("target_channels")
+                != list(EDITING_TARGET_CHANNELS)
+            ):
+                raise ValueError("editing_source_analysis_ref_invalid")
+        else:
+            raise ValueError("editing_source_tool_not_admitted")
+        campaign_refs = list(payload["campaign_content_asset_refs"])
+        role_refs = [*campaign_refs, *reference_refs, *audio_refs]
+        if len(role_refs) != len(set(role_refs)):
+            raise ValueError("editing_source_asset_roles_overlap")
+        all_refs = list(dict.fromkeys([*campaign_refs, *reference_refs, *audio_refs]))
+        if not all_refs:
+            raise ValueError("editing_source_assets_required")
+
+        def asset_id(value: str) -> str:
+            prefix = "content-asset://"
+            return value[len(prefix) :] if value.startswith(prefix) else value
+
+        assets = []
+        assets_by_ref: dict[str, Any] = {}
+        for ref in all_refs:
+            asset = self.repository.get_content_asset_scoped(
+                asset_id=asset_id(ref),
+                tenant_ref=actual_scope["tenant_ref"],
+                entity_ref=actual_scope["entity_ref"],
+                store_ref=actual_scope["store_ref"],
+                as_of=as_of,
+            )
+            if (
+                asset.status is not ContentStatus.APPROVED
+                or not asset.artifact_ref
+            ):
+                raise ValueError("editing_source_asset_not_approved")
+            assets.append(asset)
+            assets_by_ref[ref] = asset
+        product_ids = {asset.product_id for asset in assets}
+        if len(product_ids) != 1:
+            raise ValueError("editing_source_product_scope_conflict")
+        evidence_ids = [str(asset.artifact_ref) for asset in assets]
+        blueprint_ref = payload.get("editing_blueprint_ref")
+        if blueprint_ref is not None:
+            evidence_ids.append(
+                blueprint_ref.removeprefix("evidence://")
+            )
+        if analysis_evidence_ref is not None:
+            evidence_ids.append(
+                analysis_evidence_ref.removeprefix("evidence://")
+            )
+        self.require_evidence(
+            evidence_ids=evidence_ids,
+            principal=principal,
+            entity_scope={
+                "status": "ready",
+                "entity_ref": actual_scope["entity_ref"],
+                "authority_sha256": actual_scope["authority_sha256"],
+            },
+            store_ref=store_ref,
+            as_of=as_of,
+        )
+        records = [self.evidence.get(evidence_id) for evidence_id in evidence_ids]
+        if any(record.metadata.get("rights_status") != "approved" for record in records):
+            raise ValueError("editing_source_rights_not_approved")
+
+        input_artifacts: list[dict[str, str]] = []
+        records_by_id = {record.id: record for record in records}
+        for ref in all_refs:
+            asset = assets_by_ref[ref]
+            record = records_by_id[str(asset.artifact_ref)]
+            content, content_record = self.evidence.content(record.id)
+            if (
+                content_record.sha256 != record.sha256
+                or sha256_bytes(content) != record.sha256
+            ):
+                raise ValueError("editing_source_artifact_drifted")
+            if ref in reference_refs:
+                role = "reference_video"
+                if asset.content_type.value != "video" or not record.content_type.startswith(
+                    "video/"
+                ):
+                    raise ValueError("editing_source_video_artifact_invalid")
+            elif ref in audio_refs:
+                role = "audio"
+                if not record.content_type.startswith("audio/"):
+                    raise ValueError("editing_source_audio_artifact_invalid")
+            else:
+                role = "campaign"
+            input_artifacts.append(
+                {
+                    "content_asset_ref": ref,
+                    "evidence_ref": f"evidence://{record.id}",
+                    "evidence_sha256": record.sha256,
+                    "content_type": record.content_type,
+                    "role": role,
+                }
+            )
+
+        blueprint = None
+        analysis_record = None
+        analysis_receipt = None
+        source_video_artifacts = [
+            {
+                "content_asset_ref": artifact["content_asset_ref"],
+                "evidence_ref": artifact["evidence_ref"],
+                "evidence_sha256": artifact["evidence_sha256"],
+            }
+            for artifact in input_artifacts
+            if artifact["role"] == "reference_video"
+        ]
+        if blueprint_ref is not None:
+            content, blueprint_record = self.evidence.content(
+                blueprint_ref.removeprefix("evidence://")
+            )
+            try:
+                blueprint = json.loads(content)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("editing_source_blueprint_invalid") from exc
+            if (
+                not isinstance(blueprint, dict)
+                or content != canonical_json(blueprint)
+                or blueprint.get("contract_id") != "kjds-editing-blueprint-v1"
+                or not isinstance(blueprint.get("scenes"), list)
+                or not isinstance(blueprint.get("analysis_receipt"), dict)
+            ):
+                raise ValueError("editing_source_blueprint_invalid")
+            scenes = blueprint["scenes"]
+            subtitle_ref = blueprint.get("subtitle_asset_ref")
+            target_channels = blueprint.get("target_channels", payload["target_channels"])
+            if (
+                blueprint.get("render_profile_sha256")
+                != FFMPEG_RENDER_PROFILE_SHA256
+                or blueprint.get("campaign_asset_refs") != campaign_refs
+                or blueprint.get("reference_asset_refs") != reference_refs
+                or blueprint.get("audio_asset_ref") != audio_refs[0]
+                or blueprint.get("target_channels")
+                != list(EDITING_TARGET_CHANNELS)
+            ):
+                raise ValueError("editing_source_render_profile_invalid")
+            if (
+                blueprint_record.source != "governed-media-job-blueprint"
+                or blueprint_record.grade.value != "B"
+                or blueprint_record.sha256 != sha256_bytes(content)
+            ):
+                raise ValueError("editing_source_blueprint_not_governed")
+            analysis_receipt = dict(blueprint["analysis_receipt"])
+            analysis_evidence_ref = analysis_receipt.get("evidence_ref")
+            if not isinstance(analysis_evidence_ref, str) or not analysis_evidence_ref.startswith(
+                "evidence://"
+            ):
+                raise ValueError("editing_source_analysis_ref_invalid")
+            self.require_evidence(
+                evidence_ids=[analysis_evidence_ref.removeprefix("evidence://")],
+                principal=principal,
+                entity_scope={
+                    "status": "ready",
+                    "entity_ref": actual_scope["entity_ref"],
+                    "authority_sha256": actual_scope["authority_sha256"],
+                },
+                store_ref=store_ref,
+                as_of=as_of,
+            )
+            analysis_content, analysis_record = self.evidence.content(
+                analysis_evidence_ref.removeprefix("evidence://")
+            )
+            try:
+                analysis = json.loads(analysis_content)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("editing_source_analysis_invalid") from exc
+            analysis_semantic_sha = str(analysis_receipt.get("semantic_sha256"))
+            observed_at = str(analysis_receipt.get("observed_at"))
+        else:
+            if not analysis_evidence_ref.startswith("evidence://"):
+                raise ValueError("editing_source_analysis_link_invalid")
+            content, analysis_record = self.evidence.content(
+                analysis_evidence_ref.removeprefix("evidence://")
+            )
+            try:
+                analysis = json.loads(content)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("editing_source_analysis_invalid") from exc
+            if (
+                not isinstance(analysis, dict)
+                or content != canonical_json(analysis)
+                or analysis.get("contract_id")
+                != "kjds-reference-video-analysis-v1"
+                or not isinstance(analysis.get("scenes"), list)
+                or not isinstance(analysis.get("source_video_artifacts"), list)
+            ):
+                raise ValueError("editing_source_analysis_invalid")
+            scenes = analysis["scenes"]
+            subtitle_ref = analysis.get("subtitle_asset_ref")
+            target_channels = analysis.get("target_channels", payload["target_channels"])
+            analysis_semantic_sha = sha256_bytes(canonical_json(analysis))
+            if (
+                payload.get("analysis_contract_sha256")
+                != analysis_semantic_sha
+            ):
+                raise ValueError("editing_source_analysis_contract_drifted")
+            observed_at = analysis_record.effective_at
+            analysis_receipt = {
+                "contract_id": "kjds-reference-video-analysis-v1",
+                "source_snapshot_sha256": "0" * 64,
+                "semantic_sha256": analysis_semantic_sha,
+                "observed_at": observed_at,
+                "evidence_ref": f"evidence://{analysis_record.id}",
+                "evidence_sha256": analysis_record.sha256,
+                "source_video_artifacts": source_video_artifacts,
+            }
+
+        if not isinstance(analysis, dict) or analysis.get(
+            "contract_id"
+        ) != "kjds-reference-video-analysis-v1":
+            raise ValueError("editing_source_analysis_invalid")
+        analysis_sha = sha256_bytes(canonical_json(analysis))
+        analysis_run_ref = analysis_record.metadata.get("analysis_run_ref")
+        expected_analysis_metadata = {
+            "rights_status": "approved",
+            "contract_id": "kjds-reference-video-analysis-v1",
+            "tenant_ref": actual_scope["tenant_ref"],
+            "entity_ref": actual_scope["entity_ref"],
+            "store_ref": actual_scope["store_ref"],
+            "scope_grant_authority_sha256": actual_scope["authority_sha256"],
+            "subject_actor_id": actual_scope["subject_actor_id"],
+            "analysis_run_ref": analysis_run_ref,
+            "analysis_contract_sha256": analysis_sha,
+            "source_video_artifacts_sha256": sha256_bytes(
+                canonical_json(source_video_artifacts)
+            ),
+            "schema_version": "1.0.0",
+            "observed_at": analysis_record.effective_at,
+        }
+        if (
+            analysis_record.content_type != "application/json"
+            or analysis_record.sha256 != sha256_bytes(analysis_content if blueprint is not None else content)
+            or (analysis_content if blueprint is not None else content)
+            != canonical_json(analysis)
+            or analysis_record.sha256 != analysis_sha
+            or analysis_record.source != "governed-reference-video-analysis"
+            or analysis_record.source_ref
+            != f"reference-analysis://{analysis_run_ref}/{analysis_sha}"
+            or analysis.get("source_video_artifacts") != source_video_artifacts
+            or analysis_record.metadata != expected_analysis_metadata
+            or analysis_receipt.get("semantic_sha256") != analysis_sha
+            or analysis_receipt.get("evidence_sha256") != analysis_sha
+            or analysis_receipt.get("evidence_ref")
+            != f"evidence://{analysis_record.id}"
+            or analysis_receipt.get("evidence_sha256") != analysis_record.sha256
+            or analysis_receipt.get("source_video_artifacts")
+            != source_video_artifacts
+        ):
+            raise ValueError("editing_source_analysis_binding_invalid")
+        if not isinstance(scenes, list) or not scenes:
+            raise ValueError("editing_source_scenes_invalid")
+        caption_ids: list[str] = []
+        scene_source_refs: set[str] = set()
+        previous_end = 0
+        rendered_duration_ms = 0
+        for index, scene in enumerate(scenes):
+            if not isinstance(scene, dict):
+                raise ValueError("editing_source_scene_invalid")
+            source_asset_ref = scene.get("source_asset_ref")
+            caption_ref = scene.get("caption_ref")
+            if source_asset_ref not in reference_refs:
+                raise ValueError("editing_source_scene_asset_invalid")
+            source_start = scene.get("source_start_ms")
+            source_end = scene.get("source_end_ms")
+            timeline_start = scene.get("timeline_start_ms")
+            timeline_end = scene.get("timeline_end_ms")
+            transition = scene.get("transition")
+            if (
+                any(
+                    isinstance(value, bool) or not isinstance(value, int)
+                    for value in (
+                        source_start,
+                        source_end,
+                        timeline_start,
+                        timeline_end,
+                    )
+                )
+                or source_start < 0
+                or source_end <= source_start
+                or timeline_start != previous_end
+                or timeline_end <= timeline_start
+                or source_end - source_start != timeline_end - timeline_start
+                or source_end - source_start > EDITING_MAX_SCENE_DURATION_MS
+                or timeline_end > EDITING_MAX_TIMELINE_DURATION_MS
+                or transition not in {"cut", "fade", "crossfade"}
+                or (index == 0 and transition == "crossfade")
+                or (
+                    transition == "crossfade"
+                    and (
+                        timeline_end - timeline_start <= 250
+                        or rendered_duration_ms < 250
+                    )
+                )
+            ):
+                raise ValueError("editing_source_scene_timeline_invalid")
+            previous_end = timeline_end
+            rendered_duration_ms += timeline_end - timeline_start
+            if transition == "crossfade":
+                rendered_duration_ms -= 250
+            scene_source_refs.add(str(source_asset_ref))
+            if (
+                not isinstance(caption_ref, str)
+                or not caption_ref.startswith("evidence://")
+                or len(caption_ref) > 500
+            ):
+                raise ValueError("editing_source_scene_caption_invalid")
+            caption_ids.append(caption_ref.removeprefix("evidence://"))
+        if scene_source_refs != set(reference_refs):
+            raise ValueError("editing_source_scene_asset_conservation_invalid")
+        if len(set(caption_ids)) != len(caption_ids):
+            raise ValueError("editing_source_scene_caption_duplicate")
+        self.require_evidence(
+            evidence_ids=caption_ids,
+            principal=principal,
+            entity_scope={
+                "status": "ready",
+                "entity_ref": actual_scope["entity_ref"],
+                "authority_sha256": actual_scope["authority_sha256"],
+            },
+            store_ref=store_ref,
+            as_of=as_of,
+        )
+        caption_records = [self.evidence.get(evidence_id) for evidence_id in caption_ids]
+        if any(
+            record.metadata.get("rights_status") != "approved"
+            for record in caption_records
+        ):
+            raise ValueError("editing_source_rights_not_approved")
+        if subtitle_ref is not None:
+            if (
+                not isinstance(subtitle_ref, str)
+                or not subtitle_ref.startswith("evidence://")
+                or len(subtitle_ref) > 500
+            ):
+                raise ValueError("editing_source_subtitle_ref_invalid")
+            self.require_evidence(
+                evidence_ids=[subtitle_ref.removeprefix("evidence://")],
+                principal=principal,
+                entity_scope={
+                    "status": "ready",
+                    "entity_ref": actual_scope["entity_ref"],
+                    "authority_sha256": actual_scope["authority_sha256"],
+                },
+                store_ref=store_ref,
+                as_of=as_of,
+            )
+        if target_channels != list(EDITING_TARGET_CHANNELS):
+            raise ValueError("editing_source_target_channels_invalid")
+        from .editing_blueprint import (
+            analysis_receipt_snapshot_sha256,
+            source_snapshot_sha256,
+        )
+
+        scope_binding = sha256_bytes(canonical_json(actual_scope))
+        source = {
+            "contract_id": "kjds-editing-source-receipt-v1",
+            "contract_version": "1.0.0",
+            "scope": actual_scope,
+            "scope_binding_sha256": scope_binding,
+            "rights_status": "approved",
+            "product_id": next(iter(product_ids)),
+            "campaign_asset_refs": campaign_refs,
+            "reference_asset_refs": reference_refs,
+            "input_artifacts": input_artifacts,
+            "analysis_receipt": analysis_receipt,
+            "source_snapshot_sha256": "0" * 64,
+            "scenes": scenes,
+            "audio_asset_ref": audio_refs[0] if audio_refs else None,
+            "subtitle_asset_ref": subtitle_ref,
+            "target_channels": target_channels,
+            "render_profile_sha256": FFMPEG_RENDER_PROFILE_SHA256,
+            "editing_blueprint": blueprint,
+            "editing_blueprint_sha256": (
+                sha256_bytes(canonical_json(blueprint))
+                if blueprint is not None
+                else None
+            ),
+        }
+        source["analysis_receipt"]["source_snapshot_sha256"] = (
+            analysis_receipt_snapshot_sha256(source["analysis_receipt"])
+        )
+        snapshot_sha = source_snapshot_sha256(source)
+        source["source_snapshot_sha256"] = snapshot_sha
+        return source
 
     def listing_approval_plan(
         self,

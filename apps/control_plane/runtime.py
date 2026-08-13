@@ -59,6 +59,7 @@ from .database import (
 from .decision_contracts import DecisionContractService
 from .decision_lifecycle import DecisionLifecycleService
 from .demand_report_gate import DemandReportGateService
+from .editing_blueprint import GovernedEditingBlueprintWorkspace
 from .enterprise_ai_erp_program import EnterpriseAiErpProgram
 from .evidence import (
     ClosedLoopEvidenceAuthorityAdapter,
@@ -102,8 +103,9 @@ from .marketplace_observation import (
     MarketplaceObservationWorkspace,
     PortfolioPilotWorkspace,
 )
-from .media_connectors import MediaConnectorRegistry
-from .media_workbench import MediaWorkbenchService
+from .media_connectors import MediaConnectorContract, MediaConnectorRegistry
+from .media_jobs import GovernedMediaJobWorkspace
+from .media_workbench import FfmpegMediaWorker, MediaWorkbenchService
 from .native_parity_acceptance import (
     ACCEPTANCE_DIMENSIONS,
     NativeParityAcceptanceWorkspace,
@@ -301,6 +303,8 @@ class RuntimeServices:
     marketplace_observation: Any
     market_recon_bundles: Any
     media_connectors: Any
+    media_jobs: Any
+    editing_blueprint: Any
     scoped_marketplace_observation: Any
     scoped_oms: Any
     scoped_inventory: Any
@@ -451,7 +455,11 @@ def _build_closed_loop_evidence_authority(
 def build_runtime() -> RuntimeServices:
     repo = build_repository()
     engine = getattr(repo, "engine", None) or create_database_engine()
-    media_connectors = MediaConnectorRegistry(engine=engine)
+    media_connector_contract = MediaConnectorContract()
+    media_connectors = MediaConnectorRegistry(
+        engine=engine,
+        contract=media_connector_contract,
+    )
     agent_harness = AgentHarnessService(engine)
     evidence = EvidenceService(engine)
     market_recon_bundles = MarketReconBundleIngestion(
@@ -984,11 +992,19 @@ def build_runtime() -> RuntimeServices:
         ozon_rules=ozon_global_rules,
         seller_os=seller_os,
     )
+    media_jobs = GovernedMediaJobWorkspace(
+        engine,
+        evidence=evidence,
+        authority=scope_grants,
+        content_assets=repo,
+    )
     scoped_product_content = ScopedProductContentAuthority(
         repository=repo,
         scoped_catalog=scoped_marketplace_catalog,
         scoped_evidence=scoped_evidence,
         sourcing=sourcing,
+        evidence=evidence,
+        media_jobs=media_jobs,
     )
     scoped_pim = ScopedPimWorkspace(
         catalog=scoped_marketplace_catalog,
@@ -1244,6 +1260,15 @@ def build_runtime() -> RuntimeServices:
         evidence=evidence,
         image_execution=image_execution,
     )
+    ffmpeg_adapter = FfmpegMediaWorker()
+    editing_blueprint = GovernedEditingBlueprintWorkspace(
+        jobs=media_jobs,
+        product_content=scoped_product_content,
+        evidence=evidence,
+        media_workbench=media_workbench,
+        ffmpeg_adapter=ffmpeg_adapter,
+        media_connector_contract=media_connector_contract,
+    )
     scoped_media_factory = ScopedContentMediaFactoryWorkspace(
         product_content=scoped_product_content,
         media_workbench=media_workbench,
@@ -1379,6 +1404,8 @@ def build_runtime() -> RuntimeServices:
         marketplace_observation=marketplace_observation,
         market_recon_bundles=market_recon_bundles,
         media_connectors=media_connectors,
+        media_jobs=media_jobs,
+        editing_blueprint=editing_blueprint,
         scoped_marketplace_observation=scoped_marketplace_observation,
         scoped_oms=scoped_oms,
         scoped_inventory=scoped_inventory,

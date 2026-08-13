@@ -24,7 +24,9 @@ from apps.control_plane.commander_tool_gateway import (
     CommanderToolGatewayError,
 )
 from apps.control_plane.evidence import EvidenceBlobRow, EvidenceRecordRow, EvidenceService
+from apps.control_plane.media_connectors import MediaConnectorContract
 from apps.control_plane.media_jobs import (
+    FFMPEG_RENDER_PROFILE,
     GovernedMediaJobWorkspace,
     MediaJobBindingProjection,
     MediaJobEventRow,
@@ -35,6 +37,8 @@ from apps.control_plane.media_jobs import (
 )
 from apps.control_plane.security import Principal
 from apps.control_plane.sql_repository import Base
+
+FFMPEG_PROVIDER_DESCRIPTOR = MediaConnectorContract().internal_runtime_provider("ffmpeg")
 
 REGISTRY = (
     Path(__file__).parents[1]
@@ -224,14 +228,14 @@ def video_arguments(**changes):
         "project_ref": "project-1",
         "campaign": campaign(),
         "provider": "ffmpeg",
-        "connector_ref": "connector-1",
-        "connector_binding_sha256": "a" * 64,
+        "connector_ref": FFMPEG_PROVIDER_DESCRIPTOR.connector_ref,
+        "connector_binding_sha256": FFMPEG_PROVIDER_DESCRIPTOR.binding_sha256,
         "idempotency_key": "command-video-1",
         "output_contract": "video_artifact_evidence",
         "editing_blueprint_ref": "editing_blueprint_1",
         "source_asset_refs": ["content_asset_1"],
         "audio_asset_refs": ["content_asset_audio_1"],
-        "render_profile": {"codec": "h264"},
+        "render_profile": FFMPEG_RENDER_PROFILE,
     }
     value.update(changes)
     return value
@@ -251,6 +255,15 @@ def test_inventory_exposes_only_five_safe_tool_projections():
     assert result["live_provider_admission"] == "not_admitted"
     assert result["external_write_allowed"] is False
     assert len(result["tools"]) == 5
+
+    blueprint = next(
+        item for item in result["tools"] if item["name"] == "media.video_blueprint"
+    )
+    assert blueprint["cost_upper_bound"] == {
+        "amount_minor": 0,
+        "currency": "USD",
+        "basis": "internal_deterministic_compiler_no_provider_charge",
+    }
     assert {item["state"] for item in result["tools"]} == {"job_intake_only"}
     assert set(result["tools"][0]) == {
         "name",
@@ -441,6 +454,49 @@ def test_video_render_rejects_nested_private_or_encoded_values_before_submit(cha
     assert "opaque-credential-value" not in str(exc.value)
     assert "private-body" not in str(exc.value)
     assert harness.compile_calls == []
+    assert jobs.submit_calls == []
+
+
+def test_video_render_remotion_is_rejected_before_brief_or_job():
+    service, harness, jobs = gateway()
+
+    with pytest.raises(CommanderToolGatewayError, match="provider_not_registered"):
+        service.dispatch(
+            principal=PRINCIPAL,
+            store_ref="store-1",
+            as_of=NOW,
+            tool_name="media.video_render",
+            tool_version="1.0.0",
+            arguments=video_arguments(provider="remotion"),
+        )
+
+    assert harness.compile_calls == []
+    assert jobs.submit_calls == []
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"connector_ref": "mcn_00000000000000000000000000000000"},
+        {"connector_binding_sha256": "0" * 64},
+    ],
+)
+def test_video_render_runtime_connector_drift_is_rejected_before_job(changes):
+    service, _, jobs = gateway()
+
+    with pytest.raises(
+        CommanderToolGatewayError,
+        match="video_render_runtime_binding_not_admitted",
+    ):
+        service.dispatch(
+            principal=PRINCIPAL,
+            store_ref="store-1",
+            as_of=NOW,
+            tool_name="media.video_render",
+            tool_version="1.0.0",
+            arguments=video_arguments(**changes),
+        )
+
     assert jobs.submit_calls == []
 
 

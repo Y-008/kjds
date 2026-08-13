@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -19,6 +20,15 @@ from apps.control_plane.domain import (
     Passport,
     PassportType,
     Product,
+)
+from apps.control_plane.evidence import EvidenceGrade, EvidenceService
+from apps.control_plane.media_jobs import (
+    EDITING_TARGET_CHANNELS,
+    FFMPEG_RENDER_PROFILE_SHA256,
+    MediaJobScope,
+    MediaJobWorkerInputProjection,
+    canonical_json,
+    sha256_bytes,
 )
 from apps.control_plane.runtime import runtime
 from apps.control_plane.scoped_product_content import (
@@ -215,6 +225,314 @@ def approved_facts(kind: PassportType) -> dict:
         },
     }[kind]
     return {"decision": "approved", **values}
+
+
+def _editing_source_authority(
+    *,
+    rights_status: str = "approved",
+    blocked_subtitle: bool = False,
+    noncanonical_analysis: bool = False,
+):
+    engine = database()
+    repo = SqlAlchemyRepository(engine)
+    product = repo.add_product(
+        native_product(sku="editing-source", product_id="product-editing")
+    )
+    evidence_service = EvidenceService(engine)
+    campaign_record = evidence_service.capture(
+        content=b"campaign artifact",
+        filename="campaign.jpg",
+        content_type="image/jpeg",
+        source="https://example.test/campaign",
+        source_ref="campaign-artifact",
+        grade=EvidenceGrade.B,
+        effective_at=AS_OF.isoformat(),
+        effective_until=None,
+        created_by="operator-a",
+        metadata={"rights_status": rights_status},
+    )
+    subtitle_record = evidence_service.capture(
+        content=b"1\n00:00:00,000 --> 00:00:03,000\nBAS-186\n",
+        filename="subtitle.srt",
+        content_type="application/x-subrip",
+        source="https://example.test/subtitle",
+        source_ref="editing-subtitle",
+        grade=EvidenceGrade.B,
+        effective_at=AS_OF.isoformat(),
+        effective_until=None,
+        created_by="operator-a",
+        metadata={"rights_status": rights_status},
+    )
+    caption_record = evidence_service.capture(
+        content=b"1\n00:00:00,000 --> 00:00:03,000\nScene caption\n",
+        filename="caption.srt",
+        content_type="application/x-subrip",
+        source="https://example.test/caption",
+        source_ref="editing-caption",
+        grade=EvidenceGrade.B,
+        effective_at=AS_OF.isoformat(),
+        effective_until=None,
+        created_by="operator-a",
+        metadata={"rights_status": rights_status},
+    )
+    video_record = evidence_service.capture(
+        content=b"\x00\x00\x00\x18ftypisomgoverned-video",
+        filename="reference.mp4",
+        content_type="video/mp4",
+        source="https://example.test/reference-video",
+        source_ref="reference-video",
+        grade=EvidenceGrade.B,
+        effective_at=AS_OF.isoformat(),
+        effective_until=None,
+        created_by="operator-a",
+        metadata={"rights_status": rights_status},
+    )
+    audio_record = evidence_service.capture(
+        content=b"RIFF\x04\x00\x00\x00WAVE",
+        filename="audio.wav",
+        content_type="audio/wav",
+        source="https://example.test/audio",
+        source_ref="editing-audio",
+        grade=EvidenceGrade.B,
+        effective_at=AS_OF.isoformat(),
+        effective_until=None,
+        created_by="operator-a",
+        metadata={"rights_status": rights_status},
+    )
+    source_video_artifacts = [
+        {
+            "content_asset_ref": "content-asset://reference-video",
+            "evidence_ref": f"evidence://{video_record.id}",
+            "evidence_sha256": video_record.sha256,
+        }
+    ]
+    analysis_run_ref = "analysis-editing-source"
+    analysis = {
+        "contract_id": "kjds-reference-video-analysis-v1",
+        "schema_version": "1.0.0",
+        "analysis_run_ref": analysis_run_ref,
+        "observed_at": AS_OF.isoformat(),
+        "source_video_artifacts": source_video_artifacts,
+        "scenes": [
+            {
+                "scene_id": "scene-1",
+                "source_asset_ref": "content-asset://reference-video",
+                "source_start_ms": 0,
+                "source_end_ms": 3000,
+                "timeline_start_ms": 0,
+                "timeline_end_ms": 3000,
+                "transition": "cut",
+                "caption_ref": f"evidence://{caption_record.id}",
+            }
+        ],
+        "target_channels": list(EDITING_TARGET_CHANNELS),
+        "subtitle_asset_ref": f"evidence://{subtitle_record.id}",
+    }
+    canonical_analysis_bytes = canonical_json(analysis)
+    analysis_bytes = (
+        json.dumps(analysis, ensure_ascii=False, indent=2).encode()
+        if noncanonical_analysis
+        else canonical_analysis_bytes
+    )
+    analysis_sha256 = sha256_bytes(canonical_analysis_bytes)
+    with Session(engine) as session, session.begin():
+        analysis_record = evidence_service.capture_media_job_evidence(
+            content=analysis_bytes,
+            filename="analysis.json",
+            content_type="application/json",
+            source="governed-reference-video-analysis",
+            source_ref=f"reference-analysis://{analysis_run_ref}/{analysis_sha256}",
+            grade=EvidenceGrade.B,
+            effective_at=AS_OF.isoformat(),
+            recorded_at=AS_OF.isoformat(),
+            created_by="operator-a",
+            metadata={
+            "rights_status": rights_status,
+            "contract_id": "kjds-reference-video-analysis-v1",
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "scope_grant_authority_sha256": "a" * 64,
+            "subject_actor_id": "operator-a",
+            "analysis_run_ref": analysis_run_ref,
+            "analysis_contract_sha256": analysis_sha256,
+            "source_video_artifacts_sha256": sha256_bytes(
+                canonical_json(source_video_artifacts)
+            ),
+            "schema_version": "1.0.0",
+            "observed_at": AS_OF.isoformat(),
+            },
+            session=session,
+        )
+    repo.add_content_asset(
+        ContentAsset(
+            product_id=product.id,
+            content_type=ContentType.IMAGE,
+            locale="ru-RU",
+            channel="ozon",
+            brief={},
+            source_facts={},
+            status=ContentStatus.APPROVED,
+            artifact_ref=campaign_record.id,
+            id="campaign-asset",
+            created_at=AS_OF.isoformat(),
+        )
+    )
+    repo.add_content_asset(
+        ContentAsset(
+            product_id=product.id,
+            content_type=ContentType.VIDEO,
+            locale="ru-RU",
+            channel="ozon",
+            brief={},
+            source_facts={},
+            status=ContentStatus.APPROVED,
+            artifact_ref=video_record.id,
+            id="reference-video",
+            created_at=AS_OF.isoformat(),
+        )
+    )
+    repo.add_content_asset(
+        ContentAsset(
+            product_id=product.id,
+            content_type=ContentType.COPY,
+            locale="ru-RU",
+            channel="ozon",
+            brief={},
+            source_facts={},
+            status=ContentStatus.APPROVED,
+            artifact_ref=audio_record.id,
+            id="audio-asset",
+            created_at=AS_OF.isoformat(),
+        )
+    )
+    worker = MediaJobWorkerInputProjection(
+        job_ref="media-job-editing",
+        tool_name="media.video_blueprint",
+        tool_version="1.0.0",
+        payload={
+            "campaign_content_asset_refs": [
+                "content-asset://campaign-asset"
+            ],
+            "reference_asset_refs": [
+                "content-asset://reference-video"
+            ],
+            "source_asset_refs": [],
+            "audio_asset_refs": ["content-asset://audio-asset"],
+            "editing_blueprint_ref": None,
+            "analysis_evidence_ref": f"evidence://{analysis_record.id}",
+            "analysis_contract_sha256": analysis_sha256,
+            "render_profile_sha256": FFMPEG_RENDER_PROFILE_SHA256,
+            "target_channels": list(EDITING_TARGET_CHANNELS),
+        },
+        worker_input_sha256="b" * 64,
+        evidence_id="worker-input-evidence",
+        recorded_at=AS_OF.isoformat(),
+    )
+
+    class Jobs:
+        def current_scope(self, **_):
+            return MediaJobScope(
+                tenant_ref="tenant-a",
+                entity_ref="entity-a",
+                store_ref="store-a",
+                authority_sha256="a" * 64,
+                subject_actor_id="operator-a",
+            )
+
+        def read_worker_input(self, **_):
+            return worker
+
+    scoped = ScopedProductContentAuthority(
+        repository=repo,
+        scoped_catalog=Catalog(),
+        scoped_evidence=Evidence(
+            blocked={subtitle_record.id} if blocked_subtitle else set()
+        ),
+        sourcing=Sourcing(),
+        evidence=evidence_service,
+        media_jobs=Jobs(),
+    )
+    scope = MediaJobScope(
+        tenant_ref="tenant-a",
+        entity_ref="entity-a",
+        store_ref="store-a",
+        authority_sha256="a" * 64,
+        subject_actor_id="operator-a",
+    )
+    return scoped, scope
+
+
+def test_editing_source_is_server_built_from_scoped_approved_assets():
+    scoped, current_scope = _editing_source_authority()
+
+    source = scoped.read_editing_source(
+        principal=principal(),
+        store_ref="store-a",
+        job_ref="media-job-editing",
+        scope=current_scope,
+        as_of=AS_OF,
+    )
+
+    assert source["product_id"] == "product-editing"
+    assert source["rights_status"] == "approved"
+    assert source["reference_asset_refs"] == [
+        "content-asset://reference-video"
+    ]
+    assert source["scope"]["authority_sha256"] == "a" * 64
+    assert len(source["analysis_receipt"]["source_snapshot_sha256"]) == 64
+    assert len(source["source_snapshot_sha256"]) == 64
+    assert (
+        source["analysis_receipt"]["semantic_sha256"]
+        == source["analysis_receipt"]["evidence_sha256"]
+    )
+
+
+def test_editing_source_rejects_rights_or_current_scope_drift():
+    scoped, current_scope = _editing_source_authority(rights_status="unknown")
+    with pytest.raises(ValueError, match="rights"):
+        scoped.read_editing_source(
+            principal=principal(),
+            store_ref="store-a",
+            job_ref="media-job-editing",
+            scope=current_scope,
+            as_of=AS_OF,
+        )
+
+
+def test_editing_source_rejects_subtitle_outside_current_scope():
+    scoped, current_scope = _editing_source_authority(blocked_subtitle=True)
+
+    with pytest.raises(ValueError, match="exact tenant/entity/store scope"):
+        scoped.read_editing_source(
+            principal=principal(),
+            store_ref="store-a",
+            job_ref="media-job-editing",
+            scope=current_scope,
+            as_of=AS_OF,
+        )
+
+
+def test_editing_source_rejects_jointly_resealed_noncanonical_analysis_bytes():
+    with pytest.raises(ValueError, match="Evidence canonical JSON"):
+        _editing_source_authority(noncanonical_analysis=True)
+
+    scoped, current_scope = _editing_source_authority()
+    drifted = MediaJobScope(
+        tenant_ref=current_scope.tenant_ref,
+        entity_ref=current_scope.entity_ref,
+        store_ref=current_scope.store_ref,
+        authority_sha256="f" * 64,
+        subject_actor_id=current_scope.subject_actor_id,
+    )
+    with pytest.raises(PermissionError, match="scope_binding"):
+        scoped.read_editing_source(
+            principal=principal(),
+            store_ref="store-a",
+            job_ref="media-job-editing",
+            scope=drifted,
+            as_of=AS_OF,
+        )
 
 
 def test_missing_entity_scope_performs_no_raw_product_or_catalog_read():
@@ -556,6 +874,11 @@ def test_scoped_product_content_api_requires_auth_and_store_scope(
         "authenticate",
         lambda _: principal(),
     )
+    monkeypatch.setattr(
+        runtime.kill_switch,
+        "ensure_writes_allowed",
+        lambda: None,
+    )
     assert (
         client.get(
             "/v1/product-content/workspace",
@@ -629,6 +952,11 @@ def test_product_create_missing_entity_is_409_and_does_not_write(
         runtime.authenticator,
         "authenticate",
         lambda _: principal(),
+    )
+    monkeypatch.setattr(
+        runtime.kill_switch,
+        "ensure_writes_allowed",
+        lambda: None,
     )
     monkeypatch.setattr(
         runtime.scope_grants,

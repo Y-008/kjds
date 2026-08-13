@@ -83,6 +83,8 @@ def test_execution_evidence_source_ref_rejects_conflicting_content():
         "governed-media-job-request",
         "governed-media-job-transition",
         "governed-media-job-usage",
+        "governed-media-job-worker-input",
+        "kjds-ffmpeg-media-worker",
     ],
 )
 def test_generic_capture_cannot_forge_media_job_evidence(source):

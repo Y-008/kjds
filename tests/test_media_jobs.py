@@ -1,3 +1,4 @@
+import inspect
 import json
 from datetime import UTC, datetime, timedelta
 from math import inf
@@ -7,23 +8,69 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from apps.control_plane.evidence import EvidenceBlobRow, EvidenceRecordRow, EvidenceService
+from apps.control_plane.evidence import (
+    EvidenceBlobRow,
+    EvidenceGrade,
+    EvidenceRecordRow,
+    EvidenceService,
+)
 from apps.control_plane.media_jobs import (
     CAMPAIGN_BRIEF_CONTRACT,
     CAMPAIGN_BRIEF_VERSION,
     COMMANDER_REQUEST_CONTRACT,
+    FFMPEG_RENDER_PROFILE_SHA256,
+    GOVERNED_RENDER_RATIOS,
     TOOL_DESCRIPTOR_CONTRACT,
     GovernedMediaJobWorkspace,
     MediaJobEventRow,
     MediaJobEvidenceLinkRow,
+    MediaJobRequestBindingRow,
+    MediaJobResultReceiptRow,
     MediaJobRow,
     MediaJobScope,
+    RenderBlueprintAuthority,
     canonical_json,
     event_seal,
     sha256_bytes,
 )
 from apps.control_plane.security import Principal
-from apps.control_plane.sql_repository import Base
+from apps.control_plane.sql_repository import Base, ContentAssetRow, ProductRow
+
+
+def test_public_media_job_writers_lock_schema_transition_before_data_locks():
+    public_writers = (
+        "submit",
+        "claim_provider_attempt",
+        "cancel",
+        "record_result_receipt",
+        "record_render_result",
+        "record_blueprint_result",
+    )
+    later_lock_markers = (
+        "EvidenceService.lock_scope_authority_in_session(",
+        "self._lock_idempotency_winner(",
+        "self._load_job(",
+        ".with_for_update()",
+    )
+
+    for method_name in public_writers:
+        source = inspect.getsource(getattr(GovernedMediaJobWorkspace, method_name))
+        transaction_offset = source.index("session.begin()")
+        schema_lock_offset = source.index(
+            "self._lock_schema_transition_in_session(session)"
+        )
+        assert schema_lock_offset > transaction_offset, method_name
+        for marker in later_lock_markers:
+            marker_offset = source.find(marker, transaction_offset)
+            if marker_offset >= 0:
+                assert schema_lock_offset < marker_offset, (method_name, marker)
+
+    for denied_method_name in ("record_provider_terminal", "record_provider_result"):
+        denied_source = inspect.getsource(
+            getattr(GovernedMediaJobWorkspace, denied_method_name)
+        )
+        assert "session.begin()" not in denied_source
+        assert "authority_required" in denied_source
 
 AUTHORITY = "a" * 64
 BINDING = "b" * 64
@@ -100,6 +147,55 @@ def request(**changes):
     }
     values.update(changes)
     return values
+
+
+def render_worker_input() -> dict:
+    return {
+        "contract_id": "kjds-governed-media-job-worker-input-v1",
+        "tool_name": "media.video_render",
+        "tool_version": "v1",
+        "project_ref": "project-1",
+        "brief_ref": "brief-1",
+        "campaign_content_asset_refs": ["content-asset://campaign-1"],
+        "editing_blueprint_ref": "evidence://editing-blueprint-1",
+        "reference_asset_refs": [],
+        "source_asset_refs": ["content-asset://source-video-1"],
+        "audio_asset_refs": ["content-asset://audio-1"],
+        "target_channels": ["ozon"],
+        "analysis_evidence_ref": None,
+        "analysis_contract_sha256": None,
+        "render_profile_sha256": FFMPEG_RENDER_PROFILE_SHA256,
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("campaign_content_asset_refs", ["content-asset://source-video-1"]),
+        ("campaign_content_asset_refs", ["content-asset://audio-1"]),
+        ("source_asset_refs", ["content-asset://audio-1"]),
+    ],
+)
+def test_media_job_worker_input_rejects_cross_role_asset_overlap(
+    field: str,
+    value: list[str],
+) -> None:
+    worker_input = render_worker_input()
+    worker_input[field] = value
+
+    with pytest.raises(
+        ValueError,
+        match="media_job_worker_input_asset_roles_overlap",
+    ):
+        GovernedMediaJobWorkspace._normalize_worker_input(
+            worker_input=worker_input,
+            request={
+                "tool_name": "media.video_render",
+                "tool_version": "v1",
+                "project_ref": "project-1",
+                "brief_ref": "brief-1",
+            },
+        )
 
 
 def secure_submission(*, scope_changes=None, brief_changes=None, request_changes=None):
@@ -307,7 +403,11 @@ def test_secure_request_evidence_contains_only_sealed_references_and_replays():
     assert "prompt" not in persisted
     assert '"campaign_brief":' not in persisted
     assert '"tool_inputs":' not in persisted
-    assert counts(engine) == (1, 1, 1, 1, 1)
+    assert counts(engine) == (1, 1, 1, 2, 2)
+    with Session(engine) as session:
+        assert session.scalar(
+            select(func.count()).select_from(MediaJobRequestBindingRow)
+        ) == 1
 
 
 def test_rotated_authority_cannot_rebind_existing_idempotency_winner():
@@ -339,7 +439,11 @@ def test_rotated_authority_cannot_rebind_existing_idempotency_winner():
             store_ref="store-1",
             job_ref=first.job_ref,
         )
-    assert counts(engine) == (1, 1, 1, 1, 1)
+    assert counts(engine) == (1, 1, 1, 2, 2)
+    with Session(engine) as session:
+        assert session.scalar(
+            select(func.count()).select_from(MediaJobRequestBindingRow)
+        ) == 1
 
 
 def test_secure_read_fails_closed_when_historical_tool_header_drifts():
@@ -685,3 +789,687 @@ def test_media_job_canonical_request_rejects_nonfinite_and_excessive_depth():
         value = value["next"]
     with pytest.raises(ValueError, match="too_deep"):
         service.submit(principal=PRINCIPAL, store_ref="store-1", request=request(extra=nested))
+
+
+def _terminal_success_with_artifact(service, engine):
+    created = service.submit(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        request=request(),
+    )
+    service.claim_provider_attempt(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+    )
+    with Session(engine, expire_on_commit=False) as session, session.begin():
+        job = session.get(MediaJobRow, created.job_ref)
+        assert job is not None
+        job.tool_name = "media.video_render"
+        job.provider = "ffmpeg"
+        job.connector_ref = "ffmpeg-local"
+        running = service._append_event(
+            session=session,
+            job=job,
+            scope=scope(),
+            state="RUNNING",
+            reason=None,
+            now=NOW,
+            command_idempotency_sha256=IDEMPOTENCY,
+            command_request_sha256=job.request_sha256,
+        )
+        uploading = service._append_event(
+            session=session,
+            job=job,
+            scope=scope(),
+            state="UPLOADING",
+            reason=None,
+            now=NOW,
+            command_idempotency_sha256=IDEMPOTENCY,
+            command_request_sha256=job.request_sha256,
+        )
+        assert uploading.previous_event_sha256 == running.event_sha256
+        event = service._append_event(
+            session=session,
+            job=job,
+            scope=scope(),
+            state="SUCCEEDED",
+            reason=None,
+            now=NOW,
+            command_idempotency_sha256=IDEMPOTENCY,
+            command_request_sha256=job.request_sha256,
+        )
+        evidence = service.evidence.capture_media_job_evidence(
+            content=canonical_json(event.public_projection_json),
+            filename="media-job-result.json",
+            content_type="application/json",
+            source="governed-media-job-transition",
+            source_ref=f"media-job://{job.job_ref}/transition/{event.event_ref}",
+            grade=EvidenceGrade.B,
+            effective_at=NOW.isoformat(),
+            recorded_at=NOW.isoformat(),
+            created_by=job.subject_actor_id,
+            metadata={
+                "contract_id": "kjds-governed-media-job-transition-v1",
+                "tenant_ref": job.tenant_ref,
+                "entity_ref": job.entity_ref,
+                "store_ref": job.store_ref,
+                "scope_grant_authority_sha256": job.scope_grant_authority_sha256,
+                "subject_actor_id": job.subject_actor_id,
+                "event_sha256": event.event_sha256,
+            },
+            session=session,
+        )
+        session.add(
+            MediaJobEvidenceLinkRow(
+                link_ref="media-link-result",
+                job_ref=job.job_ref,
+                event_ref=event.event_ref,
+                tenant_ref=job.tenant_ref,
+                entity_ref=job.entity_ref,
+                store_ref=job.store_ref,
+                scope_grant_authority_sha256=job.scope_grant_authority_sha256,
+                purpose="artifact_terminal",
+                evidence_id=evidence.id,
+                blob_sha256=evidence.sha256,
+                source=evidence.source,
+                source_ref=evidence.source_ref,
+                effective_at=NOW,
+                recorded_at=NOW,
+                fresh_until=None,
+            )
+        )
+        session.flush()
+        asset_ref = "content-asset-result"
+        execution_id = "media-execution-result"
+        render_plan_sha256 = "e" * 64
+        artifacts = {}
+        for ratio in ("1:1", "16:9", "9:16"):
+            artifact_bytes = b"\x00\x00\x00\x18ftypisom" + ratio.encode()
+            artifact = service.evidence.capture_media_job_evidence(
+                content=artifact_bytes,
+                filename=f"{asset_ref}-{ratio.replace(':', 'x')}.mp4",
+                content_type="video/mp4",
+                source="kjds-ffmpeg-media-worker",
+                source_ref=(
+                    f"media-job://{job.job_ref}/artifact/{execution_id}/{ratio}"
+                ),
+                grade=EvidenceGrade.B,
+                effective_at=NOW.isoformat(),
+                recorded_at=NOW.isoformat(),
+                created_by=job.subject_actor_id,
+                metadata={
+                    "contract_id": "kjds-governed-media-job-artifact-v1",
+                    "tenant_ref": job.tenant_ref,
+                    "entity_ref": job.entity_ref,
+                    "store_ref": job.store_ref,
+                    "scope_grant_authority_sha256": (
+                        job.scope_grant_authority_sha256
+                    ),
+                    "subject_actor_id": job.subject_actor_id,
+                    "artifact_sha256": sha256_bytes(artifact_bytes),
+                    "media_job_ref": job.job_ref,
+                    "content_asset_id": asset_ref,
+                    "execution_id": execution_id,
+                    "aspect_ratio": ratio,
+                    "render_plan_sha256": render_plan_sha256,
+                },
+                session=session,
+            )
+            artifact_row = session.get(EvidenceRecordRow, artifact.id)
+            assert artifact_row is not None
+            artifact_row.byte_size = len(artifact_bytes)
+            artifacts[ratio] = artifact
+        outputs = {ratio: artifacts[ratio].id for ratio in artifacts}
+        receipt_content = {
+            "contract_id": "kjds-governed-media-job-result-v1",
+            "provider": job.provider,
+            "connector_ref": job.connector_ref,
+            "connector_binding_sha256": job.connector_binding_sha256,
+            "result_kind": "video_artifact_evidence",
+            "artifact_evidence_refs": [
+                outputs[ratio] for ratio in GOVERNED_RENDER_RATIOS
+            ],
+            "content_asset_ref": asset_ref,
+            "event_ref": event.event_ref,
+            "event_sha256": event.event_sha256,
+            "job_ref": job.job_ref,
+            "state": "SUCCEEDED",
+        }
+        receipt = {
+            key: receipt_content[key]
+            for key in (
+                "contract_id",
+                "provider",
+                "connector_ref",
+                "connector_binding_sha256",
+                "result_kind",
+                "artifact_evidence_refs",
+                "content_asset_ref",
+            )
+        }
+        receipt["receipt_sha256"] = sha256_bytes(canonical_json(receipt_content))
+        session.add(
+            ProductRow(
+                id="product-result",
+                sku="SKU-RESULT",
+                name="Result product",
+                market="RU",
+                channel="ozon",
+                status="active",
+                created_at=NOW,
+                tenant_ref=job.tenant_ref,
+                entity_ref=job.entity_ref,
+                store_ref=job.store_ref,
+                scope_grant_authority_sha256=job.scope_grant_authority_sha256,
+                scope_as_of=NOW,
+                created_by=job.subject_actor_id,
+            )
+        )
+        session.add(
+            ContentAssetRow(
+                id=asset_ref,
+                product_id="product-result",
+                content_type="video",
+                locale="ru-RU",
+                channel="ozon",
+                brief_json={
+                    "contract_id": "kjds-governed-editing-handoff-v1",
+                    "job_ref": job.job_ref,
+                    "source_snapshot_sha256": "d" * 64,
+                    "render_plan_sha256": render_plan_sha256,
+                },
+                source_facts_json={},
+                status="generated",
+                artifact_ref=outputs["9:16"],
+                qa_results_json=[],
+                generation_json={
+                    "executor": "ffmpeg",
+                    "template_id": "kjds-ffmpeg-product-video-v1",
+                    "execution_id": execution_id,
+                    "media_job_ref": job.job_ref,
+                    "source_snapshot_sha256": "d" * 64,
+                    "render_plan_sha256": render_plan_sha256,
+                    "result_receipt_sha256": receipt["receipt_sha256"],
+                    "outputs": outputs,
+                    "encoder_version": "fixture-ffmpeg",
+                    "listing_eligible": False,
+                },
+                created_at=NOW,
+            )
+        )
+    return created, receipt, artifacts["9:16"]
+
+
+def _insert_success_receipt_row(
+    engine,
+    *,
+    created,
+    receipt,
+    recorded_at=NOW,
+    receipt_suffix="1",
+):
+    with Session(engine) as session, session.begin():
+        job = session.get(MediaJobRow, created.job_ref)
+        event = session.scalar(
+            select(MediaJobEventRow)
+            .where(MediaJobEventRow.job_ref == created.job_ref)
+            .order_by(MediaJobEventRow.ordinal.desc())
+        )
+        assert job is not None and event is not None and event.state == "SUCCEEDED"
+        session.add(
+            MediaJobResultReceiptRow(
+                receipt_ref=f"media_result_{receipt_suffix * 32}",
+                job_ref=job.job_ref,
+                event_ref=event.event_ref,
+                tenant_ref=job.tenant_ref,
+                entity_ref=job.entity_ref,
+                store_ref=job.store_ref,
+                scope_grant_authority_sha256=job.scope_grant_authority_sha256,
+                tool_name=job.tool_name,
+                tool_version=job.tool_version,
+                provider=job.provider,
+                connector_ref=job.connector_ref,
+                connector_binding_sha256=job.connector_binding_sha256,
+                state=event.state,
+                result_kind=receipt["result_kind"],
+                artifact_evidence_refs=receipt["artifact_evidence_refs"],
+                content_asset_ref=receipt["content_asset_ref"],
+                receipt_sha256=receipt["receipt_sha256"],
+                recorded_at=recorded_at,
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["asset_type", "asset_status", "evidence_actor", "evidence_mime", "evidence_time"],
+)
+def test_render_result_binding_rejects_self_consistent_sqlite_tamper(
+    case,
+    monkeypatch,
+):
+    engine, _, service = workspace()
+    created, receipt, artifact = _terminal_success_with_artifact(service, engine)
+    with Session(engine) as session, session.begin():
+        job = session.get(MediaJobRow, created.job_ref)
+        event = session.scalar(
+            select(MediaJobEventRow)
+            .where(MediaJobEventRow.job_ref == created.job_ref)
+            .order_by(MediaJobEventRow.ordinal.desc())
+        )
+        asset = session.get(ContentAssetRow, receipt["content_asset_ref"])
+        record = session.get(EvidenceRecordRow, artifact.id)
+        assert job is not None and event is not None
+        assert asset is not None and record is not None
+        monkeypatch.setattr(
+            service,
+            "_worker_input_projection",
+            lambda **_: type("Worker", (), {"payload": {}})(),
+        )
+        monkeypatch.setattr(
+            service,
+            "_validate_render_worker_input",
+            lambda **_: RenderBlueprintAuthority(
+                evidence_record=record,
+                source_snapshot_sha256="d" * 64,
+                render_plan_sha256="e" * 64,
+                receipt_recorded_at=NOW,
+            ),
+        )
+        if case == "asset_type":
+            asset.content_type = "image"
+        elif case == "asset_status":
+            asset.status = "approved"
+        elif case == "evidence_actor":
+            record.created_by = "forged-actor"
+            record.metadata_json = {
+                **record.metadata_json,
+                "subject_actor_id": "forged-actor",
+            }
+        elif case == "evidence_mime":
+            record.content_type = "application/octet-stream"
+        else:
+            record.effective_at = NOW + timedelta(seconds=1)
+            record.recorded_at = NOW + timedelta(seconds=1)
+        session.flush()
+        with pytest.raises(
+            ValueError,
+            match="media_job_result_(content_asset_binding|artifact_evidence)_invalid",
+        ):
+            service._validate_result_bindings(
+                session=session,
+                scope=scope(),
+                job=job,
+                event=event,
+                content={
+                    **receipt,
+                    "event_ref": event.event_ref,
+                    "event_sha256": event.event_sha256,
+                    "job_ref": job.job_ref,
+                    "state": "SUCCEEDED",
+                },
+                receipt_sha256=receipt["receipt_sha256"],
+            )
+
+
+def _admit_failure_receipt_tool_for_sqlite(engine, job_ref: str) -> None:
+    """Keep receipt replay tests independent from the governed success fixture."""
+
+    with Session(engine) as session, session.begin():
+        job = session.get(MediaJobRow, job_ref)
+        assert job is not None
+        job.tool_name = "media.video_blueprint"
+
+
+def test_foreign_scope_artifact_cannot_block_or_influence_victim_terminal():
+    engine, _, service = workspace()
+    created = service.submit(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        request=request(),
+    )
+    _admit_failure_receipt_tool_for_sqlite(engine, created.job_ref)
+    service.claim_provider_attempt(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+    )
+    foreign_ref = "foreign-private-artifact-canary"
+    with Session(engine) as session, session.begin():
+        session.add(
+            ProductRow(
+                id="foreign-product",
+                sku="FOREIGN-SKU",
+                name="Foreign product",
+                market="RU",
+                channel="ozon",
+                status="active",
+                created_at=NOW,
+                tenant_ref="foreign-tenant",
+                entity_ref="foreign-entity",
+                store_ref="foreign-store",
+                scope_grant_authority_sha256="f" * 64,
+                scope_as_of=NOW,
+                created_by="foreign-actor",
+            )
+        )
+        session.add(
+            ContentAssetRow(
+                id=foreign_ref,
+                product_id="foreign-product",
+                content_type="video",
+                locale="ru-RU",
+                channel="ozon",
+                brief_json={},
+                source_facts_json={},
+                status="generated",
+                artifact_ref="foreign-evidence-canary",
+                qa_results_json=[],
+                generation_json={
+                    "executor": "ffmpeg",
+                    "media_job_ref": created.job_ref,
+                },
+                created_at=NOW,
+            )
+        )
+
+    with Session(engine) as session:
+        assert service._has_governed_artifact(
+            session=session,
+            job_ref=created.job_ref,
+            scope=scope(),
+        ) is False
+    current = service.read(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+    )
+    assert current.state == "DISPATCHED"
+    assert foreign_ref not in repr(current)
+
+
+def test_result_receipt_requires_same_event_evidence_and_replays_exactly(monkeypatch):
+    engine, _, service = workspace()
+    created, receipt, artifact = _terminal_success_with_artifact(service, engine)
+    _insert_success_receipt_row(engine, created=created, receipt=receipt)
+    monkeypatch.setattr(
+        service,
+        "_worker_input_projection",
+        lambda **_: type("Worker", (), {"payload": {}})(),
+    )
+    monkeypatch.setattr(
+        service,
+        "_validate_render_worker_input",
+        lambda **_: RenderBlueprintAuthority(
+            evidence_record=artifact,
+            source_snapshot_sha256="d" * 64,
+            render_plan_sha256="e" * 64,
+            receipt_recorded_at=NOW,
+        ),
+    )
+
+    first = service.record_result_receipt(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+        receipt=receipt,
+    )
+    replay = service.record_result_receipt(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+        receipt=receipt,
+    )
+    readback = service.read_result_receipt(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+    )
+
+    assert first == replay == readback
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(MediaJobResultReceiptRow)) == 1
+
+
+def test_result_receipt_without_same_job_event_evidence_fails_before_row_write():
+    engine, _, service = workspace()
+    created = service.submit(principal=PRINCIPAL, store_ref="store-1", request=request())
+    with pytest.raises(ValueError, match="result_receipt_missing"):
+        service.record_result_receipt(
+            principal=PRINCIPAL,
+            store_ref="store-1",
+            job_ref=created.job_ref,
+            receipt={
+                "contract_id": "kjds-governed-media-job-result-v1",
+                "provider": "codex-app-server",
+                "connector_ref": "connector-1",
+                "connector_binding_sha256": BINDING,
+                "result_kind": "editing_blueprint_evidence",
+                "artifact_evidence_refs": ["forged-evidence"],
+                "content_asset_ref": None,
+                "receipt_sha256": "0" * 64,
+            },
+        )
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(MediaJobResultReceiptRow)) == 0
+
+
+def test_cancelled_event_cannot_become_a_result_receipt():
+    engine, _, service = workspace()
+    created = service.submit(principal=PRINCIPAL, store_ref="store-1", request=request())
+    service.cancel(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+        idempotency_key="cancel-result",
+    )
+
+    with pytest.raises(ValueError, match="result_receipt_missing"):
+        service.record_result_receipt(
+            principal=PRINCIPAL,
+            store_ref="store-1",
+            job_ref=created.job_ref,
+            receipt={
+                "contract_id": "kjds-governed-media-job-result-v1",
+                "provider": "codex-app-server",
+                "connector_ref": "connector-1",
+                "connector_binding_sha256": BINDING,
+                "result_kind": "editing_blueprint_evidence",
+                "artifact_evidence_refs": ["cancelled-artifact"],
+                "content_asset_ref": None,
+                "receipt_sha256": "0" * 64,
+            },
+        )
+
+
+def test_legacy_provider_success_cannot_create_or_bind_a_video_result():
+    engine, _, service = workspace()
+    created = service.submit(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        request=request(),
+    )
+    service.claim_provider_attempt(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+    )
+    with pytest.raises(PermissionError, match="provider_result_authority_required"):
+        service.record_provider_result(
+            principal=PRINCIPAL,
+            store_ref="store-1",
+            job_ref=created.job_ref,
+            state="SUCCEEDED",
+            result_kind="video_artifact_evidence",
+            artifact_evidence_refs=("forged-artifact",),
+            content_asset_ref="forged-asset",
+        )
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(MediaJobResultReceiptRow)) == 0
+        latest = session.scalar(
+            select(MediaJobEventRow)
+            .where(MediaJobEventRow.job_ref == created.job_ref)
+            .order_by(MediaJobEventRow.ordinal.desc())
+        )
+        assert latest is not None and latest.state == "DISPATCHED"
+
+
+@pytest.mark.parametrize("state", ("SUCCEEDED", "FAILED", "UNKNOWN_OUTCOME"))
+def test_legacy_provider_terminal_entrypoint_requires_independent_authority(state):
+    engine, _, service = workspace()
+    created = service.submit(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        request=request(),
+    )
+    service.claim_provider_attempt(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+    )
+    with Session(engine) as session:
+        before = (
+            session.scalar(select(func.count()).select_from(MediaJobEventRow)),
+            session.scalar(select(func.count()).select_from(EvidenceRecordRow)),
+            session.scalar(select(func.count()).select_from(MediaJobEvidenceLinkRow)),
+            session.scalar(select(func.count()).select_from(MediaJobResultReceiptRow)),
+        )
+
+    with pytest.raises(
+        PermissionError,
+        match="provider_terminal_authority_required",
+    ):
+        service.record_provider_terminal(
+            principal=PRINCIPAL,
+            store_ref="store-1",
+            job_ref=created.job_ref,
+            state=state,
+        )
+
+    with Session(engine) as session:
+        after = (
+            session.scalar(select(func.count()).select_from(MediaJobEventRow)),
+            session.scalar(select(func.count()).select_from(EvidenceRecordRow)),
+            session.scalar(select(func.count()).select_from(MediaJobEvidenceLinkRow)),
+            session.scalar(select(func.count()).select_from(MediaJobResultReceiptRow)),
+        )
+        latest = session.scalar(
+            select(MediaJobEventRow)
+            .where(MediaJobEventRow.job_ref == created.job_ref)
+            .order_by(MediaJobEventRow.ordinal.desc())
+        )
+    assert after == before
+    assert latest is not None and latest.state == "DISPATCHED"
+
+
+@pytest.mark.parametrize(
+    ("state", "result_kind", "artifact_refs", "content_asset_ref"),
+    (
+        ("FAILED", "provider_failure", ["artifact-ref"], None),
+        ("UNKNOWN_OUTCOME", "unknown_outcome_readback", [], "asset-ref"),
+    ),
+)
+def test_non_success_result_receipts_cannot_carry_artifacts(
+    state, result_kind, artifact_refs, content_asset_ref
+):
+    engine, _, service = workspace()
+    created = service.submit(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        request=request(),
+    )
+    service.claim_provider_attempt(
+        principal=PRINCIPAL,
+        store_ref="store-1",
+        job_ref=created.job_ref,
+    )
+    with pytest.raises(PermissionError, match="provider_result_authority_required"):
+        service.record_provider_result(
+            principal=PRINCIPAL,
+            store_ref="store-1",
+            job_ref=created.job_ref,
+            state=state,
+            result_kind=result_kind,
+            artifact_evidence_refs=tuple(artifact_refs),
+            content_asset_ref=content_asset_ref,
+        )
+    with Session(engine) as session:
+        assert session.scalar(select(func.count()).select_from(MediaJobResultReceiptRow)) == 0
+
+
+@pytest.mark.parametrize(
+    "recorded_at", (NOW - timedelta(seconds=1), NOW + timedelta(minutes=6))
+)
+def test_result_readback_rejects_invalid_recorded_at(recorded_at, monkeypatch):
+    engine, _, service = workspace()
+    created, receipt, artifact = _terminal_success_with_artifact(service, engine)
+    _insert_success_receipt_row(
+        engine,
+        created=created,
+        receipt=receipt,
+        recorded_at=recorded_at,
+        receipt_suffix="2",
+    )
+    monkeypatch.setattr(
+        service,
+        "_worker_input_projection",
+        lambda **_: type("Worker", (), {"payload": {}})(),
+    )
+    monkeypatch.setattr(
+        service,
+        "_validate_render_worker_input",
+        lambda **_: RenderBlueprintAuthority(
+            evidence_record=artifact,
+            source_snapshot_sha256="d" * 64,
+            render_plan_sha256="e" * 64,
+            receipt_recorded_at=NOW,
+        ),
+    )
+    with pytest.raises(RuntimeError, match="recorded_at_invalid"):
+        service.read_result_receipt(
+            principal=PRINCIPAL,
+            store_ref="store-1",
+            job_ref=created.job_ref,
+        )
+
+
+def test_success_result_readback_rejects_later_resealed_receipt_time():
+    engine, _, service = workspace()
+    created, receipt, _ = _terminal_success_with_artifact(service, engine)
+    with Session(engine) as session, session.begin():
+        job = session.get(MediaJobRow, created.job_ref)
+        event = session.scalar(
+            select(MediaJobEventRow)
+            .where(MediaJobEventRow.job_ref == created.job_ref)
+            .order_by(MediaJobEventRow.ordinal.desc())
+        )
+        assert job is not None and event is not None
+        session.add(
+            MediaJobResultReceiptRow(
+                receipt_ref=f"media_result_{'d' * 32}",
+                job_ref=job.job_ref,
+                event_ref=event.event_ref,
+                tenant_ref=job.tenant_ref,
+                entity_ref=job.entity_ref,
+                store_ref=job.store_ref,
+                scope_grant_authority_sha256=job.scope_grant_authority_sha256,
+                tool_name=job.tool_name,
+                tool_version=job.tool_version,
+                provider=job.provider,
+                connector_ref=job.connector_ref,
+                connector_binding_sha256=job.connector_binding_sha256,
+                state="SUCCEEDED",
+                result_kind=receipt["result_kind"],
+                artifact_evidence_refs=receipt["artifact_evidence_refs"],
+                content_asset_ref=receipt["content_asset_ref"],
+                receipt_sha256=receipt["receipt_sha256"],
+                recorded_at=NOW + timedelta(seconds=1),
+            )
+        )
+    with pytest.raises(RuntimeError, match="recorded_at_invalid"):
+        service.read_result_receipt(
+            principal=PRINCIPAL,
+            store_ref="store-1",
+            job_ref=created.job_ref,
+        )

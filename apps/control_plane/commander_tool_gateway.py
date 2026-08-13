@@ -11,7 +11,15 @@ from pathlib import Path
 from typing import Any
 
 from .agent_harness import AgentHarnessService
+from .media_connectors import (
+    INTERNAL_BLUEPRINT_PROVIDER,
+    RUNTIME_FFMPEG_PROVIDER,
+    MediaConnectorContract,
+)
 from .media_jobs import (
+    EDITING_TARGET_CHANNELS,
+    FFMPEG_RENDER_PROFILE,
+    FFMPEG_RENDER_PROFILE_SHA256,
     MEDIA_JOB_SAFE_REASON_BY_STATE,
     MEDIA_JOB_STATES,
     GovernedMediaJobWorkspace,
@@ -20,7 +28,7 @@ from .media_jobs import (
 from .security import Principal
 
 MEDIA_AGENT_REGISTRY_CONTENT_SHA256 = (
-    "1da9605f1de2cf3fbc7b1e5fd629138f54438dc91b0fa6f0ad1cfc7a768f1554"
+    "a14e57cc61ba2840aa94a1747cff6da82b2b9b6421c0c5a2bb4bf12bbdffe075"
 )
 GATEWAY_CONTRACT_ID = "kjds-commander-tool-gateway-v1"
 GATEWAY_CONTRACT_VERSION = "1.0.0"
@@ -223,10 +231,27 @@ class CommanderToolGateway:
         harness: AgentHarnessService,
         jobs: GovernedMediaJobWorkspace,
         registry_path: str | Path,
+        media_connector_contract: MediaConnectorContract | None = None,
     ) -> None:
         self.harness = harness
         self.jobs = jobs
         self.registry_path = Path(registry_path)
+        self.media_connector_contract = (
+            media_connector_contract
+            or MediaConnectorContract(path=self.registry_path)
+        )
+        if type(self.media_connector_contract) is not MediaConnectorContract:
+            raise CommanderToolGatewayError(
+                "media_connector_contract_invalid"
+            )
+        self.blueprint_provider = (
+            self.media_connector_contract.internal_runtime_provider(
+                INTERNAL_BLUEPRINT_PROVIDER
+            )
+        )
+        self.ffmpeg_provider = self.media_connector_contract.internal_runtime_provider(
+            RUNTIME_FFMPEG_PROVIDER
+        )
 
     def _registry(self) -> dict[str, Any]:
         try:
@@ -330,6 +355,19 @@ class CommanderToolGateway:
             if item["state"] != "job_intake_only":
                 raise CommanderToolGatewayError("tool_gateway_state_invalid")
             cost = item["cost_upper_bound"]
+            runtime_owned = {
+                "media.video_blueprint": self.blueprint_provider,
+                "media.video_render": self.ffmpeg_provider,
+            }.get(item["name"])
+            runtime_owned_admitted = (
+                runtime_owned is not None
+                and item["accepted_providers"] == [runtime_owned.provider]
+            )
+            expected_basis = (
+                runtime_owned.cost_basis
+                if runtime_owned_admitted
+                else "engineering_dispatch_ceiling_not_invoice"
+            )
             if (
                 not isinstance(cost, dict)
                 or set(cost) != {"amount_minor", "currency", "basis"}
@@ -337,7 +375,11 @@ class CommanderToolGateway:
                 or isinstance(cost["amount_minor"], bool)
                 or not 0 <= cost["amount_minor"] <= 1_000_000
                 or cost["currency"] != "USD"
-                or cost["basis"] != "engineering_dispatch_ceiling_not_invoice"
+                or cost["basis"] != expected_basis
+                or (
+                    runtime_owned_admitted
+                    and cost["amount_minor"] != runtime_owned.cost_amount_minor
+                )
             ):
                 raise CommanderToolGatewayError("tool_gateway_cost_contract_invalid")
             for field in ("required_capabilities", "additional_allowed_inputs", "accepted_providers"):
@@ -485,6 +527,13 @@ class CommanderToolGateway:
         provider = _text(arguments["provider"], "provider")
         if provider not in tool["accepted_providers"]:
             raise CommanderToolGatewayError("provider_not_registered_for_tool")
+        if tool["name"] == "media.video_render" and provider != self.ffmpeg_provider.provider:
+            raise CommanderToolGatewayError("video_render_provider_not_admitted")
+        if (
+            tool["name"] == "media.video_blueprint"
+            and provider != self.blueprint_provider.provider
+        ):
+            raise CommanderToolGatewayError("video_blueprint_provider_not_admitted")
         if arguments["output_contract"] != tool["result_kind"]:
             raise CommanderToolGatewayError("tool_output_contract_invalid")
         if as_of.tzinfo is None:
@@ -516,11 +565,47 @@ class CommanderToolGateway:
             for key in tool["additional_allowed_inputs"]
             if key in arguments
         }
+        if (
+            tool["name"] == "media.video_blueprint"
+            and tool_inputs.get("target_channels")
+            != list(EDITING_TARGET_CHANNELS)
+        ):
+            raise CommanderToolGatewayError(
+                "video_blueprint_target_channel_not_admitted"
+            )
+        if tool["name"] == "media.video_blueprint" and (
+            not isinstance(tool_inputs.get("audio_asset_refs"), list)
+            or len(tool_inputs["audio_asset_refs"]) != 1
+        ):
+            raise CommanderToolGatewayError(
+                "video_blueprint_audio_input_not_admitted"
+            )
+        if (
+            tool["name"] == "media.video_render"
+            and tool_inputs.get("render_profile") != FFMPEG_RENDER_PROFILE
+        ):
+            raise CommanderToolGatewayError("video_render_profile_not_admitted")
         connector_ref = _text(arguments["connector_ref"], "connector_ref")
         connector_binding_sha256 = _hex64(
             arguments["connector_binding_sha256"],
             "connector_binding_sha256",
         )
+        if tool["name"] == "media.video_blueprint" and (
+            connector_ref != self.blueprint_provider.connector_ref
+            or connector_binding_sha256
+            != self.blueprint_provider.binding_sha256
+            or not isinstance(tool_inputs.get("analysis_evidence_ref"), str)
+        ):
+            raise CommanderToolGatewayError(
+                "video_blueprint_internal_binding_not_admitted"
+            )
+        if tool["name"] == "media.video_render" and (
+            connector_ref != self.ffmpeg_provider.connector_ref
+            or connector_binding_sha256 != self.ffmpeg_provider.binding_sha256
+        ):
+            raise CommanderToolGatewayError(
+                "video_render_runtime_binding_not_admitted"
+            )
         descriptor = self._descriptor(
             tool=tool,
             provider=provider,
@@ -549,6 +634,49 @@ class CommanderToolGateway:
             "tool_input_ref_count": input_ref_count,
             "safe_reason_codes": [],
         }
+        worker_input = None
+        if tool["name"] in {"media.video_blueprint", "media.video_render"}:
+            worker_input = {
+                "contract_id": "kjds-governed-media-job-worker-input-v1",
+                "tool_name": tool["name"],
+                "tool_version": tool["version"],
+                "project_ref": brief["project_ref"],
+                "brief_ref": brief["brief_ref"],
+                "campaign_content_asset_refs": list(
+                    brief["content_asset_refs"]
+                ),
+                "editing_blueprint_ref": tool_inputs.get(
+                    "editing_blueprint_ref"
+                ),
+                "reference_asset_refs": list(
+                    tool_inputs.get("reference_asset_refs", [])
+                ),
+                "source_asset_refs": list(
+                    tool_inputs.get("source_asset_refs", [])
+                ),
+                "audio_asset_refs": list(
+                    tool_inputs.get("audio_asset_refs", [])
+                ),
+                "target_channels": list(
+                    EDITING_TARGET_CHANNELS
+                ),
+                "analysis_contract_sha256": (
+                    _sha(tool_inputs["analysis_contract"])
+                    if "analysis_contract" in tool_inputs
+                    else None
+                ),
+                "analysis_evidence_ref": tool_inputs.get(
+                    "analysis_evidence_ref"
+                ),
+                "render_profile_sha256": (
+                    FFMPEG_RENDER_PROFILE_SHA256
+                    if tool["name"] in {
+                        "media.video_blueprint",
+                        "media.video_render",
+                    }
+                    else None
+                ),
+            }
         try:
             job = self.jobs.submit(
                 principal=principal,
@@ -556,6 +684,7 @@ class CommanderToolGateway:
                 request=request,
                 campaign_brief=brief,
                 tool_descriptor=descriptor,
+                worker_input=worker_input,
             )
         except Exception:
             raise CommanderToolGatewayError("media_job_submit_failed") from None

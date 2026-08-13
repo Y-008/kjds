@@ -119,19 +119,104 @@ def test_job_state_machine_is_closed_and_unknown_outcome_is_readback_only() -> N
 
     assert job["start_state"] == "QUEUED"
     assert set(transitions) == states
-    assert set(job["terminal_states"]) == {"SUCCEEDED", "FAILED", "CANCELLED"}
-    assert set(job["paused_states"]) == {
-        "LOGIN_REQUIRED",
-        "LIMITED",
+    assert set(job["terminal_states"]) == {
+        "SUCCEEDED",
+        "FAILED",
         "UNKNOWN_OUTCOME",
     }
+    assert set(job["paused_states"]) == {"LOGIN_REQUIRED", "LIMITED"}
     assert all(set(targets).issubset(states) for targets in transitions.values())
     assert all(not transitions[state] for state in job["terminal_states"])
-    assert set(transitions["UNKNOWN_OUTCOME"]).isdisjoint(
-        {"QUEUED", "DISPATCHED", "RUNNING", "LOGIN_REQUIRED", "LIMITED"}
-    )
+    assert transitions["UNKNOWN_OUTCOME"] == []
     assert "no_new_dispatch" in job["resume_requirements"]["UNKNOWN_OUTCOME"]
     assert job["defaults"]["automatic_retry_after_unknown_outcome"] is False
+
+
+def test_bas_186_render_is_ffmpeg_only_and_result_readback_is_frozen() -> None:
+    contract = _load(CONTRACT_PATH)
+    tools = {item["name"]: item for item in contract["tool_gateway"]["tools"]}
+    assert tools["media.video_render"]["accepted_providers"] == ["ffmpeg"]
+    assert tools["media.video_render"]["state"] == "job_intake_only"
+    assert tools["media.image_generate"]["state"] == "job_intake_only"
+    result = contract["job_contract"]["result_receipt_contract"]
+    assert result == {
+        "contract_id": "kjds-governed-media-job-result-v1",
+        "allowed_states": ["SUCCEEDED"],
+        "non_success_terminal_authority": "not_admitted",
+        "typed_provider_receipt_authority_connected": False,
+        "unknown_outcome_mode": "contract_only_not_admitted",
+        "terminal_asset_and_receipt_atomic_transaction": True,
+        "terminal_receipt_deferred_conservation": True,
+        "scope_authority_lock_key": [
+            "tenant_ref",
+            "store_ref",
+            "subject_actor_id",
+        ],
+        "active_dispatched_attempt_grace_seconds": 1500,
+        "automatic_retry": False,
+        "automatic_failover": False,
+        "cancellation_result_receipt": False,
+    }
+    worker_input = contract["job_contract"]["worker_input_contract"]
+    assert worker_input["reserved_evidence_source"] == (
+        "governed-media-job-worker-input"
+    )
+    assert worker_input["safe_refs_hashes_versions_counts_only"] is True
+    assert worker_input["raw_prompt_blob_or_command_allowed"] is False
+
+
+def test_runtime_owned_tool_and_provider_descriptors_have_exact_parity() -> None:
+    contract = _load(CONTRACT_PATH)
+    tools = {item["name"]: item for item in contract["tool_gateway"]["tools"]}
+    descriptors = contract["connector_contract"][
+        "runtime_owned_provider_descriptors"
+    ]
+
+    expected = {
+        "kjds_internal_blueprint_compiler": {
+            "tool": "media.video_blueprint",
+            "connector_ref": "internal://editing-blueprint-compiler-v1",
+            "binding_sha256": (
+                "9efaed15669de37606902e0473e798323f3b2018655bf3a7d51058c15fa1a4c8"
+            ),
+            "protocol_version": "kjds-internal-blueprint-compiler/1",
+            "external_side_effect": "internal_deterministic_compile_only",
+        },
+        "ffmpeg": {
+            "tool": "media.video_render",
+            "connector_ref": "internal://local-ffmpeg-renderer-v1",
+            "binding_sha256": (
+                "d39f725911da61e70ab388cf2a42fbd2941ebbcc196cdf4b390e5d0f4c468493"
+            ),
+            "protocol_version": "kjds-local-ffmpeg/1",
+            "external_side_effect": "local_media_render_only",
+        },
+    }
+    assert set(descriptors) == set(expected)
+    for provider, frozen in expected.items():
+        descriptor = descriptors[provider]
+        tool = tools[frozen["tool"]]
+        assert descriptor["provider"] == provider
+        assert descriptor["connector_ref"] == frozen["connector_ref"]
+        assert descriptor["binding_sha256"] == frozen["binding_sha256"]
+        assert descriptor["protocol_version"] == frozen["protocol_version"]
+        assert tool["accepted_providers"] == [provider]
+        assert set(tool["required_capabilities"]) == set(
+            descriptor["capabilities"]
+        )
+        assert tool["cost_upper_bound"] == descriptor["cost_upper_bound"]
+        assert tool["external_side_effect"] == frozen["external_side_effect"]
+        assert descriptor["connector_ref"].startswith("internal://")
+        assert descriptor["deterministic"] is True
+        assert descriptor["external_call"] is False
+        assert descriptor["credential_required"] is False
+        assert descriptor["enrollment_allowed"] is False
+        assert descriptor["automatic_retry"] is False
+        assert descriptor["automatic_failover"] is False
+
+    assert descriptors["kjds_internal_blueprint_compiler"]["provider"] != (
+        "codex_oauth"
+    )
 
 
 def test_provider_and_connector_routing_never_rotate_or_fail_over_implicitly() -> None:

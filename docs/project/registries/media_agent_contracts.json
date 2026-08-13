@@ -132,15 +132,15 @@
         "owner_task": "BAS-186",
         "purpose": "Convert a rights-approved reference video into an auditable EditingBlueprint proposal.",
         "required_capabilities": ["vision", "structured_output"],
-        "additional_allowed_inputs": ["reference_asset_refs", "analysis_contract", "target_channels"],
-        "accepted_providers": ["codex_oauth"],
+        "additional_allowed_inputs": ["reference_asset_refs", "audio_asset_refs", "analysis_contract", "analysis_evidence_ref", "target_channels"],
+        "accepted_providers": ["kjds_internal_blueprint_compiler"],
         "result_kind": "editing_blueprint_evidence",
-        "external_side_effect": "analysis_only",
+        "external_side_effect": "internal_deterministic_compile_only",
         "state": "job_intake_only",
         "cost_upper_bound": {
-          "amount_minor": 500,
+          "amount_minor": 0,
           "currency": "USD",
-          "basis": "engineering_dispatch_ceiling_not_invoice"
+          "basis": "internal_deterministic_compiler_no_provider_charge"
         }
       },
       {
@@ -150,14 +150,14 @@
         "purpose": "Render an admitted EditingBlueprint with approved media inputs.",
         "required_capabilities": ["video_render"],
         "additional_allowed_inputs": ["editing_blueprint_ref", "source_asset_refs", "audio_asset_refs", "render_profile"],
-        "accepted_providers": ["ffmpeg", "remotion"],
+        "accepted_providers": ["ffmpeg"],
         "result_kind": "video_artifact_evidence",
         "external_side_effect": "local_media_render_only",
         "state": "job_intake_only",
         "cost_upper_bound": {
-          "amount_minor": 1000,
+          "amount_minor": 0,
           "currency": "USD",
-          "basis": "engineering_dispatch_ceiling_not_invoice"
+          "basis": "internal_deterministic_ffmpeg_no_provider_charge"
         }
       },
       {
@@ -194,16 +194,16 @@
       "CANCELLED",
       "UNKNOWN_OUTCOME"
     ],
-    "terminal_states": ["SUCCEEDED", "FAILED", "CANCELLED"],
-    "paused_states": ["LOGIN_REQUIRED", "LIMITED", "UNKNOWN_OUTCOME"],
+    "terminal_states": ["SUCCEEDED", "FAILED", "UNKNOWN_OUTCOME"],
+    "paused_states": ["LOGIN_REQUIRED", "LIMITED"],
     "transitions": {
-      "QUEUED": ["DISPATCHED", "CANCELLED", "FAILED"],
-      "DISPATCHED": ["RUNNING", "LOGIN_REQUIRED", "LIMITED", "FAILED", "CANCELLED", "UNKNOWN_OUTCOME"],
-      "RUNNING": ["UPLOADING", "LOGIN_REQUIRED", "LIMITED", "FAILED", "CANCELLED", "UNKNOWN_OUTCOME"],
-      "UPLOADING": ["SUCCEEDED", "FAILED", "CANCELLED", "UNKNOWN_OUTCOME"],
-      "LOGIN_REQUIRED": ["DISPATCHED", "FAILED", "CANCELLED"],
-      "LIMITED": ["DISPATCHED", "FAILED", "CANCELLED"],
-      "UNKNOWN_OUTCOME": ["UPLOADING", "SUCCEEDED", "FAILED", "CANCELLED"],
+      "QUEUED": ["DISPATCHED", "CANCELLED", "LOGIN_REQUIRED", "LIMITED"],
+      "DISPATCHED": ["RUNNING", "FAILED", "UNKNOWN_OUTCOME"],
+      "RUNNING": ["UPLOADING", "FAILED", "UNKNOWN_OUTCOME"],
+      "UPLOADING": ["SUCCEEDED", "FAILED", "UNKNOWN_OUTCOME"],
+      "LOGIN_REQUIRED": ["DISPATCHED", "RUNNING", "FAILED", "UNKNOWN_OUTCOME"],
+      "LIMITED": ["DISPATCHED", "RUNNING", "FAILED", "UNKNOWN_OUTCOME"],
+      "UNKNOWN_OUTCOME": [],
       "SUCCEEDED": [],
       "FAILED": [],
       "CANCELLED": []
@@ -231,6 +231,27 @@
     ],
     "success_required_references": ["artifact_evidence_refs"],
     "governed_commerce_success_references": ["content_asset_ref", "artifact_evidence_refs"],
+    "result_receipt_contract": {
+      "contract_id": "kjds-governed-media-job-result-v1",
+      "allowed_states": ["SUCCEEDED"],
+      "non_success_terminal_authority": "not_admitted",
+      "typed_provider_receipt_authority_connected": false,
+      "unknown_outcome_mode": "contract_only_not_admitted",
+      "terminal_asset_and_receipt_atomic_transaction": true,
+      "terminal_receipt_deferred_conservation": true,
+      "scope_authority_lock_key": ["tenant_ref", "store_ref", "subject_actor_id"],
+      "active_dispatched_attempt_grace_seconds": 1500,
+      "automatic_retry": false,
+      "automatic_failover": false,
+      "cancellation_result_receipt": false
+    },
+    "worker_input_contract": {
+      "contract_id": "kjds-governed-media-job-worker-input-v1",
+      "reserved_evidence_source": "governed-media-job-worker-input",
+      "safe_refs_hashes_versions_counts_only": true,
+      "raw_prompt_blob_or_command_allowed": false,
+      "video_render_requires_blueprint_source_audio_and_profile": true
+    },
     "sanitized_optional_fields": ["usage_ref", "cost_summary", "latency_ms", "failure_code", "provider_operation_ref", "content_asset_ref"],
     "defaults": {
       "connector_concurrency": 1,
@@ -245,7 +266,7 @@
     "contract_id": "kjds-media-connector-descriptor-v1",
     "owner_task": "BAS-181",
     "deployment_modes": ["customer_local", "hosted_isolated"],
-    "providers": ["codex_oauth", "comfyui", "ffmpeg", "remotion", "windows_agent"],
+    "providers": ["codex_oauth", "comfyui", "ffmpeg", "kjds_internal_blueprint_compiler", "remotion", "windows_agent"],
     "health_states": ["ENROLLING", "READY", "BUSY", "LOGIN_REQUIRED", "LIMITED", "OFFLINE", "ERROR", "REVOKED"],
     "allowed_record_fields": [
       "connector_ref",
@@ -274,7 +295,45 @@
     "shared_pool": false,
     "cross_tenant_reuse": false,
     "automatic_rotation": false,
-    "raw_credential_readback": false
+    "raw_credential_readback": false,
+    "runtime_owned_provider_descriptors": {
+      "kjds_internal_blueprint_compiler": {
+        "provider": "kjds_internal_blueprint_compiler",
+        "connector_ref": "internal://editing-blueprint-compiler-v1",
+        "binding_sha256": "9efaed15669de37606902e0473e798323f3b2018655bf3a7d51058c15fa1a4c8",
+        "protocol_version": "kjds-internal-blueprint-compiler/1",
+        "capabilities": ["vision", "structured_output"],
+        "deterministic": true,
+        "external_call": false,
+        "credential_required": false,
+        "cost_upper_bound": {
+          "amount_minor": 0,
+          "currency": "USD",
+          "basis": "internal_deterministic_compiler_no_provider_charge"
+        },
+        "enrollment_allowed": false,
+        "automatic_retry": false,
+        "automatic_failover": false
+      },
+      "ffmpeg": {
+        "provider": "ffmpeg",
+        "connector_ref": "internal://local-ffmpeg-renderer-v1",
+        "binding_sha256": "d39f725911da61e70ab388cf2a42fbd2941ebbcc196cdf4b390e5d0f4c468493",
+        "protocol_version": "kjds-local-ffmpeg/1",
+        "capabilities": ["video_render"],
+        "deterministic": true,
+        "external_call": false,
+        "credential_required": false,
+        "cost_upper_bound": {
+          "amount_minor": 0,
+          "currency": "USD",
+          "basis": "internal_deterministic_ffmpeg_no_provider_charge"
+        },
+        "enrollment_allowed": false,
+        "automatic_retry": false,
+        "automatic_failover": false
+      }
+    }
   },
   "artifact_contract": {
     "contract_id": "kjds-media-job-artifact-reference-v1",

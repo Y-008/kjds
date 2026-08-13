@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 
@@ -9,6 +10,8 @@ from sqlalchemy.pool import StaticPool
 
 from apps.control_plane.media_connectors import (
     CONTRACT_ID,
+    INTERNAL_BLUEPRINT_PROVIDER,
+    REGISTERABLE_CONNECTOR_PROVIDERS,
     ZERO_SHA256,
     MediaConnectorConflictError,
     MediaConnectorContract,
@@ -100,6 +103,134 @@ def test_registry_contract_drift_fails_closed(registry):
     payload = deepcopy(registry.contract.payload)
     payload["connector_contract"]["shared_pool"] = True
     with pytest.raises(RuntimeError, match="shared_pool"):
+        MediaConnectorContract(payload=payload)
+
+
+def test_internal_blueprint_provider_descriptor_is_deterministic_zero_external_zero_cost():
+    contract = MediaConnectorContract()
+    descriptor = contract.internal_runtime_provider(INTERNAL_BLUEPRINT_PROVIDER)
+
+    assert descriptor.provider == INTERNAL_BLUEPRINT_PROVIDER
+    assert descriptor.connector_ref == "internal://editing-blueprint-compiler-v1"
+    assert descriptor.protocol_version == "kjds-internal-blueprint-compiler/1"
+    assert descriptor.capabilities == frozenset({"vision", "structured_output"})
+    assert descriptor.deterministic is True
+    assert descriptor.external_call is False
+    assert descriptor.credential_required is False
+    assert descriptor.cost_amount_minor == 0
+    assert descriptor.cost_currency == "USD"
+    assert descriptor.cost_basis == (
+        "internal_deterministic_compiler_no_provider_charge"
+    )
+    assert descriptor.enrollment_allowed is False
+    assert descriptor.automatic_retry is False
+    assert descriptor.automatic_failover is False
+
+
+def test_runtime_ffmpeg_descriptor_is_fixed_local_zero_external_zero_cost():
+    descriptor = MediaConnectorContract().internal_runtime_provider("ffmpeg")
+
+    assert descriptor.connector_ref == "internal://local-ffmpeg-renderer-v1"
+    assert descriptor.binding_sha256 == hashlib.sha256(
+        b"kjds-runtime-owned-local-ffmpeg-v1"
+    ).hexdigest()
+    assert descriptor.protocol_version == "kjds-local-ffmpeg/1"
+    assert descriptor.capabilities == frozenset({"video_render"})
+    assert descriptor.deterministic is True
+    assert descriptor.external_call is False
+    assert descriptor.credential_required is False
+    assert descriptor.cost_amount_minor == 0
+    assert descriptor.cost_basis == "internal_deterministic_ffmpeg_no_provider_charge"
+    assert descriptor.enrollment_allowed is False
+    assert descriptor.automatic_retry is False
+    assert descriptor.automatic_failover is False
+    assert INTERNAL_BLUEPRINT_PROVIDER not in REGISTERABLE_CONNECTOR_PROVIDERS
+
+
+def test_internal_blueprint_provider_is_not_tenant_enrollable_or_database_backed(
+    registry,
+):
+    with pytest.raises(ValueError, match="Unsupported Media Connector Provider"):
+        registry.register(
+            principal=principal("tenant-a"),
+            provider=INTERNAL_BLUEPRINT_PROVIDER,
+            deployment_mode="customer_local",
+            protocol_version="kjds-internal-blueprint-compiler/1",
+            capabilities=["vision", "structured_output"],
+            concurrency_limit=1,
+            idempotency_key="internal-provider-forbidden",
+        )
+
+    with registry.engine.connect() as connection:
+        assert connection.scalar(
+            select(func.count()).select_from(MediaConnectorRow)
+        ) == 0
+        assert connection.scalar(
+            select(func.count()).select_from(MediaConnectorEventRow)
+        ) == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("provider", "codex_oauth"),
+        ("connector_ref", "internal://attacker"),
+        ("binding_sha256", "f" * 64),
+        ("protocol_version", "codex-app-server/1"),
+        ("capabilities", ["vision"]),
+        ("deterministic", False),
+        ("external_call", True),
+        ("credential_required", True),
+        ("enrollment_allowed", True),
+        ("automatic_retry", True),
+        ("automatic_failover", True),
+    ],
+)
+def test_internal_blueprint_provider_contract_drift_fails_closed(field, value):
+    payload = deepcopy(MediaConnectorContract().payload)
+    descriptor = payload["connector_contract"][
+        "runtime_owned_provider_descriptors"
+    ][INTERNAL_BLUEPRINT_PROVIDER]
+    descriptor[field] = value
+
+    with pytest.raises(RuntimeError, match="Runtime-owned media provider"):
+        MediaConnectorContract(payload=payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("amount_minor", 1),
+        ("amount_minor", False),
+        ("currency", "CNY"),
+        ("basis", "engineering_dispatch_ceiling_not_invoice"),
+    ],
+)
+def test_internal_blueprint_provider_cost_drift_fails_closed(field, value):
+    payload = deepcopy(MediaConnectorContract().payload)
+    cost = payload["connector_contract"]["runtime_owned_provider_descriptors"][
+        INTERNAL_BLUEPRINT_PROVIDER
+    ]["cost_upper_bound"]
+    cost[field] = value
+
+    with pytest.raises(RuntimeError, match="Runtime-owned media provider"):
+        MediaConnectorContract(payload=payload)
+
+
+@pytest.mark.parametrize("mutation", ["duplicate", "reordered", "wrong_type"])
+def test_provider_inventory_requires_exact_canonical_list(mutation):
+    payload = deepcopy(MediaConnectorContract().payload)
+    providers = payload["connector_contract"]["providers"]
+    if mutation == "duplicate":
+        providers.append(providers[-1])
+    elif mutation == "reordered":
+        providers[0], providers[1] = providers[1], providers[0]
+    else:
+        payload["connector_contract"]["providers"] = {
+            provider: True for provider in providers
+        }
+
+    with pytest.raises(RuntimeError, match="Provider contract drifted"):
         MediaConnectorContract(payload=payload)
 
 

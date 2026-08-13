@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -35,9 +36,23 @@ CONTRACT_PATH = (
 )
 CONTRACT_ID = "kjds-media-connector-descriptor-v1"
 SCHEMA_VERSION = "kjds-media-agent-contracts-v1"
-PROVIDERS = frozenset(
+REGISTERABLE_CONNECTOR_PROVIDERS = frozenset(
     {"codex_oauth", "comfyui", "ffmpeg", "remotion", "windows_agent"}
 )
+INTERNAL_BLUEPRINT_PROVIDER = "kjds_internal_blueprint_compiler"
+RUNTIME_FFMPEG_PROVIDER = "ffmpeg"
+CONTRACT_PROVIDERS = REGISTERABLE_CONNECTOR_PROVIDERS | frozenset(
+    {INTERNAL_BLUEPRINT_PROVIDER}
+)
+CONTRACT_PROVIDER_SEQUENCE = (
+    "codex_oauth",
+    "comfyui",
+    "ffmpeg",
+    INTERNAL_BLUEPRINT_PROVIDER,
+    "remotion",
+    "windows_agent",
+)
+PROVIDERS = REGISTERABLE_CONNECTOR_PROVIDERS
 DEPLOYMENT_MODES = frozenset({"customer_local", "hosted_isolated"})
 HEALTH_STATES = frozenset(
     {
@@ -89,6 +104,24 @@ SECRET_VALUE_MARKERS = (
 
 class MediaConnectorConflictError(RuntimeError):
     """A stable idempotency key or immutable connector binding drifted."""
+
+
+@dataclass(frozen=True)
+class RuntimeOwnedProviderDescriptor:
+    provider: str
+    connector_ref: str
+    binding_sha256: str
+    protocol_version: str
+    capabilities: frozenset[str]
+    deterministic: bool
+    external_call: bool
+    credential_required: bool
+    cost_amount_minor: int
+    cost_currency: str
+    cost_basis: str
+    enrollment_allowed: bool
+    automatic_retry: bool
+    automatic_failover: bool
 
 
 class MediaConnectorRow(Base):
@@ -282,7 +315,7 @@ class MediaConnectorContract:
             or connector.get("contract_id") != CONTRACT_ID
         ):
             raise RuntimeError("Unknown media connector contract")
-        if set(connector.get("providers", [])) != PROVIDERS:
+        if connector.get("providers") != list(CONTRACT_PROVIDER_SEQUENCE):
             raise RuntimeError("Media connector Provider contract drifted")
         if set(connector.get("deployment_modes", [])) != DEPLOYMENT_MODES:
             raise RuntimeError("Media connector deployment contract drifted")
@@ -304,10 +337,12 @@ class MediaConnectorContract:
         self.connector = connector
         self.contract_sha256 = self._hash(raw)
         self.provider_capabilities = self._provider_capabilities(raw)
+        self.runtime_owned_providers = self._runtime_owned_providers(raw)
+        self._validate_provider_parity(raw)
 
     @staticmethod
     def _provider_capabilities(raw: dict[str, Any]) -> dict[str, frozenset[str]]:
-        result = {provider: set() for provider in PROVIDERS}
+        result = {provider: set() for provider in CONTRACT_PROVIDERS}
         gateway = raw.get("tool_gateway", {})
         for tool in gateway.get("tools", []):
             capabilities = set(tool.get("required_capabilities", []))
@@ -315,6 +350,162 @@ class MediaConnectorContract:
                 if provider in result:
                     result[provider].update(capabilities)
         return {key: frozenset(value) for key, value in result.items()}
+
+    @classmethod
+    def _runtime_owned_providers(
+        cls, raw: dict[str, Any]
+    ) -> dict[str, RuntimeOwnedProviderDescriptor]:
+        connector = raw["connector_contract"]
+        descriptors = connector.get("runtime_owned_provider_descriptors")
+        if not isinstance(descriptors, Mapping) or set(descriptors) != {
+            INTERNAL_BLUEPRINT_PROVIDER,
+            RUNTIME_FFMPEG_PROVIDER,
+        }:
+            raise RuntimeError("Runtime-owned media provider inventory drifted")
+        fields = {
+            "provider",
+            "connector_ref",
+            "binding_sha256",
+            "protocol_version",
+            "capabilities",
+            "deterministic",
+            "external_call",
+            "credential_required",
+            "cost_upper_bound",
+            "enrollment_allowed",
+            "automatic_retry",
+            "automatic_failover",
+        }
+        expected = {
+            INTERNAL_BLUEPRINT_PROVIDER: {
+                "connector_ref": "internal://editing-blueprint-compiler-v1",
+                "binding_sha256": hashlib.sha256(
+                    b"kjds-internal-editing-blueprint-compiler-v1"
+                ).hexdigest(),
+                "protocol_version": "kjds-internal-blueprint-compiler/1",
+                "capabilities": ["vision", "structured_output"],
+                "cost_basis": "internal_deterministic_compiler_no_provider_charge",
+            },
+            RUNTIME_FFMPEG_PROVIDER: {
+                "connector_ref": "internal://local-ffmpeg-renderer-v1",
+                "binding_sha256": hashlib.sha256(
+                    b"kjds-runtime-owned-local-ffmpeg-v1"
+                ).hexdigest(),
+                "protocol_version": "kjds-local-ffmpeg/1",
+                "capabilities": ["video_render"],
+                "cost_basis": "internal_deterministic_ffmpeg_no_provider_charge",
+            },
+        }
+        result: dict[str, RuntimeOwnedProviderDescriptor] = {}
+        for provider, exact in expected.items():
+            item = descriptors[provider]
+            if not isinstance(item, Mapping) or set(item) != fields:
+                raise RuntimeError("Runtime-owned media provider descriptor drifted")
+            cost = item["cost_upper_bound"]
+            capabilities = item["capabilities"]
+            if (
+                item["provider"] != provider
+                or item["connector_ref"] != exact["connector_ref"]
+                or item["binding_sha256"] != exact["binding_sha256"]
+                or item["protocol_version"] != exact["protocol_version"]
+                or not isinstance(capabilities, list)
+                or capabilities != exact["capabilities"]
+                or item["deterministic"] is not True
+                or item["external_call"] is not False
+                or item["credential_required"] is not False
+                or item["enrollment_allowed"] is not False
+                or item["automatic_retry"] is not False
+                or item["automatic_failover"] is not False
+                or not isinstance(cost, Mapping)
+                or type(cost.get("amount_minor")) is not int
+                or dict(cost)
+                != {
+                    "amount_minor": 0,
+                    "currency": "USD",
+                    "basis": exact["cost_basis"],
+                }
+            ):
+                raise RuntimeError("Runtime-owned media provider contract drifted")
+            result[provider] = RuntimeOwnedProviderDescriptor(
+                provider=item["provider"],
+                connector_ref=item["connector_ref"],
+                binding_sha256=item["binding_sha256"],
+                protocol_version=item["protocol_version"],
+                capabilities=frozenset(capabilities),
+                deterministic=item["deterministic"],
+                external_call=item["external_call"],
+                credential_required=item["credential_required"],
+                cost_amount_minor=cost["amount_minor"],
+                cost_currency=cost["currency"],
+                cost_basis=cost["basis"],
+                enrollment_allowed=item["enrollment_allowed"],
+                automatic_retry=item["automatic_retry"],
+                automatic_failover=item["automatic_failover"],
+            )
+        return result
+
+    def _validate_provider_parity(self, raw: dict[str, Any]) -> None:
+        gateway = raw.get("tool_gateway")
+        tools = gateway.get("tools") if isinstance(gateway, Mapping) else None
+        if not isinstance(tools, list):
+            raise RuntimeError("Media provider tool inventory drifted")
+        accepted: set[str] = set()
+        runtime_tools: dict[str, Mapping[str, Any]] = {}
+        for tool in tools:
+            if not isinstance(tool, Mapping):
+                raise RuntimeError("Media provider tool contract drifted")
+            providers = tool.get("accepted_providers")
+            capabilities = tool.get("required_capabilities")
+            if (
+                not isinstance(providers, list)
+                or len(providers) != len(set(providers))
+                or not all(isinstance(provider, str) for provider in providers)
+                or not isinstance(capabilities, list)
+                or len(capabilities) != len(set(capabilities))
+                or not all(isinstance(value, str) for value in capabilities)
+            ):
+                raise RuntimeError("Media provider tool contract drifted")
+            accepted.update(providers)
+            if tool.get("name") in {"media.video_blueprint", "media.video_render"}:
+                runtime_tools[tool["name"]] = tool
+        if not accepted.issubset(CONTRACT_PROVIDERS):
+            raise RuntimeError("Media provider coverage drifted")
+        expected_tools = {
+            "media.video_blueprint": (
+                INTERNAL_BLUEPRINT_PROVIDER,
+                ["vision", "structured_output"],
+                "internal_deterministic_compile_only",
+            ),
+            "media.video_render": (
+                RUNTIME_FFMPEG_PROVIDER,
+                ["video_render"],
+                "local_media_render_only",
+            ),
+        }
+        for name, (provider, capabilities, side_effect) in expected_tools.items():
+            tool = runtime_tools.get(name)
+            descriptor = self.runtime_owned_providers[provider]
+            if (
+                not isinstance(tool, Mapping)
+                or tool.get("accepted_providers") != [provider]
+                or tool.get("required_capabilities") != capabilities
+                or tool.get("external_side_effect") != side_effect
+                or tool.get("cost_upper_bound")
+                != {
+                    "amount_minor": descriptor.cost_amount_minor,
+                    "currency": descriptor.cost_currency,
+                    "basis": descriptor.cost_basis,
+                }
+            ):
+                raise RuntimeError("Runtime-owned media provider parity drifted")
+
+    def internal_runtime_provider(
+        self, provider: str
+    ) -> RuntimeOwnedProviderDescriptor:
+        try:
+            return self.runtime_owned_providers[provider]
+        except KeyError as exc:
+            raise KeyError("Runtime-owned media provider not found") from exc
 
     @staticmethod
     def _hash(value: Any) -> str:
@@ -1022,7 +1213,7 @@ class MediaConnectorRegistry:
     @staticmethod
     def _provider(value: Any) -> str:
         result = str(value or "").strip().lower()
-        if result not in PROVIDERS:
+        if result not in REGISTERABLE_CONNECTOR_PROVIDERS:
             raise ValueError("Unsupported Media Connector Provider")
         return result
 

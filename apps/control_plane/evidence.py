@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     DateTime,
+    FetchedValue,
     ForeignKey,
     Index,
     Integer,
@@ -33,6 +34,16 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
 from .sql_repository import Base
+
+
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
 
 
 class EvidenceGrade(StrEnum):
@@ -91,6 +102,7 @@ UNIQUE_SOURCE_REF_SOURCES = {
     "supplier_rfq_dispatch",
     "supplier_rfq_package",
     "governed-media-job-request",
+    "governed-media-job-tool-descriptor",
     "governed-media-job-transition",
     "governed-media-job-usage",
 }
@@ -186,15 +198,25 @@ CLOSED_LOOP_RESERVED_CONTRACTS = frozenset(
 MEDIA_JOB_RESERVED_SOURCES = frozenset(
     {
         "governed-media-job-request",
+        "governed-media-job-tool-descriptor",
         "governed-media-job-transition",
         "governed-media-job-usage",
+        "governed-media-job-worker-input",
+        "governed-media-job-blueprint",
+        "governed-reference-video-analysis",
+        "kjds-ffmpeg-media-worker",
     }
 )
 MEDIA_JOB_RESERVED_CONTRACTS = frozenset(
     {
         "kjds-governed-media-job-request-v1",
+        "kjds-media-tool-descriptor-evidence-v1",
         "kjds-governed-media-job-transition-v1",
         "kjds-governed-media-job-usage-v1",
+        "kjds-governed-media-job-worker-input-v1",
+        "kjds-editing-blueprint-v1",
+        "kjds-reference-video-analysis-v1",
+        "kjds-governed-media-job-artifact-v1",
     }
 )
 CLOSED_LOOP_AUTHORITY_SCHEMA_MANIFESTS: dict[str, dict[str, Any]] = {
@@ -736,11 +758,17 @@ class EvidenceRecordRow(Base):
             unique=True,
             postgresql_where=text(
                 "source IN ('governed-media-job-request',"
-                "'governed-media-job-transition','governed-media-job-usage')"
+                "'governed-media-job-tool-descriptor',"
+                "'governed-media-job-transition','governed-media-job-usage',"
+                "'governed-media-job-worker-input','governed-reference-video-analysis',"
+                "'governed-media-job-blueprint','kjds-ffmpeg-media-worker')"
             ),
             sqlite_where=text(
                 "source IN ('governed-media-job-request',"
-                "'governed-media-job-transition','governed-media-job-usage')"
+                "'governed-media-job-tool-descriptor',"
+                "'governed-media-job-transition','governed-media-job-usage',"
+                "'governed-media-job-worker-input','governed-reference-video-analysis',"
+                "'governed-media-job-blueprint','kjds-ffmpeg-media-worker')"
             ),
         ),
         Index(
@@ -816,9 +844,21 @@ class EvidenceRecordRow(Base):
             sqlite_where=text("source = 'seller_erp_bridge_revocation'"),
         ),
     )
+    # 0098 adds ``byte_size`` after the 0097 media-job lifecycle has already
+    # been exercised.  Keep the column deferred and database-populated so an
+    # Evidence insert/read against the 0097 schema never mentions a column
+    # that does not exist yet.  The 0098 trigger fills and verifies it from
+    # the immutable EvidenceBlob bytes.
+    __mapper_args__ = {"eager_defaults": False}
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     blob_sha256: Mapped[str] = mapped_column(ForeignKey("evidence_blobs.sha256"), nullable=False)
+    byte_size: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        deferred=True,
+        server_default=FetchedValue(),
+    )
     filename: Mapped[str] = mapped_column(String, nullable=False)
     content_type: Mapped[str] = mapped_column(String, nullable=False)
     source: Mapped[str] = mapped_column(String, nullable=False)
@@ -1541,6 +1581,10 @@ class EvidenceService:
                 "kjds-governed-media-job-request-v1",
                 "media_job_request_fingerprint_sha256",
             ),
+            "governed-media-job-tool-descriptor": (
+                "kjds-media-tool-descriptor-evidence-v1",
+                "descriptor_sha256",
+            ),
             "governed-media-job-transition": (
                 "kjds-governed-media-job-transition-v1",
                 "event_sha256",
@@ -1548,6 +1592,22 @@ class EvidenceService:
             "governed-media-job-usage": (
                 "kjds-governed-media-job-usage-v1",
                 "usage_receipt_sha256",
+            ),
+            "governed-media-job-worker-input": (
+                "kjds-governed-media-job-worker-input-v1",
+                "worker_input_sha256",
+            ),
+            "governed-media-job-blueprint": (
+                "kjds-editing-blueprint-v1",
+                "blueprint_sha256",
+            ),
+            "governed-reference-video-analysis": (
+                "kjds-reference-video-analysis-v1",
+                "analysis_contract_sha256",
+            ),
+            "kjds-ffmpeg-media-worker": (
+                "kjds-governed-media-job-artifact-v1",
+                "artifact_sha256",
             ),
         }
         expected_contract, binding_field = contracts[source]
@@ -1560,6 +1620,40 @@ class EvidenceService:
             "subject_actor_id",
             binding_field,
         }
+        if source in {
+            "governed-media-job-tool-descriptor",
+            "governed-media-job-worker-input",
+        }:
+            expected_keys.add("media_job_ref")
+        elif source == "governed-media-job-blueprint":
+            expected_keys.update(
+                {
+                    "media_job_ref",
+                    "source_snapshot_sha256",
+                    "analysis_evidence_sha256",
+                    "render_plan_sha256",
+                }
+            )
+        elif source == "governed-reference-video-analysis":
+            expected_keys.update(
+                {
+                    "analysis_run_ref",
+                    "source_video_artifacts_sha256",
+                    "rights_status",
+                    "schema_version",
+                    "observed_at",
+                }
+            )
+        elif source == "kjds-ffmpeg-media-worker":
+            expected_keys.update(
+                {
+                    "media_job_ref",
+                    "content_asset_id",
+                    "execution_id",
+                    "aspect_ratio",
+                    "render_plan_sha256",
+                }
+            )
         if set(metadata) != expected_keys or any(
             not isinstance(metadata[key], str) or not metadata[key].strip()
             for key in expected_keys
@@ -1567,11 +1661,68 @@ class EvidenceService:
             raise ValueError("Invalid media-job Evidence metadata")
         if metadata["contract_id"] != expected_contract:
             raise ValueError("Invalid media-job Evidence contract")
-        for hash_field in ("scope_grant_authority_sha256", binding_field):
+        if created_by != metadata["subject_actor_id"]:
+            raise ValueError("Invalid media-job Evidence creator")
+        if source == "kjds-ffmpeg-media-worker":
+            if (
+                content_type != "video/mp4"
+                or len(content) < 12
+                or content[4:8] != b"ftyp"
+            ):
+                raise ValueError("Invalid media-job Evidence content type")
+        else:
+            if content_type != "application/json":
+                raise ValueError("Invalid media-job Evidence content type")
+            try:
+                parsed_content = json.loads(content)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("Invalid media-job Evidence JSON") from exc
+            if _canonical_json_bytes(parsed_content) != content:
+                raise ValueError("Invalid media-job Evidence canonical JSON")
+        hash_fields = ["scope_grant_authority_sha256", binding_field]
+        if source == "kjds-ffmpeg-media-worker":
+            hash_fields.append("render_plan_sha256")
+        elif source == "governed-media-job-blueprint":
+            hash_fields.extend(
+                {
+                    "source_snapshot_sha256",
+                    "analysis_evidence_sha256",
+                    "render_plan_sha256",
+                }
+            )
+        elif source == "governed-reference-video-analysis":
+            hash_fields.append("source_video_artifacts_sha256")
+        for hash_field in hash_fields:
             value = metadata[hash_field].lower()
             if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
                 raise ValueError("Invalid media-job Evidence metadata hash")
-        if not source_ref.startswith("media-job://"):
+        if source != "governed-reference-video-analysis" and not source_ref.startswith(
+            "media-job://"
+        ):
+            raise ValueError("Invalid media-job Evidence source reference")
+        if source == "governed-media-job-tool-descriptor" and source_ref != (
+            f"media-job://{metadata['media_job_ref']}/tool-descriptor/"
+            f"{metadata['descriptor_sha256']}"
+        ):
+            raise ValueError("Invalid media-job Evidence source reference")
+        if source == "governed-media-job-worker-input" and source_ref != (
+            f"media-job://{metadata['media_job_ref']}/worker-input"
+        ):
+            raise ValueError("Invalid media-job Evidence source reference")
+        if source == "governed-media-job-blueprint" and source_ref != (
+            f"media-job://{metadata['media_job_ref']}/blueprint/"
+            f"{metadata['blueprint_sha256']}"
+        ):
+            raise ValueError("Invalid media-job Evidence source reference")
+        if source == "governed-reference-video-analysis" and source_ref != (
+            f"reference-analysis://{metadata['analysis_run_ref']}/"
+            f"{metadata['analysis_contract_sha256']}"
+        ):
+            raise ValueError("Invalid media-job Evidence source reference")
+        if source == "kjds-ffmpeg-media-worker" and not source_ref.startswith(
+            f"media-job://{metadata['media_job_ref']}/artifact/"
+            f"{metadata['execution_id']}/"
+        ):
             raise ValueError("Invalid media-job Evidence source reference")
         return self.capture(
             content=content,
