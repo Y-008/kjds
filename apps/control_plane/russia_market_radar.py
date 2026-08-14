@@ -86,6 +86,45 @@ SOURCE_AUTHORITY_WEIGHTS = {
     "official_authorized_public_social": 0.7,
 }
 
+# Frozen per-source native caps, derived from the source registry's native_limits.
+# A numeric cap is recorded only where the source documents one; subscription- or
+# endpoint-dependent limits stay value=None so they are never silently dropped.
+SOURCE_NATIVE_CAPS: dict[str, dict[str, Any]] = {
+    "ozon_seller_analytics": {
+        "kind": "endpoint_specific_pagination_and_subscription_history",
+        "value": None,
+    },
+    "wildberries_seller_analytics": {
+        "kind": "top_queries_subscription_limit",
+        "value": None,
+        "options": [30, 100],
+    },
+    "yandex_wordstat": {
+        "kind": "get_top_maximum_phrases_per_seed_and_region",
+        "value": 2000,
+    },
+    "yandex_market_partner": {
+        "kind": "partner_campaign_and_endpoint_specific",
+        "value": None,
+    },
+    "telegram_public_market_conversation": {
+        "kind": "method_permissions_pagination_and_possible_paid_search",
+        "value": None,
+    },
+    "vk_public_and_owned_community": {
+        "kind": "method_scope_and_pagination",
+        "value": None,
+    },
+    "bank_of_russia_macro_events": {
+        "kind": "public_release_frequency",
+        "value": None,
+    },
+    "platform_release_and_policy_events": {
+        "kind": "public_release_history_and_page_pagination",
+        "value": None,
+    },
+}
+
 SCORING_INPUTS = (
     "source_authority",
     "recency",
@@ -211,6 +250,7 @@ class RussiaRadarObservation:
     source_total: int
     conservation_ok: bool
     cross_source_links: tuple[dict[str, Any], ...]
+    source_coverage: tuple[dict[str, Any], ...]
     checkpoint: str | None
     gaps: tuple[str, ...]
     batch_sha256: str
@@ -540,6 +580,7 @@ class GovernedRussiaMarketRadar:
                 source_total=0,
                 conservation_ok=True,
                 cross_source_links=(),
+                source_coverage=(),
                 checkpoint=checkpoint,
                 gaps=("source_adapter_not_admitted",),
                 batch_sha256=_hash(document),
@@ -550,6 +591,7 @@ class GovernedRussiaMarketRadar:
 
         conserved_by_content: dict[str, dict[str, Any]] = {}
         conserved_order: list[str] = []
+        source_accepted: dict[str, int] = {}
         quarantined_total = 0
         dedup_count = 0
 
@@ -559,6 +601,7 @@ class GovernedRussiaMarketRadar:
             except RussiaRadarError:
                 quarantined_total += 1
                 continue
+            source_accepted[observation["source_id"]] = source_accepted.get(observation["source_id"], 0) + 1
             key = observation["content_hash"]
             if key in conserved_by_content:
                 existing = conserved_by_content[key]
@@ -621,6 +664,17 @@ class GovernedRussiaMarketRadar:
             if len(conserved_by_content[key]["source_ids"]) > 1
         ]
 
+        source_coverage = [
+            {
+                "source_id": sid,
+                "source_class": SOURCE_CLASS_BY_ID[sid],
+                "native_cap": SOURCE_NATIVE_CAPS[sid],
+                "accepted": source_accepted.get(sid, 0),
+                "coverage_status": "fixture_complete",
+            }
+            for sid in sorted(source_accepted)
+        ]
+
         next_checkpoint = (
             _hash(
                 {
@@ -647,6 +701,7 @@ class GovernedRussiaMarketRadar:
             "source_total": source_total,
             "conservation_ok": conservation_ok,
             "cross_source_links": cross_source_links,
+            "source_coverage": source_coverage,
             "checkpoint": next_checkpoint,
             "gaps": sorted(gaps),
         }
@@ -662,6 +717,7 @@ class GovernedRussiaMarketRadar:
             source_total=source_total,
             conservation_ok=conservation_ok,
             cross_source_links=tuple(cross_source_links),
+            source_coverage=tuple(source_coverage),
             checkpoint=next_checkpoint,
             gaps=tuple(sorted(gaps)),
             batch_sha256=_hash(document),

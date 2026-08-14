@@ -13,6 +13,7 @@ from apps.control_plane.russia_market_radar import (
     ALLOWED_SOURCE_IDS,
     SCORING_INPUTS,
     SOURCE_CLASS_BY_ID,
+    SOURCE_NATIVE_CAPS,
     ZERO_AUTHORITY_KEYS,
     GovernedRussiaMarketRadar,
     RussiaRadarError,
@@ -348,6 +349,38 @@ def test_zero_authority_all_false():
     flags = _radar().zero_authority()
     assert set(flags) == ZERO_AUTHORITY_KEYS
     assert all(not value for value in flags.values())
+
+
+# ---- native caps / coverage ----
+
+
+def test_source_native_caps_align_with_registry():
+    registry = json.loads(SOURCE_REGISTRY.read_text(encoding="utf-8"))
+    assert set(SOURCE_NATIVE_CAPS) == {s["id"] for s in registry["sources"]}
+    # Wordstat's documented 2000-phrase cap must be preserved, not rewritten.
+    assert SOURCE_NATIVE_CAPS["yandex_wordstat"]["value"] == 2000
+    assert SOURCE_NATIVE_CAPS["yandex_wordstat"]["kind"] == "get_top_maximum_phrases_per_seed_and_region"
+    # Wildberries top-query cap is subscription-dependent (30 or 100).
+    assert SOURCE_NATIVE_CAPS["wildberries_seller_analytics"]["options"] == [30, 100]
+    assert SOURCE_NATIVE_CAPS["wildberries_seller_analytics"]["value"] is None
+
+
+def test_collect_records_native_caps_per_source():
+    obs = [
+        _observation(1, source_id="ozon_seller_analytics", content="a"),
+        _observation(2, source_id="yandex_wordstat", content="b"),
+    ]
+    batch = _radar().collect(spec=_spec(), observations=obs)
+    cov = {c["source_id"]: c for c in batch.source_coverage}
+    assert set(cov) == {"ozon_seller_analytics", "yandex_wordstat"}
+    assert cov["yandex_wordstat"]["native_cap"]["value"] == 2000
+    assert cov["ozon_seller_analytics"]["native_cap"]["value"] is None
+    assert all(c["coverage_status"] == "fixture_complete" for c in batch.source_coverage)
+
+
+def test_collect_empty_source_coverage_when_not_admitted():
+    batch = _radar().collect(spec=_spec())
+    assert batch.source_coverage == ()
 
 
 # ---- registry anti-drift ----
