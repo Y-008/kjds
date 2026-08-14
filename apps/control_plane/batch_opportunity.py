@@ -38,6 +38,64 @@ from .sql_repository import Base
 
 BATCH_CONTRACT_VERSION = "batch-opportunity/1.3.0"
 BATCH_POLICY_ID = "cn-ozon-observed-cost-v1"
+BATCH_SCREENING_PROFILE_VERSION = "kjds-batch-screening/1.0.0"
+SELECTION_TARGETS = {50, 100, 200, 500, 1000}
+SCREENING_PROFILES: dict[str, dict[str, Any]] = {
+    "evidence_first_v1": {
+        "min_score": "0",
+        "min_downside_cm3_rate": "0",
+        "min_competitor_count": 0,
+        "min_supplier_density": 1,
+        "max_moq": None,
+        "min_demand_proxy": "0",
+        "require_checkout_cost": True,
+        "require_stockout_opportunity": False,
+        "require_content_ready": False,
+        "excluded_category_flags": [],
+    },
+    "lightweight_fast_mover_v1": {
+        "min_score": "55",
+        "min_downside_cm3_rate": "0.15",
+        "min_competitor_count": 3,
+        "min_supplier_density": 2,
+        "max_moq": 3,
+        "min_demand_proxy": "10",
+        "require_checkout_cost": True,
+        "require_stockout_opportunity": False,
+        "require_content_ready": False,
+        "excluded_category_flags": [
+            "battery",
+            "chemical",
+            "food",
+            "medical",
+            "liquid",
+        ],
+    },
+    "competition_gap_v1": {
+        "min_score": "50",
+        "min_downside_cm3_rate": "0.10",
+        "min_competitor_count": 2,
+        "min_supplier_density": 2,
+        "max_moq": 10,
+        "min_demand_proxy": "5",
+        "require_checkout_cost": True,
+        "require_stockout_opportunity": True,
+        "require_content_ready": False,
+        "excluded_category_flags": ["medical", "food"],
+    },
+    "custom_v1": {
+        "min_score": "0",
+        "min_downside_cm3_rate": "0",
+        "min_competitor_count": 0,
+        "min_supplier_density": 1,
+        "max_moq": None,
+        "min_demand_proxy": "0",
+        "require_checkout_cost": True,
+        "require_stockout_opportunity": False,
+        "require_content_ready": False,
+        "excluded_category_flags": [],
+    },
+}
 BATCH_EVIDENCE_SOURCE = "batch_opportunity_run"
 MONEY = Decimal("0.01")
 RATE = Decimal("0.000001")
@@ -525,6 +583,7 @@ class BatchOpportunityWorkspace:
         scoped_catalog: list[dict[str, Any]] | None = None,
         scoped_fx_rates: dict[str, dict[str, Any]] | None = None,
         scoped_product_content: dict[str, dict[str, Any]] | None = None,
+        screening: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         store = _required_text(store_ref, "store_ref", max_length=160)
         authority_scope = _scope_authority(
@@ -601,6 +660,7 @@ class BatchOpportunityWorkspace:
             raise ValueError(
                 "max_batch_inventory_cash_cny must be positive"
             )
+        screening_policy = self._screening_policy(screening)
         now = _timestamp(as_of, "as_of") if as_of else datetime.now(UTC)
         request_fingerprint = _sha256(
             {
@@ -618,6 +678,7 @@ class BatchOpportunityWorkspace:
                 "max_batch_inventory_cash_cny": str(batch_cash),
                 "cm3_floor_cny": str(floor),
                 "evidence_class": evidence_class or "inferred",
+                "screening": screening_policy,
                 "as_of": _iso(now),
                 "ozon_rule_registry_hash": (
                     self.ozon_rules.registry_hash
@@ -748,8 +809,14 @@ class BatchOpportunityWorkspace:
             )
             for match in scanned["matches"][:full_evaluate_limit]
         ]
+        for candidate in candidates:
+            candidate["screening"] = self._screen_candidate(
+                candidate,
+                policy=screening_policy,
+            )
         candidates.sort(
             key=lambda item: (
+                0 if item["screening"]["accepted"] else 1,
                 0 if item["state"] == "pilot" else 1,
                 0 if item["state"] == "content_ready" else 1,
                 0 if item["state"] == "evaluate" else 1,
@@ -760,8 +827,22 @@ class BatchOpportunityWorkspace:
                 item["fingerprint"],
             )
         )
+        selection_target = screening_policy["selection_target"]
+        selected_for_item_master = 0
         for rank, candidate in enumerate(candidates, start=1):
             candidate["rank"] = rank
+            if candidate["screening"]["accepted"]:
+                if selected_for_item_master < selection_target:
+                    selected_for_item_master += 1
+                    candidate["screening"]["selection_status"] = (
+                        "selected_for_kjds_item_master_review"
+                    )
+                else:
+                    candidate["screening"]["selection_status"] = (
+                        "accepted_waitlist_target_reached"
+                    )
+            else:
+                candidate["screening"]["selection_status"] = "rejected"
         selection = self._select_pilots(
             candidates,
             pilot_limit=pilot_limit,
@@ -840,6 +921,13 @@ class BatchOpportunityWorkspace:
             ),
             "unmatched_ozon": scanned["unmatched_ozon"],
             "unmatched_supplier": scanned["unmatched_supplier"],
+            "screening_accepted": sum(
+                candidate["screening"]["accepted"] for candidate in candidates
+            ),
+            "selected_for_kjds_item_master_review": selected_for_item_master,
+            "screening_rejected": sum(
+                not candidate["screening"]["accepted"] for candidate in candidates
+            ),
         }
         blockers = sorted(
             {
@@ -952,6 +1040,7 @@ class BatchOpportunityWorkspace:
                 "max_batch_inventory_cash_cny": str(batch_cash),
                 "cm3_floor_cny": str(floor),
             },
+            "screening": screening_policy,
             "counts": counts,
             "scan_contract": {
                 "pagination": "keyset_cursor",
@@ -988,6 +1077,8 @@ class BatchOpportunityWorkspace:
                 "permit_created": False,
                 "ozon_write_performed": False,
                 "automatic_execution": False,
+                "kjds_item_master_created": False,
+                "third_party_erp_is_system_of_record": False,
             },
         }
         snapshot_hash = _sha256(payload)
@@ -2122,9 +2213,9 @@ class BatchOpportunityWorkspace:
 
         def view(row: dict[str, Any]) -> dict[str, Any]:
             return {
+                "platform": row["item"].get("marketplace", "unknown"),
                 "external_item_id": row["item"]["external_item_id"],
                 "supplier_ref": row["item"]["supplier_ref"],
-                "platform": row["item"].get("marketplace", "unknown"),
                 "source_url": row["item"].get("source_url"),
                 "exact_variant": row["item"]["variant_key"],
                 "displayed_price": row["item"]["displayed_price"],
@@ -2632,6 +2723,172 @@ class BatchOpportunityWorkspace:
             procurement["operating_task"] = task_projection
             tasks.append(task_projection)
         return tasks
+
+    @staticmethod
+    def _screening_policy(
+        requested: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        values = dict(requested or {})
+        profile_id = str(
+            values.get("profile_id") or "evidence_first_v1"
+        ).strip()
+        if profile_id not in SCREENING_PROFILES:
+            raise ValueError("Unknown batch screening profile")
+        target = int(values.get("selection_target") or 50)
+        if target not in SELECTION_TARGETS:
+            raise ValueError(
+                "selection_target must be one of 50, 100, 200, 500, 1000"
+            )
+        policy = dict(SCREENING_PROFILES[profile_id])
+        decimal_fields = {
+            "min_score": (Decimal("0"), Decimal("100")),
+            "min_downside_cm3_rate": (Decimal("0"), Decimal("1")),
+            "min_demand_proxy": (Decimal("0"), None),
+        }
+        for field, (minimum, maximum) in decimal_fields.items():
+            if values.get(field) is None:
+                continue
+            number = _decimal(values[field], field)
+            if number < minimum or (
+                maximum is not None and number > maximum
+            ):
+                raise ValueError(f"{field} is outside the accepted range")
+            policy[field] = str(number)
+        integer_fields = {
+            "min_competitor_count": (0, 100000),
+            "min_supplier_density": (1, 10000),
+            "max_moq": (1, 100000),
+        }
+        for field, (minimum, maximum) in integer_fields.items():
+            if values.get(field) is None:
+                continue
+            number = int(values[field])
+            if not minimum <= number <= maximum:
+                raise ValueError(f"{field} is outside the accepted range")
+            policy[field] = number
+        for field in (
+            "require_checkout_cost",
+            "require_stockout_opportunity",
+            "require_content_ready",
+        ):
+            if values.get(field) is not None:
+                policy[field] = bool(values[field])
+        if values.get("excluded_category_flags") is not None:
+            raw_flags = values["excluded_category_flags"]
+            if not isinstance(raw_flags, list) or len(raw_flags) > 30:
+                raise ValueError(
+                    "excluded_category_flags must be a list of at most 30"
+                )
+            policy["excluded_category_flags"] = sorted(
+                {
+                    _required_text(flag, "excluded_category_flag", max_length=80)
+                    .strip()
+                    .lower()
+                    for flag in raw_flags
+                }
+            )
+        return {
+            "contract_version": BATCH_SCREENING_PROFILE_VERSION,
+            "profile_id": profile_id,
+            "selection_target": target,
+            **policy,
+            "selection_semantics": (
+                "candidate_shortlist_for_kjds_item_master_review_only"
+            ),
+            "external_write_allowed": False,
+            "third_party_erp_target": False,
+        }
+
+    @staticmethod
+    def _screen_candidate(
+        candidate: dict[str, Any],
+        *,
+        policy: dict[str, Any],
+    ) -> dict[str, Any]:
+        market_signals = candidate["market"].get("signals") or {}
+        supply = candidate["supply"]
+        supply_signals = supply.get("signals") or {}
+        reasons: list[str] = []
+
+        score = Decimal(candidate["score"]["total"])
+        if score < Decimal(policy["min_score"]):
+            reasons.append("score_below_profile_floor")
+        downside_rate = candidate["economics"]["downside"].get("cm3_rate")
+        if downside_rate is None:
+            reasons.append("downside_cm3_rate_no_data")
+        elif Decimal(downside_rate) < Decimal(
+            policy["min_downside_cm3_rate"]
+        ):
+            reasons.append("downside_cm3_rate_below_profile_floor")
+
+        competitor_count = _number(market_signals, "competitor_count")
+        if competitor_count is None:
+            reasons.append("competitor_count_no_data")
+        elif competitor_count < Decimal(policy["min_competitor_count"]):
+            reasons.append("competitor_count_below_profile_floor")
+
+        supplier_density = int(supply.get("supplier_density") or 0)
+        if supplier_density < int(policy["min_supplier_density"]):
+            reasons.append("supplier_density_below_profile_floor")
+        moq = supply.get("moq")
+        if policy["max_moq"] is not None:
+            if moq is None:
+                reasons.append("moq_no_data")
+            elif int(moq) > int(policy["max_moq"]):
+                reasons.append("moq_above_profile_ceiling")
+
+        demand = _number(market_signals, "sales_proxy_value")
+        if demand is None:
+            reasons.append("demand_proxy_no_data")
+        elif demand < Decimal(policy["min_demand_proxy"]):
+            reasons.append("demand_proxy_below_profile_floor")
+        if (
+            policy["require_checkout_cost"]
+            and not supply.get("observed_checkout_price")
+        ):
+            reasons.append("observed_checkout_cost_missing")
+        if (
+            policy["require_stockout_opportunity"]
+            and market_signals.get("stockout_opportunity") is not True
+        ):
+            reasons.append("stockout_opportunity_not_observed")
+        if (
+            policy["require_content_ready"]
+            and candidate["content"].get("content_ready") is not True
+        ):
+            reasons.append("content_not_ready_for_profile")
+
+        category_values: set[str] = set()
+        for source in (
+            candidate.get("identity_match", {}).get("product_identity") or {},
+            market_signals,
+            supply_signals,
+        ):
+            raw = source.get("category_flags") if isinstance(source, dict) else None
+            if raw is None and isinstance(source, dict):
+                raw = source.get("category")
+            if isinstance(raw, str):
+                category_values.add(raw.strip().lower())
+            elif isinstance(raw, list):
+                category_values.update(
+                    str(item).strip().lower() for item in raw if str(item).strip()
+                )
+        excluded = set(policy["excluded_category_flags"])
+        matched_exclusions = sorted(category_values & excluded)
+        if matched_exclusions:
+            reasons.append("category_excluded_by_profile")
+
+        reasons = sorted(set(reasons))
+        return {
+            "contract_version": policy["contract_version"],
+            "profile_id": policy["profile_id"],
+            "accepted": not reasons,
+            "reasons": reasons,
+            "matched_excluded_category_flags": matched_exclusions,
+            "selection_status": "pending_rank_allocation",
+            "kjds_item_master_created": False,
+            "external_write_allowed": False,
+        }
 
     @staticmethod
     def _select_pilots(

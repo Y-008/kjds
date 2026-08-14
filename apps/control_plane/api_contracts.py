@@ -301,6 +301,29 @@ class PortfolioPilotPrepareInput(BaseModel):
     as_of: str | None = None
 
 
+class BatchOpportunityScreeningInput(BaseModel):
+    """Versioned server-side filters for a KJDS-owned candidate batch."""
+
+    model_config = ConfigDict(extra="forbid")
+    profile_id: Literal[
+        "evidence_first_v1",
+        "lightweight_fast_mover_v1",
+        "competition_gap_v1",
+        "custom_v1",
+    ] = "evidence_first_v1"
+    selection_target: Literal[50, 100, 200, 500, 1000] = 50
+    min_score: Decimal | None = Field(default=None, ge=0, le=100)
+    min_downside_cm3_rate: Decimal | None = Field(default=None, ge=0, le=1)
+    min_competitor_count: int | None = Field(default=None, ge=0, le=100000)
+    min_supplier_density: int | None = Field(default=None, ge=1, le=10000)
+    max_moq: int | None = Field(default=None, ge=1, le=100000)
+    min_demand_proxy: Decimal | None = Field(default=None, ge=0)
+    require_checkout_cost: bool | None = None
+    require_stockout_opportunity: bool | None = None
+    require_content_ready: bool | None = None
+    excluded_category_flags: list[str] | None = Field(default=None, max_length=30)
+
+
 class BatchOpportunityPrepareInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
@@ -332,6 +355,9 @@ class BatchOpportunityPrepareInput(BaseModel):
     max_inventory_cash_cny: Decimal = Field(default=Decimal("3000"), gt=0)
     max_batch_inventory_cash_cny: Decimal | None = Field(default=None, gt=0)
     cm3_floor_cny: Decimal = Field(default=Decimal("0"))
+    screening: BatchOpportunityScreeningInput = Field(
+        default_factory=BatchOpportunityScreeningInput
+    )
     as_of: str | None = None
 
 
