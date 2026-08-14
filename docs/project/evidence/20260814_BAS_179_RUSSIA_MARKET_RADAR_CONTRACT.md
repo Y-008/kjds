@@ -25,7 +25,9 @@ BAS-179 建立了一个只读、prep-only、exact-scope 的俄罗斯市场情报
 | 信号域 | 8 类（与源注册表一致） |
 | 来源 id | 8 个（与源注册表一致） |
 
-## 3. 四个 Acceptance #3 证明
+## 3. 连接器覆盖（Acceptance #2）与 Acceptance #3 证明
+
+0. **连接器覆盖契约**：`SOURCE_NATIVE_CAPS` 冻结每源 native cap（Yandex Wordstat 单次最多 2,000 短语、Wildberries 30/100 订阅上限、其余端点特定），绝不把来源上限改写成全量集合；`collect` 输出逐源 `source_coverage`（native cap / accepted / coverage_status），并记录 checkpoint、失败页与守恒 `conserved + dedup + quarantined == source_total`。
 
 1. **俄语词形/查询展开**：`expand_queries` 对 seed 执行 lowercase、`ё→е`、去组合重音、空白归一；内建 synthetic 词典覆盖 `word_form`/`synonym`/`category`/`question`/`scenario`/`brand` 六维，支持调用方扩展并严格校验维度与 seed 归属。
 2. **跨源 content-addressed 去重**：`collect` 以 `content_hash` 为键，同内容不同来源合并为一条观测并累计 `source_ids`/`cross_source_count`，非法记录进 quarantine，守恒 `conserved + dedup + quarantined == source_total`。
@@ -46,7 +48,7 @@ BAS-179 建立了一个只读、prep-only、exact-scope 的俄罗斯市场情报
 
 ## 6. 验证
 
-- `tests/test_russia_market_radar.py` 29 passed。
+- `tests/test_russia_market_radar.py` 32 passed。
 - Ruff check（E/F/I/UP/B/SIM，忽略 E501）PASS。
 - Secret scan PASS。
 - 社会电商 lane 回归 99 passed；requirements traceability 25 passed（隔离 basetemp 后）。
