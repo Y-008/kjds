@@ -154,3 +154,30 @@ def test_blueprint_tool_rejects_tutorial_result_kind() -> None:
     }
     with pytest.raises(ValueError, match="result_kind_invalid"):
         _validate(receipt, job, event)
+
+def test_tutorial_result_skips_content_asset_binding() -> None:
+    """Tutorial evidence-only results must never require a content asset."""
+    job = _job()
+    event = _event()
+    content = {
+        "contract_id": RESULT_RECEIPT_CONTRACT,
+        "provider": job.provider,
+        "connector_ref": job.connector_ref,
+        "connector_binding_sha256": job.connector_binding_sha256,
+        "result_kind": TUTORIAL_RESULT_KIND,
+        "artifact_evidence_refs": ["evidence://tutorial-graph-1"],
+        "content_asset_ref": None,
+        "event_ref": event.event_ref,
+        "event_sha256": event.event_sha256,
+        "job_ref": job.job_ref,
+        "state": event.state,
+    }
+    # The skip path returns before touching the session; a None session proves
+    # that an evidence-only tutorial result does not require content binding.
+    GovernedMediaJobWorkspace._bind_result_receipt_to_content_asset(
+        session=None,
+        job=job,
+        event=event,
+        content=content,
+        receipt_sha256="r" * 64,
+    )

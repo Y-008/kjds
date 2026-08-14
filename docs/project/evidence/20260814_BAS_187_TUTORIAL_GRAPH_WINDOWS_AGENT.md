@@ -85,8 +85,12 @@ not-admitted.
 
 ## Remaining (next slice, not part of this commit)
 
-- a `record_tutorial_result(...)` recorder in `media_jobs.py`;
+- a `record_tutorial_result(...)` recorder in `media_jobs.py` plus the
+  tutorial-specific evidence branch in `_validate_result_bindings`;
 - `runtime.py` / `media_worker.py` routing of `tutorial.build` to the compiler.
 
-These remain for the BAS-183 media-job execution slice; `windows_agent` real
-capture is intentionally `not_admitted`.
+The result-receipt front door (`RESULT_KIND_BY_STATE`, tool gate, kind mapping,
+single-evidence / no-content-asset shape) and the content-asset binding skip are
+now wired and tested. The durable recorder and worker routing remain for the
+BAS-183 media-job execution slice; `windows_agent` real capture is intentionally
+`not_admitted`.

@@ -3309,7 +3309,7 @@ class GovernedMediaJobWorkspace:
     ) -> None:
         if event.state != "SUCCEEDED" or content.get(
             "result_kind"
-        ) == "editing_blueprint_evidence":
+        ) in {"editing_blueprint_evidence", "tutorial_graph_and_media_evidence"}:
             return
         content_asset_ref = content.get("content_asset_ref")
         if not isinstance(content_asset_ref, str):
