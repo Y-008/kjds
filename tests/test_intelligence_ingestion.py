@@ -207,8 +207,8 @@ def test_registry_is_deterministic_read_only_and_entity_scoped() -> None:
     )
     assert ready["status"] == "ready"
     assert ready["counts"] == {
-        "implemented": 3,
-        "contract_only": 8,
+        "implemented": 10,
+        "contract_only": 1,
         "external_write_enabled": 0,
     }
     assert ready["control_envelope"]["external_write_allowed"] is False
@@ -274,20 +274,22 @@ def test_registry_freezes_each_supplier_platform_independently(
         if item["adapter_id"] == adapter_id
     )
 
-    assert adapter["status"] == "contract_only"
+    assert adapter["status"] == "implemented"
     assert allowed_host in adapter["allowed_hosts"]
     assert adapter["semantic_authority"] == (
         "supplier_market_observation_only"
     )
-    with pytest.raises(ValueError, match="not admitted"):
-        registry.observation_contract(
-            principal=principal(),
-            entity_scope=entity_scope(),
-            store_ref="store-a",
-            as_of=AS_OF,
-            source_profile="browser_observation",
-            marketplace=marketplace,
-        )
+    contract = registry.observation_contract(
+        principal=principal(),
+        entity_scope=entity_scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+        source_profile="browser_observation",
+        marketplace=marketplace,
+    )
+    assert contract["adapter"]["adapter_id"] == adapter_id
+    assert contract["capture_allowed"] is True
+    assert contract["external_write_allowed"] is False
 
 
 def test_registry_freezes_only_admitted_ozon_catalog_adapter() -> None:

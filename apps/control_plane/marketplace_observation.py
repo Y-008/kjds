@@ -42,7 +42,7 @@ SOURCE_PROFILES = {
     "manual_verified_public_page",
     "public_search_index_observation",
 }
-MARKETPLACES = {"1688", "ozon"}
+MARKETPLACES = OBSERVATION_MARKETPLACES
 READ_MARKETPLACES = OBSERVATION_MARKETPLACES
 PRICE_KINDS = {
     "public_display_price",

@@ -127,22 +127,39 @@ def test_capture_rejects_changed_payload_and_duplicate_natural_keys() -> None:
         workspace.capture(duplicate, actor_id="operator-1")
 
 
-def test_contract_only_supplier_marketplace_is_readable_but_not_capturable() -> None:
+@pytest.mark.parametrize(
+    "marketplace",
+    [
+        "alibaba",
+        "pinduoduo",
+        "taobao",
+        "tmall",
+        "tvcmall",
+        "xianyu",
+        "yiwugo",
+    ],
+)
+def test_capture_preserves_multi_source_supplier_marketplace(
+    marketplace: str,
+) -> None:
     database = engine()
     workspace = MarketplaceObservationWorkspace(
         engine=database,
         evidence=EvidenceService(database),
     )
+    request = observation_request(idempotency_key=f"source-{marketplace}")
+    request["marketplace"] = marketplace
+    request["source_url"] = f"https://example.invalid/{marketplace}/item-1"
+    request["items"][0]["external_item_id"] = f"{marketplace}-item-1"
+    request["items"][0]["price_kind"] = "public_display_price"
 
-    assert workspace.page(marketplace="tvcmall")["items"] == []
-    request = observation_request(idempotency_key="contract-only-tvcmall")
-    request["marketplace"] = "tvcmall"
-    request["source_url"] = "https://www.tvcmall.com/details/item-1.html"
-    with pytest.raises(
-        ValueError,
-        match="Unsupported marketplace observation marketplace",
-    ):
-        workspace.capture(request, actor_id="operator-1")
+    captured = workspace.capture(request, actor_id="operator-1")
+    latest = workspace.latest(marketplace=marketplace)
+
+    assert captured["marketplace"] == marketplace
+    assert latest[0]["marketplace"] == marketplace
+    assert captured["supplier_offer_created"] is False
+    assert captured["external_write_allowed"] is False
 
 
 def test_capture_rejects_bad_url_currency_timestamp_and_unconfirmed_input() -> None:
