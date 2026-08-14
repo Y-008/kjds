@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 from collections.abc import Callable
@@ -125,6 +126,30 @@ def _catalog_observation(item: dict[str, Any]) -> dict[str, Any]:
         "video_reference_count": len(item.get("video_references", [])),
         "media_rights_status": item["media_rights_status"],
     }
+
+
+def candidate_product_snapshot(product: Any) -> dict[str, Any]:
+    """Freeze the canonical Product identity used by a pre-listing RFQ."""
+    return {
+        "id": str(product.id),
+        "sku": str(product.sku),
+        "name": str(product.name),
+        "market": str(product.market),
+        "channel": str(product.channel),
+        "status": str(product.status),
+        "tenant_ref": product.tenant_ref,
+        "entity_ref": product.entity_ref,
+        "store_ref": product.store_ref,
+        "scope_grant_authority_sha256": (
+            product.scope_grant_authority_sha256
+        ),
+        "scope_as_of": product.scope_as_of,
+        "created_by": product.created_by,
+    }
+
+
+def candidate_product_snapshot_sha256(product: Any) -> str:
+    return _canonical_hash(candidate_product_snapshot(product))
 
 
 class SupplierRfqWorkspace:
@@ -345,6 +370,349 @@ class SupplierRfqWorkspace:
             "idempotent": False,
         }
 
+    def create_for_candidate_product(
+        self,
+        *,
+        product: Any,
+        store_ref: str,
+        expected_product_snapshot_sha256: str,
+        source_evidence_ids: list[str],
+        source_scope_authority: dict[str, Any],
+        idempotency_key: str,
+        quantity_breaks: list[int],
+        required_specifications: list[dict[str, str]],
+        destination: str,
+        response_due_at: str,
+        sample_required: bool,
+        tax_invoice_required: bool,
+        required_documents: list[str],
+        packaging_requirements: list[str],
+        operator_notes: str | None,
+        confirmed: bool,
+        created_by: str,
+    ) -> dict[str, Any]:
+        """Create the same governed RFQ before an Ozon listing exists.
+
+        The Product must already be canonical and scoped.  The supplied research
+        Evidence remains context only; neither the RFQ nor its source facts count
+        as a supplier quote or authorize contact, procurement, listing, or payment.
+        """
+        if not confirmed:
+            raise ValueError("Supplier RFQ creation requires explicit human confirmation")
+        key = _required_text(
+            idempotency_key,
+            "idempotency_key",
+            max_length=160,
+        )
+        if RFQ_SOURCE_REF_PATTERN.fullmatch(key) is None:
+            raise ValueError("Supplier RFQ idempotency key contains unsupported characters")
+        actor = _required_text(created_by, "created_by", max_length=160)
+        target_store = _required_text(store_ref, "store_ref", max_length=160)
+        if (
+            str(product.market).upper() != "RU"
+            or str(product.channel).upper() != "OZON"
+            or str(product.status) != "candidate"
+        ):
+            raise ValueError(
+                "Pre-listing Supplier RFQ requires one canonical Ozon RU candidate Product"
+            )
+        if not product.scope_complete or product.store_ref != target_store:
+            raise ValueError(
+                "Pre-listing Supplier RFQ Product must have complete matching store scope"
+            )
+        snapshot = candidate_product_snapshot(product)
+        snapshot_sha256 = _canonical_hash(snapshot)
+        if not hmac.compare_digest(
+            _required_text(
+                expected_product_snapshot_sha256,
+                "expected_product_snapshot_sha256",
+                max_length=64,
+            ).lower(),
+            snapshot_sha256,
+        ):
+            raise ValueError("Canonical Product changed; refresh before continuing")
+        if not isinstance(source_evidence_ids, list):
+            raise ValueError("source_evidence_ids must be a list")
+        source_ids = list(
+            dict.fromkeys(
+                _required_text(item, "source_evidence_ids", max_length=120)
+                for item in source_evidence_ids
+            )
+        )
+        if not 1 <= len(source_ids) <= 20:
+            raise ValueError(
+                "Pre-listing Supplier RFQ requires 1 to 20 unique source Evidence records"
+            )
+        self.evidence.require_valid(source_ids)
+        scope_authority = self._candidate_scope_authority(
+            source_scope_authority,
+            source_evidence_ids=source_ids,
+            product=product,
+            store_ref=target_store,
+        )
+        self.evidence.require_valid(
+            scope_authority["projected_evidence_ids"]
+        )
+        destination_value = _required_text(
+            destination,
+            "destination",
+            max_length=240,
+        )
+        notes = _optional_text(
+            operator_notes,
+            "operator_notes",
+            max_length=2000,
+        )
+        if (
+            not quantity_breaks
+            or len(quantity_breaks) > 6
+            or any(
+                not isinstance(quantity, int)
+                or isinstance(quantity, bool)
+                or quantity < 1
+                or quantity > 1_000_000
+                for quantity in quantity_breaks
+            )
+        ):
+            raise ValueError(
+                "Supplier RFQ quantity breaks require 1 to 6 positive integers"
+            )
+        quantities = sorted(set(quantity_breaks))
+        specifications = self._specifications(required_specifications)
+        documents = _text_list(
+            required_documents,
+            "required_documents",
+            min_items=1,
+            max_items=20,
+            item_max_length=240,
+        )
+        packaging = _text_list(
+            packaging_requirements,
+            "packaging_requirements",
+            min_items=1,
+            max_items=20,
+            item_max_length=300,
+        )
+        now = self.clock()
+        if now.tzinfo is None:
+            raise ValueError("Supplier RFQ clock must include a timezone")
+        now = now.astimezone(UTC)
+        due = _timestamp(response_due_at, "response_due_at")
+        if due <= now or due > now + timedelta(days=90):
+            raise ValueError(
+                "Supplier RFQ response due time must be within the next 90 days"
+            )
+        response_checklist = self._response_checklist(specifications)
+        buyer_requirement = {
+            "quantity_breaks": quantities,
+            "currency_requested": "CNY",
+            "required_specifications": specifications,
+            "destination": destination_value,
+            "response_due_at": due.isoformat(),
+            "sample_required": sample_required,
+            "tax_invoice_required": tax_invoice_required,
+            "required_documents": documents,
+            "packaging_requirements": packaging,
+            "operator_notes": notes,
+        }
+        message_text = self._message(
+            key=key,
+            product_name=product.name,
+            buyer_requirement=buyer_requirement,
+            response_checklist=response_checklist,
+        )
+        observation = {
+            "notice": (
+                "Canonical candidate context only; no Ozon listing exists and "
+                "the supplier must confirm every requested fact"
+            ),
+            "context_kind": "canonical_candidate_product",
+            "product_snapshot": snapshot,
+            "product_snapshot_sha256": snapshot_sha256,
+            "source_evidence_ids": source_ids,
+            "source_scope_authority": scope_authority,
+            "package_weight_kg": None,
+            "package_dimensions_cm": None,
+        }
+        core = {
+            "contract_version": RFQ_CONTRACT_VERSION,
+            "product": {
+                "id": product.id,
+                "sku": product.sku,
+                "name": product.name,
+            },
+            "listing": {
+                "marketplace": "ozon",
+                "store_ref": target_store,
+                "offer_id": None,
+                "marketplace_sku": None,
+            },
+            "catalog_observation": observation,
+            "buyer_requirement": buyer_requirement,
+            "message_text": message_text,
+            "response_checklist": response_checklist,
+            "unanswered_questions": response_checklist,
+            "authority": {
+                "status": "draft",
+                "counts_as_supplier_quote": False,
+                "formal_offer_eligible": False,
+                "automatic_supplier_contact": False,
+                "automatic_procurement": False,
+                "automatic_payment": False,
+                "automatic_listing": False,
+                "automatic_marketplace_write": False,
+            },
+        }
+        package = {**core, "package_hash": _canonical_hash(core)}
+        source_ref = f"supplier-rfq://{product.id}/{key}"
+        existing = self._find_source_ref(source_ref)
+        if existing is not None:
+            result = self.get(existing.id)
+            if result["package"]["package_hash"] != package["package_hash"]:
+                raise ValueError(
+                    "Supplier RFQ idempotency conflict; changed request requires a new key"
+                )
+            self._link_candidate_sources(
+                package_record=existing,
+                source_evidence_ids=source_ids,
+                product_id=product.id,
+                created_by=actor,
+            )
+            return {**result, "idempotent": True}
+        content = json.dumps(
+            package,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        record = self.evidence.capture(
+            content=content,
+            filename=f"{key}-supplier-rfq-package.json",
+            content_type="application/json",
+            source=RFQ_SOURCE,
+            source_ref=source_ref,
+            grade=EvidenceGrade.C,
+            effective_at=now.isoformat(),
+            effective_until=None,
+            created_by=actor,
+            metadata={
+                "evidence_role": RFQ_ROLE,
+                "contract_version": RFQ_CONTRACT_VERSION,
+                "context_kind": "canonical_candidate_product",
+                "product_id": product.id,
+                "store_ref": target_store,
+                "offer_id": None,
+                "marketplace_sku": None,
+                "source_evidence_ids": source_ids,
+                "source_scope_snapshot_sha256": scope_authority[
+                    "snapshot_sha256"
+                ],
+                "source_scope_binding_authority_sha256": scope_authority[
+                    "binding_authority_sha256"
+                ],
+                "product_snapshot_sha256": snapshot_sha256,
+                "idempotency_key": key,
+                "package_hash": package["package_hash"],
+                "status": "draft",
+                "retention_class": "operational",
+                "legal_hold": False,
+                "counts_as_supplier_quote": False,
+                "formal_offer_eligible": False,
+                "automatic_supplier_contact": False,
+                "automatic_procurement": False,
+                "automatic_payment": False,
+                "automatic_listing": False,
+                "automatic_marketplace_write": False,
+            },
+        )
+        self._link_candidate_sources(
+            package_record=record,
+            source_evidence_ids=source_ids,
+            product_id=product.id,
+            created_by=actor,
+        )
+        return {
+            "evidence": record,
+            "package": package,
+            "idempotent": False,
+        }
+
+    @staticmethod
+    def _candidate_scope_authority(
+        value: dict[str, Any],
+        *,
+        source_evidence_ids: list[str],
+        product: Any,
+        store_ref: str,
+    ) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            raise ValueError("source_scope_authority must be an object")
+        expected_keys = {
+            "contract_id",
+            "status",
+            "target_evidence_ids",
+            "projected_evidence_ids",
+            "snapshot_sha256",
+            "binding_authority_sha256",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "as_of",
+        }
+        if set(value) != expected_keys:
+            raise ValueError("source_scope_authority contract is incomplete")
+        if (
+            value.get("contract_id") != "kjds-scoped-evidence-authority-v1"
+            or value.get("status") != "ready"
+        ):
+            raise ValueError("Source Evidence scope authority is not ready")
+        targets = value.get("target_evidence_ids")
+        projected = value.get("projected_evidence_ids")
+        if (
+            not isinstance(targets, list)
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in targets
+            )
+            or sorted(targets) != sorted(source_evidence_ids)
+            or len(targets) != len(set(targets))
+            or not isinstance(projected, list)
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in projected
+            )
+            or len(projected) != len(set(projected))
+            or not set(targets).issubset(projected)
+        ):
+            raise ValueError("Source Evidence scope authority does not match targets")
+        for field in ("snapshot_sha256", "binding_authority_sha256"):
+            digest = value.get(field)
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(character not in "0123456789abcdef" for character in digest)
+            ):
+                raise ValueError(f"source_scope_authority {field} is invalid")
+        if (
+            value.get("tenant_ref") != product.tenant_ref
+            or value.get("entity_ref") != product.entity_ref
+            or value.get("store_ref") != store_ref
+        ):
+            raise ValueError("Source Evidence scope authority does not match Product scope")
+        as_of = _timestamp(str(value.get("as_of", "")), "source_scope_authority.as_of")
+        return {
+            "contract_id": value["contract_id"],
+            "status": value["status"],
+            "target_evidence_ids": sorted(targets),
+            "projected_evidence_ids": sorted(projected),
+            "snapshot_sha256": value["snapshot_sha256"],
+            "binding_authority_sha256": value["binding_authority_sha256"],
+            "tenant_ref": value["tenant_ref"],
+            "entity_ref": value["entity_ref"],
+            "store_ref": value["store_ref"],
+            "as_of": as_of.isoformat(),
+        }
+
     def get(self, evidence_id: str) -> dict[str, Any]:
         self.evidence.require_valid([evidence_id])
         content, record = self.evidence.content(evidence_id)
@@ -545,6 +913,30 @@ class SupplierRfqWorkspace:
             relationship="catalog_context_for",
             created_by=created_by,
         )
+        self.evidence.link(
+            evidence_id=package_record.id,
+            target_type="product",
+            target_id=product_id,
+            relationship="rfq_package_for",
+            created_by=created_by,
+        )
+
+    def _link_candidate_sources(
+        self,
+        *,
+        package_record: EvidenceRecord,
+        source_evidence_ids: list[str],
+        product_id: str,
+        created_by: str,
+    ) -> None:
+        for evidence_id in source_evidence_ids:
+            self.evidence.link(
+                evidence_id=evidence_id,
+                target_type="evidence",
+                target_id=package_record.id,
+                relationship="candidate_context_for",
+                created_by=created_by,
+            )
         self.evidence.link(
             evidence_id=package_record.id,
             target_type="product",

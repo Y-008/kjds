@@ -24,6 +24,7 @@ from ..api_contracts import (
     ProcurementCandidateInput,
     ProfitScenarioInput,
     SampleOrderInput,
+    SupplierCandidateRfqPackageInput,
     SupplierOfferInput,
     SupplierQuoteAuthorityReviewInput,
     SupplierRfqDispatchAuthorityReviewInput,
@@ -178,6 +179,106 @@ def create_supplier_rfq_package(
         )
         result = runtime.supplier_rfq.create(
             **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+        return {
+            **result,
+            "evidence": asdict(result["evidence"]),
+        }
+
+    return run(create)
+
+
+@router.post("/v1/sourcing/candidate-rfq-packages", status_code=201)
+def create_supplier_candidate_rfq_package(
+    body: SupplierCandidateRfqPackageInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    """Freeze an RFQ for a scoped canonical Product before Ozon listing exists."""
+    ensure_role(principal, "operator", "admin")
+    ensure_store_scope(principal, body.store_ref)
+    cutoff = datetime.now(UTC)
+    entity_scope = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=body.store_ref,
+        as_of=cutoff,
+    )
+    if (
+        entity_scope.get("status") != "ready"
+        or not entity_scope.get("entity_ref")
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=entity_scope.get(
+                "reason",
+                "entity_scope_authority_missing",
+            ),
+        )
+
+    def create():
+        scoped_get = getattr(runtime.repo, "get_product_scoped", None)
+        if scoped_get is not None:
+            product = scoped_get(
+                product_id=body.product_id,
+                tenant_ref=principal.tenant_ref,
+                entity_ref=str(entity_scope["entity_ref"]),
+                store_ref=body.store_ref,
+                as_of=cutoff,
+            )
+        else:
+            product = runtime.repo.get_product(body.product_id)
+            if (
+                product.tenant_ref != principal.tenant_ref
+                or product.entity_ref != str(entity_scope["entity_ref"])
+                or product.store_ref != body.store_ref
+            ):
+                raise KeyError("Unknown product in authorized operating scope")
+        scope_projection = runtime.scoped_evidence.project_targets(
+            evidence_ids=body.source_evidence_ids,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=body.store_ref,
+            as_of=cutoff,
+        )
+        if scope_projection.get("status") != "ready":
+            raise ValueError(
+                "Candidate RFQ source Evidence is not fully bound to the current scope"
+            )
+        source_scope_authority = {
+            "contract_id": scope_projection["contract_id"],
+            "status": scope_projection["status"],
+            "target_evidence_ids": sorted(body.source_evidence_ids),
+            "projected_evidence_ids": scope_projection["evidence_ids"],
+            "snapshot_sha256": scope_projection["snapshot_sha256"],
+            "binding_authority_sha256": scope_projection[
+                "binding_authority_sha256"
+            ],
+            "tenant_ref": principal.tenant_ref,
+            "entity_ref": str(entity_scope["entity_ref"]),
+            "store_ref": body.store_ref,
+            "as_of": cutoff.isoformat(),
+        }
+        result = runtime.supplier_rfq.create_for_candidate_product(
+            product=product,
+            store_ref=body.store_ref,
+            expected_product_snapshot_sha256=(
+                body.expected_product_snapshot_sha256
+            ),
+            source_evidence_ids=body.source_evidence_ids,
+            source_scope_authority=source_scope_authority,
+            idempotency_key=body.idempotency_key,
+            quantity_breaks=body.quantity_breaks,
+            required_specifications=[
+                item.model_dump() for item in body.required_specifications
+            ],
+            destination=body.destination,
+            response_due_at=body.response_due_at,
+            sample_required=body.sample_required,
+            tax_invoice_required=body.tax_invoice_required,
+            required_documents=body.required_documents,
+            packaging_requirements=body.packaging_requirements,
+            operator_notes=body.operator_notes,
+            confirmed=body.confirmed,
             created_by=principal.actor_id,
         )
         return {

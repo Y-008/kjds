@@ -593,6 +593,34 @@ class SupplierRfqPackageInput(BaseModel):
     confirmed: Literal[True]
 
 
+class SupplierCandidateRfqPackageInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store_ref: str = Field(min_length=1, max_length=160)
+    product_id: str = Field(min_length=1, max_length=160)
+    expected_product_snapshot_sha256: str = Field(
+        pattern="^[0-9a-f]{64}$"
+    )
+    source_evidence_ids: list[str] = Field(min_length=1, max_length=20)
+    idempotency_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    )
+    quantity_breaks: list[int] = Field(min_length=1, max_length=6)
+    required_specifications: list[SupplierRfqSpecificationInput] = Field(
+        min_length=1,
+        max_length=40,
+    )
+    destination: str = Field(min_length=1, max_length=240)
+    response_due_at: str
+    sample_required: bool
+    tax_invoice_required: bool
+    required_documents: list[str] = Field(min_length=1, max_length=20)
+    packaging_requirements: list[str] = Field(min_length=1, max_length=20)
+    operator_notes: str | None = Field(default=None, max_length=2000)
+    confirmed: Literal[True]
+
+
 class SupplierRfqDispatchInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     rfq_package_evidence_id: str = Field(min_length=1, max_length=120)
