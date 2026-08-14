@@ -24,13 +24,23 @@
 
 ## Quality gates
 
-Before finishing a code change, run:
+Before finishing a code change, run the fast gate:
+
+```text
+.\scripts\verify-fast.ps1
+```
+
+For cleanup and cost audits:
+
+```text
+.\scripts\audit-cleanup.ps1 -IncludeCommands
+```
+
+The fast gate covers ruff, focused pytest, and `git diff --check`. For security or write-path changes also run:
 
 ```text
 uv run python scripts/verify_secrets.py
-uv run ruff check .
-uv run pytest -q -p no:cacheprovider --basetemp=.runtime/pytest-local
-git diff --check
+uv run python scripts/validate_write_paths.py
 ```
 
 For Web changes also run `npm ci`, `npm test`, and `npm run build` from `web/`.
