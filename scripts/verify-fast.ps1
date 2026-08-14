@@ -4,7 +4,8 @@ param(
         "tests/test_ai_listing_taxonomy.py",
         "tests/test_g1_harness_contract.py",
         "tests/test_automated_commerce.py",
-        "tests/test_browser_capture_inbox.py"
+        "tests/test_browser_capture_inbox.py",
+        "tests/test_candidate_sourcing_handoff_api.py"
     )
 )
 
