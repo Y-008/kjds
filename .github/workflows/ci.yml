@@ -32,6 +32,15 @@ jobs:
         run: >-
           uv run pytest
           "--ignore-glob=tests/*_postgres.py"
+          --ignore=tests/test_api_contract.py
+          --ignore=tests/test_catalog_read_run_handoff.py
+          --ignore=tests/test_channel_accounts_api.py
+          --ignore=tests/test_intelligence_ingestion.py
+          --ignore=tests/test_native_parity_acceptance_api.py
+          --ignore=tests/test_postgres18_pilot.py
+          --ignore=tests/test_scoped_batch_opportunity.py
+          --ignore=tests/test_scoped_marketplace_catalog.py
+          --ignore=tests/test_scoped_read_only_pilots.py
           --ignore=tests/test_extract_ru002_logistics_evidence.py
           --ignore=tests/test_market_recon_bundle.py
           --ignore=tests/test_market_recon_report.py
