@@ -1,0 +1,83 @@
+{
+  "schema_version": 3,
+  "asset_set_id": "KJDS-OZ-RU-RCAP-D08-BLK-Q050-R03",
+  "offer_id": "KJDS-OZ-RU-RCAP-D08-BLK-Q050-R01",
+  "generation_mode": "built_in_imagegen_edit_from_public_seller_reference",
+  "source_reference": "docs/project/assets/ozon/bolt_caps_d8_black/source/source_01_product.jpg",
+  "review_status": "approved_for_ozon_content_update",
+  "rejected_assets": [
+    "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru/02_dimensions_d8x15_ru.png",
+    "generated use-case collage with square-looking caps"
+  ],
+  "assets": [
+    {
+      "sequence": 1,
+      "role": "main",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/01_main_ru.png",
+      "sha256": "a4661f17725cb9043b8069349a0961a631bf452b059018699f598214b700816b",
+      "text_ru": "ЗАЩИТНЫЕ КОЛПАЧКИ / ДЛЯ БОЛТОВ / 8×15 мм • 50 шт."
+    },
+    {
+      "sequence": 2,
+      "role": "size_selection",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/02_size_guide_ru.png",
+      "sha256": "546e0d64d1828ba3015c2b3719a6b5327d424c3cb9fa3b5e26efe65efe121297",
+      "claim_scope": "8 mm points to measured bolt diameter; 15 mm points to cap length"
+    },
+    {
+      "sequence": 3,
+      "role": "installation",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/03_installation_ru.png",
+      "sha256": "be9a0c0170fb3d54fbe0bba0c00ed5a790245c066ae5e0993971f9a577e474d8"
+    },
+    {
+      "sequence": 4,
+      "role": "before_after",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/04_before_after_ru.png",
+      "sha256": "f86bf7496146a388d533b791bb7c048f3e7a3ce9e2bacd06681dd395641b72d2"
+    },
+    {
+      "sequence": 5,
+      "role": "quantity",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/05_quantity_ru.png",
+      "sha256": "ad96955be608507943ba091be84e3db0fdd3c812de9e083d1370b9bdb1954e3c",
+      "quantity_claim": 50
+    },
+    {
+      "sequence": 6,
+      "role": "parameter_summary",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/06_parameters_ru.png",
+      "sha256": "027043a7dd4b62a1baa5b492058ffbe97ea84cec446bd379f87e8a17440ae6ff"
+    },
+    {
+      "sequence": 7,
+      "role": "compatibility_checklist",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/07_compatibility_ru.png",
+      "sha256": "df1f15f6bdd5909d78910f03b2affad3b719d891bb800bf67eb41b2148827334"
+    },
+    {
+      "sequence": 8,
+      "role": "faq",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/08_faq_ru.png",
+      "sha256": "331905869905942bcf9c2fdac061ef81cfd472b233ba3d35f122a625fbb1eb7e"
+    },
+    {
+      "sequence": 9,
+      "role": "video_cover",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/09_video_cover_ru.mp4",
+      "sha256": "6fb1ad2198851b991002123ab03a8ace72a50fa63c5069e2feafc3ff8d31c830",
+      "codec": "h264",
+      "width": 1080,
+      "height": 1080,
+      "duration_seconds": 10
+    }
+  ],
+  "excluded_claims": [
+    "material",
+    "weather_resistance",
+    "corrosion_resistance",
+    "electrical_insulation",
+    "universal_compatibility",
+    "child_safety"
+  ]
+}
