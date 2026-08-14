@@ -1731,6 +1731,7 @@ class AiListingPipeline:
             actor_id=actor_id,
             source_evidence_id=source_evidence_id,
         )
+        session.flush()
         session.add(
             AgentRunEventRow(
                 id=new_id("age"),

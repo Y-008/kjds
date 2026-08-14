@@ -53,10 +53,19 @@ class OllamaProvider(JsonHttpProvider):
         payload = self._request("GET", "/api/tags")
         return payload.get("models", [])
 
-    def chat(self, *, model: str, messages: list[dict[str, Any]], schema: dict[str, Any] | None = None) -> dict:
+    def chat(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, Any]],
+        schema: dict[str, Any] | None = None,
+        images: list[str] | None = None,
+    ) -> dict:
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
         if schema is not None:
             payload["format"] = schema
+        if images:
+            payload["images"] = images
         return self._request("POST", "/api/chat", json=payload)
 
 

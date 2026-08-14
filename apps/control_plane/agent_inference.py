@@ -159,22 +159,38 @@ class ModelInferencePort(Protocol):
 class OllamaInferenceAdapter:
     name = "ollama"
 
-    def __init__(self, provider: OllamaProvider, *, model: str, capabilities: set[str]) -> None:
+    def __init__(
+        self,
+        provider: OllamaProvider,
+        *,
+        model: str,
+        capabilities: set[str],
+        vision_model: str | None = None,
+    ) -> None:
         self.provider = provider
         self.model = model.strip()
+        self.vision_model = (vision_model or "").strip() or None
         self.capabilities = frozenset(capabilities)
         self.config_sha256 = _hash(
             {
                 "provider": self.name,
                 "base_url": provider.base_url,
                 "model": self.model,
+                "vision_model": self.vision_model,
                 "capabilities": sorted(self.capabilities),
             }
         )
 
     def model_for(self, image_inputs: tuple[str, ...]) -> str:
-        del image_inputs
+        if image_inputs and self.vision_model:
+            return self.vision_model
         return self.model
+
+    @staticmethod
+    def _ollama_image(ref: str) -> str:
+        marker = ";base64,"
+        idx = ref.find(marker)
+        return ref[idx + len(marker):] if idx != -1 else ref
 
     def infer(
         self,
@@ -188,17 +204,22 @@ class OllamaInferenceAdapter:
         image_inputs: tuple[str, ...],
     ) -> InferenceResponse:
         del max_output_tokens, timeout_seconds, idempotency_key
+        model = self.model_for(image_inputs)
+        images = None
         if image_inputs:
-            raise InferenceAttemptError(
-                "local_vision_capability_missing",
-                "Configured local model cannot receive governed image inputs",
-            )
+            if not self.vision_model:
+                raise InferenceAttemptError(
+                    "local_vision_capability_missing",
+                    "Configured local model cannot receive governed image inputs",
+                )
+            images = [self._ollama_image(ref) for ref in image_inputs]
         messages = _messages(prompt, model_input)
         try:
             payload = self.provider.chat(
-                model=self.model,
+                model=model,
                 messages=messages,
                 schema=output_schema,
+                images=images,
             )
         except ProviderUnavailableError as exc:
             raise InferenceAttemptError("provider_unavailable", str(exc)) from exc
@@ -593,7 +614,7 @@ class AgentInferenceService:
             response: InferenceResponse | None = None
             try:
                 response = adapter.infer(
-                    prompt=str(contract["prompt"]),
+                    prompt=_effective_prompt(contract, task.evidence_ids),
                     model_input=task.allowed_model_input,
                     output_schema=task.output_schema,
                     max_output_tokens=int(contract["max_output_tokens"]),
@@ -833,7 +854,7 @@ class AgentInferenceService:
             prompt_version=task.prompt_version,
             prompt_snapshot_json={
                 "registry_sha256": self.registry.registry_sha256,
-                "prompt": contract["prompt"],
+                "prompt": _effective_prompt(contract, task.evidence_ids),
                 "allowed_input_fields": contract["allowed_input_fields"],
                 "input_snapshot_sha256": task.input_snapshot_sha256,
             },
@@ -1169,6 +1190,7 @@ class AgentInferenceService:
             actor_id=actor_id,
             source_evidence_id=source_evidence_id,
         )
+        session.flush()
         row = AgentRunEventRow(
             id=new_id("age"),
             ai_listing_run_id=ai_listing_run_id,
@@ -1225,6 +1247,23 @@ class AgentInferenceService:
             raw_response_evidence_id=row.raw_response_evidence_id,
             quality_feedback=row.quality_feedback_json,
         )
+
+
+def _effective_prompt(contract: dict[str, Any], evidence_ids: tuple[str, ...]) -> str:
+    """Return the registry prompt augmented with the exact admissible Evidence IDs.
+
+    The model must cite only these identifiers in field_evidence; without them the
+    model hallucinates field labels or URLs, which the governance gate rejects.
+    """
+    prompt = str(contract["prompt"])
+    ids = sorted(set(evidence_ids))
+    if ids:
+        prompt += (
+            "\n\nAllowed Evidence IDs — cite ONLY these exact identifiers in field_evidence, "
+            "never field names, labels, or URLs:\n"
+            + "\n".join(f"- {identifier}" for identifier in ids)
+        )
+    return prompt
 
 
 def build_task_spec(

@@ -14,20 +14,44 @@
   "providers": {
     "ollama": {
       "production_eligible": true,
-      "text_model": "qwen2.5:3b",
-      "capabilities": ["text", "json_schema", "ru-RU"],
-      "data_classes": ["public", "internal_minimized"]
+      "text_model": "gemma4:latest",
+      "capabilities": [
+        "text",
+        "vision",
+        "json_schema",
+        "ru-RU"
+      ],
+      "data_classes": [
+        "public",
+        "internal_minimized"
+      ],
+      "vision_model": "llava:7b"
     },
     "openai_compatible": {
       "production_eligible": true,
       "models_from_environment": true,
-      "capabilities": ["text", "vision", "json_schema", "ru-RU"],
-      "data_classes": ["public", "internal_minimized"]
+      "capabilities": [
+        "text",
+        "vision",
+        "json_schema",
+        "ru-RU"
+      ],
+      "data_classes": [
+        "public",
+        "internal_minimized"
+      ]
     },
     "fake": {
       "production_eligible": false,
-      "capabilities": ["text", "vision", "json_schema", "ru-RU"],
-      "data_classes": ["test_fixture"]
+      "capabilities": [
+        "text",
+        "vision",
+        "json_schema",
+        "ru-RU"
+      ],
+      "data_classes": [
+        "test_fixture"
+      ]
     }
   },
   "forbidden_input_keys": [
@@ -50,8 +74,14 @@
       "contract_version": "1.0",
       "prompt_version": "extract-1688-product/1.0",
       "schema_version": "extract-1688-product-output/1.0",
-      "required_capabilities": ["text", "json_schema"],
-      "data_classes": ["public", "internal_minimized"],
+      "required_capabilities": [
+        "text",
+        "json_schema"
+      ],
+      "data_classes": [
+        "public",
+        "internal_minimized"
+      ],
       "allowed_input_fields": [
         "canonical_url",
         "observed_at",
@@ -72,23 +102,87 @@
       "output_schema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["result", "field_evidence", "confidence", "unknowns", "warnings"],
+        "required": [
+          "result",
+          "field_evidence",
+          "confidence",
+          "unknowns",
+          "warnings"
+        ],
         "properties": {
           "result": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["normalized_name", "variant_labels", "attribute_candidates", "missing_fields"],
+            "required": [
+              "normalized_name",
+              "variant_labels",
+              "attribute_candidates",
+              "missing_fields"
+            ],
             "properties": {
-              "normalized_name": {"type": "string", "maxLength": 300},
-              "variant_labels": {"type": "array", "maxItems": 40, "items": {"type": "string", "maxLength": 160}},
-              "attribute_candidates": {"type": "object", "maxProperties": 80, "additionalProperties": {"type": "string", "maxLength": 500}},
-              "missing_fields": {"type": "array", "maxItems": 80, "items": {"type": "string", "maxLength": 160}}
+              "normalized_name": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "variant_labels": {
+                "type": "array",
+                "maxItems": 40,
+                "items": {
+                  "type": "string",
+                  "maxLength": 160
+                }
+              },
+              "attribute_candidates": {
+                "type": "object",
+                "maxProperties": 80,
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              },
+              "missing_fields": {
+                "type": "array",
+                "maxItems": 80,
+                "items": {
+                  "type": "string",
+                  "maxLength": 160
+                }
+              }
             }
           },
-          "field_evidence": {"type": "object", "maxProperties": 120, "additionalProperties": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 240}}},
-          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-          "unknowns": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}},
-          "warnings": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}}
+          "field_evidence": {
+            "type": "object",
+            "maxProperties": 120,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "unknowns": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
         }
       }
     },
@@ -97,9 +191,21 @@
       "contract_version": "1.0",
       "prompt_version": "map-ozon-taxonomy/1.0",
       "schema_version": "map-ozon-taxonomy-output/1.0",
-      "required_capabilities": ["text", "json_schema", "ru-RU"],
-      "data_classes": ["public", "internal_minimized"],
-      "allowed_input_fields": ["product_proposal", "official_category_candidates", "official_attribute_contract", "target_locale"],
+      "required_capabilities": [
+        "text",
+        "json_schema",
+        "ru-RU"
+      ],
+      "data_classes": [
+        "public",
+        "internal_minimized"
+      ],
+      "allowed_input_fields": [
+        "product_proposal",
+        "official_category_candidates",
+        "official_attribute_contract",
+        "target_locale"
+      ],
       "timeout_seconds": 90,
       "max_input_bytes": 131072,
       "max_output_tokens": 3000,
@@ -110,22 +216,107 @@
       "output_schema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["result", "field_evidence", "confidence", "unknowns", "warnings"],
+        "required": [
+          "result",
+          "field_evidence",
+          "confidence",
+          "unknowns",
+          "warnings"
+        ],
         "properties": {
           "result": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["candidates", "attribute_mapping", "missing_required_attributes"],
+            "required": [
+              "candidates",
+              "attribute_mapping",
+              "missing_required_attributes"
+            ],
             "properties": {
-              "candidates": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "object", "additionalProperties": false, "required": ["category_id", "reason", "confidence"], "properties": {"category_id": {"type": "string", "maxLength": 160}, "reason": {"type": "string", "maxLength": 1000}, "confidence": {"type": "number", "minimum": 0, "maximum": 1}}}},
-              "attribute_mapping": {"type": "object", "maxProperties": 120, "additionalProperties": {"type": ["string", "number", "boolean", "null"]}},
-              "missing_required_attributes": {"type": "array", "maxItems": 120, "items": {"type": "string", "maxLength": 160}}
+              "candidates": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 5,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "category_id",
+                    "reason",
+                    "confidence"
+                  ],
+                  "properties": {
+                    "category_id": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 1000
+                    },
+                    "confidence": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  }
+                }
+              },
+              "attribute_mapping": {
+                "type": "object",
+                "maxProperties": 120,
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "missing_required_attributes": {
+                "type": "array",
+                "maxItems": 120,
+                "items": {
+                  "type": "string",
+                  "maxLength": 160
+                }
+              }
             }
           },
-          "field_evidence": {"type": "object", "maxProperties": 160, "additionalProperties": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 240}}},
-          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-          "unknowns": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}},
-          "warnings": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}}
+          "field_evidence": {
+            "type": "object",
+            "maxProperties": 160,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "unknowns": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
         }
       }
     },
@@ -134,9 +325,22 @@
       "contract_version": "1.0",
       "prompt_version": "draft-ru-listing/1.0",
       "schema_version": "draft-ru-listing-output/1.0",
-      "required_capabilities": ["text", "json_schema", "ru-RU"],
-      "data_classes": ["public", "internal_minimized"],
-      "allowed_input_fields": ["approved_product_facts", "taxonomy_proposal", "official_listing_rules", "deterministic_economics_summary", "target_locale"],
+      "required_capabilities": [
+        "text",
+        "json_schema",
+        "ru-RU"
+      ],
+      "data_classes": [
+        "public",
+        "internal_minimized"
+      ],
+      "allowed_input_fields": [
+        "approved_product_facts",
+        "taxonomy_proposal",
+        "official_listing_rules",
+        "deterministic_economics_summary",
+        "target_locale"
+      ],
       "timeout_seconds": 120,
       "max_input_bytes": 131072,
       "max_output_tokens": 4500,
@@ -147,13 +351,85 @@
       "output_schema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["result", "field_evidence", "confidence", "unknowns", "warnings"],
+        "required": [
+          "result",
+          "field_evidence",
+          "confidence",
+          "unknowns",
+          "warnings"
+        ],
         "properties": {
-          "result": {"type": "object", "additionalProperties": false, "required": ["title", "description", "bullet_points", "attribute_copy"], "properties": {"title": {"type": "string", "minLength": 1, "maxLength": 200}, "description": {"type": "string", "minLength": 1, "maxLength": 6000}, "bullet_points": {"type": "array", "maxItems": 10, "items": {"type": "string", "maxLength": 500}}, "attribute_copy": {"type": "object", "maxProperties": 120, "additionalProperties": {"type": "string", "maxLength": 1000}}}},
-          "field_evidence": {"type": "object", "maxProperties": 180, "additionalProperties": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 240}}},
-          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-          "unknowns": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}},
-          "warnings": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}}
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "title",
+              "description",
+              "bullet_points",
+              "attribute_copy"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 6000
+              },
+              "bullet_points": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              },
+              "attribute_copy": {
+                "type": "object",
+                "maxProperties": 120,
+                "additionalProperties": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              }
+            }
+          },
+          "field_evidence": {
+            "type": "object",
+            "maxProperties": 180,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "unknowns": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
         }
       }
     },
@@ -162,9 +438,20 @@
       "contract_version": "1.0",
       "prompt_version": "build-media-brief/1.0",
       "schema_version": "build-media-brief-output/1.0",
-      "required_capabilities": ["text", "json_schema"],
-      "data_classes": ["internal_minimized"],
-      "allowed_input_fields": ["approved_passport_facts", "approved_material_manifest", "allowed_image_roles", "workflow_template", "target_marketplace"],
+      "required_capabilities": [
+        "text",
+        "json_schema"
+      ],
+      "data_classes": [
+        "internal_minimized"
+      ],
+      "allowed_input_fields": [
+        "approved_passport_facts",
+        "approved_material_manifest",
+        "allowed_image_roles",
+        "workflow_template",
+        "target_marketplace"
+      ],
       "timeout_seconds": 90,
       "max_input_bytes": 65536,
       "max_output_tokens": 2500,
@@ -175,13 +462,88 @@
       "output_schema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["result", "field_evidence", "confidence", "unknowns", "warnings"],
+        "required": [
+          "result",
+          "field_evidence",
+          "confidence",
+          "unknowns",
+          "warnings"
+        ],
         "properties": {
-          "result": {"type": "object", "additionalProperties": false, "required": ["workflow_template", "roles", "preservation_constraints", "qa_checklist"], "properties": {"workflow_template": {"type": "string", "maxLength": 160}, "roles": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"type": "string", "maxLength": 80}}, "preservation_constraints": {"type": "array", "maxItems": 50, "items": {"type": "string", "maxLength": 500}}, "qa_checklist": {"type": "array", "maxItems": 50, "items": {"type": "string", "maxLength": 500}}}},
-          "field_evidence": {"type": "object", "maxProperties": 120, "additionalProperties": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 240}}},
-          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-          "unknowns": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}},
-          "warnings": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}}
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "workflow_template",
+              "roles",
+              "preservation_constraints",
+              "qa_checklist"
+            ],
+            "properties": {
+              "workflow_template": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "roles": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 20,
+                "items": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              },
+              "preservation_constraints": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              },
+              "qa_checklist": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              }
+            }
+          },
+          "field_evidence": {
+            "type": "object",
+            "maxProperties": 120,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "unknowns": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
         }
       }
     },
@@ -190,9 +552,19 @@
       "contract_version": "1.0",
       "prompt_version": "vision-consistency-qa/1.0",
       "schema_version": "vision-consistency-qa-output/1.0",
-      "required_capabilities": ["vision", "json_schema"],
-      "data_classes": ["internal_minimized"],
-      "allowed_input_fields": ["approved_product_facts", "original_image_refs", "generated_image_refs", "fixed_qa_items"],
+      "required_capabilities": [
+        "vision",
+        "json_schema"
+      ],
+      "data_classes": [
+        "internal_minimized"
+      ],
+      "allowed_input_fields": [
+        "approved_product_facts",
+        "original_image_refs",
+        "generated_image_refs",
+        "fixed_qa_items"
+      ],
       "timeout_seconds": 120,
       "max_input_bytes": 65536,
       "max_output_tokens": 2500,
@@ -203,13 +575,106 @@
       "output_schema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["result", "field_evidence", "confidence", "unknowns", "warnings"],
+        "required": [
+          "result",
+          "field_evidence",
+          "confidence",
+          "unknowns",
+          "warnings"
+        ],
         "properties": {
-          "result": {"type": "object", "additionalProperties": false, "required": ["verdict", "checks", "conflicts"], "properties": {"verdict": {"type": "string", "enum": ["pass_proposed", "reject", "inconclusive"]}, "checks": {"type": "array", "minItems": 1, "maxItems": 80, "items": {"type": "object", "additionalProperties": false, "required": ["name", "status", "reason"], "properties": {"name": {"type": "string", "maxLength": 160}, "status": {"type": "string", "enum": ["pass", "fail", "unknown"]}, "reason": {"type": "string", "maxLength": 1000}}}}, "conflicts": {"type": "array", "maxItems": 80, "items": {"type": "string", "maxLength": 500}}}},
-          "field_evidence": {"type": "object", "maxProperties": 120, "additionalProperties": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 240}}},
-          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-          "unknowns": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}},
-          "warnings": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}}
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "verdict",
+              "checks",
+              "conflicts"
+            ],
+            "properties": {
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "pass_proposed",
+                  "reject",
+                  "inconclusive"
+                ]
+              },
+              "checks": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 80,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "status",
+                    "reason"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pass",
+                        "fail",
+                        "unknown"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  }
+                }
+              },
+              "conflicts": {
+                "type": "array",
+                "maxItems": 80,
+                "items": {
+                  "type": "string",
+                  "maxLength": 500
+                }
+              }
+            }
+          },
+          "field_evidence": {
+            "type": "object",
+            "maxProperties": 120,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "unknowns": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
         }
       }
     },
@@ -218,9 +683,21 @@
       "contract_version": "1.0",
       "prompt_version": "listing-quality-qa/1.0",
       "schema_version": "listing-quality-qa-output/1.0",
-      "required_capabilities": ["text", "json_schema", "ru-RU"],
-      "data_classes": ["internal_minimized"],
-      "allowed_input_fields": ["listing_draft_proposal", "approved_product_facts", "official_listing_rules", "deterministic_economics_summary", "approved_media_manifest"],
+      "required_capabilities": [
+        "text",
+        "json_schema",
+        "ru-RU"
+      ],
+      "data_classes": [
+        "internal_minimized"
+      ],
+      "allowed_input_fields": [
+        "listing_draft_proposal",
+        "approved_product_facts",
+        "official_listing_rules",
+        "deterministic_economics_summary",
+        "approved_media_manifest"
+      ],
       "timeout_seconds": 90,
       "max_input_bytes": 131072,
       "max_output_tokens": 3000,
@@ -231,13 +708,105 @@
       "output_schema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["result", "field_evidence", "confidence", "unknowns", "warnings"],
+        "required": [
+          "result",
+          "field_evidence",
+          "confidence",
+          "unknowns",
+          "warnings"
+        ],
         "properties": {
-          "result": {"type": "object", "additionalProperties": false, "required": ["verdict", "issues", "required_changes"], "properties": {"verdict": {"type": "string", "enum": ["pass_proposed", "reject", "inconclusive"]}, "issues": {"type": "array", "maxItems": 100, "items": {"type": "object", "additionalProperties": false, "required": ["code", "severity", "message"], "properties": {"code": {"type": "string", "maxLength": 160}, "severity": {"type": "string", "enum": ["info", "warning", "blocking"]}, "message": {"type": "string", "maxLength": 1000}}}}, "required_changes": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 1000}}}},
-          "field_evidence": {"type": "object", "maxProperties": 160, "additionalProperties": {"type": "array", "maxItems": 20, "items": {"type": "string", "maxLength": 240}}},
-          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-          "unknowns": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}},
-          "warnings": {"type": "array", "maxItems": 100, "items": {"type": "string", "maxLength": 500}}
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "verdict",
+              "issues",
+              "required_changes"
+            ],
+            "properties": {
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "pass_proposed",
+                  "reject",
+                  "inconclusive"
+                ]
+              },
+              "issues": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "severity",
+                    "message"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "maxLength": 160
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": [
+                        "info",
+                        "warning",
+                        "blocking"
+                      ]
+                    },
+                    "message": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  }
+                }
+              },
+              "required_changes": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              }
+            }
+          },
+          "field_evidence": {
+            "type": "object",
+            "maxProperties": 160,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "maxLength": 240
+              }
+            }
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "unknowns": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            }
+          }
         }
       }
     }

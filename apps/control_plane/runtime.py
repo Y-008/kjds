@@ -1151,6 +1151,7 @@ def build_runtime() -> RuntimeServices:
             providers["ollama"],
             model=str(local_profile["text_model"]),
             capabilities=set(local_profile["capabilities"]),
+            vision_model=str(local_profile.get("vision_model") or ""),
         )
     compat_config = {
         "base_url": os.getenv("KJDS_OPENAI_COMPAT_BASE_URL", "").strip(),
