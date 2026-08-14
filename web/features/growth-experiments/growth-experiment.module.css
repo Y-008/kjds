@@ -1,0 +1,19 @@
+.shell { min-height: 100vh; overflow-x: clip; padding: 28px; color: #eef7f4; background: radial-gradient(circle at 10% 0, #143f3a, transparent 35%), #071210; }
+.hero, .controls, .metrics, .card, .audit, .nav { width: min(1320px, 100%); margin: 0 auto 16px; }
+.hero { display: flex; justify-content: space-between; gap: 24px; padding: 28px; border: 1px solid #356d61; border-radius: 24px; background: #0c201d; }
+.hero h1 { margin: 8px 0; font-size: clamp(2rem, 5vw, 4.3rem); }
+.hero a, .nav a { color: #7ee0c4; text-decoration: none; }
+.hero > strong { height: fit-content; padding: 9px 13px; border: 1px solid #c89d54; border-radius: 999px; }
+.nav { display: flex; flex-wrap: wrap; gap: 9px; }
+.nav a { padding: 7px 10px; border: 1px solid #356d61; border-radius: 999px; }
+.controls { display: flex; gap: 12px; align-items: end; }
+.controls label { display: grid; gap: 5px; }
+.controls select, .controls button { padding: 10px 12px; border: 1px solid #356d61; border-radius: 10px; color: inherit; background: #0c201d; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.metrics article, .card, .audit { padding: 18px; border: 1px solid #28564e; border-radius: 16px; background: #0b1b19; }
+.metrics article { display: grid; gap: 5px; }.metrics strong { font-size: 1.8rem; }
+.actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.actions div { display: grid; gap: 5px; padding: 12px; border-radius: 12px; background: #122c28; }
+.actions span { color: #efb867; }.actions small { color: #8dc6b7; }
+.audit { display: grid; gap: 8px; }.audit code { overflow-wrap: anywhere; color: #7ee0c4; }
+@media (max-width: 760px) { .shell { padding: 12px; } .hero { flex-direction: column; padding: 18px; } .controls { align-items: stretch; flex-direction: column; } .metrics, .actions { grid-template-columns: 1fr; } }

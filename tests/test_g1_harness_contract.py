@@ -1,12 +1,15 @@
 import json
 import shutil
 import subprocess
+import time
+import uuid
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / "scripts" / "verify-g1.ps1"
+DATABASE_MANAGER = ROOT / "scripts" / "manage_g1_database.py"
 DOCKERFILE = ROOT / "Dockerfile"
 DOCKERIGNORE = ROOT / ".dockerignore"
 PWSH = shutil.which("pwsh")
@@ -21,7 +24,9 @@ def test_g1_harness_keeps_infrastructure_seams_without_domain_scenarios():
 
     required_seams = (
         "Replaying migrations in disposable database",
+        "Seeding the disposable operating Gate observation graph",
         "Verifying transactional outbox on PostgreSQL",
+        "Verifying isolated closed-loop PostgreSQL lifecycle contracts",
         "Running Python quality gates",
         "Verifying production API image",
         "Verifying Ozon Worker cannot bypass explicit execution intent",
@@ -46,7 +51,11 @@ def test_g1_harness_keeps_infrastructure_seams_without_domain_scenarios():
         assert route not in source
 
     assert "alembic heads" in source
+    assert "scripts/seed_g1_operating_gate.py" in source
+    assert 'actor = "g1-operating-subject"' in source
     assert 'result.migration = "20' not in source
+    assert "-WorkingDirectory $WebSmoke -WindowStyle Hidden -PassThru" in source
+    assert "-WorkingDirectory $Web -WindowStyle Hidden -PassThru" not in source
 
 
 def run_cleanup_contract(tmp_path: Path, report_path: Path):
@@ -175,3 +184,396 @@ def test_production_image_packages_machine_readable_registries():
 
     assert "COPY docs/project/registries ./docs/project/registries" in dockerfile
     assert "!docs/project/registries/*.json" in dockerignore
+
+
+def test_g1_coverage_issuer_principals_are_ephemeral_and_secrets_are_scrubbed():
+    harness = HARNESS.read_text(encoding="utf-8")
+    manager = DATABASE_MANAGER.read_text(encoding="utf-8")
+
+    assert "KJDS_G1_COVERAGE_ISSUER_PASSWORD" in harness
+    assert "KJDS_G1_RUNTIME_PASSWORD" in harness
+    assert "KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL" in harness
+    assert "KJDS_RUNTIME_DATABASE_URL" in harness
+    assert '"grant-runtime"' in harness
+    assert "Remove-Item Env:KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL" in harness
+    assert "Remove-Item Env:KJDS_RUNTIME_DATABASE_URL" in harness
+    assert "Remove-Item Env:KJDS_G1_COVERAGE_ISSUER_PASSWORD" in harness
+    assert "Remove-Item Env:KJDS_G1_RUNTIME_PASSWORD" in harness
+    assert "Remove-Item Env:KJDS_G1_RUN_TOKEN" in harness
+    assert harness.index('"scripts/manage_g1_database.py", "acquire"') < harness.index(
+        '"scripts/manage_g1_database.py", "recreate"'
+    )
+    assert "if ($DatabaseLeaseAcquired)" in harness
+    assert "ISSUANCE_SIGNING_KEY" not in harness
+
+    assert "KJDS_G1_RUN_TOKEN" in manager
+    assert "run_token_sha256" in manager
+    assert "roles_owned" in manager
+    assert "database_owned" in manager
+    assert "fixed-resource lease is not owned by this run" in manager
+    assert "shobj_description" in manager
+    assert "kjds_gdc_issuance_owner NOLOGIN NOINHERIT" in manager
+    assert "kjds_gdc_issuance_runtime LOGIN NOINHERIT" in manager
+    assert "kjds_g1_runtime LOGIN NOINHERIT" in manager
+    assert "DROP OWNED BY" not in manager
+    assert "REVOKE ADMIN OPTION FOR" in manager
+    assert "_preflight_role_cleanup" in manager
+    assert "GDC_RECEIPT_TABLE" in manager
+    assert "REVOKE EXECUTE ON FUNCTION kjds_gdc_issue_evidence" in manager
+    assert "print({" in manager
+    assert "issuer_password" not in manager.split("print({", 1)[1]
+
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    assert sum(
+        line.strip().startswith("KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL:")
+        for line in compose.splitlines()
+    ) == 1
+
+
+def test_g1_strategic_benchmark_sealing_key_is_ephemeral_and_scrubbed():
+    harness = HARNESS.read_text(encoding="utf-8")
+
+    key_assignment = "$env:KJDS_STRATEGIC_BENCHMARK_SEALING_KEY = $StrategicBenchmarkSealingKey"
+    test_invocation = '"python", "-m", "pytest"'
+    cleanup = "Remove-Item Env:KJDS_STRATEGIC_BENCHMARK_SEALING_KEY"
+
+    assert "RandomNumberGenerator]::GetBytes(32)" in harness
+    assert key_assignment in harness
+    assert cleanup in harness
+    assert harness.index(key_assignment) < harness.index(test_invocation)
+    assert harness.index(test_invocation) < harness.index(cleanup)
+
+
+def test_g1_isolates_cluster_global_coverage_postgres_contracts_before_lease():
+    harness = HARNESS.read_text(encoding="utf-8")
+    postgres_contract = (ROOT / "tests" / "test_global_data_coverage_ledger_postgres.py").read_text(
+        encoding="utf-8"
+    )
+
+    contract = '"tests\\test_global_data_coverage_ledger_postgres.py"'
+    recovery_gate = "Recovering receipt-owned interrupted PostgreSQL resources"
+    dedicated_gate = "Verifying isolated global data coverage PostgreSQL contracts"
+    recovery = '"scripts/manage_g1_database.py", "recover"'
+    acquire = '"scripts/manage_g1_database.py", "acquire"'
+    generic_exclusion = "$_ -notin @("
+
+    assert contract in harness
+    assert recovery_gate in harness
+    assert dedicated_gate in harness
+    assert generic_exclusion in harness
+    assert "$DataCoveragePostgresContract," in harness
+    assert "$ClosedLoopPostgresContract" in harness
+    assert harness.index(recovery_gate) < harness.index(recovery) < harness.index(dedicated_gate)
+    assert harness.index(dedicated_gate) < harness.index(acquire)
+    assert "$env:KJDS_DATABASE_URL = $AdminDatabaseUrl" in harness
+    assert "$result.g1_stale_resource_recovery = $true" in harness
+    assert "$result.global_data_coverage_postgres_contract = $true" in harness
+    assert "g1_stale_resource_recovery = $false" in harness
+    fixture = postgres_contract[
+        postgres_contract.index('@pytest.fixture(scope="module")') : postgres_contract.index(
+            "@pytest.fixture\ndef service"
+        )
+    ]
+    assert "acquire_gdc_contract_resources" in fixture
+    assert "release_gdc_contract_resources" in fixture
+    assert "DROP ROLE" not in fixture
+
+
+def test_g1_generic_tests_keep_owned_runtime_target_and_isolate_lifecycle_modules():
+    harness = HARNESS.read_text(encoding="utf-8")
+
+    marker = "Running generic tests with isolated migration-lifecycle database"
+    invocation = 'Invoke-External -Command uv -Arguments (@("run", "python", "-m", "pytest"'
+    marker_offset = harness.index(marker)
+    migration_offset = harness.index(
+        "$env:KJDS_DATABASE_URL = $MigrationDatabaseUrl", marker_offset
+    )
+    runtime_offset = harness.index(
+        "$env:KJDS_RUNTIME_DATABASE_URL = $RuntimeDatabaseUrl", marker_offset
+    )
+    seam_offset = harness.index(
+        "$env:KJDS_G1_CONTRACT_DATABASE_URL = $ContractDatabaseUrl", marker_offset
+    )
+    invocation_offset = harness.index(invocation, marker_offset)
+    seam_cleanup_offset = harness.index(
+        "Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL", invocation_offset
+    )
+
+    assert harness.count("$env:KJDS_DATABASE_URL = $AdminDatabaseUrl") == 1
+    assert (
+        "$env:KJDS_DATABASE_URL = $ContractDatabaseUrl"
+        not in harness[marker_offset:invocation_offset]
+    )
+    assert (
+        marker_offset
+        < migration_offset
+        < runtime_offset
+        < seam_offset
+        < invocation_offset
+        < seam_cleanup_offset
+    )
+
+
+def test_g1_generic_contract_database_has_run_scoped_ownership_and_cleanup():
+    harness = HARNESS.read_text(encoding="utf-8")
+    media_postgres = (ROOT / "tests" / "test_media_connectors_postgres.py").read_text(
+        encoding="utf-8"
+    )
+    primary_postgres = (
+        ROOT / "tests" / "test_primary_source_intake_postgres.py"
+    ).read_text(encoding="utf-8")
+    team_agent_postgres = (
+        ROOT / "tests" / "test_team_agent_evolution_postgres.py"
+    ).read_text(encoding="utf-8")
+
+    create_marker = "Creating run-scoped generic PostgreSQL contract database"
+    generic_marker = "Running generic tests with isolated migration-lifecycle database"
+    cleanup_name = 'Name = "run-scoped generic PostgreSQL contract database"'
+
+    assert "kjds_g1_contract_" in harness
+    assert "kjds-g1-contract:" in harness
+    assert "shobj_description(oid,'pg_database')" in harness
+    assert "G-1 contract database is not owned by this run" in harness
+    assert '"upgrade", "20260803_0094"' in harness
+    assert "$env:KJDS_G1_CONTRACT_DATABASE_URL = $ContractDatabaseUrl" in harness
+    assert "Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL" in harness
+    assert harness.index(create_marker) < harness.index(generic_marker)
+    assert harness.index(generic_marker) < harness.index(cleanup_name)
+    assert "$result.cleanup_contract_database = -not $ContractDatabaseCreated" in harness
+    assert "Remove-Item Env:KJDS_G1_RUN_TOKEN_SHA256" in harness
+    seam_consumers = {
+        path.name
+        for path in (ROOT / "tests").glob("test_*.py")
+        if path.name
+        not in {
+            Path(__file__).name,
+            "test_closed_loop_evolution_postgres.py",
+        }
+        and "KJDS_G1_CONTRACT_DATABASE_URL" in path.read_text(encoding="utf-8")
+    }
+    assert seam_consumers == {
+        "test_media_connectors_postgres.py",
+        "test_primary_source_intake_postgres.py",
+        "test_team_agent_evolution_postgres.py",
+    }
+    for module in (media_postgres, primary_postgres):
+        assert 'os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")' in module
+        assert 'os.environ["KJDS_DATABASE_URL"] = DATABASE_URL' in module
+        assert 'os.environ["KJDS_DATABASE_URL"] = original_database_url' in module
+    assert 'os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")' in team_agent_postgres
+    assert 'os.environ["KJDS_DATABASE_URL"] = target.url.render_as_string(' in (
+        team_agent_postgres
+    )
+    assert 'os.environ["KJDS_DATABASE_URL"] = original_database_url' in (
+        team_agent_postgres
+    )
+
+
+def test_g1_runs_closed_loop_lifecycle_before_primary_lease_and_excludes_generic():
+    harness = HARNESS.read_text(encoding="utf-8")
+    closed_loop_postgres = (
+        ROOT / "tests" / "test_closed_loop_evolution_postgres.py"
+    ).read_text(encoding="utf-8")
+
+    create_marker = "Creating run-scoped generic PostgreSQL contract database"
+    dedicated_marker = "Verifying isolated closed-loop PostgreSQL lifecycle contracts"
+    acquire = '"scripts/manage_g1_database.py", "acquire"'
+    generic_marker = "Running generic tests with isolated migration-lifecycle database"
+    exclusion = "$_ -notin @("
+    dedicated_offset = harness.index(dedicated_marker)
+    seam_clear_offset = harness.index(
+        "Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL", dedicated_offset
+    )
+    seam_set_offset = harness.index(
+        "$env:KJDS_G1_CONTRACT_DATABASE_URL = $ContractDatabaseUrl"
+    )
+
+    assert '"tests\\test_closed_loop_evolution_postgres.py"' in harness
+    assert harness.index(create_marker) < harness.index(dedicated_marker)
+    assert harness.index(dedicated_marker) < harness.index(acquire)
+    assert harness.index(dedicated_marker) < harness.index(generic_marker)
+    assert dedicated_offset < seam_clear_offset < harness.index(acquire)
+    assert harness.index(acquire) < seam_set_offset
+    assert exclusion in harness
+    exclusion_offset = harness.index(exclusion)
+    assert "$ClosedLoopPostgresContract" in harness[exclusion_offset:]
+    assert "$result.closed_loop_evolution_postgres_contract = $true" in harness
+    assert "closed_loop_evolution_postgres_contract = $false" in harness
+    assert 'G1_CONTRACT_DATABASE_URL = os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")' in (
+        closed_loop_postgres
+    )
+    assert "must run in the dedicated" in closed_loop_postgres
+
+
+def test_g1_global_mutex_precedes_fixed_database_and_role_contracts():
+    harness = HARNESS.read_text(encoding="utf-8")
+
+    mutex_wait = "$G1ControlMutex.WaitOne(0)"
+    dedicated_gate = "Verifying isolated global data coverage PostgreSQL contracts"
+    mutex_release = "$G1ControlMutex.ReleaseMutex()"
+
+    assert '"Global\\KJDS-G1-Verification"' in harness
+    assert harness.index(mutex_wait) < harness.index(dedicated_gate)
+    assert "$result.g1_control_mutex_acquired = $true" in harness
+    assert mutex_release in harness
+
+
+def test_g1_global_mutex_covers_cleanup_and_authoritative_report_publication():
+    harness = HARNESS.read_text(encoding="utf-8")
+
+    completion = "$completion = Complete-G1Verification"
+    report_hash = "Get-FileHash -LiteralPath $completionReportPath"
+    mutex_release = "$G1ControlMutex.ReleaseMutex()"
+    release_receipt = "G-1-control-mutex-release"
+
+    report_hash_offset = harness.index(report_hash)
+    receipt_publish_offset = harness.index(release_receipt, report_hash_offset)
+    receipt_validation_offset = harness.index(
+        "-not (Test-G1ControlMutexReleaseReceipt", receipt_publish_offset
+    )
+    mutex_release_offset = harness.index(mutex_release, receipt_validation_offset)
+
+    assert harness.index(completion) < report_hash_offset
+    assert report_hash_offset < receipt_publish_offset
+    assert receipt_publish_offset < receipt_validation_offset < mutex_release_offset
+    assert "$completionReportPath = if ($G1ControlMutexAcquired)" in harness
+    assert "$AuthoritativeReportPath" in harness
+    assert "$PerRunReportPath" in harness
+    assert "g1_control_mutex_finalization_required = $true" in harness
+    assert "$result.g1_control_mutex_release_receipt = $G1ControlMutexReleaseReceipt" in harness
+    assert 'state = "release_prepared"' in harness
+    assert "report_sha256 = $publishedReportSha256" in harness
+    assert "run_token_sha256 = $RunTokenSha256" in harness
+    assert "G-1 control mutex finalization receipt publication failed" in harness
+
+
+def test_g1_global_mutex_blocks_a_second_report_publisher_until_release(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell 7 is required for the G-1 mutex contract")
+
+    mutex_name = f"Global\\KJDS-G1-Verification-test-{uuid.uuid4().hex}"
+    marker = tmp_path / "owner-one-held.txt"
+    release = tmp_path / "owner-one-release.txt"
+    report = tmp_path / "G1_VERIFICATION.json"
+    report.write_text("baseline", encoding="utf-8")
+    owner_script = f"""
+$ErrorActionPreference = "Stop"
+$mutex = [Threading.Mutex]::new($false, {powershell_quote(mutex_name)})
+if (-not $mutex.WaitOne(0)) {{ $mutex.Dispose(); exit 10 }}
+try {{
+    [IO.File]::WriteAllText({powershell_quote(str(marker))}, "held")
+    while (-not (Test-Path -LiteralPath {powershell_quote(str(release))})) {{
+        Start-Sleep -Milliseconds 25
+    }}
+    $temporary = {powershell_quote(str(report) + ".owner-one.tmp")}
+    [IO.File]::WriteAllText($temporary, "owner-one")
+    Move-Item -LiteralPath $temporary -Destination {powershell_quote(str(report))} -Force
+}} finally {{
+    $mutex.ReleaseMutex()
+    $mutex.Dispose()
+}}
+"""
+    contender_script = f"""
+$ErrorActionPreference = "Stop"
+$mutex = [Threading.Mutex]::new($false, {powershell_quote(mutex_name)})
+if (-not $mutex.WaitOne(0)) {{ $mutex.Dispose(); exit 23 }}
+try {{
+    [IO.File]::WriteAllText({powershell_quote(str(report))}, "owner-two")
+}} finally {{
+    $mutex.ReleaseMutex()
+    $mutex.Dispose()
+}}
+"""
+    owner = subprocess.Popen(
+        [PWSH, "-NoProfile", "-Command", owner_script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.exists():
+            if owner.poll() is not None:
+                stdout, stderr = owner.communicate()
+                raise AssertionError(f"owner exited early: {stdout}\n{stderr}")
+            if time.monotonic() >= deadline:
+                raise AssertionError("owner did not acquire the mutex")
+            time.sleep(0.025)
+
+        blocked = subprocess.run(
+            [PWSH, "-NoProfile", "-Command", contender_script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert blocked.returncode == 23, blocked.stderr
+        assert report.read_text(encoding="utf-8") == "baseline"
+
+        release.write_text("release", encoding="utf-8")
+        owner_stdout, owner_stderr = owner.communicate(timeout=10)
+        assert owner.returncode == 0, f"{owner_stdout}\n{owner_stderr}"
+        assert report.read_text(encoding="utf-8") == "owner-one"
+
+        admitted = subprocess.run(
+            [PWSH, "-NoProfile", "-Command", contender_script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert admitted.returncode == 0, admitted.stderr
+        assert report.read_text(encoding="utf-8") == "owner-two"
+    finally:
+        if owner.poll() is None:
+            owner.kill()
+            owner.wait(timeout=10)
+
+
+def test_g1_mutex_release_receipt_validator_binds_report_run_and_commit(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell 7 is required for the G-1 mutex receipt contract")
+    source = HARNESS.read_text(encoding="utf-8")
+    function_start = source.index("function Test-G1ControlMutexReleaseReceipt")
+    harness_start = source.index("$startedAt =")
+    validator = source[function_start:harness_start]
+    receipt = tmp_path / "G1_MUTEX_RELEASE.json"
+    payload = {
+        "gate": "G-1-control-mutex-release",
+        "state": "release_prepared",
+        "run_token_sha256": "a" * 64,
+        "git_commit": "commit-a",
+        "report": str(tmp_path / "G1_VERIFICATION.json"),
+        "report_sha256": "b" * 64,
+        "prepared_at": "2026-08-05T00:00:00Z",
+    }
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
+    invocation = f"""
+$ErrorActionPreference = "Stop"
+{validator}
+$valid = Test-G1ControlMutexReleaseReceipt `
+    -Path {powershell_quote(str(receipt))} `
+    -RunTokenSha256 {powershell_quote('a' * 64)} `
+    -GitCommit "commit-a" `
+    -ReportPath {powershell_quote(payload['report'])} `
+    -ReportSha256 {powershell_quote('b' * 64)}
+$wrongRun = Test-G1ControlMutexReleaseReceipt `
+    -Path {powershell_quote(str(receipt))} `
+    -RunTokenSha256 {powershell_quote('c' * 64)} `
+    -GitCommit "commit-a" `
+    -ReportPath {powershell_quote(payload['report'])} `
+    -ReportSha256 {powershell_quote('b' * 64)}
+$wrongHash = Test-G1ControlMutexReleaseReceipt `
+    -Path {powershell_quote(str(receipt))} `
+    -RunTokenSha256 {powershell_quote('a' * 64)} `
+    -GitCommit "commit-a" `
+    -ReportPath {powershell_quote(payload['report'])} `
+    -ReportSha256 {powershell_quote('d' * 64)}
+if (-not $valid -or $wrongRun -or $wrongHash) {{ exit 1 }}
+"""
+    completed = subprocess.run(
+        [PWSH, "-NoProfile", "-Command", invocation],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr

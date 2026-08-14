@@ -1,0 +1,898 @@
+{
+  "scenario_ref": "enterprise-overview.zh-CN",
+  "scenario_version": "v2",
+  "scenario_sha256": "e002fce722e2b7f805da01f4ecdefa4357d31ab74806a0243e18789fb2fb3790",
+  "locale": "zh-CN",
+  "deterministic_clock": {
+    "epoch": "2026-08-03T00:00:00Z",
+    "tick_ms": 1000
+  },
+  "synthetic_declaration": {
+    "demo": true,
+    "synthetic": true,
+    "non_billable": true,
+    "external_side_effect_allowed": false
+  },
+  "workspace_projections": {
+    "stores": [
+      {
+        "store_id": "demo-store-001",
+        "display_name": "演示店铺 Alpha",
+        "market": "OZON_DEMO",
+        "category": "家居收纳",
+        "connection_label": "场景店铺已连接"
+      },
+      {
+        "store_id": "demo-store-002",
+        "display_name": "演示店铺 Beta",
+        "market": "OZON_DEMO",
+        "category": "服装配饰",
+        "connection_label": "场景店铺已连接"
+      },
+      {
+        "store_id": "demo-store-003",
+        "display_name": "演示店铺 Gamma",
+        "market": "OZON_DEMO",
+        "category": "3C配件",
+        "connection_label": "场景店铺已连接"
+      }
+    ],
+    "skus": [
+      {
+        "sku_id": "demo-sku-001",
+        "store_id": "demo-store-001",
+        "title": "合成商品 001",
+        "category": "家居收纳",
+        "stock_units": 21,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-002",
+        "store_id": "demo-store-002",
+        "title": "合成商品 002",
+        "category": "服装配饰",
+        "stock_units": 22,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-003",
+        "store_id": "demo-store-003",
+        "title": "合成商品 003",
+        "category": "3C配件",
+        "stock_units": 23,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-004",
+        "store_id": "demo-store-001",
+        "title": "合成商品 004",
+        "category": "家居收纳",
+        "stock_units": 24,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-005",
+        "store_id": "demo-store-002",
+        "title": "合成商品 005",
+        "category": "服装配饰",
+        "stock_units": 25,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-006",
+        "store_id": "demo-store-003",
+        "title": "合成商品 006",
+        "category": "3C配件",
+        "stock_units": 26,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-007",
+        "store_id": "demo-store-001",
+        "title": "合成商品 007",
+        "category": "家居收纳",
+        "stock_units": 27,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-008",
+        "store_id": "demo-store-002",
+        "title": "合成商品 008",
+        "category": "服装配饰",
+        "stock_units": 28,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-009",
+        "store_id": "demo-store-003",
+        "title": "合成商品 009",
+        "category": "3C配件",
+        "stock_units": 29,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-010",
+        "store_id": "demo-store-001",
+        "title": "合成商品 010",
+        "category": "家居收纳",
+        "stock_units": 30,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-011",
+        "store_id": "demo-store-002",
+        "title": "合成商品 011",
+        "category": "服装配饰",
+        "stock_units": 31,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-012",
+        "store_id": "demo-store-003",
+        "title": "合成商品 012",
+        "category": "3C配件",
+        "stock_units": 32,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-013",
+        "store_id": "demo-store-001",
+        "title": "合成商品 013",
+        "category": "家居收纳",
+        "stock_units": 33,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-014",
+        "store_id": "demo-store-002",
+        "title": "合成商品 014",
+        "category": "服装配饰",
+        "stock_units": 34,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-015",
+        "store_id": "demo-store-003",
+        "title": "合成商品 015",
+        "category": "3C配件",
+        "stock_units": 35,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-016",
+        "store_id": "demo-store-001",
+        "title": "合成商品 016",
+        "category": "家居收纳",
+        "stock_units": 36,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-017",
+        "store_id": "demo-store-002",
+        "title": "合成商品 017",
+        "category": "服装配饰",
+        "stock_units": 37,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-018",
+        "store_id": "demo-store-003",
+        "title": "合成商品 018",
+        "category": "3C配件",
+        "stock_units": 38,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-019",
+        "store_id": "demo-store-001",
+        "title": "合成商品 019",
+        "category": "家居收纳",
+        "stock_units": 39,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-020",
+        "store_id": "demo-store-002",
+        "title": "合成商品 020",
+        "category": "服装配饰",
+        "stock_units": 40,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-021",
+        "store_id": "demo-store-003",
+        "title": "合成商品 021",
+        "category": "3C配件",
+        "stock_units": 41,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-022",
+        "store_id": "demo-store-001",
+        "title": "合成商品 022",
+        "category": "家居收纳",
+        "stock_units": 42,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-023",
+        "store_id": "demo-store-002",
+        "title": "合成商品 023",
+        "category": "服装配饰",
+        "stock_units": 43,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-024",
+        "store_id": "demo-store-003",
+        "title": "合成商品 024",
+        "category": "3C配件",
+        "stock_units": 44,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-025",
+        "store_id": "demo-store-001",
+        "title": "合成商品 025",
+        "category": "家居收纳",
+        "stock_units": 45,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-026",
+        "store_id": "demo-store-002",
+        "title": "合成商品 026",
+        "category": "服装配饰",
+        "stock_units": 46,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-027",
+        "store_id": "demo-store-003",
+        "title": "合成商品 027",
+        "category": "3C配件",
+        "stock_units": 47,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-028",
+        "store_id": "demo-store-001",
+        "title": "合成商品 028",
+        "category": "家居收纳",
+        "stock_units": 48,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-029",
+        "store_id": "demo-store-002",
+        "title": "合成商品 029",
+        "category": "服装配饰",
+        "stock_units": 49,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-030",
+        "store_id": "demo-store-003",
+        "title": "合成商品 030",
+        "category": "3C配件",
+        "stock_units": 50,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-031",
+        "store_id": "demo-store-001",
+        "title": "合成商品 031",
+        "category": "家居收纳",
+        "stock_units": 51,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-032",
+        "store_id": "demo-store-002",
+        "title": "合成商品 032",
+        "category": "服装配饰",
+        "stock_units": 52,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-033",
+        "store_id": "demo-store-003",
+        "title": "合成商品 033",
+        "category": "3C配件",
+        "stock_units": 53,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-034",
+        "store_id": "demo-store-001",
+        "title": "合成商品 034",
+        "category": "家居收纳",
+        "stock_units": 54,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-035",
+        "store_id": "demo-store-002",
+        "title": "合成商品 035",
+        "category": "服装配饰",
+        "stock_units": 55,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-036",
+        "store_id": "demo-store-003",
+        "title": "合成商品 036",
+        "category": "3C配件",
+        "stock_units": 56,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-037",
+        "store_id": "demo-store-001",
+        "title": "合成商品 037",
+        "category": "家居收纳",
+        "stock_units": 57,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-038",
+        "store_id": "demo-store-002",
+        "title": "合成商品 038",
+        "category": "服装配饰",
+        "stock_units": 58,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-039",
+        "store_id": "demo-store-003",
+        "title": "合成商品 039",
+        "category": "3C配件",
+        "stock_units": 59,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-040",
+        "store_id": "demo-store-001",
+        "title": "合成商品 040",
+        "category": "家居收纳",
+        "stock_units": 60,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-041",
+        "store_id": "demo-store-002",
+        "title": "合成商品 041",
+        "category": "服装配饰",
+        "stock_units": 61,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-042",
+        "store_id": "demo-store-003",
+        "title": "合成商品 042",
+        "category": "3C配件",
+        "stock_units": 62,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-043",
+        "store_id": "demo-store-001",
+        "title": "合成商品 043",
+        "category": "家居收纳",
+        "stock_units": 63,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-044",
+        "store_id": "demo-store-002",
+        "title": "合成商品 044",
+        "category": "服装配饰",
+        "stock_units": 64,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-045",
+        "store_id": "demo-store-003",
+        "title": "合成商品 045",
+        "category": "3C配件",
+        "stock_units": 65,
+        "listing_state": "simulated_active"
+      },
+      {
+        "sku_id": "demo-sku-046",
+        "store_id": "demo-store-001",
+        "title": "合成商品 046",
+        "category": "家居收纳",
+        "stock_units": 66,
+        "listing_state": "draft"
+      },
+      {
+        "sku_id": "demo-sku-047",
+        "store_id": "demo-store-002",
+        "title": "合成商品 047",
+        "category": "服装配饰",
+        "stock_units": 67,
+        "listing_state": "preview_ready"
+      },
+      {
+        "sku_id": "demo-sku-048",
+        "store_id": "demo-store-003",
+        "title": "合成商品 048",
+        "category": "3C配件",
+        "stock_units": 68,
+        "listing_state": "simulated_active"
+      }
+    ],
+    "orders": [
+      {
+        "order_id": "demo-order-001",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-001",
+        "quantity": 1,
+        "synthetic_revenue_minor": 103750,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-002",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-002",
+        "quantity": 2,
+        "synthetic_revenue_minor": 107500,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-003",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-003",
+        "quantity": 3,
+        "synthetic_revenue_minor": 111250,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-004",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-004",
+        "quantity": 1,
+        "synthetic_revenue_minor": 115000,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-005",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-005",
+        "quantity": 2,
+        "synthetic_revenue_minor": 118750,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-006",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-006",
+        "quantity": 3,
+        "synthetic_revenue_minor": 122500,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-007",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-007",
+        "quantity": 1,
+        "synthetic_revenue_minor": 126250,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-008",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-008",
+        "quantity": 2,
+        "synthetic_revenue_minor": 130000,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-009",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-009",
+        "quantity": 3,
+        "synthetic_revenue_minor": 133750,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-010",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-010",
+        "quantity": 1,
+        "synthetic_revenue_minor": 137500,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-011",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-011",
+        "quantity": 2,
+        "synthetic_revenue_minor": 141250,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-012",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-012",
+        "quantity": 3,
+        "synthetic_revenue_minor": 145000,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-013",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-013",
+        "quantity": 1,
+        "synthetic_revenue_minor": 148750,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-014",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-014",
+        "quantity": 2,
+        "synthetic_revenue_minor": 152500,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-015",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-015",
+        "quantity": 3,
+        "synthetic_revenue_minor": 156250,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-016",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-016",
+        "quantity": 1,
+        "synthetic_revenue_minor": 160000,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-017",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-017",
+        "quantity": 2,
+        "synthetic_revenue_minor": 163750,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-018",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-018",
+        "quantity": 3,
+        "synthetic_revenue_minor": 167500,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-019",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-019",
+        "quantity": 1,
+        "synthetic_revenue_minor": 171250,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-020",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-020",
+        "quantity": 2,
+        "synthetic_revenue_minor": 175000,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-021",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-021",
+        "quantity": 3,
+        "synthetic_revenue_minor": 178750,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-022",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-022",
+        "quantity": 1,
+        "synthetic_revenue_minor": 182500,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-023",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-023",
+        "quantity": 2,
+        "synthetic_revenue_minor": 186250,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-024",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-024",
+        "quantity": 3,
+        "synthetic_revenue_minor": 190000,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-025",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-025",
+        "quantity": 1,
+        "synthetic_revenue_minor": 193750,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-026",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-026",
+        "quantity": 2,
+        "synthetic_revenue_minor": 197500,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-027",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-027",
+        "quantity": 3,
+        "synthetic_revenue_minor": 201250,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-028",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-028",
+        "quantity": 1,
+        "synthetic_revenue_minor": 205000,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-029",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-029",
+        "quantity": 2,
+        "synthetic_revenue_minor": 208750,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-030",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-030",
+        "quantity": 3,
+        "synthetic_revenue_minor": 212500,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-031",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-031",
+        "quantity": 1,
+        "synthetic_revenue_minor": 216250,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-032",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-032",
+        "quantity": 2,
+        "synthetic_revenue_minor": 220000,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-033",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-033",
+        "quantity": 3,
+        "synthetic_revenue_minor": 223750,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      },
+      {
+        "order_id": "demo-order-034",
+        "store_id": "demo-store-001",
+        "sku_id": "demo-sku-034",
+        "quantity": 1,
+        "synthetic_revenue_minor": 227500,
+        "currency": "RUB",
+        "state": "awaiting_packaging"
+      },
+      {
+        "order_id": "demo-order-035",
+        "store_id": "demo-store-002",
+        "sku_id": "demo-sku-035",
+        "quantity": 2,
+        "synthetic_revenue_minor": 231250,
+        "currency": "RUB",
+        "state": "in_fulfillment"
+      },
+      {
+        "order_id": "demo-order-036",
+        "store_id": "demo-store-003",
+        "sku_id": "demo-sku-036",
+        "quantity": 3,
+        "synthetic_revenue_minor": 235000,
+        "currency": "RUB",
+        "state": "simulated_delivered"
+      }
+    ],
+    "summary": {
+      "scenario_stores": 3,
+      "scenario_skus": 48,
+      "scenario_orders": 36,
+      "demo_capacity": 500
+    }
+  },
+  "hero_flows": [
+    {
+      "flow_id": "demo-flow-opportunity-listing",
+      "title": "机会发现 → 商品建档 → Listing 预览",
+      "outcome": "合成机会完成商品内容准备并生成俄语 Listing 预览",
+      "steps": [
+        {
+          "step_id": "demo-step-opportunity-01",
+          "label": "确认合成机会",
+          "workspace": "sourcing",
+          "action": "advance_sourcing",
+          "subject_ref": "demo-sku-001",
+          "payload": {
+            "target": "qualified",
+            "opportunity_score": 86
+          }
+        },
+        {
+          "step_id": "demo-step-opportunity-02",
+          "label": "完成商品建档",
+          "workspace": "pim",
+          "action": "prepare_product_content",
+          "subject_ref": "demo-sku-001",
+          "payload": {
+            "target": "content_ready",
+            "completeness": 100
+          }
+        },
+        {
+          "step_id": "demo-step-opportunity-03",
+          "label": "生成 Listing 预览",
+          "workspace": "listings",
+          "action": "generate_listing_preview",
+          "subject_ref": "demo-sku-001",
+          "payload": {
+            "target": "preview_ready",
+            "language": "ru"
+          }
+        }
+      ]
+    },
+    {
+      "flow_id": "demo-flow-order-return",
+      "title": "订单 → 库存 → 履约 → 退货异常",
+      "outcome": "合成订单完成库存预留、履约推进并产生可重放退货异常",
+      "steps": [
+        {
+          "step_id": "demo-step-order-01",
+          "label": "推进订单",
+          "workspace": "oms",
+          "action": "advance_order_timeline",
+          "subject_ref": "demo-order-001",
+          "payload": {
+            "target": "in_fulfillment"
+          }
+        },
+        {
+          "step_id": "demo-step-order-02",
+          "label": "预留库存",
+          "workspace": "fulfillment",
+          "action": "reserve_inventory",
+          "subject_ref": "demo-sku-001",
+          "payload": {
+            "target": "reserved",
+            "order_ref": "demo-order-001",
+            "stock_units_after": 20
+          }
+        },
+        {
+          "step_id": "demo-step-order-03",
+          "label": "完成履约",
+          "workspace": "fulfillment",
+          "action": "advance_fulfillment",
+          "subject_ref": "demo-order-001",
+          "payload": {
+            "target": "simulated_delivered"
+          }
+        },
+        {
+          "step_id": "demo-step-order-04",
+          "label": "触发退货异常",
+          "workspace": "fulfillment",
+          "action": "simulate_return_exception",
+          "subject_ref": "demo-order-001",
+          "payload": {
+            "target": "return_exception",
+            "reason": "synthetic_size_mismatch"
+          }
+        }
+      ]
+    },
+    {
+      "flow_id": "demo-flow-settlement-profit",
+      "title": "结算 → 费用 → 现金利润 → 决策",
+      "outcome": "输出 stop / fix / continue / no_data 四类合成决策",
+      "steps": [
+        {
+          "step_id": "demo-step-profit-01",
+          "label": "分配结算",
+          "workspace": "profit",
+          "action": "allocate_settlement",
+          "subject_ref": "demo-order-001",
+          "payload": {
+            "target": "allocated",
+            "currency": "RUB"
+          }
+        },
+        {
+          "step_id": "demo-step-profit-02",
+          "label": "归集合成费用",
+          "workspace": "profit",
+          "action": "assign_synthetic_fee",
+          "subject_ref": "demo-order-001",
+          "payload": {
+            "fee_minor": 15000,
+            "currency": "RUB"
+          }
+        },
+        {
+          "step_id": "demo-step-profit-03",
+          "label": "计算现金利润并决策",
+          "workspace": "profit",
+          "action": "recalculate_synthetic_profit",
+          "subject_ref": "demo-order-001",
+          "payload": {
+            "cash_profit_minor": 12000,
+            "currency": "RUB",
+            "decision": "continue",
+            "decision_matrix": [
+              "stop",
+              "fix",
+              "continue",
+              "no_data"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

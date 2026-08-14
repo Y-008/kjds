@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { mutationOriginIsAllowed, webAuthMode } from "../../../lib/identity-config";
+import {
+  mutationOriginIsAllowed,
+  webAuthMode,
+  webRequestUrl,
+} from "../../../lib/identity-config";
 import { createSupabaseServerClient } from "../../../lib/supabase-server";
 
 export async function POST(request: Request) {
@@ -12,7 +16,7 @@ export async function POST(request: Request) {
       const supabase = await createSupabaseServerClient();
       await supabase.auth.signOut({ scope: "global" });
     }
-    return NextResponse.redirect(new URL("/login", request.url), 303);
+    return NextResponse.redirect(webRequestUrl(request, "/login"), 303);
   } catch {
     return Response.json({ detail: "Web authentication is unavailable" }, { status: 503 });
   }

@@ -135,6 +135,7 @@ class ChargeType(StrEnum):
     FX = "fx"
     ADVERTISING = "advertising"
     RETURN = "return"
+    CAPITAL_COST = "capital_cost"
     UNCLAIMED = "unclaimed"
     DAMAGE = "damage"
     CUSTOMER_COMPENSATION = "customer_compensation"
@@ -155,6 +156,7 @@ CM2_COSTS = {
 CM3_COSTS = {
     ChargeType.ADVERTISING,
     ChargeType.RETURN,
+    ChargeType.CAPITAL_COST,
     ChargeType.UNCLAIMED,
     ChargeType.DAMAGE,
     ChargeType.CUSTOMER_COMPENSATION,
@@ -170,6 +172,24 @@ class Product:
     status: ProductStatus = ProductStatus.CANDIDATE
     id: str = field(default_factory=lambda: new_id("prd"))
     created_at: str = field(default_factory=utc_now)
+    tenant_ref: str | None = None
+    entity_ref: str | None = None
+    store_ref: str | None = None
+    scope_grant_authority_sha256: str | None = None
+    scope_as_of: str | None = None
+    created_by: str | None = None
+
+    @property
+    def scope_complete(self) -> bool:
+        values = (
+            self.tenant_ref,
+            self.entity_ref,
+            self.store_ref,
+            self.scope_grant_authority_sha256,
+            self.scope_as_of,
+            self.created_by,
+        )
+        return all(values)
 
 
 @dataclass(slots=True)

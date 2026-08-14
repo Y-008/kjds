@@ -1,0 +1,109 @@
+{
+  "registry_id": "KJDS-SELLER-IDENTITY-001",
+  "schema_version": "1.0",
+  "status": "active",
+  "observed_at": "2026-08-01T00:00:00+08:00",
+  "source": "user-provided Ozon Seller portal screenshots (2026-08-01); OCR-captured, non-secret identity facts only",
+  "verified_native": false,
+  "canonical_authorization_recorded": true,
+  "sellers": [
+    {
+      "platform": "ozon",
+      "seller_name": "BEIJIXINGYOUXUAN",
+      "ozon_id": "176797869",
+      "client_id": "2735620",
+      "store_ref": "ozon-primary",
+      "api_keys_observed": [
+        {
+          "name": "KJDS-RO-read-only",
+          "purpose": "read-only",
+          "created_at": "2026-07-24",
+          "expires_at": "2027-01-30"
+        },
+        {
+          "name": "KJDS-L3-listing-executor",
+          "purpose": "listing_execution",
+          "created_at": "2026-07-25",
+          "expires_at": "2027-01-31"
+        }
+      ],
+      "capabilities_observed": {
+        "catalog.read": {
+          "status": "verified",
+          "evidence": "real official bound readback 2026-08-01 bundle sha256 4c6dfa8242401f23ac50396ce2c82c961c1e9fb137c76e6a08f25d4537f071af (probe bundle 67b473fb13937ba1cdb059b940d3de329a5782a6616280451b9606fd520f1427)"
+        },
+        "finance.read": {
+          "status": "verified",
+          "evidence": "real official bound readback 2026-08-01 bundle sha256 ba8dc0831b4614b6d54dc8c7d4147d27f748aef56920d5bd71af546f0ecd4289; HTTP 403 removed after finance permission was enabled in the Ozon Seller portal"
+        }
+      },
+      "canonical_authorization": {
+        "status": "recorded",
+        "scope_grants": [
+          "sge_b932890c4d274d1b9bc2e6451030be97 (subject r0-requester)",
+          "sge_b313dcffbba041d29d5a536805fe6dcb (subject kjds-owner-lunar)",
+          "sge_c8a13de22cbc4dc29f4552a1f8974d50 (subject r0-admin)",
+          "sge_eede0026478b4eaeafe856fa27b13b17 (subject r0-risk)"
+        ],
+        "managed_lease": {
+          "lease_id": "lease-ozon-primary-4",
+          "capabilities": ["catalog.read", "finance.read"],
+          "credential_fingerprint_sha256": "51d654baf2ef221c610998ed633e4f2d8550254a2fe410a5d1f010afa286363b",
+          "provider_readback_sha256": "cde69c4bbe3f4c34fc2086e975b21470492beebf7ceabe8f989136bd08bf5876",
+          "external_verifier_observation_sha256": "8d13db38d8b101f3a20595b4d77ab5edf1970506e883b2c3bf1a53e96dd0ef94",
+          "authorization_epoch": 5,
+          "revoked_predecessors": ["lease-ozon-primary-finance-read-1 (epoch 1)", "lease-ozon-primary-1 (epoch 2)", "lease-ozon-primary-2 (epoch 3)", "lease-ozon-primary-3 (epoch 4)"]
+        },
+        "consent_chain": {
+          "approval_id": "apr_a2bbbeb2a25e42018a57cffa2a9941cb",
+          "execution_plan_id": "gxp_d757354a057d402a9cc749b54e6e4a33",
+          "state": "execution_gated",
+          "external_write_allowed": false
+        },
+        "real_read_pilot": {
+          "pilot_id": "rop_3eccb6523c0b4ac48b9ec20159db0e1f",
+          "status": "active",
+          "allowed_operations": ["ozon.product.read"],
+          "run_id": "ror_ea3193917d184f389d8fb27bc785ef33",
+          "outcome": "succeeded",
+          "evidence_id": "evd_7f1af593feb6437ab9204dddcb8cf4cc",
+          "grant_id": "wcg_ac3d5a9caf484c4a98d7fa64e411fb1b",
+          "grant_consumed": true,
+          "environment_credentials": "none (OZON_* absent from worker process)"
+        },
+        "real_finance_pilot": {
+          "pilot_id": "rop_211404379c7847c7a2cf2c6cfc4f91fd",
+          "status": "active",
+          "allowed_operations": ["ozon.finance.read"],
+          "run_id": "ror_5e185d93b81644a7ba99a684d91798b2",
+          "outcome": "succeeded",
+          "evidence_id": "evd_8ad95a4e76ca47de8a7e8a8940b9ff2f",
+          "grant_id": "wcg_e2647c58cb604ddf8ecbc274445f0ff1",
+          "grant_consumed": true,
+          "environment_credentials": "none (OZON_* absent from worker process)"
+        },
+        "authorization_binding_event": {
+          "event_id": "caev_0fa8cb79020d451880cae8565522f200",
+          "source_event_ref": "ozon-primary-binding-final",
+          "event_type": "authorization_granted",
+          "platform": "ozon",
+          "account_ref": "ozon:176797869",
+          "adapter_id": "ozon-seller-api-read",
+          "capabilities": ["catalog.read", "finance.read"],
+          "credential_fingerprint_sha256": "51d654baf2ef221c610998ed633e4f2d8550254a2fe410a5d1f010afa286363b",
+          "workspace_status": "ready",
+          "runtime_identity_status": "fresh_passed",
+          "browser_evidence": {
+            "desktop_sha256": "710d27761c9f1a08f476f1dfe9732c3a76575901da1a0f3696930d809d21920a",
+            "mobile_390_sha256": "f1f37ebcc519a3eae8fd02eaaa86bbbfcab8603b4881161cf82a29ed0d96d0c1"
+          }
+        }
+      },
+      "screenshot_originals": [
+        "C:/Users/Lunar/AppData/Local/Temp/codex-clipboard-71589889-d2e1-4a0a-9bfe-579b5ec487ae.png",
+        "C:/Users/Lunar/AppData/Local/Temp/codex-clipboard-db068ed5-6d4b-4f82-aa71-54876e968ed0.png"
+      ],
+      "notes": "Identity facts are real and user-confirmed; canonical scope grants, finance permission (HTTP 403 removed), authoritative managed lease and approved internal change plan are recorded. Channel-account authorization lifecycle events (append-only binding rows) remain gated behind the policy-only external execution surface."
+    }
+  ]
+}

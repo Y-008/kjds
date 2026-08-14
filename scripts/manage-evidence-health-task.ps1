@@ -77,7 +77,10 @@ function Get-TaskCompletionHistory {
     try {
         $events = Get-WinEvent -FilterHashtable @{
             LogName = "Microsoft-Windows-TaskScheduler/Operational"
-            Id = 102
+            # Event 201 is the native action-completed event and carries the
+            # process ResultCode. Event 102 only confirms task completion on
+            # current Windows builds and does not include an exit result.
+            Id = 201
             StartTime = (Get-Date).AddDays(-7)
         } -MaxEvents $MaximumEvents -ErrorAction Stop
         $result.available = $true
@@ -202,7 +205,14 @@ function Get-TaskAudit {
         $audit.error = "Scheduled task was not found or could not be read"
     }
     catch {
-        $audit.error = "Scheduled task audit failed"
+        $notFound =
+            $_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::ObjectNotFound -or
+            $_.FullyQualifiedErrorId -like "CmdletizationQuery_NotFound*"
+        $audit.error = if ($notFound) {
+            "Scheduled task was not found or could not be read"
+        } else {
+            "Scheduled task audit failed"
+        }
     }
     return $audit
 }
@@ -285,7 +295,8 @@ $preflightOk =
     $null -ne $preflightPayload -and
     $preflightPayload.control_plane.ok -eq $true -and
     $preflightPayload.operations_readiness.ok -eq $true -and
-    $preflightPayload.evidence_integrity.ok -eq $true
+    $preflightPayload.evidence_integrity.ok -eq $true -and
+    $preflightPayload.agent_gate_observation.ok -eq $true
 $baseResult.preflight = [ordered]@{
     ok = $preflightOk
     exit_code = $preflightExitCode
@@ -293,6 +304,7 @@ $baseResult.preflight = [ordered]@{
     control_plane_ok = $null -ne $preflightPayload -and $preflightPayload.control_plane.ok -eq $true
     operations_readiness_ok = $null -ne $preflightPayload -and $preflightPayload.operations_readiness.ok -eq $true
     evidence_integrity_ok = $null -ne $preflightPayload -and $preflightPayload.evidence_integrity.ok -eq $true
+    agent_gate_observation_ok = $null -ne $preflightPayload -and $preflightPayload.agent_gate_observation.ok -eq $true
     error = $(if ($preflightOk) { $null } else { "Control-plane-only health preflight did not pass" })
 }
 if (-not $preflightOk) {

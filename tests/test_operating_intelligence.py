@@ -8,6 +8,7 @@ from apps.control_plane.operating_intelligence import (
     METRIC_REGISTRY,
     OperatingIntelligenceService,
 )
+from apps.control_plane.security import Principal
 from apps.control_plane.sql_repository import Base
 
 
@@ -65,10 +66,26 @@ def service() -> tuple[OperatingIntelligenceService, FakeProfitLedger, FakeEvide
     )
 
 
+def scope():
+    return {
+        "principal": Principal(
+            actor_id="monitor-1",
+            roles=frozenset({"monitor"}),
+            tenant_ref="tenant-cn-1",
+            store_refs=frozenset({"ozon-primary"}),
+        ),
+        "entity_scope": {
+            "status": "ready",
+            "entity_ref": "entity-cn-1",
+            "authority_sha256": "a" * 64,
+        },
+    }
+
+
 def test_registry_is_versioned_server_owned_and_enforces_minimum_samples():
     intelligence, _, _ = service()
 
-    payload = intelligence.metrics()
+    payload = intelligence.metrics(**scope())
 
     assert len(payload["metrics"]) == len(METRIC_REGISTRY) == 8
     assert payload["registry_version"] == "operating-metrics/1.0.0"
@@ -84,6 +101,26 @@ def test_registry_is_versioned_server_owned_and_enforces_minimum_samples():
     assert returns["data_status"] == "no_data"
 
 
+def test_missing_scope_does_not_read_profit_or_persist_anomaly_tasks():
+    intelligence, ledger, _ = service()
+
+    metrics = intelligence.metrics()
+    scan = intelligence.scan(
+        store_ref="ozon-primary",
+        actor_id="monitor-1",
+        as_of="2026-07-26T08:00:00+00:00",
+    )
+
+    assert metrics["scope_status"] == "no_data"
+    assert all(item["data_status"] == "no_data" for item in metrics["metrics"])
+    assert scan["status"] == "no_data"
+    assert scan["persisted"] is False
+    assert scan["id"] is None
+    assert intelligence.scans() == []
+    assert intelligence.tasks() == []
+    assert ledger.read_count == 0
+
+
 def test_scan_deduplicates_inside_cooldown_and_creates_no_business_action():
     intelligence, ledger, _ = service()
 
@@ -91,11 +128,13 @@ def test_scan_deduplicates_inside_cooldown_and_creates_no_business_action():
         store_ref="ozon-primary",
         actor_id="monitor-1",
         as_of="2026-07-26T08:00:00+00:00",
+        **scope(),
     )
     second = intelligence.scan(
         store_ref="ozon-primary",
         actor_id="monitor-1",
         as_of="2026-07-26T08:01:00+00:00",
+        **scope(),
     )
 
     created = [item for item in first["results"] if item["status"] == "task_created"]
@@ -118,6 +157,7 @@ def test_task_lifecycle_requires_reason_and_evidence_for_resolution():
         store_ref="ozon-primary",
         actor_id="monitor-1",
         as_of="2026-07-26T08:00:00+00:00",
+        **scope(),
     )
     task_id = next(
         item["task_id"]

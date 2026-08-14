@@ -1,0 +1,15 @@
+{
+  "registry_id": "seller-strategy-packs-cn-ozon",
+  "contract_version": "seller-strategy-pack-registry/2.0.0",
+  "history_semantics": "append_only_version_artifacts_with_non_overlapping_effective_intervals",
+  "versions": [
+    {
+      "version": "2026.07.27.1",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "artifact_path": "seller_strategy_packs/2026.07.27.1.json",
+      "artifact_sha256": "4c5687557cac2c0d5e50b7e2de05f72c56474375ce57c5256eba402d9d4c89ea",
+      "commercial_status": "hypothesis_internal_preview_not_for_sale"
+    }
+  ]
+}

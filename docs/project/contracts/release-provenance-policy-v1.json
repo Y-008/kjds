@@ -1,0 +1,55 @@
+{
+  "contract_id": "kjds-release-provenance-policy-v1",
+  "standards": {
+    "slsa": {
+      "version": "1.2",
+      "predicate_type": "https://slsa.dev/provenance/v1",
+      "maximum_claimed_build_level": "L1",
+      "reason": "KJDS has no approved hosted release signer or hardened release builder yet."
+    },
+    "cyclonedx": {
+      "version": "1.7",
+      "schema_path": "docs/project/contracts/cyclonedx-bom-1.7.schema.json",
+      "schema_source": "https://cyclonedx.org/schema/bom-1.7.schema.json",
+      "schema_file_sha256": "71152f97948eeeca2fd4a1434a9d29aab35d377be11828b504d029dfeeb1925a"
+    }
+  },
+  "builder": {
+    "local_g1_id": "https://kjds.local/builders/g1/v1",
+    "hosted_release_id": null
+  },
+  "subjects": {
+    "api_image": "kjds-api:latest",
+    "postgres_image": "postgres:17-alpine",
+    "minimum_postgres_version": "17.10",
+    "required_api_labels": [
+      "org.opencontainers.image.revision",
+      "io.kjds.migration.head",
+      "io.kjds.release.provenance.contract"
+    ]
+  },
+  "signers": {
+    "g1_ephemeral": {
+      "key_id": "kjds-g1-ephemeral-ed25519",
+      "deployment_allowed": false,
+      "private_key_retained": false
+    },
+    "hosted_release": {
+      "state": "UNKNOWN",
+      "key_id": null,
+      "public_key_sha256": null,
+      "deployment_allowed": false
+    }
+  },
+  "deployment_policy": {
+    "default_status": "not_for_deployment",
+    "require_hosted_release_signer": true,
+    "require_exact_subject_digests": true,
+    "require_exact_builder_identity": true,
+    "require_cyclonedx_schema_validation": true,
+    "require_secret_free_boms": true,
+    "business_truth_gate_promoted": false,
+    "formal_fact_created": false,
+    "external_write_allowed": false
+  }
+}

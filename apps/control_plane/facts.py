@@ -7,7 +7,17 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint, select
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    select,
+    text,
+)
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
@@ -20,8 +30,90 @@ from .sql_repository import Base, ProductRow
 class FactRecordRow(Base):
     __tablename__ = "fact_records"
     __table_args__ = (
-        UniqueConstraint("import_row_id", "contract_version", name="uq_fact_import_contract"),
-        UniqueConstraint("source", "fact_type", "natural_key", "payload_hash", name="uq_fact_source_payload"),
+        CheckConstraint(
+            "("
+            "tenant_ref IS NULL AND entity_ref IS NULL AND store_ref IS NULL "
+            "AND scope_grant_authority_sha256 IS NULL "
+            "AND source_evidence_sha256 IS NULL AND scope_as_of IS NULL"
+            ") OR ("
+            "tenant_ref IS NOT NULL AND length(tenant_ref) > 0 "
+            "AND entity_ref IS NOT NULL AND length(entity_ref) > 0 "
+            "AND store_ref IS NOT NULL AND length(store_ref) > 0 "
+            "AND scope_grant_authority_sha256 IS NOT NULL "
+            "AND length(scope_grant_authority_sha256) = 64 "
+            "AND source_evidence_sha256 IS NOT NULL "
+            "AND length(source_evidence_sha256) = 64 "
+            "AND scope_as_of IS NOT NULL"
+            ")",
+            name="ck_fact_record_scope_complete",
+        ),
+        Index(
+            "uq_fact_legacy_import_contract",
+            "import_row_id",
+            "contract_version",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NULL"),
+            postgresql_where=text("tenant_ref IS NULL"),
+        ),
+        Index(
+            "uq_fact_legacy_source_payload",
+            "source",
+            "fact_type",
+            "natural_key",
+            "payload_hash",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NULL"),
+            postgresql_where=text("tenant_ref IS NULL"),
+        ),
+        Index(
+            "uq_fact_scoped_import_contract",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "import_row_id",
+            "contract_version",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NOT NULL"),
+            postgresql_where=text("tenant_ref IS NOT NULL"),
+        ),
+        Index(
+            "uq_fact_scoped_source_payload",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "source",
+            "fact_type",
+            "natural_key",
+            "payload_hash",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NOT NULL"),
+            postgresql_where=text("tenant_ref IS NOT NULL"),
+        ),
+        Index(
+            "ix_fact_scope_recorded",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "recorded_at",
+        ),
+        Index(
+            "ix_fact_scope_inventory_product_effective",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "product_id",
+            "effective_at",
+            "recorded_at",
+            sqlite_where=text(
+                "tenant_ref IS NOT NULL "
+                "AND fact_type = 'ozon_inventory'"
+            ),
+            postgresql_where=text(
+                "tenant_ref IS NOT NULL "
+                "AND fact_type = 'ozon_inventory'"
+            ),
+        ),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -38,10 +130,61 @@ class FactRecordRow(Base):
     product_id: Mapped[str | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     resolution_status: Mapped[str] = mapped_column(String, nullable=False)
     created_by: Mapped[str] = mapped_column(String, nullable=False)
+    tenant_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    entity_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    store_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    scope_grant_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    source_evidence_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    scope_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class PromotionRunRow(Base):
     __tablename__ = "promotion_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "("
+            "tenant_ref IS NULL AND entity_ref IS NULL AND store_ref IS NULL "
+            "AND scope_grant_authority_sha256 IS NULL "
+            "AND source_evidence_sha256 IS NULL AND scope_as_of IS NULL "
+            "AND request_sha256 IS NULL"
+            ") OR ("
+            "tenant_ref IS NOT NULL AND length(tenant_ref) > 0 "
+            "AND entity_ref IS NOT NULL AND length(entity_ref) > 0 "
+            "AND store_ref IS NOT NULL AND length(store_ref) > 0 "
+            "AND scope_grant_authority_sha256 IS NOT NULL "
+            "AND length(scope_grant_authority_sha256) = 64 "
+            "AND source_evidence_sha256 IS NOT NULL "
+            "AND length(source_evidence_sha256) = 64 "
+            "AND scope_as_of IS NOT NULL "
+            "AND request_sha256 IS NOT NULL "
+            "AND length(request_sha256) = 64"
+            ")",
+            name="ck_promotion_run_scope_complete",
+        ),
+        Index(
+            "uq_promotion_run_scoped_request",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "request_sha256",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NOT NULL"),
+            postgresql_where=text("tenant_ref IS NOT NULL"),
+        ),
+        Index(
+            "ix_promotion_run_scope_created",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "created_at",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     import_id: Mapped[str] = mapped_column(ForeignKey("import_jobs.id"), nullable=False)
@@ -51,6 +194,19 @@ class PromotionRunRow(Base):
     errors_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     created_by: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    tenant_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    entity_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    store_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    scope_grant_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    source_evidence_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    scope_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    request_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +288,7 @@ class FactPromotionService:
                 fact_key = natural_key(record_type, payload)
                 existing = session.scalar(
                     select(FactRecordRow).where(
+                        FactRecordRow.tenant_ref.is_(None),
                         (FactRecordRow.import_row_id == row.id)
                         | (
                             (FactRecordRow.source == job.source)
@@ -227,12 +384,14 @@ class FactPromotionService:
     def get(self, fact_id: str) -> FactRecord:
         with Session(self.engine) as session:
             row = session.get(FactRecordRow, fact_id)
-            if row is None:
+            if row is None or row.tenant_ref is not None:
                 raise KeyError(f"Unknown fact: {fact_id}")
             return self._fact(row)
 
     def list(self, *, fact_type: str | None = None, limit: int = 100) -> list[FactRecord]:
-        query = select(FactRecordRow)
+        query = select(FactRecordRow).where(
+            FactRecordRow.tenant_ref.is_(None)
+        )
         if fact_type:
             query = query.where(FactRecordRow.fact_type == fact_type)
         query = query.order_by(FactRecordRow.recorded_at.desc(), FactRecordRow.id).limit(limit)

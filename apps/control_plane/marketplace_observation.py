@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -9,14 +10,20 @@ from urllib.parse import urlparse
 
 from sqlalchemy import (
     JSON,
+    Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    and_,
+    or_,
     select,
+    text,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -25,13 +32,14 @@ from .domain import new_id
 from .evidence import EvidenceGrade
 from .sql_repository import Base
 
-OBSERVATION_CONTRACT_VERSION = "marketplace-observation/1.0.0"
+OBSERVATION_CONTRACT_VERSION = "marketplace-observation/1.3.0"
 PILOT_CONTRACT_VERSION = "portfolio-pilot/1.0.0"
 OBSERVATION_SOURCE = "marketplace-observation"
 SOURCE_PROFILES = {
     "browser_observation",
     "seller_tool_export",
     "manual_verified_public_page",
+    "public_search_index_observation",
 }
 MARKETPLACES = {"1688", "ozon"}
 PRICE_KINDS = {
@@ -40,8 +48,66 @@ PRICE_KINDS = {
     "member_price",
     "range_minimum",
     "marketplace_listing_price",
+    "observed_checkout_price",
+}
+PRICE_SCOPES = {"unit_price", "checkout_total"}
+MEDIA_RIGHTS_STATUSES = {
+    "unverified_external_reference",
+    "supplier_authorized",
+    "owned",
+    "licensed",
 }
 MONEY = Decimal("0.01")
+UNRESOLVED_IDENTITY_VALUES = frozenset(
+    {
+        "unknown",
+        "unspecified",
+        "unverified",
+        "pending",
+        "pending_confirmation",
+        "not_confirmed",
+        "n/a",
+        "na",
+        "null",
+        "none",
+        "未知",
+        "未确认",
+        "待确认",
+        "不详",
+    }
+)
+EXACT_IDENTITY_REQUIRED_FIELDS: dict[str, frozenset[str]] = {
+    "under_desk_cable_tray": frozenset(
+        {
+            "product_type",
+            "quantity",
+            "construction",
+            "mounting",
+            "length",
+            "width",
+            "height",
+            "color",
+        }
+    ),
+}
+
+
+def exact_identity_complete(
+    product_identity: dict[str, Any] | None,
+    variant_key: str | None,
+) -> bool:
+    """Return true only when identity and variant contain no placeholders."""
+    if not product_identity or not variant_key:
+        return False
+    product_type = str(product_identity.get("product_type") or "").strip()
+    required_fields = EXACT_IDENTITY_REQUIRED_FIELDS.get(product_type)
+    if required_fields and not required_fields.issubset(product_identity):
+        return False
+    values = [*product_identity.keys(), *product_identity.values(), variant_key]
+    return all(
+        str(value).strip().lower() not in UNRESOLVED_IDENTITY_VALUES
+        for value in values
+    )
 
 SCREENING_POLICIES: dict[str, dict[str, Any]] = {
     "ozon-cny-research-screening-v1": {
@@ -85,10 +151,48 @@ SCREENING_POLICIES: dict[str, dict[str, Any]] = {
 class MarketplaceObservationSnapshotRow(Base):
     __tablename__ = "marketplace_observation_snapshots"
     __table_args__ = (
-        UniqueConstraint(
+        CheckConstraint(
+            "("
+            "tenant_ref IS NULL AND entity_ref IS NULL "
+            "AND scope_grant_authority_sha256 IS NULL "
+            "AND scope_as_of IS NULL AND adapter_id IS NULL "
+            "AND adapter_version IS NULL "
+            "AND adapter_contract_sha256 IS NULL "
+            "AND source_grade IS NULL "
+            "AND semantic_authority IS NULL "
+            "AND source_evidence_ids_json IS NULL"
+            ") OR ("
+            "tenant_ref IS NOT NULL AND entity_ref IS NOT NULL "
+            "AND scope_grant_authority_sha256 IS NOT NULL "
+            "AND length(scope_grant_authority_sha256) = 64 "
+            "AND scope_as_of IS NOT NULL AND adapter_id IS NOT NULL "
+            "AND adapter_version IS NOT NULL "
+            "AND adapter_contract_sha256 IS NOT NULL "
+            "AND length(adapter_contract_sha256) = 64 "
+            "AND source_grade IN ('A','B','C','D') "
+            "AND semantic_authority IS NOT NULL "
+            "AND source_evidence_ids_json IS NOT NULL"
+            ")",
+            name="ck_marketplace_observation_scope_adapter_complete",
+        ),
+        Index(
+            "uq_marketplace_observation_legacy_idempotency",
             "source_profile",
             "idempotency_key",
-            name="uq_marketplace_observation_idempotency",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NULL"),
+            postgresql_where=text("tenant_ref IS NULL"),
+        ),
+        Index(
+            "uq_marketplace_observation_scoped_idempotency",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "source_profile",
+            "idempotency_key",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NOT NULL"),
+            postgresql_where=text("tenant_ref IS NOT NULL"),
         ),
     )
 
@@ -111,6 +215,36 @@ class MarketplaceObservationSnapshotRow(Base):
         DateTime(timezone=True), nullable=False
     )
     item_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    tenant_ref: Mapped[str | None] = mapped_column(
+        String(160), nullable=True
+    )
+    entity_ref: Mapped[str | None] = mapped_column(
+        String(160), nullable=True
+    )
+    scope_grant_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    scope_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    adapter_id: Mapped[str | None] = mapped_column(
+        String(160), nullable=True
+    )
+    adapter_version: Mapped[str | None] = mapped_column(
+        String(80), nullable=True
+    )
+    adapter_contract_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    source_grade: Mapped[str | None] = mapped_column(
+        String(1), nullable=True
+    )
+    semantic_authority: Mapped[str | None] = mapped_column(
+        String(160), nullable=True
+    )
+    source_evidence_ids_json: Mapped[list[str] | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
 
 
 class MarketplaceObservationItemRow(Base):
@@ -120,6 +254,23 @@ class MarketplaceObservationItemRow(Base):
             "snapshot_id",
             "fingerprint",
             name="uq_marketplace_observation_item_fingerprint",
+        ),
+        CheckConstraint(
+            "price_scope IN ('unit_price','checkout_total')",
+            name="ck_marketplace_observation_price_scope",
+        ),
+        CheckConstraint(
+            "unit_price_decimal > 0",
+            name="ck_marketplace_observation_unit_price_positive",
+        ),
+        CheckConstraint(
+            "(price_scope = 'unit_price' AND "
+            "unit_price_decimal = displayed_price_decimal) OR "
+            "(price_scope = 'checkout_total' AND "
+            "observed_quantity IS NOT NULL AND "
+            "abs(unit_price_decimal * observed_quantity - "
+            "displayed_price_decimal) <= 0.000001)",
+            name="ck_marketplace_observation_unit_price_semantics",
         ),
     )
 
@@ -135,6 +286,12 @@ class MarketplaceObservationItemRow(Base):
     variant_key: Mapped[str] = mapped_column(String, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     displayed_price_decimal: Mapped[Decimal] = mapped_column(
+        Numeric(38, 12), nullable=False
+    )
+    price_scope: Mapped[str] = mapped_column(
+        String, nullable=False, default="unit_price"
+    )
+    unit_price_decimal: Mapped[Decimal] = mapped_column(
         Numeric(38, 12), nullable=False
     )
     price_kind: Mapped[str] = mapped_column(String, nullable=False)
@@ -158,6 +315,42 @@ class MarketplaceObservationItemRow(Base):
     evidence_id: Mapped[str] = mapped_column(
         ForeignKey("evidence_records.id"), nullable=False
     )
+    candidate_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    product_identity_json: Mapped[dict[str, str]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    observed_quantity: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    checkout_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    tax_included: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    domestic_freight_included: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    purchase_available: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    confidence_decimal: Mapped[Decimal] = mapped_column(
+        Numeric(8, 6), nullable=False, default=Decimal("0.5")
+    )
+    market_signals_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    supply_signals_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+    media_rights_status: Mapped[str] = mapped_column(
+        String, nullable=False, default="unverified_external_reference"
+    )
+    experiment_readbacks_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -172,6 +365,21 @@ def _canonical_json(value: Any) -> bytes:
 
 def _sha256(value: Any) -> str:
     return hashlib.sha256(_canonical_json(value)).hexdigest()
+
+
+def exact_candidate_key(
+    product_identity: dict[str, Any] | None,
+    variant_key: str | None,
+) -> str | None:
+    """Return the one canonical exact identity+variant cohort key."""
+    if not exact_identity_complete(product_identity, variant_key):
+        return None
+    return _sha256(
+        {
+            "product_identity": product_identity,
+            "variant_key": variant_key,
+        }
+    )
 
 
 def _required_text(value: Any, field: str, *, max_length: int) -> str:
@@ -210,6 +418,27 @@ def _url(value: Any, field: str) -> str:
     return text
 
 
+def _adapter_url(
+    value: str,
+    *,
+    adapter: dict[str, Any],
+    field: str,
+) -> None:
+    host = (urlparse(value).hostname or "").lower().rstrip(".")
+    allowed = {
+        str(item).strip().lower().rstrip(".")
+        for item in adapter.get("allowed_hosts", [])
+        if str(item).strip()
+    }
+    if not allowed or not any(
+        host == suffix or host.endswith(f".{suffix}")
+        for suffix in allowed
+    ):
+        raise ValueError(
+            f"{field} host is outside the frozen source adapter"
+        )
+
+
 def _currency(value: Any) -> str:
     currency = str(value or "").strip().upper()
     if (
@@ -241,6 +470,23 @@ def _iso(value: datetime) -> str:
     return value.astimezone(UTC).isoformat()
 
 
+def _bounded_json_object(
+    value: Any,
+    field: str,
+    *,
+    max_keys: int = 80,
+    max_bytes: int = 20_000,
+) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or len(value) > max_keys:
+        raise ValueError(f"{field} must be an object with at most {max_keys} keys")
+    normalized = json.loads(json.dumps(value, ensure_ascii=False, default=str))
+    if len(_canonical_json(normalized)) > max_bytes:
+        raise ValueError(f"{field} exceeds {max_bytes} bytes")
+    return normalized
+
+
 class MarketplaceObservationWorkspace:
     """Capture research observations without promoting price or product facts."""
 
@@ -253,6 +499,8 @@ class MarketplaceObservationWorkspace:
         request: dict[str, Any],
         *,
         actor_id: str,
+        scope_authority: dict[str, Any] | None = None,
+        source_contract: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         actor = _required_text(actor_id, "actor_id", max_length=160)
         if request.get("confirmed") is not True:
@@ -276,7 +524,84 @@ class MarketplaceObservationWorkspace:
             "store_ref",
             max_length=160,
         )
+        if (scope_authority is None) != (source_contract is None):
+            raise ValueError(
+                "Scoped observation requires both scope and source authority"
+            )
+        scoped = scope_authority is not None
+        scope: dict[str, Any] | None = None
+        adapter: dict[str, Any] | None = None
+        adapter_contract_sha256: str | None = None
+        if scoped:
+            assert scope_authority is not None
+            assert source_contract is not None
+            scope = {
+                "tenant_ref": _required_text(
+                    scope_authority.get("tenant_ref"),
+                    "scope.tenant_ref",
+                    max_length=160,
+                ),
+                "entity_ref": _required_text(
+                    scope_authority.get("entity_ref"),
+                    "scope.entity_ref",
+                    max_length=160,
+                ),
+                "store_ref": _required_text(
+                    scope_authority.get("store_ref"),
+                    "scope.store_ref",
+                    max_length=160,
+                ),
+                "scope_grant_authority_sha256": _required_text(
+                    scope_authority.get(
+                        "scope_grant_authority_sha256"
+                    ),
+                    "scope.scope_grant_authority_sha256",
+                    max_length=64,
+                ),
+                "scope_as_of": _iso(
+                    _timestamp(
+                        scope_authority.get("scope_as_of"),
+                        "scope.scope_as_of",
+                    )
+                ),
+            }
+            if (
+                len(scope["scope_grant_authority_sha256"]) != 64
+                or scope["store_ref"] != store_ref
+            ):
+                raise ValueError(
+                    "Observation scope authority does not match request"
+                )
+            adapter = source_contract.get("adapter")
+            if not isinstance(adapter, dict):
+                raise ValueError("Observation source adapter is required")
+            if (
+                source_contract.get("capture_allowed") is not True
+                or source_contract.get("external_write_allowed") is not False
+                or source_profile
+                not in adapter.get("observation_profiles", [])
+                or marketplace not in adapter.get("marketplaces", [])
+                or adapter.get("status") != "implemented"
+            ):
+                raise ValueError(
+                    "Observation source adapter does not authorize capture"
+                )
+            adapter_contract_sha256 = _required_text(
+                source_contract.get("adapter_contract_sha256"),
+                "adapter_contract_sha256",
+                max_length=64,
+            )
+            if len(adapter_contract_sha256) != 64:
+                raise ValueError(
+                    "adapter_contract_sha256 must be SHA-256"
+                )
         source_url = _url(request.get("source_url"), "source_url")
+        if adapter is not None:
+            _adapter_url(
+                source_url,
+                adapter=adapter,
+                field="source_url",
+            )
         observed_at = _timestamp(request.get("observed_at"), "observed_at")
         idempotency_key = _required_text(
             request.get("idempotency_key"),
@@ -295,6 +620,12 @@ class MarketplaceObservationWorkspace:
             item_source_url = _url(
                 raw.get("source_url") or source_url, "item.source_url"
             )
+            if adapter is not None:
+                _adapter_url(
+                    item_source_url,
+                    adapter=adapter,
+                    field="item.source_url",
+                )
             price_kind = _required_text(
                 raw.get("price_kind"), "price_kind", max_length=80
             )
@@ -313,7 +644,78 @@ class MarketplaceObservationWorkspace:
             moq = int(moq_value) if moq_value is not None else None
             if moq is not None and moq < 1:
                 raise ValueError("min_order_quantity must be positive")
+            product_identity = {
+                _required_text(key, "product identity key", max_length=100):
+                _required_text(value, "product identity value", max_length=500)
+                for key, value in _bounded_json_object(
+                    raw.get("product_identity"),
+                    "product_identity",
+                    max_keys=40,
+                ).items()
+            }
+            variant_key = _required_text(
+                raw.get("variant_key"), "variant_key", max_length=500
+            )
+            identity_complete = exact_identity_complete(
+                product_identity, variant_key
+            )
+            candidate_key = exact_candidate_key(
+                product_identity,
+                variant_key,
+            )
+            observed_quantity_value = raw.get("observed_quantity")
+            observed_quantity = (
+                int(observed_quantity_value)
+                if observed_quantity_value is not None
+                else None
+            )
+            if observed_quantity is not None and observed_quantity < 1:
+                raise ValueError("observed_quantity must be positive")
+            raw_price_scope = raw.get("price_scope")
+            if (
+                price_kind == "observed_checkout_price"
+                and raw_price_scope is None
+            ):
+                raise ValueError(
+                    "observed_checkout_price requires explicit price_scope"
+                )
+            price_scope = str(raw_price_scope or "unit_price").strip()
+            if price_scope not in PRICE_SCOPES:
+                raise ValueError(
+                    "price_scope must be unit_price or checkout_total"
+                )
+            displayed_price = _positive_decimal(
+                raw.get("displayed_price"), "displayed_price"
+            )
+            if price_scope == "checkout_total":
+                if observed_quantity is None:
+                    raise ValueError(
+                        "checkout_total requires observed_quantity"
+                    )
+                unit_price = displayed_price / Decimal(observed_quantity)
+            else:
+                unit_price = displayed_price
+            checkout_verified = raw.get("checkout_verified") is True
+            purchase_available = raw.get("purchase_available") is True
+            tax_included = raw.get("tax_included")
+            domestic_freight_included = raw.get(
+                "domestic_freight_included"
+            )
+            confidence = _positive_decimal(
+                raw.get("confidence", "0.5"), "confidence"
+            )
+            if confidence > 1:
+                raise ValueError("confidence must be greater than 0 and at most 1")
+            media_rights_status = _required_text(
+                raw.get("media_rights_status")
+                or "unverified_external_reference",
+                "media_rights_status",
+                max_length=80,
+            )
+            if media_rights_status not in MEDIA_RIGHTS_STATUSES:
+                raise ValueError("Unknown media_rights_status")
             natural_key = {
+                "store_ref": store_ref,
                 "marketplace": marketplace,
                 "supplier_ref": _required_text(
                     raw.get("supplier_ref"), "supplier_ref", max_length=240
@@ -323,9 +725,7 @@ class MarketplaceObservationWorkspace:
                     "external_item_id",
                     max_length=240,
                 ),
-                "variant_key": _required_text(
-                    raw.get("variant_key"), "variant_key", max_length=500
-                ),
+                "variant_key": variant_key,
             }
             fingerprint = _sha256(natural_key)
             if fingerprint in fingerprints:
@@ -340,14 +740,41 @@ class MarketplaceObservationWorkspace:
                     raw.get("title"), "title", max_length=2000
                 ),
                 "currency": _currency(raw.get("currency")),
-                "displayed_price": format(
-                    _positive_decimal(
-                        raw.get("displayed_price"), "displayed_price"
-                    ),
-                    "f",
+                "displayed_price": format(displayed_price, "f"),
+                "price_scope": price_scope,
+                "unit_price": format(unit_price, "f"),
+                "price_contract": (
+                    "displayed_price_scope_and_server_derived_unit_price/v1"
                 ),
                 "price_kind": price_kind,
                 "min_order_quantity": moq,
+                "candidate_key": candidate_key,
+                "product_identity": product_identity,
+                "identity_resolution_status": (
+                    "exact" if identity_complete else "unresolved"
+                ),
+                "observed_quantity": observed_quantity,
+                "checkout_verified": checkout_verified,
+                "tax_included": tax_included,
+                "domestic_freight_included": (
+                    domestic_freight_included
+                ),
+                "purchase_available": purchase_available,
+                "confidence": format(confidence, "f"),
+                "market_signals": _bounded_json_object(
+                    raw.get("market_signals"),
+                    "market_signals",
+                ),
+                "supply_signals": _bounded_json_object(
+                    raw.get("supply_signals"),
+                    "supply_signals",
+                ),
+                "media_rights_status": media_rights_status,
+                "experiment_readbacks": _bounded_json_object(
+                    raw.get("experiment_readbacks"),
+                    "experiment_readbacks",
+                    max_keys=20,
+                ),
                 "availability": _required_text(
                     raw.get("availability") or "unknown",
                     "availability",
@@ -366,6 +793,28 @@ class MarketplaceObservationWorkspace:
                 ),
                 "source_url": item_source_url,
             }
+            if price_kind == "observed_checkout_price":
+                if marketplace != "1688":
+                    raise ValueError(
+                        "observed_checkout_price is only supported for 1688"
+                    )
+                if (
+                    not identity_complete
+                    or observed_quantity is None
+                    or not checkout_verified
+                    or not purchase_available
+                    or tax_included is None
+                    or domestic_freight_included is None
+                ):
+                    raise ValueError(
+                        "observed_checkout_price requires exact identity, "
+                        "quantity, checkout verification, purchasability, "
+                        "and explicit tax/freight boundaries"
+                    )
+                if moq is not None and observed_quantity < moq:
+                    raise ValueError(
+                        "observed checkout quantity cannot be below MOQ"
+                    )
             item["item_sha256"] = _sha256(item)
             normalized_items.append(item)
         normalized_items.sort(key=lambda item: item["fingerprint"])
@@ -383,6 +832,17 @@ class MarketplaceObservationWorkspace:
                 "capture_note",
                 max_length=4000,
             ),
+            "scope_authority": scope,
+            "source_adapter": (
+                {
+                    **adapter,
+                    "adapter_contract_sha256": adapter_contract_sha256,
+                    "source_grade": adapter["max_source_grade"],
+                    "source_evidence_ids": [],
+                }
+                if adapter is not None
+                else None
+            ),
             "items": normalized_items,
             "control_envelope": {
                 "formal_fact_promoted": False,
@@ -397,8 +857,20 @@ class MarketplaceObservationWorkspace:
             filename=f"marketplace-observation-{idempotency_key}.json",
             content_type="application/json",
             source=OBSERVATION_SOURCE,
-            source_ref=f"{source_profile}:{idempotency_key}",
-            grade=EvidenceGrade.C,
+            source_ref=(
+                (
+                    f"{scope['tenant_ref']}:{scope['entity_ref']}:"
+                    f"{scope['store_ref']}:{source_profile}:"
+                    f"{idempotency_key}"
+                )
+                if scope
+                else f"{source_profile}:{idempotency_key}"
+            ),
+            grade=(
+                EvidenceGrade(adapter["max_source_grade"])
+                if adapter is not None
+                else EvidenceGrade.C
+            ),
             effective_at=_iso(observed_at),
             effective_until=None,
             created_by=actor,
@@ -410,6 +882,25 @@ class MarketplaceObservationWorkspace:
                 "source_url": source_url,
                 "formal_fact_promoted": False,
                 "price_authority": "research_only",
+                "tenant_ref": scope["tenant_ref"] if scope else None,
+                "entity_ref": scope["entity_ref"] if scope else None,
+                "scope_grant_authority_sha256": (
+                    scope["scope_grant_authority_sha256"]
+                    if scope
+                    else None
+                ),
+                "adapter_id": (
+                    adapter["adapter_id"] if adapter else None
+                ),
+                "adapter_contract_sha256": adapter_contract_sha256,
+                "semantic_authority": (
+                    adapter["semantic_authority"] if adapter else None
+                ),
+                "evidence_scope_status": (
+                    "pending_independent_binding"
+                    if scope
+                    else "legacy_unscoped"
+                ),
             },
         )
         snapshot_payload = {
@@ -423,14 +914,30 @@ class MarketplaceObservationWorkspace:
             with Session(
                 self.engine, expire_on_commit=False
             ) as session, session.begin():
-                existing = session.scalar(
-                    select(MarketplaceObservationSnapshotRow).where(
-                        MarketplaceObservationSnapshotRow.source_profile
-                        == source_profile,
-                        MarketplaceObservationSnapshotRow.idempotency_key
-                        == idempotency_key,
-                    )
+                existing_query = select(
+                    MarketplaceObservationSnapshotRow
+                ).where(
+                    MarketplaceObservationSnapshotRow.source_profile
+                    == source_profile,
+                    MarketplaceObservationSnapshotRow.idempotency_key
+                    == idempotency_key,
                 )
+                if scope is None:
+                    existing_query = existing_query.where(
+                        MarketplaceObservationSnapshotRow.tenant_ref.is_(
+                            None
+                        )
+                    )
+                else:
+                    existing_query = existing_query.where(
+                        MarketplaceObservationSnapshotRow.tenant_ref
+                        == scope["tenant_ref"],
+                        MarketplaceObservationSnapshotRow.entity_ref
+                        == scope["entity_ref"],
+                        MarketplaceObservationSnapshotRow.store_ref
+                        == scope["store_ref"],
+                    )
+                existing = session.scalar(existing_query)
                 if existing is not None:
                     if existing.snapshot_sha256 != snapshot_hash:
                         raise ValueError(
@@ -451,6 +958,43 @@ class MarketplaceObservationWorkspace:
                     captured_by=actor,
                     captured_at=captured_at,
                     item_count=len(normalized_items),
+                    tenant_ref=(
+                        scope["tenant_ref"] if scope else None
+                    ),
+                    entity_ref=(
+                        scope["entity_ref"] if scope else None
+                    ),
+                    scope_grant_authority_sha256=(
+                        scope["scope_grant_authority_sha256"]
+                        if scope
+                        else None
+                    ),
+                    scope_as_of=(
+                        _timestamp(
+                            scope["scope_as_of"],
+                            "scope.scope_as_of",
+                        )
+                        if scope
+                        else None
+                    ),
+                    adapter_id=(
+                        adapter["adapter_id"] if adapter else None
+                    ),
+                    adapter_version=(
+                        adapter["adapter_version"] if adapter else None
+                    ),
+                    adapter_contract_sha256=adapter_contract_sha256,
+                    source_grade=(
+                        adapter["max_source_grade"]
+                        if adapter
+                        else None
+                    ),
+                    semantic_authority=(
+                        adapter["semantic_authority"]
+                        if adapter
+                        else None
+                    ),
+                    source_evidence_ids_json=[] if scope else None,
                 )
                 session.add(snapshot)
                 # The rows intentionally do not expose an ORM relationship. Flush
@@ -472,6 +1016,8 @@ class MarketplaceObservationWorkspace:
                             displayed_price_decimal=Decimal(
                                 item["displayed_price"]
                             ),
+                            price_scope=item["price_scope"],
+                            unit_price_decimal=Decimal(item["unit_price"]),
                             price_kind=item["price_kind"],
                             min_order_quantity=item["min_order_quantity"],
                             availability=item["availability"],
@@ -481,20 +1027,52 @@ class MarketplaceObservationWorkspace:
                             source_url=item["source_url"],
                             observed_at=observed_at,
                             evidence_id=evidence_record.id,
+                            candidate_key=item["candidate_key"],
+                            product_identity_json=item["product_identity"],
+                            observed_quantity=item["observed_quantity"],
+                            checkout_verified=item["checkout_verified"],
+                            tax_included=item["tax_included"],
+                            domestic_freight_included=item[
+                                "domestic_freight_included"
+                            ],
+                            purchase_available=item["purchase_available"],
+                            confidence_decimal=Decimal(item["confidence"]),
+                            market_signals_json=item["market_signals"],
+                            supply_signals_json=item["supply_signals"],
+                            media_rights_status=item["media_rights_status"],
+                            experiment_readbacks_json=item[
+                                "experiment_readbacks"
+                            ],
                         )
                     )
                 session.flush()
                 result = self._snapshot(session, snapshot)
         except IntegrityError:
             with Session(self.engine) as session:
-                winner = session.scalar(
-                    select(MarketplaceObservationSnapshotRow).where(
-                        MarketplaceObservationSnapshotRow.source_profile
-                        == source_profile,
-                        MarketplaceObservationSnapshotRow.idempotency_key
-                        == idempotency_key,
-                    )
+                winner_query = select(
+                    MarketplaceObservationSnapshotRow
+                ).where(
+                    MarketplaceObservationSnapshotRow.source_profile
+                    == source_profile,
+                    MarketplaceObservationSnapshotRow.idempotency_key
+                    == idempotency_key,
                 )
+                if scope is None:
+                    winner_query = winner_query.where(
+                        MarketplaceObservationSnapshotRow.tenant_ref.is_(
+                            None
+                        )
+                    )
+                else:
+                    winner_query = winner_query.where(
+                        MarketplaceObservationSnapshotRow.tenant_ref
+                        == scope["tenant_ref"],
+                        MarketplaceObservationSnapshotRow.entity_ref
+                        == scope["entity_ref"],
+                        MarketplaceObservationSnapshotRow.store_ref
+                        == scope["store_ref"],
+                    )
+                winner = session.scalar(winner_query)
                 if winner is None:
                     raise
                 if winner.snapshot_sha256 != snapshot_hash:
@@ -518,6 +1096,10 @@ class MarketplaceObservationWorkspace:
         source_profile: str | None = None,
         target_product_id: str | None = None,
         limit: int = 200,
+        store_refs: set[str] | None = None,
+        tenant_ref: str | None = None,
+        entity_ref: str | None = None,
+        as_of: str | datetime | None = None,
     ) -> list[dict[str, Any]]:
         if not 1 <= limit <= 1000:
             raise ValueError("Marketplace observation limit must be 1 to 1000")
@@ -559,6 +1141,53 @@ class MarketplaceObservationWorkspace:
             query = query.where(
                 MarketplaceObservationItemRow.target_product_id == target
             )
+        if store_refs is not None:
+            normalized_stores = {
+                _required_text(value, "store_ref", max_length=160)
+                for value in store_refs
+            }
+            if not normalized_stores:
+                raise ValueError("Observation store scope cannot be empty")
+            query = query.where(
+                MarketplaceObservationSnapshotRow.store_ref.in_(
+                    normalized_stores
+                )
+            )
+        if (tenant_ref is None) != (entity_ref is None):
+            raise ValueError(
+                "Observation tenant/entity query scope must be complete"
+            )
+        if tenant_ref is not None and entity_ref is not None:
+            query = query.where(
+                or_(
+                    MarketplaceObservationSnapshotRow.tenant_ref.is_(
+                        None
+                    ),
+                    and_(
+                        MarketplaceObservationSnapshotRow.tenant_ref
+                        == _required_text(
+                            tenant_ref,
+                            "tenant_ref",
+                            max_length=160,
+                        ),
+                        MarketplaceObservationSnapshotRow.entity_ref
+                        == _required_text(
+                            entity_ref,
+                            "entity_ref",
+                            max_length=160,
+                        ),
+                    ),
+                )
+            )
+        if as_of is not None:
+            cutoff = (
+                as_of.astimezone(UTC)
+                if isinstance(as_of, datetime) and as_of.tzinfo is not None
+                else _timestamp(as_of, "as_of")
+            )
+            query = query.where(
+                MarketplaceObservationItemRow.observed_at <= cutoff
+            )
         with Session(self.engine) as session:
             rows = session.execute(query).all()
             latest_by_fingerprint: dict[str, dict[str, Any]] = {}
@@ -571,6 +1200,135 @@ class MarketplaceObservationWorkspace:
                 if len(latest_by_fingerprint) >= limit:
                     break
             return list(latest_by_fingerprint.values())
+
+    def page(
+        self,
+        *,
+        marketplace: str,
+        cursor: str | None = None,
+        page_size: int = 500,
+        store_refs: set[str] | None = None,
+        tenant_ref: str | None = None,
+        entity_ref: str | None = None,
+        as_of: str | datetime | None = None,
+    ) -> dict[str, Any]:
+        if marketplace not in MARKETPLACES:
+            raise ValueError("Unsupported marketplace observation marketplace")
+        if not 1 <= page_size <= 1000:
+            raise ValueError("Observation page_size must be 1 to 1000")
+        query = (
+            select(
+                MarketplaceObservationItemRow,
+                MarketplaceObservationSnapshotRow,
+            )
+            .join(
+                MarketplaceObservationSnapshotRow,
+                MarketplaceObservationSnapshotRow.id
+                == MarketplaceObservationItemRow.snapshot_id,
+            )
+            .where(
+                MarketplaceObservationSnapshotRow.marketplace == marketplace
+            )
+            .order_by(
+                MarketplaceObservationItemRow.observed_at.desc(),
+                MarketplaceObservationItemRow.id,
+            )
+            .limit(page_size)
+        )
+        if store_refs is not None:
+            normalized_stores = {
+                _required_text(value, "store_ref", max_length=160)
+                for value in store_refs
+            }
+            if not normalized_stores:
+                raise ValueError("Observation store scope cannot be empty")
+            query = query.where(
+                MarketplaceObservationSnapshotRow.store_ref.in_(
+                    normalized_stores
+                )
+            )
+        if (tenant_ref is None) != (entity_ref is None):
+            raise ValueError(
+                "Observation tenant/entity query scope must be complete"
+            )
+        if tenant_ref is not None and entity_ref is not None:
+            query = query.where(
+                or_(
+                    MarketplaceObservationSnapshotRow.tenant_ref.is_(
+                        None
+                    ),
+                    and_(
+                        MarketplaceObservationSnapshotRow.tenant_ref
+                        == _required_text(
+                            tenant_ref,
+                            "tenant_ref",
+                            max_length=160,
+                        ),
+                        MarketplaceObservationSnapshotRow.entity_ref
+                        == _required_text(
+                            entity_ref,
+                            "entity_ref",
+                            max_length=160,
+                        ),
+                    ),
+                )
+            )
+        if as_of is not None:
+            cutoff = (
+                as_of.astimezone(UTC)
+                if isinstance(as_of, datetime) and as_of.tzinfo is not None
+                else _timestamp(as_of, "as_of")
+            )
+            query = query.where(
+                MarketplaceObservationItemRow.observed_at <= cutoff
+            )
+        if cursor:
+            try:
+                payload = json.loads(
+                    urlsafe_b64decode(cursor.encode()).decode()
+                )
+                cursor_at = _timestamp(payload["observed_at"], "cursor")
+                cursor_id = _required_text(
+                    payload["item_id"], "cursor item_id", max_length=160
+                )
+            except Exception as exc:
+                raise ValueError("Observation cursor is invalid") from exc
+            query = query.where(
+                (
+                    MarketplaceObservationItemRow.observed_at
+                    < cursor_at
+                )
+                | (
+                    (
+                        MarketplaceObservationItemRow.observed_at
+                        == cursor_at
+                    )
+                    & (MarketplaceObservationItemRow.id > cursor_id)
+                )
+            )
+        with Session(self.engine) as session:
+            rows = session.execute(query).all()
+        items = [self._item(item, snapshot) for item, snapshot in rows]
+        next_cursor = None
+        if len(rows) == page_size:
+            last = rows[-1][0]
+            next_cursor = urlsafe_b64encode(
+                _canonical_json(
+                    {
+                        "observed_at": _iso(last.observed_at),
+                        "item_id": last.id,
+                    }
+                )
+            ).decode()
+        return {
+            "contract_version": OBSERVATION_CONTRACT_VERSION,
+            "marketplace": marketplace,
+            "items": items,
+            "page_size": page_size,
+            "next_cursor": next_cursor,
+            "cursor_contract": "observed_at_desc_item_id_asc_v1",
+            "store_scope": sorted(store_refs) if store_refs else None,
+        }
 
     @classmethod
     def _snapshot(
@@ -601,6 +1359,37 @@ class MarketplaceObservationWorkspace:
             "captured_by": row.captured_by,
             "captured_at": _iso(row.captured_at),
             "item_count": row.item_count,
+            "scope": {
+                "tenant_ref": row.tenant_ref,
+                "entity_ref": row.entity_ref,
+                "store_ref": row.store_ref,
+                "scope_grant_authority_sha256": (
+                    row.scope_grant_authority_sha256
+                ),
+                "scope_as_of": (
+                    _iso(row.scope_as_of) if row.scope_as_of else None
+                ),
+                "authority": (
+                    "native_observation_scope"
+                    if row.tenant_ref
+                    else "legacy_evidence_binding_required"
+                ),
+            },
+            "source_adapter": {
+                "adapter_id": row.adapter_id,
+                "adapter_version": row.adapter_version,
+                "adapter_contract_sha256": (
+                    row.adapter_contract_sha256
+                ),
+                "source_grade": row.source_grade,
+                "semantic_authority": row.semantic_authority,
+                "source_evidence_ids": (
+                    row.source_evidence_ids_json or []
+                ),
+                "status": (
+                    "frozen" if row.adapter_id else "legacy_no_adapter"
+                ),
+            },
             "items": [cls._item(item, row) for item in items],
             "formal_fact_promoted": False,
             "supplier_offer_created": False,
@@ -619,6 +1408,23 @@ class MarketplaceObservationWorkspace:
             "fingerprint": item.fingerprint,
             "item_sha256": item.item_sha256,
             "source_profile": snapshot.source_profile,
+            "tenant_ref": snapshot.tenant_ref,
+            "entity_ref": snapshot.entity_ref,
+            "scope_grant_authority_sha256": (
+                snapshot.scope_grant_authority_sha256
+            ),
+            "scope_as_of": (
+                _iso(snapshot.scope_as_of)
+                if snapshot.scope_as_of
+                else None
+            ),
+            "adapter_id": snapshot.adapter_id,
+            "adapter_version": snapshot.adapter_version,
+            "adapter_contract_sha256": (
+                snapshot.adapter_contract_sha256
+            ),
+            "source_grade": snapshot.source_grade,
+            "semantic_authority": snapshot.semantic_authority,
             "marketplace": snapshot.marketplace,
             "store_ref": snapshot.store_ref,
             "external_item_id": item.external_item_id,
@@ -630,6 +1436,11 @@ class MarketplaceObservationWorkspace:
                 _money(item.displayed_price_decimal),
                 "f",
             ),
+            "price_scope": item.price_scope,
+            "unit_price": format(_money(item.unit_price_decimal), "f"),
+            "price_contract": (
+                "displayed_price_scope_and_server_derived_unit_price/v1"
+            ),
             "price_kind": item.price_kind,
             "price_basis": "observed",
             "min_order_quantity": item.min_order_quantity,
@@ -640,6 +1451,33 @@ class MarketplaceObservationWorkspace:
             "source_url": item.source_url,
             "observed_at": _iso(item.observed_at),
             "evidence_id": item.evidence_id,
+            "candidate_key": (
+                item.candidate_key
+                if exact_identity_complete(
+                    item.product_identity_json, item.variant_key
+                )
+                else None
+            ),
+            "product_identity": item.product_identity_json,
+            "identity_resolution_status": (
+                "exact"
+                if exact_identity_complete(
+                    item.product_identity_json, item.variant_key
+                )
+                else "unresolved"
+            ),
+            "observed_quantity": item.observed_quantity,
+            "checkout_verified": item.checkout_verified,
+            "tax_included": item.tax_included,
+            "domestic_freight_included": (
+                item.domestic_freight_included
+            ),
+            "purchase_available": item.purchase_available,
+            "confidence": format(item.confidence_decimal, "f"),
+            "market_signals": item.market_signals_json,
+            "supply_signals": item.supply_signals_json,
+            "media_rights_status": item.media_rights_status,
+            "experiment_readbacks": item.experiment_readbacks_json,
             "formal_fact_promoted": False,
             "supplier_offer_created": False,
             "actual_cost_created": False,

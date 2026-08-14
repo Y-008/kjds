@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>KJDS 采集器</title>
+  <style>
+    body { width: 320px; font-family: "Microsoft YaHei", sans-serif; padding: 12px; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    .btn { width: 100%; padding: 10px; font-size: 14px; background: #1a7f37; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+    .btn:hover { background: #14652d; }
+    .row { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 13px; }
+    #status { margin-top: 10px; font-size: 12px; color: #333; word-break: break-all; max-height: 180px; overflow: auto; background: #f6f8fa; padding: 8px; border-radius: 6px; white-space: pre-wrap; }
+    .ok { color: #1a7f37; }
+    .err { color: #c62828; }
+  </style>
+</head>
+<body>
+  <h1>KJDS 跨境数据采集器</h1>
+  <button class="btn" id="capture">采集当前页面</button>
+  <div class="row">
+    <label><input type="checkbox" id="auto"> 自动采集打开的 1688/Ozon 页面</label>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="enhance" checked> 页面增强（Ozon 页显示 KJDS 数据卡）</label>
+  </div>
+  <div id="status">就绪。打开 1688 详情/货源页或 ozon.ru 搜索/商品页后点击采集。</div>
+  <script src="popup.js"></script>
+</body>
+</html>

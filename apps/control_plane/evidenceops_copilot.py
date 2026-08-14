@@ -5,6 +5,8 @@ import json
 import re
 from typing import Any
 
+from .security import Principal
+
 
 class EvidenceOpsCopilot:
     """Compile one business objective into an evidence-backed, read-only task contract."""
@@ -137,7 +139,15 @@ class EvidenceOpsCopilot:
         self.operating_analytics = operating_analytics
         self.operating_workbench = operating_workbench
 
-    def plan(self, *, objective: str, store_ref: str = "ozon-primary") -> dict[str, Any]:
+    def plan(
+        self,
+        *,
+        objective: str,
+        store_ref: str = "ozon-primary",
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        as_of: str | None = None,
+    ) -> dict[str, Any]:
         normalized_objective = self._normalize_text(objective)
         normalized_store_ref = store_ref.strip()
         if len(normalized_objective) < 3 or len(normalized_objective) > 1000:
@@ -145,8 +155,30 @@ class EvidenceOpsCopilot:
         if not normalized_store_ref or len(normalized_store_ref) > 160:
             raise ValueError("EvidenceOps store_ref must be 1 to 160 characters")
 
-        analytics = self.operating_analytics.snapshot(store_ref=normalized_store_ref)
-        workbench = self.operating_workbench.snapshot(limit=100)
+        context = (principal, entity_scope)
+        if any(value is not None for value in context) or as_of is not None:
+            if principal is None or entity_scope is None:
+                raise ValueError(
+                    "Scoped EvidenceOps requires principal and entity_scope"
+                )
+            analytics = self.operating_analytics.snapshot(
+                store_ref=normalized_store_ref,
+                principal=principal,
+                entity_scope=entity_scope,
+                as_of=as_of,
+            )
+            workbench = self.operating_workbench.snapshot(
+                limit=100,
+                principal=principal,
+                entity_scope=entity_scope,
+                store_ref=normalized_store_ref,
+                as_of=as_of,
+            )
+        else:
+            analytics = self.operating_analytics.snapshot(
+                store_ref=normalized_store_ref
+            )
+            workbench = self.operating_workbench.snapshot(limit=100)
         intent = self._interpret_intent(normalized_objective)
         missions = self._missions(
             analytics=analytics,

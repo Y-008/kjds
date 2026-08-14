@@ -33,6 +33,8 @@ from .sql_repository import Base
 
 CAUSAL_POLICY_HANDOFF = "causal_policy_handoff"
 APPROVED_LISTING_DRAFT = "approved_listing_draft"
+APPROVED_CUSTOMER_SERVICE_REPLY = "approved_customer_service_reply"
+APPROVED_CHANNEL_ACCOUNT_CHANGE = "approved_channel_account_change"
 MAX_OZON_RESPONSE_BODY_BYTES = 1024 * 1024
 
 
@@ -71,6 +73,44 @@ ADAPTERS = {
         "rollback_required": True,
         "command_delivery_supported": True,
     },
+    "kjds.channel-account.change.v1": {
+        "action_id": "channel_authorization_change",
+        "platform": "KJDS",
+        "policy_action": "govern_channel_account_change",
+        "operation": "channel_account.internal_plan",
+        "required_target_keys": ["platform", "account_ref", "adapter_id"],
+        "allowed_patch_keys": [
+            "reviewed_evidence_id",
+            "change_kind",
+            "requested_capabilities",
+            "previous_authorization_ref",
+        ],
+        "live_execution_supported": False,
+        "rollback_required": True,
+        "command_delivery_supported": False,
+    },
+    "ozon-seller-api-read": {
+        "action_id": "channel_authorization_grant",
+        "platform": "Ozon",
+        "policy_action": "govern_channel_authorization_grant",
+        "operation": "channel_account.authorization_granted",
+        "required_target_keys": [
+            "platform",
+            "account_ref",
+            "adapter_id",
+            "previous_authorization",
+            "previous_authorization_binding",
+            "proposed_authorization_sha256",
+            "input_sha256",
+        ],
+        "allowed_patch_keys": [
+            "output_sha256",
+            "authorization_changed",
+        ],
+        "live_execution_supported": False,
+        "rollback_required": True,
+        "command_delivery_supported": True,
+    },
 }
 
 
@@ -78,9 +118,7 @@ class ExecutionPlanRow(Base):
     __tablename__ = "governed_execution_plans"
     __table_args__ = (
         UniqueConstraint("handoff_id", "idempotency_key", name="uq_execution_plan_key"),
-        UniqueConstraint(
-            "source_kind", "source_id", "idempotency_key", name="uq_execution_plan_source_key"
-        ),
+        UniqueConstraint("source_kind", "source_id", "idempotency_key", name="uq_execution_plan_source_key"),
         CheckConstraint(
             "length(source_kind) > 0 "
             "AND length(source_id) > 0 "
@@ -97,6 +135,17 @@ class ExecutionPlanRow(Base):
             "OR (source_kind = 'approved_listing_draft' "
             "AND handoff_id IS NULL "
             "AND policy_id IS NULL "
+            "AND release_id IS NULL) "
+            "OR (source_kind = 'approved_customer_service_reply' "
+            "AND handoff_id IS NULL "
+            "AND policy_id IS NULL "
+            "AND release_id IS NULL) "
+            "OR (source_kind IN ("
+            "'approved_channel_account_change', "
+            "'approved_channel_account_compensation'"
+            ") "
+            "AND handoff_id IS NULL "
+            "AND policy_id IS NULL "
             "AND release_id IS NULL)",
             name="ck_execution_plan_source_variant",
         ),
@@ -108,13 +157,9 @@ class ExecutionPlanRow(Base):
     source_id: Mapped[str] = mapped_column(String, nullable=False)
     source_approval_id: Mapped[str] = mapped_column(ForeignKey("approvals.id"), nullable=False)
     source_snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    handoff_id: Mapped[str | None] = mapped_column(
-        ForeignKey("causal_policy_activation_handoffs.id"), nullable=True
-    )
+    handoff_id: Mapped[str | None] = mapped_column(ForeignKey("causal_policy_activation_handoffs.id"), nullable=True)
     policy_id: Mapped[str | None] = mapped_column(ForeignKey("causal_policies.id"), nullable=True)
-    release_id: Mapped[str | None] = mapped_column(
-        ForeignKey("causal_policy_releases.id"), nullable=True
-    )
+    release_id: Mapped[str | None] = mapped_column(ForeignKey("causal_policy_releases.id"), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String, nullable=False)
     adapter_id: Mapped[str] = mapped_column(String, nullable=False)
     action_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -138,9 +183,7 @@ class ExecutionDryRunRow(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     request_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    plan_id: Mapped[str] = mapped_column(
-        ForeignKey("governed_execution_plans.id"), unique=True, nullable=False
-    )
+    plan_id: Mapped[str] = mapped_column(ForeignKey("governed_execution_plans.id"), unique=True, nullable=False)
     current_state_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     checks_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -302,6 +345,71 @@ class ExecutionPlanService:
             before_state_evidence_id=before_evidence_id,
         )
 
+    def create_from_approved_channel_account(
+        self,
+        approval_id: str,
+        *,
+        idempotency_key: str,
+        created_by: str,
+    ) -> dict[str, Any]:
+        approval = self.commerce.repo.get_approval(approval_id)
+        if (
+            approval.action != "channel_account.change"
+            or approval.resource_type != "channel_account_change"
+            or approval.status != ApprovalStatus.APPROVED
+            or not approval.decided_by
+            or approval.decided_by == approval.requested_by
+        ):
+            raise ValueError("Channel-account plan requires an independently approved change")
+        payload = approval.payload if isinstance(approval.payload, dict) else {}
+        required = {
+            "contract_id",
+            "scope",
+            "reviewed_evidence_id",
+            "reviewed_evidence_sha256",
+            "reviewed_by",
+            "source_snapshot_hash",
+            "target",
+            "intended_patch",
+            "rollback_patch",
+        }
+        if set(payload) != required:
+            raise ValueError("Approved channel-account change payload contract drifted")
+        source_snapshot_hash = self._state_hash(payload["source_snapshot_hash"])
+        if source_snapshot_hash != self._hash(
+            {
+                "contract_id": payload["contract_id"],
+                "scope": payload["scope"],
+                "reviewed_evidence_id": payload["reviewed_evidence_id"],
+                "reviewed_evidence_sha256": payload["reviewed_evidence_sha256"],
+                "reviewed_by": payload["reviewed_by"],
+                "target": payload["target"],
+                "intended_patch": payload["intended_patch"],
+                "rollback_patch": payload["rollback_patch"],
+            }
+        ):
+            raise ValueError("Approved channel-account source snapshot drifted")
+        source = ExecutionSource(
+            kind=APPROVED_CHANNEL_ACCOUNT_CHANGE,
+            id=approval.resource_id,
+            approval_id=approval.id,
+            snapshot_hash=source_snapshot_hash,
+        )
+        return self._create_from_source(
+            source,
+            idempotency_key=idempotency_key,
+            adapter_id="kjds.channel-account.change.v1",
+            target=payload["target"],
+            precondition_state_hash=payload["reviewed_evidence_sha256"],
+            intended_patch=payload["intended_patch"],
+            rollback_patch=payload["rollback_patch"],
+            evidence_ids=[payload["reviewed_evidence_id"]],
+            created_by=created_by,
+            risk_limits={},
+            risk_values={},
+            risk_currency=None,
+        )
+
     def _create_from_source(
         self,
         source: ExecutionSource,
@@ -346,9 +454,7 @@ class ExecutionPlanService:
             before_state_evidence_id=before_state_evidence_id,
         )
         readiness_snapshot = self.action_readiness_snapshot(readiness_context)
-        evidence_ids = self._evidence(
-            [*evidence_ids, *self._readiness_evidence_ids(readiness_snapshot)]
-        )
+        evidence_ids = self._evidence([*evidence_ids, *self._readiness_evidence_ids(readiness_snapshot)])
         authorization = self.action_authorization.authorize_action(
             action=adapter["action_id"],
             subject_id=self._subject_ref(adapter_id, target),
@@ -386,9 +492,7 @@ class ExecutionPlanService:
         }
         request_hash = self._hash(canonical)
         with Session(self.engine) as session:
-            exact = session.scalar(
-                select(ExecutionPlanRow).where(ExecutionPlanRow.request_hash == request_hash)
-            )
+            exact = session.scalar(select(ExecutionPlanRow).where(ExecutionPlanRow.request_hash == request_hash))
             if exact is not None:
                 return self.get(exact.id)
             previous = session.scalar(
@@ -501,18 +605,16 @@ class ExecutionPlanService:
         matching = [
             (claim, run)
             for claim, run in candidates
-            if run.operation == "ozon.product.read"
+            if claim.tenant_ref is None
+            and run.operation == "ozon.product.read"
             and run.status == "completed"
             and run.outcome == "succeeded"
             and run.target_hash == target_hash
-            and (run.summary_json or {}).get("contract_version")
-            == OZON_PRODUCT_READ_CONTRACT_VERSION
+            and (run.summary_json or {}).get("contract_version") == OZON_PRODUCT_READ_CONTRACT_VERSION
             and (run.summary_json or {}).get("state_sha256") == claim.source_state_sha256
         ]
         if len(matching) != 1:
-            raise ValueError(
-                "Listing execution requires one accepted Ozon product Claim for the server-derived offer"
-            )
+            raise ValueError("Listing execution requires one accepted Ozon product Claim for the server-derived offer")
         claim, run = matching[0]
         raw_ids = self.evidence.target_evidence_ids(
             target_type="read_only_pilot_run",
@@ -607,9 +709,7 @@ class ExecutionPlanService:
         rollback_item["offer_id"] = offer_id
         required = {"name", "description", "description_category_id", "attributes", "images"}
         if not required.issubset(rollback_item):
-            raise ValueError(
-                "Raw Ozon before-state cannot reconstruct a complete rollback import item"
-            )
+            raise ValueError("Raw Ozon before-state cannot reconstruct a complete rollback import item")
         return rollback_item
 
     @staticmethod
@@ -622,9 +722,7 @@ class ExecutionPlanService:
             raise ValueError("Approved Listing images must be a non-empty list")
         item = {
             "offer_id": offer_id,
-            "name": ExecutionPlanService._required(
-                str(listing_data.get("title", "")), "Approved Listing title"
-            ),
+            "name": ExecutionPlanService._required(str(listing_data.get("title", "")), "Approved Listing title"),
             "description": ExecutionPlanService._required(
                 str(listing_data.get("description", "")), "Approved Listing description"
             ),
@@ -672,14 +770,10 @@ class ExecutionPlanService:
         }
         request_hash = self._hash(canonical)
         with Session(self.engine) as session, session.begin():
-            exact = session.scalar(
-                select(ExecutionDryRunRow).where(ExecutionDryRunRow.request_hash == request_hash)
-            )
+            exact = session.scalar(select(ExecutionDryRunRow).where(ExecutionDryRunRow.request_hash == request_hash))
             if exact is not None:
                 return self._dry_run(exact)
-            previous = session.scalar(
-                select(ExecutionDryRunRow).where(ExecutionDryRunRow.plan_id == plan_id)
-            )
+            previous = session.scalar(select(ExecutionDryRunRow).where(ExecutionDryRunRow.plan_id == plan_id))
             if previous is not None:
                 raise ValueError("Execution plan already has an immutable dry-run receipt")
             row = ExecutionDryRunRow(
@@ -704,21 +798,75 @@ class ExecutionPlanService:
             ids = list(session.scalars(select(ExecutionPlanRow.id).order_by(ExecutionPlanRow.created_at)))
         return [self.get(item_id) for item_id in ids]
 
+    def list_for_listing_drafts(
+        self,
+        *,
+        draft_ids: list[str],
+        as_of: datetime,
+    ) -> list[dict[str, Any]]:
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must include a timezone")
+        normalized = sorted({str(item).strip() for item in draft_ids if str(item).strip()})
+        if len(normalized) != len(draft_ids):
+            raise ValueError("Listing execution-plan source IDs must be unique and non-empty")
+        if len(normalized) > 1000:
+            raise ValueError("Listing execution-plan source projection is too large")
+        if not normalized:
+            return []
+        cutoff = as_of.astimezone(UTC)
+        with Session(self.engine) as session:
+            rows = list(
+                session.scalars(
+                    select(ExecutionPlanRow)
+                    .where(
+                        ExecutionPlanRow.source_kind == APPROVED_LISTING_DRAFT,
+                        ExecutionPlanRow.source_id.in_(normalized),
+                        ExecutionPlanRow.created_at <= cutoff,
+                    )
+                    .order_by(
+                        ExecutionPlanRow.created_at,
+                        ExecutionPlanRow.id,
+                    )
+                )
+            )
+            plan_ids = [row.id for row in rows]
+            dry_runs = (
+                list(
+                    session.scalars(
+                        select(ExecutionDryRunRow)
+                        .where(
+                            ExecutionDryRunRow.plan_id.in_(plan_ids),
+                            ExecutionDryRunRow.created_at <= cutoff,
+                        )
+                        .order_by(
+                            ExecutionDryRunRow.created_at,
+                            ExecutionDryRunRow.id,
+                        )
+                    )
+                )
+                if plan_ids
+                else []
+            )
+        dry_run_by_plan = {row.plan_id: self._dry_run(row) for row in dry_runs}
+        return [
+            {
+                **self._plan(row),
+                "dry_run": dry_run_by_plan.get(row.id),
+            }
+            for row in rows
+        ]
+
     def get(self, plan_id: str) -> dict[str, Any]:
         with Session(self.engine) as session:
             row = session.get(ExecutionPlanRow, plan_id)
             if row is None:
                 raise KeyError(f"Governed execution plan not found: {plan_id}")
             result = self._plan(row)
-            dry_run = session.scalar(
-                select(ExecutionDryRunRow).where(ExecutionDryRunRow.plan_id == plan_id)
-            )
+            dry_run = session.scalar(select(ExecutionDryRunRow).where(ExecutionDryRunRow.plan_id == plan_id))
         source_context = self._source_context(result)
         approval = self.commerce.repo.get_approval(result["approval_id"])
         dry_run_passed = bool(dry_run and dry_run.passed)
-        current_readiness_snapshot = self.action_readiness_snapshot(
-            self._plan_readiness_context(result)
-        )
+        current_readiness_snapshot = self.action_readiness_snapshot(self._plan_readiness_context(result))
         authorization = self.action_authorization.authorize_action(
             action=result["action_id"],
             subject_id=self._subject_ref(result["adapter_id"], result["target"]),
@@ -732,26 +880,20 @@ class ExecutionPlanService:
             readiness=self._readiness_flags(current_readiness_snapshot),
             source_kind=result["source_kind"],
             approval_actor_ids=(
-                [approval.decided_by]
-                if approval.status.value == "approved" and approval.decided_by
-                else []
+                [approval.decided_by] if approval.status.value == "approved" and approval.decided_by else []
             ),
         )
         authorization_blocking_reasons = list(authorization["blocking_reasons"])
         if source_context["validity_status"] != "active":
             authorization_blocking_reasons.append("EXECUTION_SOURCE_INVALID")
         frozen_readiness_snapshot = (
-            approval.payload.get("readiness_snapshot", {})
-            if isinstance(approval.payload, dict)
-            else {}
+            approval.payload.get("readiness_snapshot", {}) if isinstance(approval.payload, dict) else {}
         )
         try:
             self.evidence.require_current(result["evidence_ids"])
         except (KeyError, RuntimeError, ValueError):
             authorization_blocking_reasons.append("PLAN_EVIDENCE_INVALID")
-        frozen_readiness_evidence_ids = self._readiness_evidence_ids(
-            frozen_readiness_snapshot
-        )
+        frozen_readiness_evidence_ids = self._readiness_evidence_ids(frozen_readiness_snapshot)
         if frozen_readiness_evidence_ids:
             try:
                 self.evidence.require_current(frozen_readiness_evidence_ids)
@@ -787,9 +929,7 @@ class ExecutionPlanService:
             "execution_eligible": False,
             "adapter": {"id": result["adapter_id"], **self._adapter(result["adapter_id"])},
             "action_policy": authorization["action_policy"],
-            "live_execution_supported": self._adapter(result["adapter_id"])[
-                "live_execution_supported"
-            ],
+            "live_execution_supported": self._adapter(result["adapter_id"])["live_execution_supported"],
             "automatic_execution": False,
         }
 
@@ -799,15 +939,30 @@ class ExecutionPlanService:
             snapshot_matches = handoff["policy_snapshot_hash"] == result["source_snapshot_hash"]
             source_matches = handoff["approval_id"] == result["source_approval_id"]
             validity_status = (
-                handoff["validity_status"]
-                if snapshot_matches and source_matches
-                else "source_snapshot_changed"
+                handoff["validity_status"] if snapshot_matches and source_matches else "source_snapshot_changed"
             )
             return {
                 "approval_status": handoff["approval_status"],
                 "approval_decided_by": handoff["approval_decided_by"],
                 "validity_status": validity_status,
                 "handoff_validity_status": validity_status,
+            }
+        if result["source_kind"] == APPROVED_CHANNEL_ACCOUNT_CHANGE:
+            approval = self.commerce.repo.get_approval(result["source_approval_id"])
+            payload = approval.payload if isinstance(approval.payload, dict) else {}
+            valid = (
+                approval.action == "channel_account.change"
+                and approval.resource_type == "channel_account_change"
+                and approval.resource_id == result["source_id"]
+                and approval.status == ApprovalStatus.APPROVED
+                and bool(approval.decided_by)
+                and approval.decided_by != approval.requested_by
+                and payload.get("source_snapshot_hash") == result["source_snapshot_hash"]
+            )
+            return {
+                "approval_status": approval.status.value,
+                "approval_decided_by": approval.decided_by,
+                "validity_status": "active" if valid else "source_approval_invalid",
             }
         if self.sourcing is None:
             return {
@@ -830,14 +985,64 @@ class ExecutionPlanService:
                 if approval.status == ApprovalStatus.APPROVED
                 and approval.decided_by
                 and approval.decided_by != approval.requested_by
-                and approval.payload.get("listing_snapshot_sha256")
-                == result["source_snapshot_hash"]
+                and approval.payload.get("listing_snapshot_sha256") == result["source_snapshot_hash"]
                 else "source_approval_invalid"
             )
         return {
             "approval_status": approval.status.value,
             "approval_decided_by": approval.decided_by,
             "validity_status": validity_status,
+        }
+
+    def scope_for(self, plan: dict[str, Any]) -> dict[str, str]:
+        """Derive the exact canonical scope of one plan from its source rows.
+
+        The worker never supplies this scope; it is resolved server-side from
+        the immutable plan source (approved listing draft scope columns or the
+        approved channel-account change Approval payload).
+        """
+        if plan.get("source_kind") == APPROVED_CHANNEL_ACCOUNT_CHANGE:
+            approval = self.commerce.repo.get_approval(plan["source_approval_id"])
+            payload = approval.payload if isinstance(approval.payload, dict) else {}
+            scope = payload.get("scope")
+            if not isinstance(scope, dict):
+                raise ValueError("Channel-account plan has no canonical scope")
+            return self._canonical_scope(scope)
+        if plan.get("source_kind") == APPROVED_LISTING_DRAFT:
+            if self.sourcing is None:
+                raise RuntimeError("Approved Listing scope resolver is not configured")
+            draft = self.sourcing.store.get_listing_draft(plan["source_id"])
+            return self._canonical_scope(
+                {
+                    "tenant_ref": draft.tenant_ref,
+                    "entity_ref": draft.entity_ref,
+                    "store_ref": draft.store_ref,
+                    "scope_grant_authority_sha256": draft.scope_grant_authority_sha256,
+                }
+            )
+        raise ValueError("Execution plan source has no canonical worker scope")
+
+    @staticmethod
+    def _canonical_scope(value: dict[str, Any]) -> dict[str, str]:
+        tenant_ref = str(value.get("tenant_ref") or "").strip()
+        entity_ref = str(value.get("entity_ref") or "").strip()
+        store_ref = str(value.get("store_ref") or "").strip()
+        authority_sha256 = str(
+            value.get("scope_grant_authority_sha256") or ""
+        ).strip().lower()
+        if (
+            not tenant_ref
+            or not entity_ref
+            or not store_ref
+            or len(authority_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in authority_sha256)
+        ):
+            raise ValueError("Execution plan canonical scope is incomplete")
+        return {
+            "tenant_ref": tenant_ref,
+            "entity_ref": entity_ref,
+            "store_ref": store_ref,
+            "scope_grant_authority_sha256": authority_sha256,
         }
 
     def action_readiness(
@@ -855,9 +1060,7 @@ class ExecutionPlanService:
             )
         )
 
-    def action_readiness_snapshot(
-        self, context: ExecutionReadinessContext
-    ) -> dict[str, dict[str, Any]]:
+    def action_readiness_snapshot(self, context: ExecutionReadinessContext) -> dict[str, dict[str, Any]]:
         if self.readiness_provider is None:
             return {}
         readiness = self.readiness_provider(context)
@@ -952,10 +1155,7 @@ class ExecutionPlanService:
 
     @staticmethod
     def _readiness_flags(snapshot: dict[str, dict[str, Any]]) -> dict[str, bool]:
-        return {
-            requirement_id: requirement.get("ready") is True
-            for requirement_id, requirement in snapshot.items()
-        }
+        return {requirement_id: requirement.get("ready") is True for requirement_id, requirement in snapshot.items()}
 
     @staticmethod
     def _readiness_evidence_ids(snapshot: dict[str, dict[str, Any]]) -> list[str]:
@@ -1065,6 +1265,7 @@ class ExecutionPlanService:
     def _plan(cls, row: ExecutionPlanRow) -> dict[str, Any]:
         return {
             "id": row.id,
+            "request_hash": row.request_hash,
             "source_kind": row.source_kind,
             "source_id": row.source_id,
             "source_approval_id": row.source_approval_id,
@@ -1118,9 +1319,7 @@ class ExecutionPlanService:
             "causal_policy_id": result["policy_id"],
             "causal_policy_release_id": result["release_id"],
             "causal_policy_snapshot_hash": (
-                result["source_snapshot_hash"]
-                if result["source_kind"] == CAUSAL_POLICY_HANDOFF
-                else None
+                result["source_snapshot_hash"] if result["source_kind"] == CAUSAL_POLICY_HANDOFF else None
             ),
             "evidence_ids": result["evidence_ids"],
             "readiness_snapshot": frozen_readiness_snapshot,

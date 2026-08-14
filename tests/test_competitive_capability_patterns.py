@@ -14,13 +14,33 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
     providers = registry["providers"]
 
     assert {item["id"] for item in providers} == {
+        "dianxiaomi_erp",
         "linkfox",
         "lizhi_ozon_assistant",
+        "mango_erp",
         "maozierp",
         "menglar_ozon_tools",
         "seerfar",
         "miaoshou_erp",
         "selling51_erp",
+    }
+    assert registry["baseline_policy"] == {
+        "requirement": "must_have_native_parity",
+        "safe_capability_omission_allowed": False,
+        "mapping_is_not_implementation": True,
+        "providers_are_runtime_dependencies": False,
+        "prohibited_patterns_require_safe_jtbd_replacement": True,
+        "coverage_dimensions": [
+            "code",
+            "migration",
+            "api",
+            "web",
+            "permissions",
+            "runtime_replay",
+            "evidence",
+        ],
+        "ai_advantage_is_scored_separately": True,
+        "external_write_allowed": False,
     }
     for provider in providers:
         assert provider["observed_capabilities"]
@@ -92,6 +112,42 @@ def test_competitive_patterns_borrow_workflows_without_delegating_truth_or_write
     selling51 = next(item for item in providers if item["id"] == "selling51_erp")
     assert "field_level_source_badge" in selling51["patterns_to_borrow"]
     assert "explicit_unmapped_finance_queue" in selling51["patterns_to_borrow"]
+
+    dianxiaomi = next(
+        item for item in providers if item["id"] == "dianxiaomi_erp"
+    )
+    assert dianxiaomi["source_documents"] == [
+        "https://www.dianxiaomi.com/",
+        "https://help.dianxiaomi.com/",
+    ]
+    assert "procurement_and_1688_purchase_tracking" in (
+        dianxiaomi["observed_capabilities"]
+    )
+    assert "session_or_cookie_reuse" in dianxiaomi["do_not_copy"]
+
+    seerfar = next(item for item in providers if item["id"] == "seerfar")
+    assert "advertising_analysis_and_strategy" in (
+        seerfar["observed_capabilities"]
+    )
+    assert "review_insight_packet" in seerfar["patterns_to_borrow"]
+
+    maozi = next(item for item in providers if item["id"] == "maozierp")
+    assert maozi["source_documents"] == [
+        "https://mcn5ze6lo0iz.feishu.cn/wiki/"
+        "Zd2xwn5m4ijIaQkiDc7c34qgnye"
+    ]
+    assert maozi["benchmark_registry"] == (
+        "maozierp_feishu_capability_benchmark.json"
+    )
+    assert maozi["implemented_contract"] == (
+        "browser_capture_inbox_v1_in_progress"
+    )
+    assert "cookie_binding" in maozi["do_not_copy"]
+    assert "unlicensed_image_copy" in maozi["do_not_copy"]
+    assert (
+        "automatic_bulk_listing_without_profit_and_governance_gates"
+        in maozi["do_not_copy"]
+    )
 
     linkfox = next(item for item in providers if item["id"] == "linkfox")
     assert linkfox["evidence_tier"] == "C"

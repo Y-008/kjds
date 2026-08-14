@@ -62,6 +62,52 @@ def test_ozon_import_preview_is_read_only_and_reports_missing_columns():
         assert session.scalar(select(func.count()).select_from(ImportJobRow)) == 0
 
 
+def test_inventory_and_return_imports_preserve_native_linkage_fields():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    service = OzonImportService(engine)
+    inventory = service.import_file(
+        filename="warehouse_stock.csv",
+        content=(
+            b"external_id,sku,warehouse_id,delivery_scheme,"
+            b"available_stock,reserved_stock,effective_at\n"
+            b"snapshot-1,SKU-1,warehouse-cn-1,realFBS,"
+            b"3,0,2026-07-16T10:00:00+03:00\n"
+        ),
+    )
+    returned = service.import_file(
+        filename="returns.csv",
+        content=(
+            b"external_id,order_external_id,sku,quantity,"
+            b"effective_at\n"
+            b"return-1,order-1,SKU-1,1,"
+            b"2026-07-16T10:00:00+03:00\n"
+        ),
+    )
+
+    assert inventory.status == "completed"
+    assert inventory.record_type == "ozon_inventory"
+    assert returned.status == "completed"
+    with Session(engine) as session:
+        inventory_row = session.scalar(
+            select(ImportDataRow).where(
+                ImportDataRow.import_id == inventory.id
+            )
+        )
+        return_row = session.scalar(
+            select(ImportDataRow).where(
+                ImportDataRow.import_id == returned.id
+            )
+        )
+    assert inventory_row.normalized_json["fulfillment_mode"] == "realFBS"
+    assert inventory_row.normalized_json["available_quantity"] == "3"
+    assert return_row.normalized_json["order_external_id"] == "order-1"
+
+
 def test_official_ozon_accrual_xlsx_preserves_all_rows_without_treating_revenue_as_fee():
     workbook = Workbook()
     sheet = workbook.active

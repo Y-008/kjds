@@ -13,8 +13,8 @@ def test_atlas_exposes_complete_russia_first_tree_with_truthful_boundaries():
     snapshot = runtime.cross_border_capability_atlas.snapshot()
 
     assert snapshot["contract_id"] == "kjds-cross-border-capability-atlas-v1"
-    assert snapshot["release_version"] == "0.58.0"
-    assert snapshot["registry_version"] == "0.58.0"
+    assert snapshot["release_version"] == "0.59.0"
+    assert snapshot["registry_version"] == "0.59.0"
     assert snapshot["primary_market"] == "RU"
     assert snapshot["primary_platform"] == "ozon"
     assert snapshot["counts"]["domains"] == 10
@@ -148,6 +148,7 @@ def test_every_point_line_and_surface_resolves_to_a_dedicated_operating_workspac
         "products",
         "sourcing",
         "growth",
+        "batch",
         "finance",
         "science",
         "governance",
@@ -168,6 +169,21 @@ def test_every_point_line_and_surface_resolves_to_a_dedicated_operating_workspac
         surface["workspace"] == f"/operations/surfaces/{surface['id']}"
         for surface in graph["operating_surfaces"]
     )
+    batch_points = {
+        point["id"]: point["workspace_id"]
+        for point in graph["atomic_points"]
+        if point["id"]
+        in {
+            "competitor_signal_watch",
+            "supplier_discovery",
+            "price_corridor",
+        }
+    }
+    assert batch_points == {
+        "competitor_signal_watch": "batch",
+        "supplier_discovery": "batch",
+        "price_corridor": "batch",
+    }
 
 
 def test_atlas_snapshot_is_a_defensive_copy():

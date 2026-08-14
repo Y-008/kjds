@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -34,12 +35,62 @@ from ..api_contracts import (
     ReadOnlyPilotInput,
     current_principal,
     ensure_role,
+    ensure_store_scope,
     run,
 )
 from ..runtime import runtime
 from ..security import Principal
 
 router = APIRouter()
+
+
+def _scope_context(
+    principal: Principal,
+    *,
+    store_ref: str,
+    as_of: str | None,
+) -> tuple[datetime, dict]:
+    ensure_store_scope(principal, store_ref)
+    if as_of is None:
+        cutoff = datetime.now(UTC)
+    else:
+        try:
+            cutoff = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail="as_of must be an ISO-8601 timestamp",
+            ) from exc
+        if cutoff.tzinfo is None:
+            raise HTTPException(
+                status_code=422,
+                detail="as_of must include a timezone",
+            )
+        cutoff = cutoff.astimezone(UTC)
+        if cutoff > datetime.now(UTC):
+            raise HTTPException(
+                status_code=422,
+                detail="as_of cannot be in the future",
+            )
+    return cutoff, runtime.scope_grants.current(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=cutoff,
+    )
+
+
+def _store_ref(principal: Principal, requested: str | None) -> str:
+    if requested:
+        ensure_store_scope(principal, requested)
+        return requested
+    if len(principal.store_refs) != 1:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "store_ref is required when identity has multiple stores"
+            ),
+        )
+    return next(iter(principal.store_refs))
 
 
 @router.get("/v1/governed-execution-adapters")
@@ -339,8 +390,34 @@ def close_operational_incident(
 
 
 @router.get("/v1/operations-control/queue")
-def list_operations_control_queue(as_of: str | None = None):
-    return run(lambda: runtime.operations_queue.queue(as_of=as_of))
+def list_operations_control_queue(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store_ref,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.operations_queue.projection(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+            as_of=cutoff.isoformat(),
+        )
+    )
 
 
 @router.post("/v1/operations-control/escalation-scan")
@@ -348,65 +425,295 @@ def scan_operations_control_escalations(
     body: OperationsQueueScanInput, principal: Annotated[Principal, Depends(current_principal)]
 ):
     ensure_role(principal, "monitor", "risk", "admin")
-    return run(lambda: runtime.operations_queue.scan(as_of=body.as_of, actor_id=principal.actor_id))
+    _, entity_scope = _scope_context(
+        principal,
+        store_ref=body.store_ref,
+        as_of=None,
+    )
+    return run(
+        lambda: runtime.operations_queue.scan(
+            as_of=body.as_of,
+            actor_id=principal.actor_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=body.store_ref,
+        )
+    )
 
 
 @router.get("/v1/operations-control/escalations")
-def list_operations_control_escalations():
-    return run(runtime.operations_queue.escalations)
+def list_operations_control_escalations(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    _, entity_scope = _scope_context(
+        principal,
+        store_ref=store_ref,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.operations_queue.escalations(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+        )
+    )
 
 
 @router.post("/v1/read-only-pilots", status_code=201)
 def create_read_only_pilot(body: ReadOnlyPilotInput, principal: Annotated[Principal, Depends(current_principal)]):
     ensure_role(principal, "operator", "admin")
-    return run(lambda: runtime.pilot_readiness.create(**body.model_dump(), requested_by=principal.actor_id))
+    store = _store_ref(principal, body.store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=body.as_of,
+    )
+    values = body.model_dump(exclude={"store_ref", "as_of"})
+    return run(
+        lambda: runtime.scoped_read_only_pilots.create(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+            requested_by=principal.actor_id,
+            **values,
+        )
+    )
 
 
 @router.get("/v1/read-only-pilots")
-def list_read_only_pilots():
-    return run(runtime.pilot_readiness.list)
+def list_read_only_pilots(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
+    as_of: str | None = None,
+    limit: int = 100,
+):
+    ensure_role(
+        principal,
+        "pilot_reader",
+        "operator",
+        "reviewer",
+        "compliance",
+        "admin",
+    )
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_pilots.list(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+            limit=limit,
+        )
+    )
 
 
 @router.get("/v1/read-only-pilots/{pilot_id}")
-def get_read_only_pilot(pilot_id: str):
-    return run(lambda: runtime.pilot_readiness.get(pilot_id))
+def get_read_only_pilot(
+    pilot_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
+    as_of: str | None = None,
+):
+    ensure_role(
+        principal,
+        "pilot_reader",
+        "operator",
+        "reviewer",
+        "compliance",
+        "admin",
+    )
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_pilots.get(
+            pilot_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+    )
 
 
 @router.get("/v1/read-only-pilots/{pilot_id}/evaluation")
-def evaluate_read_only_pilot(pilot_id: str, as_of: str | None = None):
-    return run(lambda: runtime.pilot_readiness.evaluate(pilot_id, as_of=as_of))
+def evaluate_read_only_pilot(
+    pilot_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
+    as_of: str | None = None,
+):
+    ensure_role(
+        principal,
+        "pilot_reader",
+        "operator",
+        "reviewer",
+        "compliance",
+        "admin",
+    )
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_pilots.evaluate(
+            pilot_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+    )
 
 
 @router.post("/v1/read-only-pilots/{pilot_id}/attestations", status_code=201)
 def attest_read_only_pilot_control(
-    pilot_id: str, body: PilotControlAttestationInput, principal: Annotated[Principal, Depends(current_principal)]
+    pilot_id: str,
+    body: PilotControlAttestationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "operator", "compliance", "admin")
-    return run(lambda: runtime.pilot_readiness.attest(pilot_id, **body.model_dump(), attested_by=principal.actor_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=None,
+    )
+
+    def attest():
+        runtime.scoped_read_only_pilots.require_pilot(
+            pilot_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+        return runtime.pilot_readiness.attest(
+            pilot_id,
+            **body.model_dump(),
+            attested_by=principal.actor_id,
+        )
+
+    return run(attest)
 
 
 @router.post("/v1/read-only-pilots/{pilot_id}/review-request")
 def submit_read_only_pilot_review(
-    pilot_id: str, body: PilotReviewSubmissionInput, principal: Annotated[Principal, Depends(current_principal)]
+    pilot_id: str,
+    body: PilotReviewSubmissionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "operator", "admin")
-    return run(lambda: runtime.pilot_readiness.submit_review(pilot_id, actor_id=principal.actor_id, as_of=body.as_of))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=body.as_of,
+    )
+
+    def submit():
+        runtime.scoped_read_only_pilots.require_pilot(
+            pilot_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+        return runtime.pilot_readiness.submit_review(
+            pilot_id,
+            actor_id=principal.actor_id,
+            as_of=cutoff.isoformat(),
+        )
+
+    return run(submit)
 
 
 @router.post("/v1/read-only-pilots/{pilot_id}/review")
 def review_read_only_pilot(
-    pilot_id: str, body: PilotReviewInput, principal: Annotated[Principal, Depends(current_principal)]
+    pilot_id: str,
+    body: PilotReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "reviewer", "admin")
-    return run(lambda: runtime.pilot_readiness.review(pilot_id, **body.model_dump(), actor_id=principal.actor_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=None,
+    )
+
+    def review():
+        runtime.scoped_read_only_pilots.require_pilot(
+            pilot_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+        return runtime.pilot_readiness.review(
+            pilot_id,
+            **body.model_dump(),
+            actor_id=principal.actor_id,
+        )
+
+    return run(review)
 
 
 @router.post("/v1/read-only-pilots/{pilot_id}/activate")
 def activate_read_only_pilot(
-    pilot_id: str, body: PilotActivationInput, principal: Annotated[Principal, Depends(current_principal)]
+    pilot_id: str,
+    body: PilotActivationInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "admin")
-    return run(lambda: runtime.pilot_readiness.activate(pilot_id, actor_id=principal.actor_id, as_of=body.as_of))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=body.as_of,
+    )
+
+    def activate():
+        runtime.scoped_read_only_pilots.require_pilot(
+            pilot_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+        return runtime.pilot_readiness.activate(
+            pilot_id,
+            actor_id=principal.actor_id,
+            as_of=cutoff.isoformat(),
+        )
+
+    return run(activate)
 
 
 @router.post("/v1/read-only-pilots/{pilot_id}/runs", status_code=201)
@@ -415,25 +722,66 @@ def start_read_only_pilot_run(
     body: PilotRunStartInput,
     request: Request,
     principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "pilot_reader", "admin")
-    return run(
-        lambda: runtime.pilot_runs.start(
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=body.as_of,
+    )
+
+    def start():
+        runtime.scoped_read_only_pilots.require_pilot(
             pilot_id,
-            **body.model_dump(),
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+        return runtime.pilot_runs.start(
+            pilot_id,
+            **body.model_dump(exclude={"as_of"}),
             worker_id=principal.actor_id,
             request_id=request.state.request_id,
             trace_id=request.state.trace_id,
+            as_of=cutoff.isoformat(),
         )
-    )
+
+    return run(start)
 
 
 @router.post("/v1/read-only-pilot-runs/{run_id}/complete")
 def complete_read_only_pilot_run(
-    run_id: str, body: PilotRunCompletionInput, principal: Annotated[Principal, Depends(current_principal)]
+    run_id: str,
+    body: PilotRunCompletionInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "pilot_reader", "admin")
-    return run(lambda: runtime.pilot_runs.complete(run_id, **body.model_dump(), worker_id=principal.actor_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=None,
+    )
+
+    def complete():
+        runtime.scoped_read_only_pilots.require_run(
+            run_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+        return runtime.pilot_runs.complete(
+            run_id,
+            **body.model_dump(),
+            worker_id=principal.actor_id,
+        )
+
+    return run(complete)
 
 
 @router.post("/v1/read-only-pilot-runs/{run_id}/response-evidence", status_code=201)
@@ -442,8 +790,24 @@ async def capture_read_only_pilot_response(
     response_sha256: Annotated[str, Form(min_length=64, max_length=64)],
     file: Annotated[UploadFile, File()],
     principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "pilot_reader", "admin")
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=None,
+    )
+    run(
+        lambda: runtime.scoped_read_only_pilots.require_run(
+            run_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+    )
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
     content_bytes = await file.read(max_bytes + 1)
     if len(content_bytes) > max_bytes:
@@ -464,8 +828,24 @@ async def checkpoint_read_only_pilot_response(
     summary_json: Annotated[str, Form(min_length=2, max_length=8192)],
     file: Annotated[UploadFile, File()],
     principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "pilot_reader", "admin")
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=None,
+    )
+    run(
+        lambda: runtime.scoped_read_only_pilots.require_run(
+            run_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+    )
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
     content_bytes = await file.read(max_bytes + 1)
     if len(content_bytes) > max_bytes:
@@ -488,31 +868,114 @@ async def checkpoint_read_only_pilot_response(
 
 
 @router.post("/v1/read-only-pilot-runs/{run_id}/finalize")
-def finalize_read_only_pilot_response(run_id: str, principal: Annotated[Principal, Depends(current_principal)]):
+def finalize_read_only_pilot_response(
+    run_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
+):
     ensure_role(principal, "pilot_reader", "admin")
-    return run(lambda: runtime.pilot_runs.finalize_captured(run_id, worker_id=principal.actor_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=None,
+    )
+
+    def finalize():
+        runtime.scoped_read_only_pilots.require_run(
+            run_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+        return runtime.pilot_runs.finalize_captured(
+            run_id,
+            worker_id=principal.actor_id,
+        )
+
+    return run(finalize)
 
 
 @router.get("/v1/read-only-pilot-runs")
 def list_read_only_pilot_runs(
-    pilot_id: str | None = None, principal: Annotated[Principal, Depends(current_principal)] = None
+    principal: Annotated[Principal, Depends(current_principal)],
+    pilot_id: str | None = None,
+    store_ref: str | None = None,
+    as_of: str | None = None,
+    limit: int = 100,
 ):
     ensure_role(principal, "pilot_reader", "operator", "reviewer", "admin")
-    return run(lambda: runtime.pilot_runs.list(pilot_id=pilot_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_pilots.list_runs(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+            pilot_id=pilot_id,
+            limit=limit,
+        )
+    )
 
 
 @router.get("/v1/read-only-pilot-runs/{run_id}")
-def get_read_only_pilot_run(run_id: str, principal: Annotated[Principal, Depends(current_principal)] = None):
+def get_read_only_pilot_run(
+    run_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
+    as_of: str | None = None,
+):
     ensure_role(principal, "pilot_reader", "operator", "reviewer", "admin")
-    return run(lambda: runtime.pilot_runs.get(run_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_pilots.get_run(
+            run_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+    )
 
 
 @router.post("/v1/read-only-pilot-runs/{run_id}/claims", status_code=201)
 def propose_read_only_claim(
-    run_id: str, body: ReadOnlyClaimInput, principal: Annotated[Principal, Depends(current_principal)]
+    run_id: str,
+    body: ReadOnlyClaimInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "operator", "admin")
-    return run(lambda: runtime.read_only_claims.propose(run_id, **body.model_dump(), proposed_by=principal.actor_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=None,
+    )
+
+    def propose():
+        return runtime.scoped_read_only_claims.propose(
+            run_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+            **body.model_dump(),
+            proposed_by=principal.actor_id,
+        )
+
+    return run(propose)
 
 
 @router.get("/v1/read-only-claims")
@@ -520,37 +983,130 @@ def list_read_only_claims(
     run_id: str | None = None,
     status: str | None = None,
     principal: Annotated[Principal, Depends(current_principal)] = None,
+    store_ref: str | None = None,
+    as_of: str | None = None,
+    limit: int = 100,
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin")
-    return run(lambda: runtime.read_only_claims.list(run_id=run_id, status=status))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_claims.list(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+            run_id=run_id,
+            status=status,
+            limit=limit,
+        )
+    )
 
 
 @router.get("/v1/read-only-claims/{claim_id}")
-def get_read_only_claim(claim_id: str, principal: Annotated[Principal, Depends(current_principal)] = None):
+def get_read_only_claim(
+    claim_id: str,
+    principal: Annotated[Principal, Depends(current_principal)] = None,
+    store_ref: str | None = None,
+    as_of: str | None = None,
+):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin")
-    return run(lambda: runtime.read_only_claims.get(claim_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_claims.get(
+            claim_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+    )
 
 
 @router.post("/v1/read-only-claims/{claim_id}/review")
 def review_read_only_claim(
-    claim_id: str, body: ReadOnlyClaimReviewInput, principal: Annotated[Principal, Depends(current_principal)]
+    claim_id: str,
+    body: ReadOnlyClaimReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
 ):
     ensure_role(principal, "reviewer", "compliance", "admin")
-    return run(lambda: runtime.read_only_claims.review(claim_id, **body.model_dump(), reviewed_by=principal.actor_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=None,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_claims.review(
+            claim_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+            **body.model_dump(),
+            reviewed_by=principal.actor_id,
+        )
+    )
 
 
 @router.post("/v1/read-only-pilot-runs/reap")
-def reap_read_only_pilot_runs(body: PilotRunReapInput, principal: Annotated[Principal, Depends(current_principal)]):
+def reap_read_only_pilot_runs(
+    body: PilotRunReapInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
+):
     ensure_role(principal, "admin")
-    return run(lambda: runtime.pilot_runs.reap_expired(as_of=body.as_of, limit=body.limit, actor_id=principal.actor_id))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=body.as_of,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_pilots.reap_expired(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+            limit=body.limit,
+            actor_id=principal.actor_id,
+        )
+    )
 
 
 @router.get("/v1/read-only-pilots/{pilot_id}/usage")
 def get_read_only_pilot_usage(
-    pilot_id: str, as_of: str | None = None, principal: Annotated[Principal, Depends(current_principal)] = None
+    pilot_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
+    as_of: str | None = None,
 ):
     ensure_role(principal, "pilot_reader", "operator", "reviewer", "admin")
-    return run(lambda: runtime.pilot_runs.usage(pilot_id, as_of=as_of))
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.scoped_read_only_pilots.usage(
+            pilot_id,
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            as_of=cutoff,
+        )
+    )
 
 
 @router.post("/v1/approvals", status_code=201)

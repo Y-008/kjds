@@ -1,0 +1,170 @@
+{
+  "schema_version": "kjds-russia-market-intelligence-sources-v1",
+  "as_of": "2026-08-03",
+  "market": "RU",
+  "purpose": "Continuously collect Russian marketplace demand, public conversation, platform change and economic event signals for product, content and commercial decisions.",
+  "collection_policy": {
+    "all_available_pages_fields_and_time_windows": true,
+    "arbitrary_kjds_sample_cap_allowed": false,
+    "source_native_cap_must_be_recorded": true,
+    "checkpoint_and_incremental_resume_required": true,
+    "historical_backfill_required_when_source_allows": true,
+    "accepted_plus_quarantined_equals_source_total": true,
+    "partial_collection_may_be_labeled_complete": false,
+    "cross_source_corroboration_required_for_hot_event_escalation": true,
+    "market_demand_signal_is_sales_fact": false,
+    "external_write_mode": "campaign_grant_only"
+  },
+  "signal_domains": [
+    "marketplace_search_and_funnel",
+    "search_engine_demand",
+    "price_promotion_stock_and_review",
+    "public_social_and_creator_conversation",
+    "platform_product_and_policy_change",
+    "currency_inflation_and_financing",
+    "trade_customs_logistics_and_regulation",
+    "seasonal_calendar_and_breaking_event"
+  ],
+  "sources": [
+    {
+      "id": "ozon_seller_analytics",
+      "source_class": "official_authorized_marketplace",
+      "authority": "Ozon Seller API",
+      "urls": ["https://docs.ozon.ru/api/seller/"],
+      "collection": ["product_queries", "analytics_dimensions", "product_cards", "prices", "stocks", "reviews", "orders_and_finance_when_scoped"],
+      "native_limits": "endpoint_specific_pagination_and_subscription_history",
+      "current_status": "product_read_verified_analytics_scope_not_verified",
+      "next_gate": "verify_analytics_scope_and_capture_exact_scope_fixture"
+    },
+    {
+      "id": "wildberries_seller_analytics",
+      "source_class": "official_authorized_marketplace",
+      "authority": "Wildberries API",
+      "urls": [
+        "https://dev.wildberries.ru/openapi/analytics",
+        "https://dev.wildberries.ru/news/297"
+      ],
+      "collection": ["search_queries", "search_position", "visibility", "card_views", "cart_adds", "orders", "sales_funnel", "stock_history", "csv_reports"],
+      "native_limits": "subscription_and_endpoint_limits_including_30_or_100_top_queries",
+      "current_status": "account_and_analytics_token_missing",
+      "next_gate": "merchant_account_subscription_token_and_fixture"
+    },
+    {
+      "id": "yandex_wordstat",
+      "source_class": "official_authorized_search_demand",
+      "authority": "Yandex Search API Wordstat",
+      "urls": [
+        "https://aistudio.yandex.ru/docs/en/search-api/concepts/wordstat.html",
+        "https://aistudio.yandex.ru/docs/en/search-api/operations/wordstat-gettop.html"
+      ],
+      "collection": ["top_queries", "associated_queries", "daily_weekly_monthly_dynamics", "regional_distribution", "device_distribution"],
+      "native_limits": "get_top_maximum_2000_phrases_per_seed_and_region_request",
+      "current_status": "service_account_role_and_api_key_missing",
+      "next_gate": "search_api_role_key_seed_taxonomy_and_cost_budget"
+    },
+    {
+      "id": "yandex_market_partner",
+      "source_class": "official_authorized_marketplace",
+      "authority": "Yandex Market Partner API",
+      "urls": ["https://yandex.ru/dev/market/partner-api/doc/ru/"],
+      "collection": ["assortment", "prices", "orders", "stocks", "campaign_and_offer_context"],
+      "native_limits": "partner_campaign_and_endpoint_specific",
+      "current_status": "merchant_campaign_and_api_key_missing",
+      "next_gate": "merchant_campaign_key_and_read_fixture"
+    },
+    {
+      "id": "telegram_public_market_conversation",
+      "source_class": "official_authorized_public_social",
+      "authority": "Telegram API",
+      "urls": [
+        "https://core.telegram.org/methods",
+        "https://core.telegram.org/api/stats",
+        "https://core.telegram.org/api/recommend"
+      ],
+      "collection": ["public_channel_posts", "hashtags_and_search", "replies", "views", "public_forwards", "channel_recommendations", "owned_channel_statistics"],
+      "native_limits": "method_permissions_pagination_and_possible_paid_search",
+      "current_status": "dedicated_api_identity_and_seed_channels_missing",
+      "next_gate": "dedicated_identity_seed_set_terms_review_and_cost_budget"
+    },
+    {
+      "id": "vk_public_and_owned_community",
+      "source_class": "official_authorized_public_social",
+      "authority": "VK API",
+      "urls": [
+        "https://dev.vk.com/ru/method/wall.get",
+        "https://dev.vk.com/ru/method/wall.getComments",
+        "https://dev.vk.com/ru/method/stats.get"
+      ],
+      "collection": ["public_or_authorized_posts", "comments", "reactions", "community_statistics", "market_objects_when_authorized"],
+      "native_limits": "method_scope_and_pagination",
+      "current_status": "application_and_account_scope_missing",
+      "next_gate": "application_scope_seed_communities_and_fixture"
+    },
+    {
+      "id": "bank_of_russia_macro_events",
+      "source_class": "official_public_economic",
+      "authority": "Bank of Russia",
+      "urls": [
+        "https://www.cbr.ru/eng/press/keypr/",
+        "https://www.cbr.ru/hd_base/infl/"
+      ],
+      "collection": ["key_rate_decisions", "inflation", "demand_expectations", "official_fx_reference", "forecast_calendar"],
+      "native_limits": "public_release_frequency",
+      "current_status": "public_source_available",
+      "next_gate": "scheduled_capture_content_hash_change_detection_and_event_parser"
+    },
+    {
+      "id": "platform_release_and_policy_events",
+      "source_class": "official_public_platform_change",
+      "authority": "Ozon Wildberries and Yandex official release channels",
+      "urls": [
+        "https://ir.ozon.com/news/",
+        "https://dev.wildberries.ru/news",
+        "https://yandex.ru/company/news/"
+      ],
+      "collection": ["api_change", "fee_or_subscription_change", "seller_policy", "new_commerce_capability", "deprecation", "campaign_or_seasonal_event"],
+      "native_limits": "public_release_history_and_page_pagination",
+      "current_status": "public_source_available_not_yet_scheduled",
+      "next_gate": "source_specific_change_fixture_and_false_positive_baseline"
+    }
+  ],
+  "hot_event_scoring": {
+    "inputs": ["source_authority", "recency", "velocity", "cross_source_count", "entity_relevance", "profit_or_supply_exposure", "observed_market_response"],
+    "required_outputs": ["score", "components", "source_ids", "first_seen_at", "last_seen_at", "effective_at", "expiry_or_review_at", "unknowns"],
+    "llm_may_create_event_fact": false,
+    "single_social_post_may_trigger_external_action": false
+  },
+  "current_observations": [
+    {
+      "observed_at": "2026-08-03",
+      "effective_at": "2026-07-24",
+      "source_id": "bank_of_russia_macro_events",
+      "event_type": "monetary_policy_and_demand_outlook",
+      "facts": {
+        "key_rate_percent": "14.00",
+        "annual_inflation_as_of_2026_07_20_percent": "5.9",
+        "business_future_demand_expectation": "decreased"
+      },
+      "decision_use": "risk_context_only_not_sku_demand_or_fx_execution_rate",
+      "url": "https://www.cbr.ru/eng/press/keypr/"
+    },
+    {
+      "observed_at": "2026-08-03",
+      "effective_at": "2026-04-28",
+      "source_id": "platform_release_and_policy_events",
+      "event_type": "yandex_market_unit_economics_signal",
+      "facts": {
+        "market_adjusted_ebitda_margin_yoy_change_percentage_points": "3.2",
+        "period": "2026_Q1"
+      },
+      "decision_use": "platform_context_only_not_kjds_profit_fact",
+      "url": "https://yandex.ru/company/news/28-04-2026"
+    }
+  ],
+  "control_boundary": {
+    "registry_is_live_connector": false,
+    "registry_is_account_authorization": false,
+    "registry_is_business_fact": false,
+    "registry_is_external_write_grant": false
+  }
+}

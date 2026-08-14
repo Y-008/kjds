@@ -299,10 +299,18 @@ class SqlSourcingStore:
                 text("""
                 INSERT INTO listing_drafts (
                     id, product_id, offer_id, scenario_id, target_platform, listing_json,
-                    requested_by, status, approval_id, created_at
+                    requested_by, status, approval_id, created_at,
+                    tenant_ref, entity_ref, store_ref,
+                    scope_grant_authority_sha256,
+                    scoped_product_content_sha256, approval_plan_sha256,
+                    evidence_ids_json, scope_as_of
                 ) VALUES (
                     :id, :product_id, :offer_id, :scenario_id, :target, CAST(:listing AS jsonb),
-                    :requested_by, :status, :approval_id, :created_at
+                    :requested_by, :status, :approval_id, :created_at,
+                    :tenant_ref, :entity_ref, :store_ref,
+                    :scope_grant_authority_sha256,
+                    :scoped_product_content_sha256, :approval_plan_sha256,
+                    CAST(:evidence_ids AS jsonb), :scope_as_of
                 )
                 ON CONFLICT (id) DO NOTHING
                 RETURNING id
@@ -318,6 +326,22 @@ class SqlSourcingStore:
                     "status": draft.status,
                     "approval_id": draft.approval_id,
                     "created_at": datetime.fromisoformat(draft.created_at),
+                    "tenant_ref": draft.tenant_ref,
+                    "entity_ref": draft.entity_ref,
+                    "store_ref": draft.store_ref,
+                    "scope_grant_authority_sha256": (
+                        draft.scope_grant_authority_sha256
+                    ),
+                    "scoped_product_content_sha256": (
+                        draft.scoped_product_content_sha256
+                    ),
+                    "approval_plan_sha256": draft.approval_plan_sha256,
+                    "evidence_ids": json.dumps(draft.evidence_ids),
+                    "scope_as_of": (
+                        datetime.fromisoformat(draft.scope_as_of)
+                        if draft.scope_as_of
+                        else None
+                    ),
                 },
             ).scalar_one_or_none()
         return draft if inserted_id is not None else self.get_listing_draft(draft.id)
@@ -331,21 +355,7 @@ class SqlSourcingStore:
                 .mappings()
                 .all()
             )
-        return [
-            ListingDraft(
-                product_id=row["product_id"],
-                offer_id=row["offer_id"],
-                scenario_id=row["scenario_id"],
-                target_platform=row["target_platform"],
-                listing_data=row["listing_json"],
-                requested_by=row["requested_by"],
-                status=row["status"],
-                approval_id=row["approval_id"],
-                id=row["id"],
-                created_at=_iso(row["created_at"]),
-            )
-            for row in rows
-        ]
+        return [self._listing_draft(row) for row in rows]
 
     def get_listing_draft(self, draft_id: str) -> ListingDraft:
         with self.engine.connect() as connection:
@@ -356,6 +366,10 @@ class SqlSourcingStore:
             )
         if row is None:
             raise KeyError(f"Unknown listing draft: {draft_id}")
+        return self._listing_draft(row)
+
+    @staticmethod
+    def _listing_draft(row) -> ListingDraft:
         return ListingDraft(
             product_id=row["product_id"],
             offer_id=row["offer_id"],
@@ -367,7 +381,98 @@ class SqlSourcingStore:
             approval_id=row["approval_id"],
             id=row["id"],
             created_at=_iso(row["created_at"]),
+            tenant_ref=row.get("tenant_ref"),
+            entity_ref=row.get("entity_ref"),
+            store_ref=row.get("store_ref"),
+            scope_grant_authority_sha256=row.get(
+                "scope_grant_authority_sha256"
+            ),
+            scoped_product_content_sha256=row.get(
+                "scoped_product_content_sha256"
+            ),
+            approval_plan_sha256=row.get("approval_plan_sha256"),
+            evidence_ids=row.get("evidence_ids_json") or [],
+            scope_as_of=(
+                _iso(row["scope_as_of"]) if row.get("scope_as_of") else None
+            ),
         )
+
+    def list_listing_drafts_scoped(
+        self,
+        *,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        as_of: datetime,
+        limit: int = 100,
+    ) -> list[ListingDraft]:
+        with self.engine.connect() as connection:
+            rows = (
+                connection.execute(
+                    text(
+                        """
+                        SELECT * FROM listing_drafts
+                        WHERE tenant_ref=:tenant_ref
+                          AND entity_ref=:entity_ref
+                          AND store_ref=:store_ref
+                          AND created_at <= :as_of
+                          AND scope_as_of <= :as_of
+                        ORDER BY created_at DESC, id
+                        LIMIT :limit
+                        """
+                    ),
+                    {
+                        "tenant_ref": tenant_ref,
+                        "entity_ref": entity_ref,
+                        "store_ref": store_ref,
+                        "as_of": as_of,
+                        "limit": limit,
+                    },
+                )
+                .mappings()
+                .all()
+            )
+        return [self._listing_draft(row) for row in rows]
+
+    def get_listing_draft_scoped(
+        self,
+        *,
+        draft_id: str,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        as_of: datetime,
+    ) -> ListingDraft:
+        with self.engine.connect() as connection:
+            row = (
+                connection.execute(
+                    text(
+                        """
+                        SELECT * FROM listing_drafts
+                        WHERE id=:id
+                          AND tenant_ref=:tenant_ref
+                          AND entity_ref=:entity_ref
+                          AND store_ref=:store_ref
+                          AND created_at <= :as_of
+                          AND scope_as_of <= :as_of
+                        """
+                    ),
+                    {
+                        "id": draft_id,
+                        "tenant_ref": tenant_ref,
+                        "entity_ref": entity_ref,
+                        "store_ref": store_ref,
+                        "as_of": as_of,
+                    },
+                )
+                .mappings()
+                .first()
+            )
+        if row is None:
+            raise KeyError(
+                "Unknown listing draft in authorized operating scope"
+            )
+        return self._listing_draft(row)
 
     def attach_listing_approval(self, draft: ListingDraft) -> ListingDraft:
         with self.engine.begin() as connection:

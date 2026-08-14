@@ -1,0 +1,69 @@
+{
+  "schema_version": "kjds-social-commerce-intelligence-contracts-v1",
+  "contract_id": "kjds-social-commerce-intelligence-workspace-v1",
+  "version": "1.0.0",
+  "work_item": "BAS-178",
+  "adr": "ADR-0090-governed-social-commerce-intelligence-and-platform-operations",
+  "interfaces": {
+    "collect": "AcquisitionSpec + Checkpoint -> ObservationBatch",
+    "analyze": "AnalysisSpec + ObservationSnapshot -> InsightBundle",
+    "operate": "CampaignSpec + CampaignGrant -> CampaignReceipt"
+  },
+  "platforms": ["xiaohongshu", "douyin"],
+  "source_rank_ladder": [
+    "official_authorized_api",
+    "official_operator_export",
+    "operator_cli_or_browser",
+    "public_official_page",
+    "manual_evidence"
+  ],
+  "allowed_actions": [
+    "publish", "update", "delete", "comment", "reply", "like",
+    "favorite", "follow", "unfollow", "message", "download"
+  ],
+  "allowed_dimensions": [
+    "actor", "content", "engagement", "conversation", "seller_product", "time", "outcome"
+  ],
+  "real_platform_adapters_admitted": false,
+  "campaign_grant_model": {
+    "one_human_grant_authorizes_repeated_actions_in_envelope": true,
+    "per_item_approval": false,
+    "required_fields": ["account_ref", "purpose", "audience", "action_set", "budget", "stop_conditions", "expiry"],
+    "idempotency": true,
+    "readback": true,
+    "kill_switch": true,
+    "external_write_allowed": false
+  },
+  "conservation_invariants": {
+    "full_pagination": true,
+    "checkpoint_continuation": true,
+    "content_addressed_deduplication": true,
+    "no_sampling_cap": true,
+    "gaps_are_explicit": true,
+    "missing_data_never_fabricated": true
+  },
+  "zero_authority_flags": {
+    "formal_fact": false,
+    "finance_entry": false,
+    "approval": false,
+    "permit": false,
+    "pilot": false,
+    "outbox": false,
+    "canonical_graph_write": false,
+    "dependency_install": false,
+    "network": false,
+    "external_write": false
+  },
+  "hard_gate_ids": [
+    "platform_allowlist",
+    "source_rank_ladder",
+    "record_conservation",
+    "content_addressed_dedup",
+    "campaign_grant_account_binding",
+    "idempotency",
+    "readback",
+    "kill_switch",
+    "sensitive_value_rejection",
+    "zero_authority"
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "schema_version": "kjds-capital-allocation-contracts-v1",
+  "contract_id": "kjds-capital-allocation-observation-v1",
+  "version": "1",
+  "read_bundle_contract_id": "kjds-capital-allocation-read-bundle-v1",
+  "citation_authority_contract_id": "kjds-capital-allocation-citation-authority-v1",
+  "allowed_states": [
+    "ready",
+    "no_data",
+    "UNKNOWN",
+    "blocked",
+    "not_visible",
+    "stale"
+  ],
+  "required_options": [
+    "build",
+    "buy",
+    "partner",
+    "defer",
+    "no_action"
+  ],
+  "hard_elimination_dimensions": [
+    "evidence",
+    "authority",
+    "security",
+    "privacy",
+    "legal_and_license",
+    "cash_floor",
+    "maximum_loss",
+    "rollback",
+    "acceptance"
+  ],
+  "comparison_dimensions": [
+    "long_term_risk_adjusted_value",
+    "total_cost_of_ownership",
+    "time_to_value",
+    "operational_fit",
+    "maintainability",
+    "reversibility",
+    "replacement_cost"
+  ],
+  "required_proposal_fields": [
+    "cash_floor",
+    "runway",
+    "budget_cap",
+    "maximum_loss_limit",
+    "budget_request",
+    "maximum_loss",
+    "timebox",
+    "downside_base_upside",
+    "payback_period",
+    "evidence_coverage",
+    "dependencies",
+    "owner",
+    "primary_metric",
+    "guardrails",
+    "stop_conditions",
+    "rollback",
+    "invalidation_conditions",
+    "review_date",
+    "review_status",
+    "no_action_comparison",
+    "comparison_values"
+  ],
+  "authority_gate_ids": [
+    "current_scope_authority",
+    "capital_constraint_authority",
+    "profit_truth_authority",
+    "settlement_cash_authority",
+    "growth_outcome_authority",
+    "commercial_lifecycle_authority",
+    "citation_authority",
+    "production_admission_boundary"
+  ],
+  "source_contracts": [
+    {
+      "source_id": "gap_graph",
+      "contract_id": "kjds-governed-gap-graph-observation-v1",
+      "version": "1",
+      "evidence_source": "gap_graph_observation",
+      "minimum_grade": "A",
+      "contract_sha256": "e7da3ea86eee59f61b76fcde0fa6978ed0362a9b232191e2e0e75f7a569b1de4"
+    },
+    {
+      "source_id": "strategic_benchmark",
+      "contract_id": "kjds-strategic-benchmark-kernel-observation-v1",
+      "version": "1",
+      "evidence_source": "strategic_benchmark_observation",
+      "minimum_grade": "A",
+      "contract_sha256": "5ac5b557d258b67b01312897c7ad9605864389f602919204a1b4ecbdbe096d3a"
+    },
+    {
+      "source_id": "capital_constraints",
+      "contract_id": "kjds-primary-source-capital-constraint-v1",
+      "version": "1",
+      "evidence_source": "primary_source_intake",
+      "minimum_grade": "A",
+      "contract_sha256": "29868ae6bba40e8d2fee14bade182aa0c1b2ab04c9dd7ae9daf87258568dc67b"
+    },
+    {
+      "source_id": "profit_truth",
+      "contract_id": "kjds-profit-truth-observation-v1",
+      "version": "1",
+      "evidence_source": "profit_truth_observation",
+      "minimum_grade": "A",
+      "contract_sha256": "bb4eb0836268d4f2e5526b7478791824bbb46a972a06a89fcc2cc9f9c388e349"
+    },
+    {
+      "source_id": "settlement_cash",
+      "contract_id": "kjds-settlement-cash-observation-v1",
+      "version": "1",
+      "evidence_source": "settlement_cash_observation",
+      "minimum_grade": "A",
+      "contract_sha256": "4d12d5574afa596a7b97961fff467a7aa4bbaf0dc8387b193de6b6d4d07498ad"
+    },
+    {
+      "source_id": "growth_outcome",
+      "contract_id": "kjds-growth-outcome-observation-v1",
+      "version": "1",
+      "evidence_source": "growth_outcome_observation",
+      "minimum_grade": "A",
+      "contract_sha256": "eccf7826205b81991db9d59bbe1fa4974a4c524eeff1af0c6b536e7a5b0f3d79"
+    },
+    {
+      "source_id": "commercial_lifecycle",
+      "contract_id": "kjds-commercial-entitlement-observation-v1",
+      "version": "1",
+      "evidence_source": "commercial_lifecycle_observation",
+      "minimum_grade": "A",
+      "contract_sha256": "30060da08a72ef3a49eb0ab7f7615711ecb670ba0aa7759cfd0837cb078dc7a6"
+    }
+  ],
+  "zero_authority_flags": {
+    "proposal_only": true,
+    "self_approval": false,
+    "payment": false,
+    "securities_investment": false,
+    "fact_write": false,
+    "finance_entry_write": false,
+    "approval_write": false,
+    "permit_write": false,
+    "pilot_write": false,
+    "outbox_write": false,
+    "canonical_graph_write": false,
+    "network_write": false,
+    "external_write": false
+  },
+  "content_sha256": "914e196fd49ea0d702a509f06a8544ba430eaded9112484c161e9878f2e08393"
+}

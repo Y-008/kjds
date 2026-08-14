@@ -1,0 +1,52 @@
+{
+  "schema_version": "kjds-governed-delivery-manifest-contracts-v1",
+  "contract_id": "kjds-governed-delivery-manifest-v1",
+  "version": "1.0.0",
+  "work_item": "BAS-188",
+  "delivery_target_contract_id": "kjds-social-delivery-target-v1",
+  "artifact_kinds": ["image", "video", "editing_blueprint", "tutorial"],
+  "kind_required_metadata": {
+    "image": ["width", "height"],
+    "video": ["width", "height", "duration_ms", "encoder_manifest_sha256"],
+    "editing_blueprint": ["schema_version", "source_asset_refs"],
+    "tutorial": ["tutorial_graph_version", "capture_manifest_sha256"]
+  },
+  "allowed_statuses": ["COMPILED", "PROPOSAL_ONLY", "BLOCKED", "INVALIDATED", "STALE"],
+  "social_delivery_target": {
+    "provider": "social_commerce_intelligence_workspace",
+    "owner_task": "BAS-178",
+    "admitted": false,
+    "publish": "not_admitted",
+    "campaign_grant": "not_admitted",
+    "readback": "not_admitted",
+    "revoke": "not_admitted",
+    "kill_switch": "not_admitted",
+    "external_write_allowed": false
+  },
+  "zero_authority_flags": {
+    "formal_fact": false,
+    "finance_entry": false,
+    "approval": false,
+    "permit": false,
+    "pilot": false,
+    "outbox": false,
+    "canonical_graph_write": false,
+    "dependency_install": false,
+    "network": false,
+    "external_write": false
+  },
+  "reuses_existing_truth": {
+    "per_asset_manifest": "kjds-media-delivery-manifest-v1",
+    "content_asset": "ContentAsset/Evidence",
+    "editing_blueprint": "kjds-editing-blueprint-v1",
+    "tutorial_graph": "kjds-tutorial-graph-v1"
+  },
+  "hard_gate_ids": [
+    "exact_scope",
+    "artifact_integrity",
+    "dependency_acyclic",
+    "sensitive_value_rejection",
+    "delivery_target_not_admitted",
+    "zero_authority"
+  ]
+}

@@ -1,0 +1,864 @@
+diff --git a/docs/project/evidence/20260804_OPENCLI_SOCIAL_READONLY_VERIFICATION.md b/docs/project/evidence/20260804_OPENCLI_SOCIAL_READONLY_VERIFICATION.md
+new file mode 100644
+index 0000000..a8d7ca6
+--- /dev/null
++++ b/docs/project/evidence/20260804_OPENCLI_SOCIAL_READONLY_VERIFICATION.md
+@@ -0,0 +1,131 @@
++# OpenCLI 社媒只读接入验证记录
++
++- 日期：2026-08-04
++- 基线 HEAD：`7623d4f23c3cb7b0ff55e04076fd5d3162523751`
++- 范围：仅自有抖音/小红书创作中心只读数据
++- 外部写：`false`
++- 媒体下载：`false`
++- Cookie 导入：`false`
++- 原始账号数据：仅保存在忽略目录 `.runtime/social-intelligence/opencli/**`
++
++## 运行时供应链
++
++| 组件 | 固定版本/摘要 |
++| --- | --- |
++| OpenCLI | `@jackwener/opencli@1.8.6` |
++| Browser Bridge | `1.0.22` |
++| 扩展发布包 SHA-256 | `9d2e3d053948beab5d97124aa79b1532d2122e33e461eca56cac113afd33207a` |
++| 浏览器隔离 | Edge 独立配置 `.runtime/opencli-edge-profile` |
++
++扩展 manifest 已实读：Manifest V3，版本 `1.0.22`。`opencli doctor -v` 的
++字面状态为：
++
++```text
++[OK] Daemon: running on port 19825 (v1.8.6)
++[OK] Extension: connected (v1.0.22)
++[OK] Connectivity: connected in 0.2s
++
++Everything looks good!
++```
++
++命令退出状态：`0`。
++
++## 基线行为
++
++命令：
++
++```powershell
++git cat-file -e HEAD:scripts/manage-opencli-social-readonly.ps1
++```
++
++字面输出：
++
++```text
++fatal: path 'scripts/manage-opencli-social-readonly.ps1' exists on disk, but not in 'HEAD'
++```
++
++退出状态：`128`。
++
++## 修改后行为
++
++命令：
++
++```powershell
++pwsh -NoProfile -File scripts/manage-opencli-social-readonly.ps1 -Mode Plan -Platform douyin
++```
++
++字面输出：
++
++```json
++{
++  "schema_version": "kjds-opencli-social-read-allowlist-v1",
++  "platform": "douyin",
++  "commands": [
++    {"platform":"douyin","command":"whoami","domain":"creator.douyin.com","arguments":[],"access":"read","external_write":false},
++    {"platform":"douyin","command":"profile","domain":"creator.douyin.com","arguments":[],"access":"read","external_write":false},
++    {"platform":"douyin","command":"videos","domain":"creator.douyin.com","arguments":["--limit","20","--page","1","--status","all"],"access":"read","external_write":false}
++  ],
++  "deny_by_default": true,
++  "output_root": ".runtime\\social-intelligence\\opencli"
++}
++```
++
++退出状态：`0`。
++
++## 真实只读采集
++
++命令：
++
++```powershell
++pwsh -NoProfile -File scripts/manage-opencli-social-readonly.ps1 -Mode Collect -Platform douyin
++```
++
++字面结果摘要：
++
++```text
++run_id=20260804T102053Z-0a809506
++status=pass
++douyin.whoami exit_code=0 outcome=success external_write=false stdout_sha256=8144dc11d5616cc5d423803510da07fe4fe8e0db74456f904adcd30a9fc54d39
++douyin.profile exit_code=0 outcome=success external_write=false stdout_sha256=173639de32de9b604c88954f715d28680b8674965468cc042602f7c65bc5217b
++douyin.videos exit_code=0 outcome=success external_write=false stdout_sha256=a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f
++```
++
++退出状态：`0`。本次账号聚合只读结果为：粉丝 `0`、关注 `93`、作品 `0`；
++没有可继续调用 `stats` 的作品 ID。
++
++小红书同一路径的首个 `whoami` 在 60 秒上游时限后返回：
++
++```text
++run_id=20260804T102123Z-6c461a9e
++status=failed
++xiaohongshu.whoami exit_code=75 outcome=failed external_write=false
++error.code=TIMEOUT
++error.message=xiaohongshu/whoami timed out after 60s
++```
++
++包装器退出状态：`1`。该平台没有继续执行后续命令，也没有形成采集数据。
++
++## 合同测试
++
++命令：
++
++```powershell
++uv run ruff check tests/test_opencli_social_readonly_contract.py
++uv run python -m pytest tests/test_opencli_social_readonly_contract.py -q -p no:cacheprovider --basetemp .runtime/pytest-opencli-social-verification
++git diff --check -- docs/project/registries/social_intelligence_read_allowlist.json scripts/manage-opencli-social-readonly.ps1 scripts/rollback-opencli-social-readonly.ps1 tests/test_opencli_social_readonly_contract.py
++```
++
++字面输出与退出状态：
++
++```text
++All checks passed!
++.....                                                                    [100%]
++5 passed in 0.06s
++ruff_exit=0
++pytest_exit=0
++diff_check_exit=0
++```
++
++验证覆盖：精确 allowlist、默认拒绝、写命令/搜索/评论/下载隔离、固定版本与扩展摘要、
++独立浏览器配置、运行时 access/domain 漂移检查、JSON 原文与 stderr 哈希、无任意命令透传、
++回滚路径限定。
+diff --git a/docs/project/registries/social_intelligence_read_allowlist.json b/docs/project/registries/social_intelligence_read_allowlist.json
+new file mode 100644
+index 0000000..2b3be69
+--- /dev/null
++++ b/docs/project/registries/social_intelligence_read_allowlist.json
+@@ -0,0 +1,144 @@
++{
++  "schema_version": "kjds-opencli-social-read-allowlist-v1",
++  "as_of": "2026-08-04",
++  "purpose": "Run a fail-closed first-party creator analytics intake for the operator's own Douyin and Xiaohongshu creator accounts.",
++  "runtime": {
++    "package": "@jackwener/opencli",
++    "cli_version": "1.8.6",
++    "release_url": "https://github.com/jackwener/OpenCLI/releases/tag/v1.8.6",
++    "extension_version": "1.0.22",
++    "extension_asset": "opencli-extension-v1.0.22.zip",
++    "extension_sha256": "9d2e3d053948beab5d97124aa79b1532d2122e33e461eca56cac113afd33207a"
++  },
++  "browser_isolation": {
++    "dedicated_profile_required": true,
++    "preferred_browser": "edge",
++    "profile_path": ".runtime/opencli-edge-profile",
++    "extension_path": ".runtime/opencli-extension-v1.0.22",
++    "cookie_import_allowed": false,
++    "personal_browser_profile_reuse_allowed": false
++  },
++  "capture_contract": {
++    "format": "json",
++    "site_session": "persistent",
++    "keep_tab": false,
++    "raw_output_root": ".runtime/social-intelligence/opencli",
++    "sha256_required": true,
++    "literal_stdout_and_stderr_required": true,
++    "exit_status_required": true,
++    "external_write": false,
++    "business_fact_promotion": false
++  },
++  "platforms": {
++    "douyin": {
++      "domain": "creator.douyin.com",
++      "login_url": "https://creator.douyin.com/",
++      "commands": [
++        {
++          "name": "whoami",
++          "baseline": true,
++          "arguments": [],
++          "required_input": null
++        },
++        {
++          "name": "profile",
++          "baseline": true,
++          "arguments": [],
++          "required_input": null
++        },
++        {
++          "name": "videos",
++          "baseline": true,
++          "arguments": ["--limit", "20", "--page", "1", "--status", "all"],
++          "required_input": null
++        },
++        {
++          "name": "stats",
++          "baseline": false,
++          "arguments": [],
++          "required_input": "AwemeId"
++        }
++      ]
++    },
++    "xiaohongshu": {
++      "domain": "creator.xiaohongshu.com",
++      "login_url": "https://creator.xiaohongshu.com/",
++      "commands": [
++        {
++          "name": "whoami",
++          "baseline": true,
++          "arguments": [],
++          "required_input": null
++        },
++        {
++          "name": "creator-profile",
++          "baseline": true,
++          "arguments": [],
++          "required_input": null
++        },
++        {
++          "name": "creator-notes",
++          "baseline": true,
++          "arguments": ["--limit", "20"],
++          "required_input": null
++        },
++        {
++          "name": "creator-notes-summary",
++          "baseline": true,
++          "arguments": ["--limit", "3", "--timeout", "180"],
++          "required_input": null
++        },
++        {
++          "name": "creator-stats",
++          "baseline": true,
++          "arguments": ["--period", "seven"],
++          "required_input": null
++        },
++        {
++          "name": "creator-note-detail",
++          "baseline": false,
++          "arguments": [],
++          "required_input": "XhsNoteId"
++        }
++      ]
++    }
++  },
++  "deny_by_default": true,
++  "blocked_command_names": {
++    "douyin": [
++      "activities",
++      "collections",
++      "delete",
++      "draft",
++      "drafts",
++      "hashtag",
++      "location",
++      "login",
++      "publish",
++      "search",
++      "update",
++      "user-videos"
++    ],
++    "xiaohongshu": [
++      "ask",
++      "comments",
++      "delete-note",
++      "download",
++      "draft-clear",
++      "draft-delete",
++      "draft-open",
++      "drafts",
++      "feed",
++      "follow",
++      "liked",
++      "login",
++      "note",
++      "notifications",
++      "publish",
++      "saved",
++      "search",
++      "unfollow",
++      "user"
++    ]
++  }
++}
+diff --git a/scripts/manage-opencli-social-readonly.ps1 b/scripts/manage-opencli-social-readonly.ps1
+new file mode 100644
+index 0000000..916e22e
+--- /dev/null
++++ b/scripts/manage-opencli-social-readonly.ps1
+@@ -0,0 +1,372 @@
++[CmdletBinding()]
++param(
++    [ValidateSet("Setup", "Launch", "Doctor", "Plan", "Collect")]
++    [string]$Mode = "Doctor",
++    [ValidateSet("all", "douyin", "xiaohongshu")]
++    [string]$Platform = "all",
++    [string]$AwemeId,
++    [string]$XhsNoteId
++)
++
++$ErrorActionPreference = "Stop"
++Set-StrictMode -Version Latest
++
++$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
++$registryPath = Join-Path $repoRoot `
++    "docs\project\registries\social_intelligence_read_allowlist.json"
++$registry = Get-Content -LiteralPath $registryPath -Raw | ConvertFrom-Json
++$runtimeRoot = [IO.Path]::GetFullPath(
++    (Join-Path $repoRoot ".runtime\social-intelligence\opencli")
++)
++$extensionRoot = [IO.Path]::GetFullPath(
++    (Join-Path $repoRoot $registry.browser_isolation.extension_path)
++)
++$profileRoot = [IO.Path]::GetFullPath(
++    (Join-Path $repoRoot $registry.browser_isolation.profile_path)
++)
++$extensionArchive = "$extensionRoot.zip"
++
++function Assert-PathInsideRuntime([string]$Path) {
++    $resolved = [IO.Path]::GetFullPath($Path)
++    $repoRuntime = [IO.Path]::GetFullPath((Join-Path $repoRoot ".runtime"))
++    if (-not $resolved.StartsWith(
++        $repoRuntime + [IO.Path]::DirectorySeparatorChar,
++        [StringComparison]::OrdinalIgnoreCase
++    )) {
++        throw "Runtime path escaped the repository runtime root: $resolved"
++    }
++}
++
++function Get-Sha256([string]$Path) {
++    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
++}
++
++function Get-OpenCliCommand {
++    $command = Get-Command "opencli" -ErrorAction SilentlyContinue
++    if (-not $command) {
++        throw "OpenCLI is not installed. Run -Mode Setup first."
++    }
++    return $command
++}
++
++function Get-DoctorResult {
++    $openCli = Get-OpenCliCommand
++    $lines = @(& $openCli.Source doctor -v 2>&1)
++    $exitCode = $LASTEXITCODE
++    $text = $lines -join [Environment]::NewLine
++    return [ordered]@{
++        exit_code = $exitCode
++        daemon_ok = $text.Contains("[OK] Daemon:")
++        extension_ok = $text.Contains("[OK] Extension:")
++        connectivity_ok = $text.Contains("[OK] Connectivity:")
++        literal_output = $text
++    }
++}
++
++function Assert-ExtensionContract {
++    $manifestPath = Join-Path $extensionRoot "manifest.json"
++    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
++        throw "OpenCLI extension is not installed at $extensionRoot"
++    }
++    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
++    if ([string]$manifest.version -ne [string]$registry.runtime.extension_version) {
++        throw "OpenCLI extension version drift: $($manifest.version)"
++    }
++}
++
++function Install-OpenCliRuntime {
++    $npm = Get-Command "npm" -ErrorAction SilentlyContinue
++    if (-not $npm) {
++        throw "npm is required to install OpenCLI."
++    }
++    $package = "$($registry.runtime.package)@$($registry.runtime.cli_version)"
++    & $npm.Source install --global $package
++    if ($LASTEXITCODE -ne 0) {
++        throw "npm failed to install $package"
++    }
++
++    Assert-PathInsideRuntime $extensionRoot
++    Assert-PathInsideRuntime $extensionArchive
++    $null = New-Item -ItemType Directory -Force -Path (Split-Path $extensionRoot)
++    if (-not (Test-Path -LiteralPath $extensionArchive -PathType Leaf)) {
++        $assetUrl = (
++            $registry.runtime.release_url -replace "/tag/", "/download/"
++        ) + "/" + $registry.runtime.extension_asset
++        Invoke-WebRequest -UseBasicParsing -Uri $assetUrl -OutFile $extensionArchive
++    }
++    $actualDigest = Get-Sha256 $extensionArchive
++    if ($actualDigest -ne $registry.runtime.extension_sha256) {
++        throw "OpenCLI extension digest mismatch: $actualDigest"
++    }
++    if (-not (Test-Path -LiteralPath $extensionRoot)) {
++        Expand-Archive -LiteralPath $extensionArchive -DestinationPath $extensionRoot
++    }
++    Assert-ExtensionContract
++
++    $version = (& (Get-OpenCliCommand).Source --version).Trim()
++    if ($LASTEXITCODE -ne 0 -or $version -ne $registry.runtime.cli_version) {
++        throw "OpenCLI version drift: expected $($registry.runtime.cli_version), got $version"
++    }
++    [ordered]@{
++        status = "installed"
++        cli_version = $version
++        extension_version = $registry.runtime.extension_version
++        extension_sha256 = $actualDigest
++        extension_root = $extensionRoot
++        profile_root = $profileRoot
++    } | ConvertTo-Json -Depth 4
++}
++
++function Find-ChromiumBrowser {
++    $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
++    $candidates = @(
++        (Join-Path $programFilesX86 "Microsoft\Edge\Application\msedge.exe"),
++        (Join-Path $env:ProgramFiles "Microsoft\Edge\Application\msedge.exe"),
++        (Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe"),
++        (Join-Path $env:LOCALAPPDATA "Google\Chrome\Application\chrome.exe")
++    )
++    $browser = $candidates |
++        Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
++        Select-Object -First 1
++    if (-not $browser) {
++        throw "A Chrome or Edge browser executable was not found."
++    }
++    return $browser
++}
++
++function Start-IsolatedBrowser {
++    Assert-ExtensionContract
++    Assert-PathInsideRuntime $profileRoot
++    $null = New-Item -ItemType Directory -Force -Path $profileRoot
++    $browser = Find-ChromiumBrowser
++    $launchArguments = @(
++        "--user-data-dir=$profileRoot",
++        "--disable-extensions-except=$extensionRoot",
++        "--load-extension=$extensionRoot",
++        "--no-first-run",
++        "--no-default-browser-check",
++        "--new-window"
++    )
++    $selected = if ($Platform -eq "all") {
++        @("douyin", "xiaohongshu")
++    } else {
++        @($Platform)
++    }
++    foreach ($name in $selected) {
++        $launchArguments += [string]$registry.platforms.$name.login_url
++    }
++    $process = Start-Process -FilePath $browser `
++        -ArgumentList $launchArguments -PassThru
++
++    $deadline = (Get-Date).AddSeconds(30)
++    do {
++        Start-Sleep -Seconds 1
++        try {
++            $doctor = Get-DoctorResult
++            if ($doctor.extension_ok -and $doctor.connectivity_ok) {
++                [ordered]@{
++                    status = "connected"
++                    browser = $browser
++                    launcher_pid = $process.Id
++                    profile_root = $profileRoot
++                    extension_root = $extensionRoot
++                } | ConvertTo-Json -Depth 4
++                return
++            }
++        } catch {
++            # Keep polling until the bounded deadline.
++        }
++    } while ((Get-Date) -lt $deadline)
++    throw "The isolated OpenCLI browser did not connect within 30 seconds."
++}
++
++function Get-SelectedPlatforms {
++    if ($Platform -eq "all") {
++        return @("douyin", "xiaohongshu")
++    }
++    return @($Platform)
++}
++
++function Get-CollectionPlan {
++    $plan = @()
++    foreach ($name in Get-SelectedPlatforms) {
++        $platformContract = $registry.platforms.$name
++        foreach ($command in $platformContract.commands) {
++            $include = [bool]$command.baseline
++            $positional = $null
++            if ($command.required_input -eq "AwemeId" -and $AwemeId) {
++                if ($AwemeId -notmatch "^[0-9]{6,32}$") {
++                    throw "AwemeId must contain 6 to 32 decimal digits."
++                }
++                $include = $true
++                $positional = $AwemeId
++            }
++            if ($command.required_input -eq "XhsNoteId" -and $XhsNoteId) {
++                if ($XhsNoteId -notmatch "^[A-Za-z0-9_-]{6,128}$") {
++                    throw "XhsNoteId has an invalid format."
++                }
++                $include = $true
++                $positional = $XhsNoteId
++            }
++            if (-not $include) {
++                continue
++            }
++            $arguments = @()
++            if ($positional) {
++                $arguments += $positional
++            }
++            $arguments += @($command.arguments)
++            $plan += [ordered]@{
++                platform = $name
++                command = [string]$command.name
++                domain = [string]$platformContract.domain
++                arguments = $arguments
++                access = "read"
++                external_write = $false
++            }
++        }
++    }
++    return $plan
++}
++
++function Assert-CommandContract($Item) {
++    $openCli = Get-OpenCliCommand
++    $help = @(
++        & $openCli.Source $Item.platform $Item.command --help -f yaml 2>&1
++    ) -join [Environment]::NewLine
++    if ($LASTEXITCODE -ne 0) {
++        throw "Unable to inspect OpenCLI contract for $($Item.platform).$($Item.command)"
++    }
++    if ($help -notmatch "(?m)^access:\s*read\s*$") {
++        throw "OpenCLI command is no longer read-only: $($Item.platform).$($Item.command)"
++    }
++    $expectedDomain = [Regex]::Escape([string]$Item.domain)
++    if ($help -notmatch "(?m)^domain:\s*$expectedDomain\s*$") {
++        throw "OpenCLI command domain drifted: $($Item.platform).$($Item.command)"
++    }
++}
++
++function Invoke-Collection {
++    $doctor = Get-DoctorResult
++    if (-not ($doctor.daemon_ok -and $doctor.extension_ok -and $doctor.connectivity_ok)) {
++        throw "OpenCLI browser bridge is not connected. Run -Mode Launch first."
++    }
++    $plan = @(Get-CollectionPlan)
++    $runId = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ") + `
++        "-" + [Guid]::NewGuid().ToString("N").Substring(0, 8)
++    $runRoot = Join-Path $runtimeRoot $runId
++    Assert-PathInsideRuntime $runRoot
++    $null = New-Item -ItemType Directory -Force -Path $runRoot
++    $openCli = Get-OpenCliCommand
++    $records = @()
++    $blockedPlatforms = [Collections.Generic.HashSet[string]]::new(
++        [StringComparer]::Ordinal
++    )
++
++    foreach ($item in $plan) {
++        if ($blockedPlatforms.Contains($item.platform)) {
++            continue
++        }
++        Assert-CommandContract $item
++        $stem = "$($item.platform)-$($item.command)"
++        $stdoutPath = Join-Path $runRoot "$stem.stdout.json"
++        $stderrPath = Join-Path $runRoot "$stem.stderr.txt"
++        $invocation = @($item.platform, $item.command) + @($item.arguments) + @(
++            "--window", "background",
++            "--site-session", "persistent",
++            "--keep-tab", "false",
++            "-f", "json"
++        )
++        $started = (Get-Date).ToUniversalTime()
++        & $openCli.Source @invocation 1> $stdoutPath 2> $stderrPath
++        $exitCode = $LASTEXITCODE
++        $finished = (Get-Date).ToUniversalTime()
++        $jsonValid = $false
++        $loggedIn = $null
++        if ((Get-Item -LiteralPath $stdoutPath).Length -gt 0) {
++            try {
++                $parsed = Get-Content -LiteralPath $stdoutPath -Raw |
++                    ConvertFrom-Json
++                $jsonValid = $true
++                if ($item.command -eq "whoami") {
++                    $loggedIn = [bool]$parsed.logged_in
++                }
++            } catch {
++                $jsonValid = $false
++            }
++        }
++        $outcome = if ($exitCode -eq 0 -and $jsonValid -and $loggedIn -ne $false) {
++            "success"
++        } elseif ($exitCode -eq 77 -or $loggedIn -eq $false) {
++            "auth_required"
++        } else {
++            "failed"
++        }
++        if ($outcome -ne "success") {
++            $null = $blockedPlatforms.Add($item.platform)
++        }
++        $records += [ordered]@{
++            platform = $item.platform
++            command = $item.command
++            arguments = @($item.arguments)
++            access = "read"
++            external_write = $false
++            started_at = $started.ToString("o")
++            finished_at = $finished.ToString("o")
++            exit_code = $exitCode
++            outcome = $outcome
++            stdout_json_valid = $jsonValid
++            stdout_path = [IO.Path]::GetRelativePath($repoRoot, $stdoutPath)
++            stdout_sha256 = Get-Sha256 $stdoutPath
++            stderr_path = [IO.Path]::GetRelativePath($repoRoot, $stderrPath)
++            stderr_sha256 = Get-Sha256 $stderrPath
++        }
++    }
++
++    $status = if (@($records | Where-Object { $_.outcome -eq "failed" }).Count -gt 0) {
++        "failed"
++    } elseif (@($records | Where-Object { $_.outcome -eq "auth_required" }).Count -gt 0) {
++        "auth_required"
++    } else {
++        "pass"
++    }
++    $manifest = [ordered]@{
++        schema_version = "kjds-opencli-social-read-run-v1"
++        run_id = $runId
++        status = $status
++        cli_version = $registry.runtime.cli_version
++        extension_version = $registry.runtime.extension_version
++        registry_path = [IO.Path]::GetRelativePath($repoRoot, $registryPath)
++        records = $records
++    }
++    $manifestPath = Join-Path $runRoot "run.json"
++    $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath `
++        -Encoding utf8NoBOM
++    $manifest | ConvertTo-Json -Depth 8
++    if ($status -eq "auth_required") {
++        exit 77
++    }
++    if ($status -eq "failed") {
++        exit 1
++    }
++}
++
++Assert-PathInsideRuntime $runtimeRoot
++Assert-PathInsideRuntime $extensionRoot
++Assert-PathInsideRuntime $profileRoot
++
++switch ($Mode) {
++    "Setup" { Install-OpenCliRuntime }
++    "Launch" { Start-IsolatedBrowser }
++    "Doctor" { Get-DoctorResult | ConvertTo-Json -Depth 4 }
++    "Plan" {
++        [ordered]@{
++            schema_version = $registry.schema_version
++            platform = $Platform
++            commands = @(Get-CollectionPlan)
++            deny_by_default = [bool]$registry.deny_by_default
++            output_root = [IO.Path]::GetRelativePath($repoRoot, $runtimeRoot)
++        } | ConvertTo-Json -Depth 8
++    }
++    "Collect" { Invoke-Collection }
++}
+diff --git a/scripts/rollback-opencli-social-readonly.ps1 b/scripts/rollback-opencli-social-readonly.ps1
+new file mode 100644
+index 0000000..b863370
+--- /dev/null
++++ b/scripts/rollback-opencli-social-readonly.ps1
+@@ -0,0 +1,64 @@
++[CmdletBinding()]
++param(
++    [ValidateSet("Verify", "Apply")]
++    [string]$Mode = "Verify"
++)
++
++$ErrorActionPreference = "Stop"
++Set-StrictMode -Version Latest
++
++$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
++$paths = @(
++    "docs/project/registries/social_intelligence_read_allowlist.json",
++    "scripts/manage-opencli-social-readonly.ps1",
++    "scripts/rollback-opencli-social-readonly.ps1",
++    "tests/test_opencli_social_readonly_contract.py",
++    "docs/project/evidence/20260804_OPENCLI_SOCIAL_READONLY_VERIFICATION.md",
++    "docs/project/evidence/20260804_OPENCLI_SOCIAL_READONLY_INTAKE.patch"
++)
++
++Push-Location $repoRoot
++try {
++    $commits = @(
++        foreach ($path in $paths) {
++            (& git log --diff-filter=A --format=%H -1 -- $path).Trim()
++        }
++    ) | Where-Object { $_ } | Sort-Object -Unique
++    if ($commits.Count -ne 1) {
++        throw "Rollback paths do not share one introducing commit: $($commits -join ',')"
++    }
++    $introducingCommit = $commits[0]
++    & git merge-base --is-ancestor $introducingCommit HEAD
++    if ($LASTEXITCODE -ne 0) {
++        throw "Introducing commit is not an ancestor of HEAD: $introducingCommit"
++    }
++    foreach ($path in $paths) {
++        & git cat-file -e "$introducingCommit`:$path"
++        if ($LASTEXITCODE -ne 0) {
++            throw "Rollback path is absent from introducing commit: $path"
++        }
++    }
++    $dirty = @(
++        git status --short -- @paths
++    ) | Where-Object { $_ }
++    if ($dirty.Count -gt 0) {
++        throw "Rollback target paths contain uncommitted changes."
++    }
++    $result = [ordered]@{
++        status = "verified"
++        introducing_commit = $introducingCommit
++        target_count = $paths.Count
++        command = "git revert --no-edit $introducingCommit"
++    }
++    if ($Mode -eq "Apply") {
++        & git revert --no-edit $introducingCommit
++        if ($LASTEXITCODE -ne 0) {
++            throw "git revert failed for $introducingCommit"
++        }
++        $result.status = "applied"
++        $result["rollback_commit"] = (& git rev-parse HEAD).Trim()
++    }
++    $result | ConvertTo-Json -Depth 4
++} finally {
++    Pop-Location
++}
+diff --git a/tests/test_opencli_social_readonly_contract.py b/tests/test_opencli_social_readonly_contract.py
+new file mode 100644
+index 0000000..3d9bd3b
+--- /dev/null
++++ b/tests/test_opencli_social_readonly_contract.py
+@@ -0,0 +1,123 @@
++import json
++from pathlib import Path
++
++ROOT = Path(__file__).parents[1]
++REGISTRY_PATH = (
++    ROOT
++    / "docs"
++    / "project"
++    / "registries"
++    / "social_intelligence_read_allowlist.json"
++)
++HARNESS_PATH = ROOT / "scripts" / "manage-opencli-social-readonly.ps1"
++ROLLBACK_PATH = ROOT / "scripts" / "rollback-opencli-social-readonly.ps1"
++
++
++def _registry():
++    return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
++
++
++def test_allowlist_is_exactly_the_owned_creator_read_surface():
++    registry = _registry()
++    assert registry["schema_version"] == (
++        "kjds-opencli-social-read-allowlist-v1"
++    )
++    assert registry["deny_by_default"] is True
++    allowed = {
++        platform: {command["name"] for command in contract["commands"]}
++        for platform, contract in registry["platforms"].items()
++    }
++    assert allowed == {
++        "douyin": {"whoami", "profile", "videos", "stats"},
++        "xiaohongshu": {
++            "whoami",
++            "creator-profile",
++            "creator-notes",
++            "creator-notes-summary",
++            "creator-note-detail",
++            "creator-stats",
++        },
++    }
++
++
++def test_writes_downloads_and_discovery_are_not_allowlisted():
++    registry = _registry()
++    allowed = {
++        f"{platform}.{command['name']}"
++        for platform, contract in registry["platforms"].items()
++        for command in contract["commands"]
++    }
++    prohibited_fragments = {
++        "publish",
++        "delete",
++        "update",
++        "follow",
++        "login",
++        "download",
++        "comments",
++        "search",
++        "feed",
++        "ask",
++        "draft",
++    }
++    assert not any(
++        fragment in command
++        for command in allowed
++        for fragment in prohibited_fragments
++    )
++    blocked = {
++        f"{platform}.{command}"
++        for platform, commands in registry["blocked_command_names"].items()
++        for command in commands
++    }
++    assert "xiaohongshu.download" in blocked
++    assert "douyin.publish" in blocked
++    assert "xiaohongshu.publish" in blocked
++
++
++def test_runtime_and_capture_are_pinned_and_isolated():
++    registry = _registry()
++    assert registry["runtime"] == {
++        "package": "@jackwener/opencli",
++        "cli_version": "1.8.6",
++        "release_url": (
++            "https://github.com/jackwener/OpenCLI/releases/tag/v1.8.6"
++        ),
++        "extension_version": "1.0.22",
++        "extension_asset": "opencli-extension-v1.0.22.zip",
++        "extension_sha256": (
++            "9d2e3d053948beab5d97124aa79b1532d2122e33e461eca56cac113afd33207a"
++        ),
++    }
++    isolation = registry["browser_isolation"]
++    assert isolation["dedicated_profile_required"] is True
++    assert isolation["cookie_import_allowed"] is False
++    assert isolation["personal_browser_profile_reuse_allowed"] is False
++    capture = registry["capture_contract"]
++    assert capture["external_write"] is False
++    assert capture["business_fact_promotion"] is False
++    assert capture["literal_stdout_and_stderr_required"] is True
++    assert capture["sha256_required"] is True
++
++
++def test_harness_has_no_arbitrary_command_passthrough_and_rechecks_access():
++    script = HARNESS_PATH.read_text(encoding="utf-8")
++    assert "ValueFromRemainingArguments" not in script
++    assert "CliArgs" not in script
++    assert "Assert-CommandContract" in script
++    assert 'access:\\s*read' in script
++    assert '"--keep-tab", "false"' in script
++    assert '"-f", "json"' in script
++    assert "stdout_sha256" in script
++    assert "stderr_sha256" in script
++    assert "external_write = $false" in script
++    assert "cookie" not in script.lower()
++
++
++def test_rollback_is_scoped_to_the_delivery_and_uses_git_revert():
++    script = ROLLBACK_PATH.read_text(encoding="utf-8")
++    assert 'ValidateSet("Verify", "Apply")' in script
++    assert "git revert --no-edit" in script
++    assert "target_count" in script
++    assert ".runtime" not in script
++    assert "wuliu" not in script

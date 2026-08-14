@@ -1,0 +1,282 @@
+{
+  "contract_id": "kjds-competitive-capability-benchmark-v1",
+  "benchmark_id": "maozierp-feishu-ozon-20260729",
+  "source": {
+    "title": "关于毛子ERP（OZON）：",
+    "url": "https://mcn5ze6lo0iz.feishu.cn/wiki/Zd2xwn5m4ijIaQkiDc7c34qgnye",
+    "observed_at": "2026-07-29T04:34:00Z",
+    "last_updated_label": "Jul 16",
+    "access_class": "public_shared_document",
+    "evidence_tier": "C",
+    "authority": "workflow_and_capability_observation_only",
+    "capability_snapshot_sha256": "763f8496bceaecdd6355135a2c31290018dfca716d863e1ae5dcad49b43aa86e"
+  },
+  "principle": "Every observed workflow is mapped; safe patterns become KJDS-native modules, unsafe patterns remain explicit rejected alternatives.",
+  "capabilities": [
+    {
+      "id": "extension_installation",
+      "observed": "Browser extension download and unpacked installation guidance",
+      "kjds_target": "Browser Capture Inbox helper distribution",
+      "adoption": "adapt",
+      "wave": "M1",
+      "status": "implemented_unverified_distribution",
+      "boundary": "signed/reviewed package, minimal permissions, no implicit background capture"
+    },
+    {
+      "id": "store_api_authorization",
+      "observed": "Ozon seller account and API-key shop authorization",
+      "kjds_target": "Connector Registry + tenant/entity/store credential vault binding",
+      "adoption": "adapt",
+      "wave": "M0-M1",
+      "status": "partial",
+      "boundary": "official Seller API, least-role key, IP allowlist, revocation and Evidence"
+    },
+    {
+      "id": "cookie_binding",
+      "observed": "Plugin binds Ozon shop Cookie state",
+      "kjds_target": "No equivalent; official API or authorized export only",
+      "adoption": "reject",
+      "wave": "none",
+      "status": "prohibited",
+      "boundary": "never transfer cookies/localStorage/session state"
+    },
+    {
+      "id": "manual_automatic_store_sync",
+      "observed": "Manual and automatic shop-information synchronization",
+      "kjds_target": "Store-scoped read runs, cursors, scheduler, raw Evidence and drift queue",
+      "adoption": "adapt",
+      "wave": "M1-M3",
+      "status": "partial",
+      "boundary": "read-only first; writes require independent Approval/Permit/Readback"
+    },
+    {
+      "id": "one_click_multi_store_listing",
+      "observed": "Copy an Ozon product and list it to one or more stores",
+      "kjds_target": "PIM ListingPlan batch diff and governed publish command",
+      "adoption": "adapt",
+      "wave": "M2",
+      "status": "gated",
+      "boundary": "no copying protected content; downside CM3, Passport, QA, Approval and one-time Permit per frozen batch"
+    },
+    {
+      "id": "editable_ai_listing",
+      "observed": "Edit copied listing, AI text, image beautification, translation and resolution",
+      "kjds_target": "Versioned Russian content draft + media studio + factual/IP QA",
+      "adoption": "adapt",
+      "wave": "M2",
+      "status": "partial",
+      "boundary": "Passport/Evidence inputs, no competitor copy, candidate-only generation, independent approval"
+    },
+    {
+      "id": "multi_source_product_collection",
+      "observed": "Collect 1688, Taobao and Pinduoduo products for Ozon listing",
+      "kjds_target": "Provider-neutral Browser Capture Inbox and admitted source adapters",
+      "adoption": "adapt",
+      "wave": "M1",
+      "status": "in_progress",
+      "boundary": "allowed current-page observation only; no cookies, internal APIs, CAPTCHA bypass or fact promotion"
+    },
+    {
+      "id": "image_collection",
+      "observed": "Copy product-page images",
+      "kjds_target": "Media reference capture + rights review + owned delivery manifest",
+      "adoption": "adapt",
+      "wave": "M2",
+      "status": "gated",
+      "boundary": "external image stays unverified reference until rights Evidence; never copy competitor assets into a listing"
+    },
+    {
+      "id": "ai_redraw",
+      "observed": "Redraw an existing product image with AI",
+      "kjds_target": "Media workbench controlled image variant job",
+      "adoption": "adapt",
+      "wave": "M2",
+      "status": "partial",
+      "boundary": "rights, product fidelity, color/structure/OCR QA, model/version/cost lineage"
+    },
+    {
+      "id": "ai_image_suite",
+      "observed": "Generate main images and rich-content image suites with an image model",
+      "kjds_target": "Template catalog + batch image execution + partial failure/retry + manifest",
+      "adoption": "adapt",
+      "wave": "M2",
+      "status": "partial",
+      "boundary": "provider-neutral model adapter; no provider claim becomes quality Evidence"
+    },
+    {
+      "id": "single_bulk_inventory",
+      "observed": "Add inventory to one or many products",
+      "kjds_target": "Inventory ledger, warehouse availability, batch diff and controlled stock command",
+      "adoption": "adapt",
+      "wave": "M2-M3",
+      "status": "gated",
+      "boundary": "initial Pilot 1-3 units; no entitlement may bypass learning/readback/settlement gates"
+    },
+    {
+      "id": "promotion_batch_management",
+      "observed": "Batch add, change or remove products from promotions",
+      "kjds_target": "Promotion experiment plan, profit floor, bounded batch command and compensation",
+      "adoption": "adapt",
+      "wave": "M2-M3",
+      "status": "gated",
+      "boundary": "price-index target cannot break downside CM3; Approval/Permit/Readback required"
+    },
+    {
+      "id": "cross_border_pricing_profit_calculator",
+      "observed": "Cross-border pricing tool and profit calculator",
+      "kjds_target": "Fifteen-item Decimal CM3 kernel, price lab and settlement reconciliation",
+      "adoption": "deepen",
+      "wave": "M1-M3",
+      "status": "partial",
+      "boundary": "estimated, accrued, settled and cash contribution books remain separate"
+    },
+    {
+      "id": "store_data_analytics",
+      "observed": "Shop data-analysis workspace",
+      "kjds_target": "Scoped BI semantic layer, market radar and operating anomaly center",
+      "adoption": "deepen",
+      "wave": "M1-M4",
+      "status": "partial",
+      "boundary": "official fields or explicit proxy/no_data; never infer sales from reviews"
+    },
+    {
+      "id": "multi_store_cookie_session",
+      "observed": "Bind multiple store Cookie sessions",
+      "kjds_target": "Independent store identities, RBAC, credential vault and store matrix",
+      "adoption": "replace",
+      "wave": "M0-M4",
+      "status": "partial",
+      "boundary": "no shared cookies or cross-store credential reuse"
+    },
+    {
+      "id": "listing_status_tracking",
+      "observed": "View product listing status",
+      "kjds_target": "Listing lifecycle projection, platform receipt and independent readback",
+      "adoption": "deepen",
+      "wave": "M2",
+      "status": "partial",
+      "boundary": "HTTP success is not completion; state requires readback Evidence"
+    },
+    {
+      "id": "listing_repair",
+      "observed": "Repair image, country and non-copyable product problems",
+      "kjds_target": "Typed listing exception queue, root cause, owner/SLA and deterministic retry",
+      "adoption": "adapt",
+      "wave": "M2",
+      "status": "planned",
+      "boundary": "repair must not remove compliance controls or fabricate category/country data"
+    },
+    {
+      "id": "watermark_templates",
+      "observed": "Create, preview and bind different watermark templates per store",
+      "kjds_target": "Rights-aware brand overlay templates and store-scoped render manifests",
+      "adoption": "adapt",
+      "wave": "M2",
+      "status": "planned",
+      "boundary": "platform image rules, rights and readability QA; no misleading or contact information"
+    },
+    {
+      "id": "rule_based_product_selection",
+      "observed": "Configure selection rules and label qualifying product cards",
+      "kjds_target": "Versioned OpportunityScorer and explanation badges",
+      "adoption": "deepen",
+      "wave": "M1",
+      "status": "partial",
+      "boundary": "server-owned score, exact cohort, full/downside economics and no invented demand"
+    },
+    {
+      "id": "auto_favorite_bulk_listing",
+      "observed": "Automatically favorite qualifying items and batch-list them",
+      "kjds_target": "Candidate queue + approval allocation waitlist + frozen listing batch",
+      "adoption": "replace",
+      "wave": "M1-M2",
+      "status": "gated",
+      "boundary": "automatic candidate intake only; listing remains a separately approved external command"
+    },
+    {
+      "id": "automatic_promotion_removal",
+      "observed": "Automatically remove products from promotions",
+      "kjds_target": "Profit/quality stop policy proposing a compensating promotion command",
+      "adoption": "adapt",
+      "wave": "M3",
+      "status": "planned",
+      "boundary": "bounded policy, approval/permit, independent readback and rollback"
+    },
+    {
+      "id": "passport_pickup_review_reminders",
+      "observed": "Automated passport, pickup and review reminders",
+      "kjds_target": "Order/customer-service task templates with consent, locale and rate controls",
+      "adoption": "adapt",
+      "wave": "M3",
+      "status": "planned",
+      "boundary": "official messaging surface only; personal-data minimization and no manipulative review solicitation"
+    },
+    {
+      "id": "operating_dashboard",
+      "observed": "Store data dashboard",
+      "kjds_target": "Server-observed operating cockpit + Agent status rail + Graph drilldown",
+      "adoption": "deepen",
+      "wave": "M0-M4",
+      "status": "partial",
+      "boundary": "real observations, freshness and no_data; no synthetic GMV/orders/profit"
+    },
+    {
+      "id": "multi_device_management",
+      "observed": "Manage ERP access across multiple devices",
+      "kjds_target": "Session/device inventory, revocation, tenant RBAC, audit and enterprise SSO envelope",
+      "adoption": "adapt",
+      "wave": "M4",
+      "status": "planned",
+      "boundary": "no credential sharing; device/session revocation and least privilege"
+    },
+    {
+      "id": "order_management",
+      "observed": "ERP introduction includes order management",
+      "kjds_target": "OMS order/return/cancellation/service timeline and sale-triggered procurement",
+      "adoption": "deepen",
+      "wave": "M3",
+      "status": "partial",
+      "boundary": "official order facts, idempotent events, no purchase until a real order and governed procurement decision"
+    },
+    {
+      "id": "reverse_topic_tag_lookup",
+      "observed": "ERP introduction includes reverse topic-tag lookup",
+      "kjds_target": "Market Radar keyword/category/search visibility evidence",
+      "adoption": "adapt",
+      "wave": "M1",
+      "status": "planned",
+      "boundary": "official analytics or allowed observation; no private endpoint or fabricated search volume"
+    },
+    {
+      "id": "listing_error_runbook",
+      "observed": "Linked Ozon listing-error handling guidance",
+      "kjds_target": "Versioned error taxonomy, runbook, replay fixture and exception resolution Evidence",
+      "adoption": "deepen",
+      "wave": "M2",
+      "status": "planned",
+      "boundary": "rule/version/effective-date bound; never bypass platform validation"
+    },
+    {
+      "id": "tool_download_directory",
+      "observed": "Common websites and tool-download directory",
+      "kjds_target": "Governed connector/tool catalog with license, provenance, permission and replacement review",
+      "adoption": "adapt",
+      "wave": "M0-M4",
+      "status": "partial",
+      "boundary": "no unsigned/unreviewed binary or plugin receives business credentials or execution authority"
+    }
+  ],
+  "coverage": {
+    "observed_capability_count": 28,
+    "mapped_count": 28,
+    "unmapped_count": 0,
+    "adoption_summary": {
+      "adapt": 18,
+      "deepen": 7,
+      "replace": 2,
+      "reject": 1
+    },
+    "implementation_is_not_claimed_by_mapping": true,
+    "external_write_allowed": false
+  }
+}

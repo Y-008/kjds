@@ -58,6 +58,53 @@ def test_dedicated_worker_identities_keep_minimum_roles(monkeypatch):
     assert "pilot_reader" not in executor.roles
 
 
+def test_actor_resolution_is_credential_free_and_rejects_profile_ambiguity(
+    monkeypatch,
+):
+    monkeypatch.delenv("KJDS_API_KEY", raising=False)
+    monkeypatch.setenv(
+        "KJDS_API_KEYS_JSON",
+        json.dumps(
+            {
+                "operator-key-a": credential_profile(
+                    "operator-a",
+                    ["operator"],
+                ),
+                "operator-key-b": credential_profile(
+                    "operator-a",
+                    ["operator"],
+                ),
+            }
+        ),
+    )
+    authenticator = ApiKeyAuthenticator.from_environment()
+    resolved = authenticator.resolve_actor("operator-a")
+    assert resolved.actor_id == "operator-a"
+    assert resolved.roles == {"operator"}
+    assert "operator-key" not in repr(resolved)
+    with pytest.raises(KeyError, match="not found"):
+        authenticator.resolve_actor("missing-actor")
+
+    monkeypatch.setenv(
+        "KJDS_API_KEYS_JSON",
+        json.dumps(
+            {
+                "operator-key": credential_profile(
+                    "operator-a",
+                    ["operator"],
+                ),
+                "reviewer-key": credential_profile(
+                    "operator-a",
+                    ["reviewer"],
+                ),
+            }
+        ),
+    )
+    ambiguous = ApiKeyAuthenticator.from_environment()
+    with pytest.raises(ValueError, match="ambiguous"):
+        ambiguous.resolve_actor("operator-a")
+
+
 def test_non_admin_identity_cannot_combine_request_and_approval_roles(monkeypatch):
     monkeypatch.delenv("KJDS_API_KEY", raising=False)
     monkeypatch.setenv(
@@ -176,6 +223,8 @@ def test_read_only_control_plane_reads_declare_endpoint_level_roles():
         "/v1/read-only-pilots/{pilot_id}/usage",
         "/v1/read-only-claims",
         "/v1/read-only-claims/{claim_id}",
+        "/v1/oms/workspace",
+        "/v1/inventory/workspace",
     }
     routes = {
         route.path: route.endpoint

@@ -11,7 +11,18 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint, select
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    select,
+    text,
+)
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
@@ -23,6 +34,7 @@ MAX_IMPORT_BYTES = 20 * 1024 * 1024
 MAX_IMPORT_ROWS = 50_000
 
 FIELD_ALIASES = {
+    "store_ref": {"store_ref", "store", "shop_ref", "店铺"},
     "external_id": {
         "external_id",
         "operation_id",
@@ -35,6 +47,13 @@ FIELD_ALIASES = {
         "номер отправления",
         "номер возврата",
         "id начисления",
+    },
+    "order_external_id": {
+        "order_external_id",
+        "parent_order_id",
+        "original_order_id",
+        "номер исходного заказа",
+        "номер заказа возврата",
     },
     "sku": {"sku", "offer_id", "артикул", "артикул продавца"},
     "quantity": {"quantity", "qty", "количество"},
@@ -67,6 +86,58 @@ FIELD_ALIASES = {
         "сумма итого, руб.",
     },
     "return_reason": {"return_reason", "reason", "причина возврата"},
+    "warehouse_ref": {
+        "warehouse_ref",
+        "warehouse_id",
+        "warehouse",
+        "склад",
+        "идентификатор склада",
+    },
+    "cluster_ref": {
+        "cluster_ref",
+        "cluster",
+        "region_cluster",
+        "кластер",
+    },
+    "fulfillment_mode": {
+        "fulfillment_mode",
+        "delivery_scheme",
+        "scheme",
+        "схема работы",
+        "схема доставки",
+    },
+    "available_quantity": {
+        "available_quantity",
+        "available_stock",
+        "present",
+        "available",
+        "доступно",
+        "доступный остаток",
+    },
+    "reserved_quantity": {
+        "reserved_quantity",
+        "reserved_stock",
+        "reserved",
+        "зарезервировано",
+        "резерв",
+    },
+    "in_transit_quantity": {
+        "in_transit_quantity",
+        "in_transit",
+        "inbound",
+        "в пути",
+    },
+    "damaged_quantity": {
+        "damaged_quantity",
+        "damaged",
+        "брак",
+        "повреждено",
+    },
+    "quarantine_quantity": {
+        "quarantine_quantity",
+        "quarantine",
+        "карантин",
+    },
 }
 
 DERIVED_RUB_FROM_HEADER = "__derived_rub_from_amount_header__"
@@ -74,11 +145,57 @@ DERIVED_RUB_FROM_HEADER = "__derived_rub_from_amount_header__"
 
 class ImportJobRow(Base):
     __tablename__ = "import_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "("
+            "tenant_ref IS NULL AND entity_ref IS NULL "
+            "AND store_ref IS NULL "
+            "AND scope_grant_authority_sha256 IS NULL "
+            "AND source_evidence_sha256 IS NULL "
+            "AND scope_as_of IS NULL"
+            ") OR ("
+            "tenant_ref IS NOT NULL AND length(tenant_ref) > 0 "
+            "AND entity_ref IS NOT NULL AND length(entity_ref) > 0 "
+            "AND store_ref IS NOT NULL AND length(store_ref) > 0 "
+            "AND scope_grant_authority_sha256 IS NOT NULL "
+            "AND length(scope_grant_authority_sha256) = 64 "
+            "AND source_evidence_sha256 IS NOT NULL "
+            "AND length(source_evidence_sha256) = 64 "
+            "AND scope_as_of IS NOT NULL "
+            "AND evidence_id IS NOT NULL"
+            ")",
+            name="ck_import_job_scope_complete",
+        ),
+        Index(
+            "uq_import_job_legacy_sha256",
+            "sha256",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NULL"),
+            postgresql_where=text("tenant_ref IS NULL"),
+        ),
+        Index(
+            "uq_import_job_scoped_sha256",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "sha256",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NOT NULL"),
+            postgresql_where=text("tenant_ref IS NOT NULL"),
+        ),
+        Index(
+            "ix_import_job_scope_created",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "created_at",
+        ),
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)
     source: Mapped[str] = mapped_column(String)
     record_type: Mapped[str] = mapped_column(String)
     filename: Mapped[str] = mapped_column(String)
-    sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    sha256: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String)
     row_count: Mapped[int] = mapped_column(Integer)
     accepted_count: Mapped[int] = mapped_column(Integer)
@@ -87,6 +204,21 @@ class ImportJobRow(Base):
     errors_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
     evidence_id: Mapped[str | None] = mapped_column(ForeignKey(EvidenceRecordRow.id), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    tenant_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    entity_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    store_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    scope_grant_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    source_evidence_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    scope_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 class ImportDataRow(Base):
@@ -118,6 +250,9 @@ class ImportResult:
     evidence_id: str | None
     created_at: str
     duplicate: bool = False
+    scope: dict[str, Any] | None = None
+    formal_fact_promotion_allowed: bool = False
+    external_write_allowed: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -212,10 +347,25 @@ class OzonImportService:
     def __init__(self, engine) -> None:
         self.engine = engine
 
-    def find_by_content(self, content: bytes) -> ImportResult | None:
+    def find_by_content(
+        self,
+        content: bytes,
+        *,
+        scope_authority: dict[str, Any] | None = None,
+    ) -> ImportResult | None:
         digest = hashlib.sha256(content).hexdigest()
+        scope = self._scope_authority(scope_authority)
+        query = select(ImportJobRow).where(ImportJobRow.sha256 == digest)
+        if scope is None:
+            query = query.where(ImportJobRow.tenant_ref.is_(None))
+        else:
+            query = query.where(
+                ImportJobRow.tenant_ref == scope["tenant_ref"],
+                ImportJobRow.entity_ref == scope["entity_ref"],
+                ImportJobRow.store_ref == scope["store_ref"],
+            )
         with Session(self.engine) as session:
-            existing = session.scalar(select(ImportJobRow).where(ImportJobRow.sha256 == digest))
+            existing = session.scalar(query)
             return self._result(existing, duplicate=True) if existing else None
 
     def preview_file(self, *, filename: str, content: bytes) -> ImportPreview:
@@ -245,11 +395,34 @@ class OzonImportService:
         )
         return preview, raw_rows
 
-    def import_file(self, *, filename: str, content: bytes, evidence_id: str | None = None) -> ImportResult:
+    def import_file(
+        self,
+        *,
+        filename: str,
+        content: bytes,
+        evidence_id: str | None = None,
+        scope_authority: dict[str, Any] | None = None,
+    ) -> ImportResult:
         preview, raw_rows = self._inspect_file(filename=filename, content=content)
         digest = hashlib.sha256(content).hexdigest()
-        existing = self.find_by_content(content)
+        scope = self._scope_authority(scope_authority)
+        if scope is not None and not evidence_id:
+            raise ValueError("Native Ozon import requires source Evidence")
+        existing = self.find_by_content(
+            content,
+            scope_authority=scope,
+        )
         if existing:
+            if scope is not None and (
+                existing.scope is None
+                or existing.scope["scope_grant_authority_sha256"]
+                != scope["scope_grant_authority_sha256"]
+                or existing.scope["source_evidence_sha256"]
+                != scope["source_evidence_sha256"]
+            ):
+                raise ValueError(
+                    "Ozon import scope or Evidence authority changed"
+                )
             return existing
 
         record_type = OzonRecordType(preview.record_type)
@@ -296,6 +469,30 @@ class OzonImportService:
             errors_json=file_errors,
             evidence_id=evidence_id,
             created_at=datetime.now(UTC),
+            tenant_ref=(
+                scope["tenant_ref"] if scope is not None else None
+            ),
+            entity_ref=(
+                scope["entity_ref"] if scope is not None else None
+            ),
+            store_ref=(
+                scope["store_ref"] if scope is not None else None
+            ),
+            scope_grant_authority_sha256=(
+                scope["scope_grant_authority_sha256"]
+                if scope is not None
+                else None
+            ),
+            source_evidence_sha256=(
+                scope["source_evidence_sha256"]
+                if scope is not None
+                else None
+            ),
+            scope_as_of=(
+                self._datetime(scope["scope_as_of"], "scope_as_of")
+                if scope is not None
+                else None
+            ),
         )
         with Session(self.engine, expire_on_commit=False) as session, session.begin():
             session.add(job)
@@ -341,4 +538,90 @@ class OzonImportService:
             row.evidence_id,
             row.created_at.isoformat(),
             duplicate,
+            (
+                {
+                    "tenant_ref": row.tenant_ref,
+                    "entity_ref": row.entity_ref,
+                    "store_ref": row.store_ref,
+                    "scope_grant_authority_sha256": (
+                        row.scope_grant_authority_sha256
+                    ),
+                    "source_evidence_sha256": (
+                        row.source_evidence_sha256
+                    ),
+                    "as_of": OzonImportService._iso(row.scope_as_of),
+                    "authority": "native",
+                }
+                if row.tenant_ref is not None
+                else {
+                    "tenant_ref": None,
+                    "entity_ref": None,
+                    "store_ref": None,
+                    "scope_grant_authority_sha256": None,
+                    "source_evidence_sha256": None,
+                    "as_of": None,
+                    "authority": "legacy",
+                }
+            ),
+            False,
+            False,
         )
+
+    @staticmethod
+    def _iso(value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        normalized = (
+            value.replace(tzinfo=UTC)
+            if value.tzinfo is None
+            else value.astimezone(UTC)
+        )
+        return normalized.isoformat()
+
+    @classmethod
+    def _scope_authority(
+        cls,
+        value: dict[str, Any] | None,
+    ) -> dict[str, str] | None:
+        if value is None:
+            return None
+        required = (
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "source_evidence_sha256",
+            "scope_as_of",
+        )
+        scope = {
+            field: str(value.get(field, "")).strip()
+            for field in required
+        }
+        if any(not item for item in scope.values()):
+            raise ValueError("Native Ozon import scope is incomplete")
+        for field in (
+            "scope_grant_authority_sha256",
+            "source_evidence_sha256",
+        ):
+            digest = scope[field].lower()
+            if len(digest) != 64 or any(
+                character not in "0123456789abcdef"
+                for character in digest
+            ):
+                raise ValueError(f"{field} must be SHA-256")
+            scope[field] = digest
+        scope["scope_as_of"] = cls._datetime(
+            scope["scope_as_of"],
+            "scope_as_of",
+        ).isoformat()
+        return scope
+
+    @staticmethod
+    def _datetime(value: str, name: str) -> datetime:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except (AttributeError, ValueError) as exc:
+            raise ValueError(f"{name} must be ISO-8601") from exc
+        if parsed.tzinfo is None:
+            raise ValueError(f"{name} must include timezone")
+        return parsed.astimezone(UTC)

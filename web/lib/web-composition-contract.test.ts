@@ -24,6 +24,7 @@ test("task navigation exposes every unified operating workspace", () => {
   assert.deepEqual(targets, [
     "overview",
     "growth",
+    "batch",
     "pilot",
     "finance",
     "data",
@@ -52,7 +53,13 @@ test("portfolio pilot renders only server-owned screening economics", () => {
   const workspaces = read("../features/dashboard/dashboard-workspaces.ts");
 
   assert.match(workspaces, /id: "pilot"/);
-  assert.match(panel, /\/backend\/v1\/marketplace-observations\?marketplace=1688/);
+  assert.match(panel, /\/backend\/v1\/marketplace-observations\?\$\{query\.toString\(\)\}/);
+  assert.match(panel, /kjds-scoped-marketplace-observation-v1/);
+  assert.match(panel, /payload\.items/);
+  assert.match(panel, /store_ref: storeRef/);
+  assert.match(panel, /暂无通过作用域 Evidence/);
+  assert.match(panel, /candidateScoringAllowed/);
+  assert.match(panel, /!candidateScoringAllowed/);
   assert.match(panel, /\/backend\/v1\/portfolio-pilot\/prepare/);
   assert.match(panel, /target_specification: targetSpecification/);
   assert.match(panel, /policy_id: "ozon-cny-research-screening-v1"/);
@@ -63,6 +70,174 @@ test("portfolio pilot renders only server-owned screening economics", () => {
   assert.match(panel, /自动上架：否/);
   assert.doesNotMatch(panel, /Math\.random|\/commands|\/write-attempt|\/receipt/);
   assert.doesNotMatch(panel, /listing_price\s*[-+*/]|displayed_price\s*[-+*/]/);
+});
+
+test("batch opportunity workbench uses only server-owned scans and safety contracts", () => {
+  const panel = read("../features/dashboard/batch-opportunity-panel.tsx");
+  const workspaces = read("../features/dashboard/dashboard-workspaces.ts");
+
+  assert.match(workspaces, /id: "batch"/);
+  assert.match(panel, /\/backend\/v1\/batch-opportunities\/latest/);
+  assert.match(panel, /\/backend\/v1\/batch-market-scans/);
+  assert.match(panel, /observed_checkout_price/);
+  assert.match(panel, /downside/);
+  assert.match(panel, /Passport/);
+  assert.match(panel, /24h\/72h\/7d/);
+  assert.match(panel, /70% 已验证精品/);
+  assert.match(panel, /Permit/);
+  assert.match(panel, /Ozon 写入/);
+  assert.match(panel, /cn-ozon-observed-cost-v1/);
+  assert.match(panel, /OZON GLOBAL CN/);
+  assert.match(panel, /official_rule_ready/);
+  assert.match(panel, /exact_identity_matched/);
+  assert.match(panel, /checkout_cost_eligible/);
+  assert.match(panel, /同款已找到，待结算成本 Evidence/);
+  assert.match(panel, /target_purchase_quantity: 1/);
+  assert.match(panel, /pilot_limit: 3/);
+  assert.match(panel, /不向供应商下单/);
+  assert.match(panel, /sale-triggered JIT/);
+  assert.match(panel, /sale_triggered_procurement/);
+  assert.match(panel, /出单前采购/);
+  assert.match(panel, /\/backend\/v1\/erp\/profit-items/);
+  assert.match(panel, /利润款写入 ERP/);
+  assert.match(panel, /opening_stock=0/);
+  assert.match(panel, /不会把观察价写成 ERP 利润商品/);
+  assert.doesNotMatch(
+    panel,
+    /Math\.random|listing_price\s*[-+*/]|observed_checkout_price\s*[-+*/]|\/commands|\/write-attempt|\/receipt/,
+  );
+});
+
+test("seller operating system retains four operating routes over one fact kernel", () => {
+  const consoleSource = read("../features/seller-os/seller-os-console.tsx");
+  const routes = [
+    ["seller-os", "seller-os"],
+    ["rule-advantage", "rule-advantage"],
+    ["store-matrix", "store-matrix"],
+    ["growth-command", "growth-command"],
+  ];
+
+  for (const [directory, surface] of routes) {
+    const page = read(`../app/${directory}/page.tsx`);
+    assert.match(page, new RegExp(`surface="${surface}"`));
+    assert.match(page, /SellerOsConsole/);
+  }
+  assert.match(consoleSource, /\/backend\/v1\/seller-os\/strategy-packs/);
+  assert.match(consoleSource, /\/backend\/v1\/seller-os\/evaluate/);
+  assert.match(consoleSource, /\/backend\/v1\/batch-opportunities\/latest/);
+  assert.match(consoleSource, /同一真实候选的 5 档经营决策/);
+  assert.match(consoleSource, /自动上品数量不是成功指标/);
+  assert.match(consoleSource, /不降低真实性/);
+  assert.match(consoleSource, /no_data/);
+  assert.match(consoleSource, /Permit 均未创建/);
+  assert.doesNotMatch(
+    consoleSource,
+    /Math\.random|\/commands|\/write-attempt|\/receipt/,
+  );
+});
+
+test("strategic surfaces use one read-only server-owned dashboard projection", () => {
+  const source = read(
+    "../features/strategic-capital-dashboard/strategic-capital-dashboard.tsx",
+  );
+  const strategy = read("../app/strategy-center/page.tsx");
+  const portfolio = read("../app/portfolio-cockpit/page.tsx");
+  const sessionRoute = read("../app/auth/session/route.ts");
+  const identity = read("./web-identity.ts");
+  const contract = read(
+    "../features/strategic-capital-dashboard/contract.ts",
+  );
+
+  assert.match(strategy, /StrategicCapitalDashboard surface="strategy-center"/);
+  assert.match(portfolio, /StrategicCapitalDashboard surface="portfolio-cockpit"/);
+  assert.doesNotMatch(strategy, /SellerOsConsole/);
+  assert.doesNotMatch(portfolio, /SellerOsConsole/);
+  assert.match(source, /fetchJson<WebSession[^>]*>\(\s*["']\/auth\/session/);
+  assert.match(source, /session\.default_store_ref/);
+  assert.match(source, /session\.store_refs\.includes\(storeRef\)/);
+  assert.match(source, /encodeURIComponent\(storeRef\)/);
+  assert.match(source, /isStrategicCapitalDashboardProjection\(payload, storeRef\)/);
+  assert.match(source, /status === 401/);
+  assert.match(source, /status === 428/);
+  assert.doesNotMatch(source, /store_ref=ozon-primary/);
+  assert.match(sessionRoute, /store_refs:\s*identity\.storeRefs/);
+  assert.match(sessionRoute, /default_store_ref:\s*identity\.storeRefs\[0\]/);
+  assert.match(identity, /storeRefs:\s*credential\.storeRefs/);
+  assert.match(source, /dashboard\.sections\.map/);
+  assert.match(source, /section\.display_order/);
+  assert.match(source, /section\.display_items\.map/);
+  assert.match(contract, /not_connected/);
+  assert.match(contract, /no_data/);
+  assert.match(contract, /UNKNOWN/);
+  assert.match(source, /global_top1=false/);
+  assert.match(source, /production_admission=false/);
+  assert.match(source, /budget_authority=false/);
+  assert.doesNotMatch(
+    source,
+    /method:\s*["']POST|\/impact|\.sort\(|\.reduce\(|\bsum\b|\bNumber\b|\bMath\b|\bFX\b|percentage|\?\?\s*0|candidates\[0\]/,
+  );
+});
+
+test("commerce os exposes native ERP, content factory, and governed agent team", () => {
+  const page = read("../app/commerce-os/page.tsx");
+  const consoleSource = read("../features/commerce-os/commerce-os-console.tsx");
+  const shell = read("../features/dashboard/dashboard-shell.tsx");
+
+  assert.match(page, /<CommerceOsConsole\s*\/>/);
+  assert.match(shell, /href="\/commerce-os"/);
+  assert.match(consoleSource, /\/backend\/v1\/commerce-os\/workspace/);
+  assert.match(consoleSource, /\/backend\/v1\/seller-os\/strategy-packs/);
+  assert.match(
+    consoleSource,
+    /毛子、荔枝、芒果店长、店小秘、妙手、无忧易售、Seerfar 与 LinkFox/,
+  );
+  assert.match(consoleSource, /Must-have 能力基准/);
+  assert.match(consoleSource, /安全能力不可省略/);
+  assert.match(consoleSource, /项工作流已映射/);
+  assert.match(consoleSource, /映射 ≠ 实现 · 外部写关闭/);
+  assert.match(consoleSource, /workflow_mapping\.capabilities/);
+  assert.match(consoleSource, /NATIVE INTELLIGENCE INGESTION/);
+  assert.match(consoleSource, /href="\/oms"/);
+  assert.match(consoleSource, /打开原生 OMS/);
+  assert.match(consoleSource, /href="\/pim"/);
+  assert.match(consoleSource, /打开商品主数据 PIM/);
+  assert.match(consoleSource, /href="\/listings"/);
+  assert.match(consoleSource, /打开 Listing 生命周期/);
+  assert.match(consoleSource, /href="\/media-factory"/);
+  assert.match(consoleSource, /打开内容媒体工厂/);
+  assert.match(consoleSource, /href="\/sourcing-intelligence"/);
+  assert.match(consoleSource, /打开原生供应智能/);
+  assert.match(consoleSource, /href="\/seller-erp-bridge"/);
+  assert.match(consoleSource, /打开授权 Seller ERP Bridge/);
+  assert.match(consoleSource, /Cookie、localStorage、内部 API 与验证码绕过均被禁止/);
+  assert.match(consoleSource, /公开价格 ≠ Supplier Offer/);
+  assert.match(consoleSource, /评论\/页面信号 ≠ 销量/);
+  assert.match(consoleSource, /来源等级 ≠ 业务事实升级/);
+  assert.match(consoleSource, /Ozon 只读 Pilot \/ Run/);
+  assert.match(consoleSource, /Ozon 只读 Claim 复核账/);
+  assert.match(consoleSource, /formal fact false/);
+  assert.match(consoleSource, /Ozon 官方导入 staging/);
+  assert.match(consoleSource, /formal promotion false/);
+  assert.match(consoleSource, /legacy 不推断 · external write false/);
+  assert.match(consoleSource, /Run 通过 Pilot FK 在 SQL/);
+  assert.match(consoleSource, /SCOPED MARKET RADAR · EXACT IDENTITY/);
+  assert.match(consoleSource, /同一商品先聚合 cohort，再进入候选/);
+  assert.match(consoleSource, /listing 数不冒充 SKU/);
+  assert.match(consoleSource, /100 件价不能筛 3 件 Pilot/);
+  assert.match(consoleSource, /Observation ≠ Offer \/ actual cost/);
+  assert.match(consoleSource, /销量推断：关闭/);
+  assert.match(consoleSource, /竞品标题和图片不可复制/);
+  assert.match(consoleSource, /SCOPED PIM · PASSPORT · CONTENT/);
+  assert.match(consoleSource, /审批计划 ≠ 独立 Approval/);
+  assert.match(consoleSource, /Approval ≠ 一次性 Permit/);
+  assert.match(consoleSource, /Ozon 外部写入：关闭/);
+  assert.match(consoleSource, /Agent 可归一、复算、生成草稿与内部任务/);
+  assert.match(consoleSource, /不可自批、自发 Permit 或外部写/);
+  assert.match(consoleSource, /自动上品数量不是成功指标/);
+  assert.doesNotMatch(
+    consoleSource,
+    /Math\.random|\/commands|\/write-attempt|\/receipt/,
+  );
 });
 
 test("marketplace growth stays recommendation-only while using governed evidence", () => {
@@ -95,10 +270,13 @@ test("marketplace growth stays recommendation-only while using governed evidence
 test("overview dashboard renders the server-owned operating snapshot without synthetic business data", () => {
   const controller = read("../features/dashboard/use-dashboard-controller.tsx");
   const panel = read("../features/dashboard/unified-overview-panel.tsx");
+  const sellerTier = read("../features/dashboard/seller-tier-panel.tsx");
   const contracts = read("../features/dashboard/contracts.ts");
+  const view = read("../features/dashboard/dashboard-view.tsx");
 
   assert.match(controller, /\/backend\/v1\/operating-analytics\/snapshot/);
   assert.match(controller, /operatingAnalytics/);
+  assert.match(view, /SellerTierPanel/);
   assert.match(contracts, /contract_id: "kjds-operating-flow-analytics-v1"/);
   assert.match(contracts, /synthetic_business_data_allowed: false/);
   assert.match(panel, /analytics\.stages\.map/);
@@ -108,6 +286,11 @@ test("overview dashboard renders the server-owned operating snapshot without syn
   assert.match(panel, /Ozon 外部引用 · 未核权/);
   assert.match(panel, /不等于同行市场价/);
   assert.match(panel, /AI 不能自动选品、联系供应商、采购、改价、发布或投放/);
+  assert.match(sellerTier, /\/backend\/v1\/seller-os\/strategy-packs/);
+  assert.match(sellerTier, /同一事实核，不同商业包络/);
+  assert.match(sellerTier, /打开 Seller OS/);
+  assert.match(sellerTier, /打开策略中心/);
+  assert.match(sellerTier, /COMMERCIAL PACKS/);
   assert.doesNotMatch(panel, /\/commands|\/write-attempt|\/receipt|Math\.random/);
 });
 
@@ -206,7 +389,7 @@ test("approved listings expose only the minimal execution-plan handoff", () => {
   assert.match(presentation, /: executeCommand\?\.status \?\? "preflight"/);
   assert.match(presentation, /rollbackLifecycle: rollbackCommand\?\.status/);
   assert.match(decisionPanel, /causalPolicyExecutionPlans\.find/);
-  assert.match(contracts, /source_kind: "causal_policy_handoff" \| "approved_listing_draft"/);
+  assert.match(contracts, /"approved_customer_service_reply"/);
   assert.match(contracts, /handoff_id: string \| null; policy_id: string \| null; release_id: string \| null/);
   assert.match(contracts, /"queued" \| "claimed" \| "write_started" \| "succeeded" \| "failed" \| "uncertain" \| "expired" \| "precondition_failed"/);
 });

@@ -19,6 +19,20 @@ def valid_environment() -> dict[str, str]:
     }
 
 
+class RecordingEnvironment(dict):
+    def __init__(self, values):
+        super().__init__(values)
+        self.reads = []
+
+    def get(self, key, default=None):
+        self.reads.append(key)
+        return super().get(key, default)
+
+    def __getitem__(self, key):
+        self.reads.append(key)
+        return super().__getitem__(key)
+
+
 def run_preflight(environment=None, **overrides):
     values = {
         "pilot_id": "pilot-private-id",
@@ -39,8 +53,9 @@ def test_offline_preflight_returns_only_safe_hashed_configuration():
     assert report["network_calls_performed"] is False
     assert report["contract_version"] == "ozon-product-read-v1"
     assert report["target_count"] == 1
-    assert report["required_credentials_present"] == 3
-    assert report["credential_values_distinct"] is True
+    assert report["required_credentials_present"] == 0
+    assert report["provider_credentials_from_environment"] is False
+    assert report["credential_values_read"] is False
     assert report["explicit_execution_required"] is True
     serialized = json.dumps(report)
     for private_value in (
@@ -128,8 +143,6 @@ def test_offline_preflight_rejects_non_initial_pilot_shapes(overrides, message):
         ({"OZON_PRODUCT_ATTRIBUTES_PATH": "/v3/unknown"}, "fixed v4"),
         ({"KJDS_CONTROL_PLANE_URL": "file:///private"}, "safe origin"),
         ({"KJDS_CONTROL_PLANE_URL": "http://control.example.com"}, "requires HTTPS"),
-        ({"KJDS_PILOT_READER_API_KEY": ""}, "must be configured"),
-        ({"OZON_API_KEY": "replace-me"}, "must be configured"),
     ],
 )
 def test_offline_preflight_rejects_unsafe_environment(change, message):
@@ -139,12 +152,20 @@ def test_offline_preflight_rejects_unsafe_environment(change, message):
         run_preflight(environment)
 
 
-def test_offline_preflight_rejects_credential_reuse_without_exposing_value():
+def test_offline_preflight_never_reads_credential_reuse_values():
     environment = valid_environment()
     environment["KJDS_EXECUTOR_API_KEY"] = environment["KJDS_PILOT_READER_API_KEY"]
-    with pytest.raises(ValueError, match="must be distinct") as caught:
-        run_preflight(environment)
-    assert environment["KJDS_PILOT_READER_API_KEY"] not in str(caught.value)
+    report = run_preflight(environment)
+    assert report["credential_values_read"] is False
+
+
+def test_environment_provider_credentials_are_not_worker_authority():
+    environment = valid_environment()
+    environment["OZON_CLIENT_ID"] = "attacker-client"
+    environment["OZON_API_KEY"] = "sk_live_attacker-secret"
+    report = run_preflight(environment)
+    assert report["provider_credentials_from_environment"] is False
+    assert "attacker" not in json.dumps(report)
 
 
 @pytest.mark.parametrize(
@@ -188,10 +209,43 @@ def test_preflight_cli_returns_before_any_http_client_is_constructed(monkeypatch
     assert "private" not in output
 
 
+@pytest.mark.parametrize("mode", ["--preflight", "--execute"])
+def test_read_worker_modes_do_not_read_credentials_before_runtime_admission(monkeypatch, mode):
+    environment = RecordingEnvironment(valid_environment())
+    monkeypatch.setattr(ozon_read_worker.os, "environ", environment)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ozon_read_worker",
+            mode,
+            "--pilot-id",
+            "pilot-private-id",
+            "--offer-id",
+            "offer-private-id",
+            "--idempotency-key",
+            "idempotency-private-key",
+        ],
+    )
+    if mode == "--execute":
+        with pytest.raises(RuntimeError, match="resolver is not bound"):
+            ozon_read_worker.main()
+    else:
+        ozon_read_worker.main()
+    forbidden = {
+        "KJDS_PILOT_READER_API_KEY",
+        "KJDS_API_KEY",
+        "KJDS_EXECUTOR_API_KEY",
+        "OZON_CLIENT_ID",
+        "OZON_API_KEY",
+        "KJDS_CHANNEL_SECRET_LOCATOR",
+        "KJDS_CHANNEL_CREDENTIAL_FINGERPRINT",
+    }
+    assert forbidden.isdisjoint(environment.reads)
+
+
 @pytest.mark.parametrize("mode_args", [[], ["--preflight", "--execute"]])
-def test_worker_cli_requires_exactly_one_explicit_mode_before_constructing_clients(
-    monkeypatch, mode_args
-):
+def test_worker_cli_requires_exactly_one_explicit_mode_before_constructing_clients(monkeypatch, mode_args):
     monkeypatch.setattr(
         sys,
         "argv",
@@ -240,8 +294,64 @@ def test_execute_mode_revalidates_current_environment_before_constructing_client
         raise AssertionError("execution-time validation must run before constructing a client")
 
     monkeypatch.setattr(ozon_read_worker.httpx, "Client", fail_client)
-    with pytest.raises(ValueError, match="requires HTTPS"):
+    with pytest.raises(RuntimeError, match="resolver is not bound"):
         ozon_read_worker.main()
+
+
+@pytest.mark.parametrize(
+    "operation_args",
+    [
+        ["--offer-id", "offer-private-id"],
+        [
+            "--operation",
+            "ozon.finance.read",
+            "--date-from",
+            "2026-07-01T00:00:00Z",
+            "--date-to",
+            "2026-07-02T00:00:00Z",
+        ],
+    ],
+    ids=("product-read", "finance-read"),
+)
+def test_unbound_runtime_resolver_blocks_before_any_read_worker_client(
+    monkeypatch,
+    operation_args,
+):
+    for name, value in valid_environment().items():
+        monkeypatch.setenv(name, value)
+    for name in (
+        "KJDS_READ_ONLY_OFFER_ID",
+        "KJDS_READ_ONLY_OFFER_IDS",
+        "KJDS_READ_ONLY_CURSOR",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ozon_read_worker",
+            "--execute",
+            "--pilot-id",
+            "pilot-private-id",
+            "--idempotency-key",
+            "idempotency-private-key",
+            *operation_args,
+        ],
+    )
+    constructed = []
+    monkeypatch.setattr(
+        ozon_read_worker,
+        "ControlPlanePilotReaderClient",
+        lambda *args, **kwargs: constructed.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        ozon_read_worker.httpx,
+        "Client",
+        lambda *args, **kwargs: constructed.append((args, kwargs)),
+    )
+    with pytest.raises(RuntimeError, match="resolver is not bound"):
+        ozon_read_worker.main()
+    assert constructed == []
 
 
 def test_operator_script_defaults_to_no_deps_preflight_before_explicit_execute():

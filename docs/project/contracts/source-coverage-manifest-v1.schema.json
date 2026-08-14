@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kjds.local/contracts/source-coverage-manifest-v1.schema.json",
+  "title": "KJDS Source Coverage Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "manifest_ref",
+    "manifest_version",
+    "content_sha256",
+    "registry_sha256",
+    "native_caps_sha256",
+    "source",
+    "scope",
+    "universe",
+    "as_of",
+    "captured_at",
+    "recorded_at",
+    "access_contract",
+    "lineage_refs",
+    "evidence_refs",
+    "coverage",
+    "conservation",
+    "conflicts",
+    "checkpoint",
+    "freshness",
+    "coverage_claim"
+  ],
+  "properties": {
+    "schema_version": {"const": "kjds-source-coverage-manifest-v1"},
+    "manifest_ref": {"$ref": "#/$defs/token"},
+    "manifest_version": {"$ref": "#/$defs/token"},
+    "content_sha256": {"$ref": "#/$defs/sha256"},
+    "registry_sha256": {"$ref": "#/$defs/sha256"},
+    "native_caps_sha256": {"$ref": "#/$defs/sha256"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "source_family",
+        "source_contract_id",
+        "source_contract_version",
+        "source_status"
+      ],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/token"},
+        "source_family": {"$ref": "#/$defs/source_family"},
+        "source_contract_id": {"$ref": "#/$defs/token"},
+        "source_contract_version": {"$ref": "#/$defs/token"},
+        "source_status": {
+          "enum": ["implemented", "contract_only", "blocked", "unsupported"]
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "properties": {
+        "region": {"$ref": "#/$defs/token"},
+        "country": {"$ref": "#/$defs/token"},
+        "language": {"$ref": "#/$defs/token"},
+        "industry": {"$ref": "#/$defs/token"},
+        "platform": {"$ref": "#/$defs/token"},
+        "subject": {"$ref": "#/$defs/token"},
+        "event": {"$ref": "#/$defs/token"},
+        "time": {"$ref": "#/$defs/token"},
+        "data_level": {"$ref": "#/$defs/token"}
+      }
+    },
+    "universe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "denominator_known",
+        "expected_count",
+        "expected_count_evidence_ref",
+        "expected_count_evidence_sha256",
+        "query_bounds"
+      ],
+      "properties": {
+        "kind": {
+          "enum": ["bounded", "enumerable", "query_bounded", "sample_only"]
+        },
+        "denominator_known": {"type": "boolean"},
+        "expected_count": {"type": ["integer", "null"], "minimum": 0},
+        "expected_count_evidence_ref": {
+          "oneOf": [{"$ref": "#/$defs/token"}, {"type": "null"}]
+        },
+        "expected_count_evidence_sha256": {
+          "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "query_bounds": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 20,
+          "additionalProperties": {"$ref": "#/$defs/token"}
+        }
+      }
+    },
+    "as_of": {"$ref": "#/$defs/timestamp"},
+    "captured_at": {"$ref": "#/$defs/timestamp"},
+    "recorded_at": {"$ref": "#/$defs/timestamp"},
+    "access_contract": {"$ref": "#/$defs/access_contract"},
+    "lineage_refs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/token"}
+    },
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {"$ref": "#/$defs/evidence_ref"}
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pages", "fields", "window"],
+      "properties": {
+        "pages": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "expected_count",
+            "received_count",
+            "failed_count",
+            "duplicate_count",
+            "failed_refs",
+            "closed"
+          ],
+          "properties": {
+            "expected_count": {"type": "integer", "minimum": 1},
+            "received_count": {"type": "integer", "minimum": 0},
+            "failed_count": {"type": "integer", "minimum": 0},
+            "duplicate_count": {"type": "integer", "minimum": 0},
+            "failed_refs": {
+              "type": "array",
+              "maxItems": 100000,
+              "uniqueItems": true,
+              "items": {"$ref": "#/$defs/token"}
+            },
+            "closed": {"type": "boolean"}
+          }
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "required_count",
+            "present",
+            "missing",
+            "unparseable",
+            "conflicting"
+          ],
+          "properties": {
+            "required_count": {"type": "integer", "minimum": 1, "maximum": 5000},
+            "present": {"$ref": "#/$defs/field_list"},
+            "missing": {"$ref": "#/$defs/field_list"},
+            "unparseable": {"$ref": "#/$defs/field_list"},
+            "conflicting": {"$ref": "#/$defs/field_list"}
+          }
+        },
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requested_start",
+            "requested_end",
+            "effective_start",
+            "effective_end",
+            "timezone",
+            "gaps",
+            "overlaps",
+            "late_arrival_count"
+          ],
+          "properties": {
+            "requested_start": {"$ref": "#/$defs/timestamp"},
+            "requested_end": {"$ref": "#/$defs/timestamp"},
+            "effective_start": {"$ref": "#/$defs/timestamp"},
+            "effective_end": {"$ref": "#/$defs/timestamp"},
+            "timezone": {"$ref": "#/$defs/token"},
+            "gaps": {"$ref": "#/$defs/range_list"},
+            "overlaps": {"$ref": "#/$defs/range_list"},
+            "late_arrival_count": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "conservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_count",
+        "observed_count",
+        "source_total",
+        "accepted_count",
+        "quarantined_count",
+        "failed_count",
+        "duplicate_count",
+        "suppressed_count"
+      ],
+      "properties": {
+        "expected_count": {"type": ["integer", "null"], "minimum": 0},
+        "observed_count": {"type": "integer", "minimum": 0},
+        "source_total": {"type": "integer", "minimum": 0},
+        "accepted_count": {"type": "integer", "minimum": 0},
+        "quarantined_count": {"type": "integer", "minimum": 0},
+        "failed_count": {"type": "integer", "minimum": 0},
+        "duplicate_count": {"type": "integer", "minimum": 0},
+        "suppressed_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "conflict_ref",
+          "subject_ref_sha256",
+          "field",
+          "valid_interval_sha256",
+          "value_hashes",
+          "resolution_status"
+        ],
+        "properties": {
+          "conflict_ref": {"$ref": "#/$defs/token"},
+          "subject_ref_sha256": {"$ref": "#/$defs/sha256"},
+          "field": {"$ref": "#/$defs/token"},
+          "valid_interval_sha256": {"$ref": "#/$defs/sha256"},
+          "value_hashes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {"$ref": "#/$defs/sha256"}
+          },
+          "resolution_status": {"enum": ["unresolved", "independently_resolved"]}
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "sequence", "closed"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "sequence": {"type": "integer", "minimum": 0},
+        "closed": {"type": "boolean"}
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "fresh_until", "review_due"],
+      "properties": {
+        "status": {"enum": ["fresh", "stale", "unknown"]},
+        "fresh_until": {"$ref": "#/$defs/timestamp"},
+        "review_due": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "coverage_claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_full_coverage",
+        "claim_scope",
+        "denominator_evidence_ref",
+        "denominator_evidence_sha256",
+        "invalidation_conditions"
+      ],
+      "properties": {
+        "requested_full_coverage": {"type": "boolean"},
+        "claim_scope": {"$ref": "#/$defs/token"},
+        "denominator_evidence_ref": {
+          "oneOf": [{"$ref": "#/$defs/token"}, {"type": "null"}]
+        },
+        "denominator_evidence_sha256": {
+          "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+        },
+        "invalidation_conditions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/token"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "source_family": {
+      "enum": [
+        "marketplace",
+        "customs_trade",
+        "company_registry",
+        "web_search",
+        "social_content",
+        "ads_traffic",
+        "supplier_catalog",
+        "logistics",
+        "payments_fx_macro",
+        "regulation_standards",
+        "ip_patents_research",
+        "talent_jobs",
+        "crm_erp_finance_operations"
+      ]
+    },
+    "field_list": {
+      "type": "array",
+      "maxItems": 5000,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/token"}
+    },
+    "range_list": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start", "end", "reason_code"],
+        "properties": {
+          "start": {"$ref": "#/$defs/timestamp"},
+          "end": {"$ref": "#/$defs/timestamp"},
+          "reason_code": {"$ref": "#/$defs/token"}
+        }
+      }
+    },
+    "access_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "terms_ref_sha256",
+        "allowed_purpose",
+        "retention_class",
+        "secrets_allowed",
+        "raw_personal_data_allowed"
+      ],
+      "properties": {
+        "terms_ref_sha256": {"$ref": "#/$defs/sha256"},
+        "allowed_purpose": {"$ref": "#/$defs/token"},
+        "retention_class": {
+          "enum": ["operational", "financial", "compliance", "experiment", "security"]
+        },
+        "secrets_allowed": {"const": false},
+        "raw_personal_data_allowed": {"const": false}
+      }
+    },
+    "evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sha256",
+        "grade",
+        "effective_at",
+        "effective_until",
+        "recorded_at"
+      ],
+      "properties": {
+        "id": {"$ref": "#/$defs/token"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "grade": {"enum": ["A", "B", "C", "D"]},
+        "effective_at": {"$ref": "#/$defs/timestamp"},
+        "effective_until": {
+          "oneOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]
+        },
+        "recorded_at": {"$ref": "#/$defs/timestamp"}
+      }
+    }
+  }
+}

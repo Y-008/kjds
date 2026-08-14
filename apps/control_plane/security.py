@@ -32,9 +32,14 @@ class WritesDisabled(PermissionError):
 class Principal:
     actor_id: str
     roles: frozenset[str]
+    tenant_ref: str = "default"
+    store_refs: frozenset[str] = frozenset({"ozon-primary"})
 
     def has_any_role(self, *roles: str) -> bool:
         return bool(self.roles.intersection(roles))
+
+    def can_access_store(self, store_ref: str) -> bool:
+        return store_ref in self.store_refs
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -81,7 +86,39 @@ class ApiKeyAuthenticator:
                     raise RuntimeError(f"Unknown API roles: {', '.join(sorted(unknown_roles))}")
                 if "admin" not in roles and {"operator", "approver"}.issubset(roles):
                     raise RuntimeError("A non-admin API identity cannot combine operator and approver roles")
-                credentials.append(_Credential(api_key, Principal(actor, roles)))
+                tenant_ref = str(profile.get("tenant", "default")).strip()
+                stores_value = profile.get("stores", ["ozon-primary"])
+                if (
+                    not tenant_ref
+                    or not isinstance(stores_value, list)
+                    or not stores_value
+                    or not all(
+                        isinstance(item, str) and item.strip()
+                        for item in stores_value
+                    )
+                ):
+                    raise RuntimeError(
+                        "Every API credential requires tenant and store scope"
+                    )
+                if environment == "production" and (
+                    "tenant" not in profile or "stores" not in profile
+                ):
+                    raise RuntimeError(
+                        "Production identities require explicit tenant/stores"
+                    )
+                credentials.append(
+                    _Credential(
+                        api_key,
+                        Principal(
+                            actor,
+                            roles,
+                            tenant_ref,
+                            frozenset(
+                                item.strip() for item in stores_value
+                            ),
+                        ),
+                    )
+                )
             web_key = os.getenv("KJDS_API_KEY", "").strip()
             if web_key:
                 cls._validate_key(web_key, environment)
@@ -100,7 +137,28 @@ class ApiKeyAuthenticator:
                 unknown_roles = roles - ALLOWED_ROLES
                 if unknown_roles:
                     raise RuntimeError(f"Unknown API roles: {', '.join(sorted(unknown_roles))}")
-                credentials.append(_Credential(api_key, Principal(actor, roles or frozenset({"operator"}))))
+                tenant_ref = (
+                    os.getenv("KJDS_API_TENANT", "default").strip()
+                    or "default"
+                )
+                stores = frozenset(
+                    item.strip()
+                    for item in os.getenv(
+                        "KJDS_API_STORES", "ozon-primary"
+                    ).split(",")
+                    if item.strip()
+                )
+                credentials.append(
+                    _Credential(
+                        api_key,
+                        Principal(
+                            actor,
+                            roles or frozenset({"operator"}),
+                            tenant_ref,
+                            stores or frozenset({"ozon-primary"}),
+                        ),
+                    )
+                )
         return cls(credentials, environment=environment, legacy_mode=not bool(mapping))
 
     @staticmethod
@@ -121,6 +179,31 @@ class ApiKeyAuthenticator:
             "legacy_mode": self.legacy_mode,
             "role_profiles": sorted([sorted(item.principal.roles) for item in self._credentials]),
         }
+
+    def resolve_actor(self, actor_id: str) -> Principal:
+        """Resolve one registered actor profile without exposing credential material."""
+
+        actor = actor_id.strip()
+        if not actor:
+            raise ValueError("actor_id is required")
+        matches = [
+            item.principal
+            for item in self._credentials
+            if item.principal.actor_id == actor
+        ]
+        if not matches:
+            raise KeyError("registered actor was not found")
+        profiles = {
+            (
+                principal.roles,
+                principal.tenant_ref,
+                principal.store_refs,
+            )
+            for principal in matches
+        }
+        if len(profiles) != 1:
+            raise ValueError("registered actor has ambiguous identity profiles")
+        return matches[0]
 
     def authenticate(self, presented_key: str | None) -> Principal:
         if not self._credentials:
@@ -159,9 +242,18 @@ class KillSwitchService:
     def __init__(self, engine) -> None:
         self.engine = engine
 
-    def current(self) -> KillSwitchState:
+    def current(self, *, as_of: datetime | None = None) -> KillSwitchState:
+        query = select(KillSwitchEventRow)
+        if as_of is not None:
+            if as_of.tzinfo is None:
+                raise ValueError("as_of must include a timezone")
+            query = query.where(
+                KillSwitchEventRow.created_at <= as_of.astimezone(UTC)
+            )
         with Session(self.engine) as session:
-            row = session.scalar(select(KillSwitchEventRow).order_by(KillSwitchEventRow.sequence.desc()).limit(1))
+            row = session.scalar(
+                query.order_by(KillSwitchEventRow.sequence.desc()).limit(1)
+            )
         if row is None:
             return KillSwitchState(False, None, None, None, None)
         return KillSwitchState(row.engaged, row.reason, row.actor_id, row.created_at.isoformat(), row.sequence)
