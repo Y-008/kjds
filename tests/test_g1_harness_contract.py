@@ -214,7 +214,10 @@ def test_g1_coverage_issuer_principals_are_ephemeral_and_secrets_are_scrubbed():
     assert "kjds_gdc_issuance_owner NOLOGIN NOINHERIT" in manager
     assert "kjds_gdc_issuance_runtime LOGIN NOINHERIT" in manager
     assert "kjds_g1_runtime LOGIN NOINHERIT" in manager
-    assert "DROP ROLE IF EXISTS" in manager
+    assert "DROP OWNED BY" not in manager
+    assert "REVOKE ADMIN OPTION FOR" in manager
+    assert "_preflight_role_cleanup" in manager
+    assert "GDC_RECEIPT_TABLE" in manager
     assert "REVOKE EXECUTE ON FUNCTION kjds_gdc_issue_evidence" in manager
     assert "print({" in manager
     assert "issuer_password" not in manager.split("print({", 1)[1]
