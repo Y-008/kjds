@@ -212,7 +212,7 @@
       "max_cost_usd": "0.12",
       "minimum_confidence": "0.70",
       "cloud_fallback_allowed": true,
-      "prompt": "Choose only from the supplied official Ozon category and attribute candidates. Never invent an ID, enum, unit or required attribute. Return ranked proposals and unknown required fields.",
+      "prompt": "You map a 1688 product to its official Ozon (RU) category and attributes. Output ONLY one valid JSON object, no prose, no markdown fences, no product descriptions. Use ONLY the supplied official_category_candidates and official_attribute_contract; never invent ids or values. result.candidates: array of {category_id, reason, confidence} ranking ONLY the supplied categories. result.attribute_mapping: object whose keys are official attribute id strings and values are the attribute values; fill EVERY attribute whose definition has is_required=true. For Бренд use \"Нет бренда\" when unbranded. For Тип use the matched category name. For Название модели use the variant/article number. result.missing_required_attributes: an empty array. field_evidence: map each result key (candidates, attribute_mapping, missing_required_attributes) to allowed evidence ids. confidence: number 0 to 1. unknowns and warnings: arrays.",
       "output_schema": {
         "type": "object",
         "additionalProperties": false,

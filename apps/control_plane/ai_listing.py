@@ -812,7 +812,9 @@ class AiListingPipeline:
         model_input = {
             "product_proposal": product_artifact.output["result"],
             "official_category_candidates": bindings["official_category_candidates"],
-            "official_attribute_contract": bindings["official_attribute_contract"],
+            "official_attribute_contract": self._required_only_contract(
+                bindings["official_attribute_contract"]
+            ),
             "target_locale": row.target_locale,
         }
         artifact = self._infer(
@@ -1344,6 +1346,26 @@ class AiListingPipeline:
         self.evidence.require_valid(result)
         return result
 
+    @staticmethod
+    def _required_only_contract(contract: Any) -> Any:
+        """Keep only is_required attributes so a local model stays on-schema.
+
+        The full official contract is still bound and validated downstream; this
+        only reduces the governed model input to the attributes the taxonomy stage
+        must actually fill, which local models handle far more reliably.
+        """
+        if not isinstance(contract, dict):
+            return contract
+        attributes = contract.get("attributes")
+        if not isinstance(attributes, dict):
+            return contract
+        required = {
+            key: value
+            for key, value in attributes.items()
+            if isinstance(value, dict) and value.get("is_required") is True
+        }
+        return {**contract, "attributes": required}
+
     def _validate_taxonomy(
         self,
         result: dict[str, Any],
@@ -1400,7 +1422,12 @@ class AiListingPipeline:
                         "invented_attribute_enum_rejected",
                         f"AI attribute {key} contains a value outside the official enum",
                     )
-        if result["missing_required_attributes"]:
+        missing = [
+            str(item).strip()
+            for item in result.get("missing_required_attributes", [])
+            if str(item or "").strip()
+        ]
+        if missing:
             raise AiListingPipelineError(
                 "required_ozon_attributes_missing",
                 "Required official Ozon attributes are still unknown",
