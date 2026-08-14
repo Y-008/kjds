@@ -141,7 +141,7 @@ def test_bas186_release_frees_media_lane_and_migration_lease():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     media = lanes["J"]
 
-    assert media["current_task"]["task_id"] != "BAS-186"
+    assert media["current_task"] is None
     assert media["next_task_id"] is None
     assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-223"
@@ -431,7 +431,7 @@ def test_bas217_and_bas218_releases_are_preserved_while_bas186_runs():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     assert lanes["C"]["current_task"] == BAS223_TASK
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"]["task_id"] != "BAS-217"
+    assert lanes["J"]["current_task"] is None
     assert lanes["J"]["next_task_id"] is None
     assert lanes["M"]["current_task"] is None
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
@@ -484,7 +484,7 @@ def test_bas218_release_frees_traceability_scope_without_touching_bas186():
 
     assert lanes["C"]["current_task"] == BAS223_TASK
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"]["task_id"] != "BAS-218"
+    assert lanes["J"]["current_task"] is None
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
 
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -511,7 +511,7 @@ def test_bas219a_release_preserves_selective_core_integration_evidence():
 
     assert lanes["C"]["current_task"] == BAS223_TASK
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"]["task_id"] != "BAS-219A"
+    assert lanes["J"]["current_task"] is None
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
 
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -529,20 +529,11 @@ def test_bas219a_release_preserves_selective_core_integration_evidence():
     assert row.endswith("| DONE_ENGINEERING |")
 
 
-def test_bas220_claims_only_closed_loop_g1_currentness_scope():
+def test_bas220_release_records_exact_currentness_scope_and_gates():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
 
-    assert lanes["J"]["current_task"] == {
-        "task_id": "BAS-220",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-            "closed_loop_0096_revision_isolation",
-            "g1_migration_head_currentness_evidence",
-        ],
-        "blocked_on": [],
-    }
+    assert lanes["J"]["current_task"] is None
     assert lanes["J"]["next_task_id"] is None
     assert lanes["C"]["current_task"] == BAS223_TASK
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
@@ -554,24 +545,19 @@ def test_bas220_claims_only_closed_loop_g1_currentness_scope():
     assert "20260809_0098" in row
     assert "不修改 0096/0097/0098 migration" in row
     assert "不抢 shared lease" in row
-    assert row.endswith("| IN_PROGRESS |")
+    assert "80d33b93b65475934f7f76cc320e6f8c760c0842" in row
+    assert "E298B06AA8A11FA6C9A6F8EE21407AEAEB609BCA332FFBEA863694DA99985CEF" in row
+    assert "101 passed" in row
+    assert "G-1 未通过" in row
+    assert row.endswith("| DONE_ENGINEERING |")
 
 
-def test_bas223_owner_correct_claim_preserves_bas220_and_exact_shared_leases():
+def test_bas223_owner_correct_claim_survives_bas220_release():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
 
     assert lanes["C"]["current_task"] == BAS223_TASK
-    assert lanes["J"]["current_task"] == {
-        "task_id": "BAS-220",
-        "state": "in_progress",
-        "owner_thread_id": "019fc23a-1ea8-76b0-9688-c11d40eae3e4",
-        "write_scope": [
-            "closed_loop_0096_revision_isolation",
-            "g1_migration_head_currentness_evidence",
-        ],
-        "blocked_on": [],
-    }
+    assert lanes["J"]["current_task"] is None
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
     assert registry["as_of"] == "2026-08-03"
     assert all(value is False for value in registry["control_boundary"].values())
