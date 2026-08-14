@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
 from fastapi import HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .automation import RiskLevel
 from .causal_experiments import ExperimentEvent
@@ -896,6 +898,298 @@ class GlobalExpertTaskRouteInput(BaseModel):
     platform: str = Field(min_length=1, max_length=80)
     risk_level: Literal["L0", "L1", "L2", "L3", "L4"]
     evidence_refs: list[str] = Field(default_factory=list, max_length=100)
+
+
+class EnterpriseProfileInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enterprise_ref: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[A-Za-z0-9_.:-]+$",
+    )
+    business_model: Literal[
+        "merchant_operator",
+        "commerce_control_plane_provider",
+        "hybrid_operator_and_control_plane",
+    ]
+    stage: Literal["validation", "repeatable", "scale", "enterprise"]
+    headcount_band: Literal["solo_to_micro", "small", "medium", "large"]
+    markets: list[str] = Field(min_length=1, max_length=50)
+    platforms: list[str] = Field(min_length=1, max_length=50)
+    risk_class: Literal["standard", "elevated", "regulated"]
+    primary_objective: Literal[
+        "actual_cash_truth",
+        "repeatable_growth",
+        "multi_market_scale",
+        "enterprise_ai_erp",
+    ]
+
+
+class EnterprisePositioningBoundariesOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    is_erp_replacement: Literal[False]
+    is_unattended_autonomous_company: Literal[False]
+    is_generic_ai_outsourcing: Literal[False]
+    is_business_truth_authority: Literal[False]
+    system_may_appoint_humans: Literal[False]
+    system_may_grant_production_authority: Literal[False]
+    role_templates_may_external_write: Literal[False]
+    profile_scope_grants_authority: Literal[False]
+
+
+class EnterpriseProfileScopeOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enterprise_ref: str
+    scope_ref: str
+    grants_authority: Literal[False]
+
+
+class EnterprisePositioningDetailOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    archetype_ref: str
+    current_positioning: str
+    value_wedge: str
+    business_model_emphasis: str
+    target_positioning: str
+    promotion_gate_status: Literal["BLOCKED_EVIDENCE"]
+    required_gates: list[str]
+    automation_ceiling: Literal[
+        "simulation_only",
+        "read_only_recommendation_only",
+        "zero_external_action_without_professional_gate",
+    ]
+    boundaries: EnterprisePositioningBoundariesOutput
+
+
+class EnterpriseRoleTemplateOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role_ref: str
+    role_template_ref: str
+    title: str
+    mission: str
+    role_kind: Literal["core", "ai_specialist", "independent_control"]
+    recommendation_status: Literal[
+        "required_now",
+        "supporting_ai",
+        "on_demand",
+        "standby",
+    ]
+    reason_codes: list[str]
+    objective_priority: int | None
+    runtime_mode: Literal["capability_template_only"]
+    human_binding_status: Literal["UNKNOWN"]
+    human_seat_eligible: bool
+    production_authority_granted: Literal[False]
+    external_write_allowed: Literal[False]
+    formal_fact_promotion_allowed: Literal[False]
+
+
+class EnterpriseRoleSummaryOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    catalog_total: int = Field(ge=1, le=35)
+    required_now: int = Field(ge=0, le=35)
+    supporting_ai: int = Field(ge=0, le=35)
+    on_demand: int = Field(ge=0, le=35)
+    standby: int = Field(ge=0, le=35)
+    unsupported_gap: int = Field(ge=0)
+    core: int = Field(ge=1)
+    ai_specialist: int = Field(ge=1)
+    independent_control: int = Field(ge=1)
+
+
+class EnterpriseSeatPlanOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    seat_ref: str
+    title: str
+    mission: str
+    binding_status: Literal["UNKNOWN"]
+    role_bundle_refs: list[str]
+    ai_templates_excluded: Literal[True]
+    appointment_evidence_present: Literal[False]
+    sod_conflict_refs: list[str]
+
+
+class EnterpriseHumanAccountabilityOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    seat_ref: str
+    binding_status: Literal["UNKNOWN"]
+    appointment_evidence_present: Literal[False]
+    role_template_is_appointment_evidence: Literal[False]
+
+
+class EnterpriseSeparationOfDutiesOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_ref: str
+    left_function_ref: str
+    right_function_ref: str
+    same_role_allowed: Literal[False]
+    same_principal_allowed: Literal[False]
+    identity_authority_required: Literal[True]
+
+
+class EnterpriseRoleGapOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    gap_ref: str
+    recommendation_status: Literal["unsupported_gap"]
+    reason_code: Literal[
+        "market_specific_role_contract_missing",
+        "platform_specific_role_contract_missing",
+    ]
+    authority_status: Literal["UNKNOWN"]
+
+
+class EnterpriseNextRoleActivationOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role_ref: str | None
+    role_template_ref: str | None
+    current_status: Literal[
+        "required_now",
+        "supporting_ai",
+        "on_demand",
+        "standby",
+    ] | None
+    target_status: Literal["required_now"]
+    reason_code: Literal[
+        "primary_objective_next_capability",
+        "objective_capabilities_already_required",
+    ]
+    required_gate: str
+
+
+class EnterpriseCapacityPlanOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    headcount_band: Literal["solo_to_micro", "small", "medium", "large"]
+    max_human_seats: int = Field(ge=2, le=4)
+    planned_human_seats: int = Field(ge=2, le=4)
+    max_parallel_workstreams: int = Field(ge=1)
+    max_active_work_per_human: int = Field(ge=1)
+    role_bundle_mode: Literal[
+        "four_seat_compressed",
+        "four_accountability_seats",
+        "dedicated_role_bindings_preferred",
+        "dedicated_role_bindings_required",
+    ]
+    ai_templates_count_as_humans: Literal[False]
+
+
+class EnterpriseSystemActionsOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identities_created: Literal[False]
+    agents_created: Literal[False]
+    humans_appointed: Literal[False]
+    appointments_created: Literal[False]
+    roles_bound: Literal[False]
+    tasks_started: Literal[False]
+    budgets_created: Literal[False]
+    approvals_created: Literal[False]
+    permits_issued: Literal[False]
+    production_authority_granted: Literal[False]
+    facts_promoted: Literal[False]
+    external_write_performed: Literal[False]
+
+
+class EnterpriseSourceHashesOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enterprise_ai_erp_program: str = Field(pattern=r"^[0-9a-f]{64}$")
+    enterprise_positioning_profiles: str = Field(pattern=r"^[0-9a-f]{64}$")
+    global_expert_team: str = Field(pattern=r"^[0-9a-f]{64}$")
+    team_control_tower: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class EnterprisePositioningOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    contract_id: Literal["kjds-enterprise-positioning-advisor-v2"]
+    version: Literal["2.0.0"]
+    status: Literal["RECOMMENDATION_ONLY"]
+    enterprise_profile: EnterpriseProfileInput
+    profile_scope: EnterpriseProfileScopeOutput
+    enterprise_positioning: EnterprisePositioningDetailOutput
+    role_roster: list[EnterpriseRoleTemplateOutput] = Field(min_length=35, max_length=35)
+    role_summary: EnterpriseRoleSummaryOutput
+    seat_plan: list[EnterpriseSeatPlanOutput] = Field(min_length=2, max_length=4)
+    minimum_human_accountability: list[EnterpriseHumanAccountabilityOutput]
+    separation_of_duties: list[EnterpriseSeparationOfDutiesOutput]
+    role_gaps: list[EnterpriseRoleGapOutput]
+    next_role_activation: EnterpriseNextRoleActivationOutput
+    capacity_plan: EnterpriseCapacityPlanOutput
+    system_actions: EnterpriseSystemActionsOutput
+    source_hashes: EnterpriseSourceHashesOutput
+    source_bundle_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def validate_projection_invariants(self) -> EnterprisePositioningOutput:
+        roster_refs = [item.role_ref for item in self.role_roster]
+        template_refs = [item.role_template_ref for item in self.role_roster]
+        if len(set(roster_refs)) != 35 or len(set(template_refs)) != 35:
+            raise ValueError("role roster must contain 35 unique templates")
+        status_total = sum(
+            (
+                self.role_summary.required_now,
+                self.role_summary.supporting_ai,
+                self.role_summary.on_demand,
+                self.role_summary.standby,
+            )
+        )
+        kind_total = sum(
+            (
+                self.role_summary.core,
+                self.role_summary.ai_specialist,
+                self.role_summary.independent_control,
+            )
+        )
+        if (
+            self.role_summary.catalog_total != 35
+            or status_total != 35
+            or kind_total != 35
+            or self.role_summary.required_now
+            != sum(item.recommendation_status == "required_now" for item in self.role_roster)
+            or self.role_summary.supporting_ai
+            != sum(item.recommendation_status == "supporting_ai" for item in self.role_roster)
+            or self.role_summary.on_demand
+            != sum(item.recommendation_status == "on_demand" for item in self.role_roster)
+            or self.role_summary.standby
+            != sum(item.recommendation_status == "standby" for item in self.role_roster)
+            or self.role_summary.unsupported_gap != len(self.role_gaps)
+            or self.role_summary.core
+            != sum(item.role_kind == "core" for item in self.role_roster)
+            or self.role_summary.ai_specialist
+            != sum(item.role_kind == "ai_specialist" for item in self.role_roster)
+            or self.role_summary.independent_control
+            != sum(item.role_kind == "independent_control" for item in self.role_roster)
+        ):
+            raise ValueError("role summary does not conserve the 35-template roster")
+        seat_refs = [item.seat_ref for item in self.seat_plan]
+        accountability_refs = [item.seat_ref for item in self.minimum_human_accountability]
+        if len(set(seat_refs)) != len(seat_refs) or accountability_refs != seat_refs:
+            raise ValueError("minimum accountability must exactly match ordered seats")
+        expected_sod = (
+            ("writer_vs_verifier", "artifact_writer", "artifact_verifier"),
+            ("agent_skill_owner_vs_promotion_approver", "agent_or_skill_owner", "promotion_approver"),
+            ("finance_entry_preparer_vs_payment_approver", "finance_entry_preparer", "payment_approver"),
+            ("regulatory_researcher_vs_legal_signer", "regulatory_researcher", "formal_legal_opinion_signer"),
+            ("migration_author_vs_release_approver", "migration_author", "final_release_approver"),
+            ("external_action_approver_vs_executor", "external_action_approver", "external_action_executor"),
+        )
+        observed_sod = tuple(
+            (item.rule_ref, item.left_function_ref, item.right_function_ref)
+            for item in self.separation_of_duties
+        )
+        if observed_sod != expected_sod:
+            raise ValueError("canonical six-rule SoD contract drifted")
+        source_hashes = self.source_hashes.model_dump(mode="json")
+        source_payload = json.dumps(
+            source_hashes, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        if hashlib.sha256(source_payload).hexdigest() != self.source_bundle_sha256:
+            raise ValueError("source bundle hash drifted")
+        projection = self.model_dump(mode="json", exclude={"snapshot_sha256"})
+        snapshot_payload = json.dumps(
+            projection, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        if hashlib.sha256(snapshot_payload).hexdigest() != self.snapshot_sha256:
+            raise ValueError("positioning snapshot hash drifted")
+        return self
 
 
 class TeamControlProjectionSourceRef(BaseModel):

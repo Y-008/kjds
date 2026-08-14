@@ -90,3 +90,96 @@ test("team control has an accessible and explicitly bounded mobile layout", () =
   assert.match(component, /aria-live="polite"/);
   assert.match(component, /<details>/);
 });
+
+test("enterprise positioning v2 is a read-only server-owned projection", () => {
+  assert.match(component, /\/backend\/v1\/enterprise-positioning\/current/);
+  assert.match(component, /\/backend\/v1\/enterprise-positioning\/recommend/);
+  assert.match(component, /Promise\.allSettled/);
+  assert.match(component, /企业定位与角色建议服务不可用；团队总控仍保持独立可用/);
+  assert.match(component, /角色状态、缺岗、Gate 与顺序全部由服务端返回/);
+  assert.match(component, /未保存 \/ 不任命 \/ 不授权/);
+  assert.match(component, /profile_scope\.grants_authority/);
+  assert.match(component, /external_write_performed/);
+  for (const field of [
+    "contract_id",
+    "profile_scope.scope_ref",
+    "archetype_ref",
+    "role_summary.unsupported_gap",
+    "role_kind",
+    "ai_templates_excluded",
+    "sod_conflict_refs",
+    "role_template_is_appointment_evidence",
+    "same_principal_allowed",
+    "role_bundle_mode",
+    "source_bundle_sha256",
+  ]) {
+    assert.match(component, new RegExp(field.replace(".", "\\.")));
+  }
+  assert.doesNotMatch(component, /role_roster\.sort/);
+  assert.doesNotMatch(component, /role_roster\.filter/);
+  assert.doesNotMatch(component, /role_gaps\.sort/);
+  assert.doesNotMatch(component, /required_gates\.sort/);
+});
+
+test("enterprise profile and recommendation contracts freeze all v2 inputs and outputs", () => {
+  for (const field of [
+    "enterprise_ref",
+    "business_model",
+    "stage",
+    "headcount_band",
+    "markets",
+    "platforms",
+    "risk_class",
+    "primary_objective",
+  ]) {
+    assert.match(contracts, new RegExp(`${field}:`));
+    assert.match(component, new RegExp(`name="${field}"`));
+  }
+  for (const field of [
+    "profile_scope",
+    "enterprise_positioning",
+    "role_roster",
+    "role_summary",
+    "seat_plan",
+    "minimum_human_accountability",
+    "separation_of_duties",
+    "role_gaps",
+    "next_role_activation",
+    "capacity_plan",
+    "system_actions",
+    "source_hashes",
+    "source_bundle_sha256",
+    "snapshot_sha256",
+  ]) {
+    assert.match(contracts, new RegExp(`${field}:`));
+  }
+  assert.match(contracts, /role_template_ref: string/);
+  assert.match(contracts, /"required_now"/);
+  assert.match(contracts, /"supporting_ai"/);
+  assert.match(contracts, /"on_demand"/);
+  assert.match(contracts, /"standby"/);
+  assert.match(contracts, /recommendation_status: "unsupported_gap"/);
+  assert.doesNotMatch(contracts, /test_principal_ref/);
+});
+
+test("enterprise positioning form and mobile rules meet the WCAG boundary", () => {
+  assert.match(component, /<label htmlFor="positioning-enterprise-ref">/);
+  assert.match(component, /<select id="positioning-business-model"/);
+  assert.match(component, /aria-busy=\{busy \|\| simulating\}/);
+  assert.match(component, /role="status" aria-live="polite"/);
+  assert.match(component, /tabIndex=\{-1\}/);
+  assert.match(component, /requestAnimationFrame\(\(\) => positioningHeadingRef\.current\?\.focus\(\)\)/);
+  assert.match(component, /className=\{styles\.positioningError\} role="alert"/);
+  assert.match(styles, /\.profileFields input, \.profileFields select \{[^}]*min-height: 44px/);
+  assert.match(styles, /\.profileActions button \{[^}]*min-height: 44px/);
+  assert.match(styles, /@media \(max-width: 680px\)[^{]*\{[^}]*overflow-x: hidden/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /:focus-visible/);
+});
+
+test("team advance retries only an identical uncertain logical payload", () => {
+  assert.match(component, /const logicalPayload = JSON\.stringify/);
+  assert.match(component, /retryCommand\.current\?\.logicalPayload !== logicalPayload/);
+  assert.match(component, /else \{\s*retryCommand\.current = null;\s*\}/);
+  assert.match(component, /网络失败；再次提交会复用同一幂等键/);
+});

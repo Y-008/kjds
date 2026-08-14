@@ -14,10 +14,16 @@ import {
   UsersRound,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
 import type { WebSession } from "../dashboard/contracts";
 import { fetchJson } from "../../lib/fetch-json";
 import type {
+  EnterpriseHeadcountBand,
+  EnterprisePositioningProjection,
+  EnterprisePrimaryObjective,
+  EnterpriseRiskClass,
+  EnterpriseStage,
+  EnterpriseBusinessModel,
   TeamAdvanceReceipt,
   TeamControlBrief,
   TeamControlFlow,
@@ -42,6 +48,13 @@ const statusLabels: Record<string, string> = {
   STALE: "STALE",
   CONFLICTED: "CONFLICTED",
   UNKNOWN: "UNKNOWN",
+  RECOMMENDATION_ONLY: "只读建议",
+  BLOCKED_EVIDENCE: "等待证据",
+  required_now: "当前必需",
+  supporting_ai: "AI 支撑",
+  on_demand: "按需激活",
+  standby: "待命",
+  unsupported_gap: "能力缺岗",
 };
 
 const resultLabels = {
@@ -109,17 +122,217 @@ function valueLabel(value?: { mode: string; value?: string; lower?: string; uppe
   return value.mode.toUpperCase();
 }
 
+function EnterprisePositioningPanel({
+  projection,
+  busy,
+  simulating,
+  mode,
+  error,
+  notice,
+  onSimulate,
+  onRestore,
+  focusTargetRef,
+}: {
+  projection: EnterprisePositioningProjection | null;
+  busy: boolean;
+  simulating: boolean;
+  mode: "current" | "simulation";
+  error: string;
+  notice: string;
+  onSimulate: (event: FormEvent<HTMLFormElement>) => void;
+  onRestore: () => void;
+  focusTargetRef: RefObject<HTMLHeadingElement | null>;
+}) {
+  return (
+    <section
+      className={`${styles.controlSection} ${styles.positioningSection}`}
+      aria-labelledby="enterprise-positioning-title"
+      aria-describedby="enterprise-positioning-boundary"
+      aria-busy={busy || simulating}
+    >
+      <header>
+        <div>
+          <span>ENTERPRISE POSITIONING · READ-ONLY ADVISOR</span>
+          <h2 id="enterprise-positioning-title" ref={focusTargetRef} tabIndex={-1}>企业定位与角色编制</h2>
+        </div>
+        <Status value={projection?.status ?? "UNKNOWN"} />
+      </header>
+      <p id="enterprise-positioning-boundary" className={styles.positioningBoundary}>
+        这是能力岗位模板，不是虚拟员工或生产身份。模拟画像未保存、不任命、不授权、不启动任务；角色状态、缺岗、Gate 与顺序全部由服务端返回。
+      </p>
+
+      {error ? <div className={styles.positioningError} role="alert"><AlertTriangle size={16} />{error}</div> : null}
+      {busy && !projection ? (
+        <div className={styles.positioningLoading} role="status" aria-live="polite">
+          <RefreshCw size={16} aria-hidden="true" />读取当前企业画像与角色合同…
+        </div>
+      ) : null}
+      {notice ? <p className={styles.positioningNotice} role="status" aria-live="polite">{notice}</p> : null}
+
+      {projection ? (
+        <>
+          <div className={styles.positioningModeBar}>
+            <span>{mode === "current" ? "当前版本化画像" : "未保存的情景模拟"}</span>
+            <code>{projection.enterprise_profile.enterprise_ref} · {shortHash(projection.snapshot_sha256)}</code>
+          </div>
+
+          <details className={styles.positioningAudit}>
+            <summary>查看完整合同、作用域与审计边界</summary>
+            <dl>
+              <div><dt>合同</dt><dd>{projection.contract_id} · {projection.version}</dd></div>
+              <div><dt>作用域</dt><dd>{projection.profile_scope.scope_ref}</dd></div>
+              <div><dt>企业原型</dt><dd>{projection.enterprise_positioning.archetype_ref}</dd></div>
+              <div><dt>角色构成</dt><dd>core {projection.role_summary.core} · AI {projection.role_summary.ai_specialist} · control {projection.role_summary.independent_control} · gap {projection.role_summary.unsupported_gap}</dd></div>
+              <div><dt>容量</dt><dd>{projection.capacity_plan.headcount_band} · {projection.capacity_plan.role_bundle_mode} · 每人 WIP {projection.capacity_plan.max_active_work_per_human} · AI 不计真人 {String(projection.capacity_plan.ai_templates_count_as_humans)}</dd></div>
+              <div><dt>来源包</dt><dd><code>{projection.source_bundle_sha256}</code></dd></div>
+              <div><dt>快照</dt><dd><code>{projection.snapshot_sha256}</code></dd></div>
+            </dl>
+            <p>边界：{Object.entries(projection.enterprise_positioning.boundaries).map(([key, value]) => `${key}=${String(value)}`).join(" · ")}</p>
+            <p>来源：{Object.entries(projection.source_hashes).map(([key, value]) => `${key}=${shortHash(value)}`).join(" · ")}</p>
+          </details>
+
+          <div className={styles.positioningLeadGrid}>
+            <article>
+              <span>CURRENT POSITIONING</span>
+              <h3>当前定位</h3>
+              <p>{projection.enterprise_positioning.current_positioning}</p>
+              <strong>{projection.enterprise_positioning.value_wedge}</strong>
+              <p>商业模式重点：{projection.enterprise_positioning.business_model_emphasis}</p>
+            </article>
+            <article>
+              <span>TARGET POSITIONING</span>
+              <h3>目标定位</h3>
+              <p>{projection.enterprise_positioning.target_positioning}</p>
+              <Status value={projection.enterprise_positioning.promotion_gate_status} />
+              <p>自动化上限：{projection.enterprise_positioning.automation_ceiling}</p>
+            </article>
+          </div>
+
+          <section className={styles.positioningSubsection} aria-labelledby="role-composition-title">
+            <header>
+              <div><span>SERVER-OWNED ROLE COMPOSITION</span><h3 id="role-composition-title">四类角色建议</h3></div>
+              <strong>{projection.role_summary.catalog_total} 个能力模板</strong>
+            </header>
+            <dl className={styles.roleSummary}>
+              <div><dt>当前必需</dt><dd>{projection.role_summary.required_now}</dd></div>
+              <div><dt>AI 支撑</dt><dd>{projection.role_summary.supporting_ai}</dd></div>
+              <div><dt>按需激活</dt><dd>{projection.role_summary.on_demand}</dd></div>
+              <div><dt>待命</dt><dd>{projection.role_summary.standby}</dd></div>
+            </dl>
+            <details>
+              <summary>查看服务端顺序的 35 个能力模板</summary>
+              <div className={styles.roleRoster}>
+                {projection.role_roster.map((role) => (
+                  <article key={role.role_template_ref}>
+                    <header><h4>{role.title}</h4><Status value={role.recommendation_status} /></header>
+                    <code>{role.role_template_ref}</code>
+                    <small>{role.role_ref} · {role.role_kind} · priority {role.objective_priority ?? "—"}</small>
+                    <p>{role.mission}</p>
+                    <small>{reason(role.reason_codes)}</small>
+                    <footer>{role.runtime_mode} · 真人席位 {String(role.human_seat_eligible)} · 真人绑定 {role.human_binding_status} · 生产授权 {String(role.production_authority_granted)} · 事实晋级 {String(role.formal_fact_promotion_allowed)} · 外写 {String(role.external_write_allowed)}</footer>
+                  </article>
+                ))}
+              </div>
+            </details>
+          </section>
+
+          <div className={styles.positioningControlGrid}>
+            <section aria-labelledby="seat-plan-title">
+              <header><h3 id="seat-plan-title">真人席位与兼岗</h3><span>{projection.capacity_plan.planned_human_seats}/{projection.capacity_plan.max_human_seats} 席 · 最多 {projection.capacity_plan.max_parallel_workstreams} 条并行线</span></header>
+              <div className={styles.positioningList}>
+                {projection.seat_plan.map((seat) => (
+                  <article key={seat.seat_ref}>
+                    <strong>{seat.title}</strong>
+                    <code>{seat.seat_ref}</code>
+                    <p>{seat.mission}</p>
+                    <p>{seat.role_bundle_refs.join(" · ")}</p>
+                    <small>真人绑定 {seat.binding_status} · AI 模板排除 {String(seat.ai_templates_excluded)} · 任命证据 {String(seat.appointment_evidence_present)} · SoD {seat.sod_conflict_refs.join(" / ") || "无已登记冲突"}</small>
+                  </article>
+                ))}
+              </div>
+              <details><summary>最低真人责任节点</summary><ul>{projection.minimum_human_accountability.map((item) => <li key={item.seat_ref}>{item.seat_ref} · {item.binding_status} · 任命证据 {String(item.appointment_evidence_present)} · 模板不是任命证据 {String(!item.role_template_is_appointment_evidence)}</li>)}</ul></details>
+            </section>
+
+            <section aria-labelledby="sod-plan-title">
+              <header><h3 id="sod-plan-title">不可兼任冲突</h3><span>服务端 SoD</span></header>
+              <ul className={styles.sodList}>
+                {projection.separation_of_duties.map((rule) => (
+                  <li key={rule.rule_ref}><b>{rule.rule_ref}</b><span>{rule.left_function_ref} ≠ {rule.right_function_ref} · 同岗 {String(rule.same_role_allowed)} · 同人 {String(rule.same_principal_allowed)} · 身份权威 {String(rule.identity_authority_required)}</span></li>
+                ))}
+              </ul>
+            </section>
+
+            <section aria-labelledby="role-gap-title">
+              <header><h3 id="role-gap-title">市场 / 平台专业缺岗</h3><span>不以通用角色冒充</span></header>
+              {projection.role_gaps.length ? (
+                <ul className={styles.gapList}>
+                  {projection.role_gaps.map((gap) => <li key={gap.gap_ref}><Status value={gap.recommendation_status} /><span><b>{gap.gap_ref}</b><small>{gap.reason_code} · {gap.authority_status}</small></span></li>)}
+                </ul>
+              ) : <p className={styles.noGap}>服务端未返回当前市场或平台缺岗。</p>}
+            </section>
+
+            <section aria-labelledby="activation-title">
+              <header><h3 id="activation-title">唯一下一角色</h3><Status value={projection.next_role_activation.target_status ?? "UNKNOWN"} /></header>
+              <strong className={styles.nextRole}>{projection.next_role_activation.role_ref ?? "当前没有待激活角色"}</strong>
+              <code>{projection.next_role_activation.role_template_ref ?? "无待激活模板"} · 当前 {projection.next_role_activation.current_status ?? "none"}</code>
+              <p>{projection.next_role_activation.reason_code}</p>
+              <h4>激活 Gate</h4>
+              <p>{projection.next_role_activation.required_gate}</p>
+              <h4>目标晋级 Gate</h4>
+              <ol>{projection.enterprise_positioning.required_gates.map((gate) => <li key={gate}>{gate}</li>)}</ol>
+            </section>
+          </div>
+
+          <form className={styles.profileForm} onSubmit={onSimulate} aria-describedby="profile-simulator-note">
+            <header>
+              <div><span>NON-PERSISTENT SCENARIO</span><h3>企业画像模拟器</h3></div>
+              <b>未保存 / 不任命 / 不授权</b>
+            </header>
+            <p id="profile-simulator-note">提交只调用确定性只读建议接口；不会修改当前企业画像，也不会创建身份或任务。</p>
+            <div className={styles.profileFields} key={projection.snapshot_sha256}>
+              <label htmlFor="positioning-enterprise-ref">企业标识<input id="positioning-enterprise-ref" name="enterprise_ref" required pattern="[A-Za-z0-9_.:-]+" defaultValue={projection.enterprise_profile.enterprise_ref} /></label>
+              <label htmlFor="positioning-business-model">商业模式<select id="positioning-business-model" name="business_model" required defaultValue={projection.enterprise_profile.business_model}><option value="merchant_operator">自营经营</option><option value="commerce_control_plane_provider">控制平台服务</option><option value="hybrid_operator_and_control_plane">自营 + 控制平台</option></select></label>
+              <label htmlFor="positioning-stage">企业阶段<select id="positioning-stage" name="stage" required defaultValue={projection.enterprise_profile.stage}><option value="validation">验证期</option><option value="repeatable">可复制期</option><option value="scale">规模化</option><option value="enterprise">企业级</option></select></label>
+              <label htmlFor="positioning-headcount">人数带<select id="positioning-headcount" name="headcount_band" required defaultValue={projection.enterprise_profile.headcount_band}><option value="solo_to_micro">1–4 人</option><option value="small">小型</option><option value="medium">中型</option><option value="large">大型</option></select></label>
+              <label htmlFor="positioning-markets">市场（逗号分隔）<input id="positioning-markets" name="markets" required defaultValue={projection.enterprise_profile.markets.join(",")} /></label>
+              <label htmlFor="positioning-platforms">平台（逗号分隔）<input id="positioning-platforms" name="platforms" required defaultValue={projection.enterprise_profile.platforms.join(",")} /></label>
+              <label htmlFor="positioning-risk">风险等级<select id="positioning-risk" name="risk_class" required defaultValue={projection.enterprise_profile.risk_class}><option value="standard">标准</option><option value="elevated">较高</option><option value="regulated">强监管</option></select></label>
+              <label htmlFor="positioning-objective">首要目标<select id="positioning-objective" name="primary_objective" required defaultValue={projection.enterprise_profile.primary_objective}><option value="actual_cash_truth">真实现金闭环</option><option value="repeatable_growth">可复制增长</option><option value="multi_market_scale">多市场规模化</option><option value="enterprise_ai_erp">企业 AI ERP</option></select></label>
+            </div>
+            <div className={styles.profileActions}>
+              <button type="submit" disabled={simulating} aria-busy={simulating}>{simulating ? "计算建议中…" : "模拟角色编制"}</button>
+              {mode === "simulation" ? <button type="button" className={styles.secondaryButton} onClick={onRestore} disabled={busy || simulating}>恢复当前权威画像</button> : null}
+            </div>
+          </form>
+
+          <footer className={styles.positioningFooter}>
+            <ShieldCheck size={17} aria-hidden="true" />
+            <span>profile_scope.grants_authority={String(projection.profile_scope.grants_authority)} · identities_created={String(projection.system_actions.identities_created)} · agents_created={String(projection.system_actions.agents_created)} · humans_appointed={String(projection.system_actions.humans_appointed)} · appointments_created={String(projection.system_actions.appointments_created)} · roles_bound={String(projection.system_actions.roles_bound)} · tasks_started={String(projection.system_actions.tasks_started)} · budgets_created={String(projection.system_actions.budgets_created)} · approvals_created={String(projection.system_actions.approvals_created)} · permits_issued={String(projection.system_actions.permits_issued)} · production_authority_granted={String(projection.system_actions.production_authority_granted)} · facts_promoted={String(projection.system_actions.facts_promoted)} · external_write_performed={String(projection.system_actions.external_write_performed)}</span>
+          </footer>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 export function TeamControlTowerPage() {
   const [session, setSession] = useState<WebSession | null>(null);
   const [brief, setBrief] = useState<TeamControlBrief | null>(null);
+  const [positioning, setPositioning] = useState<EnterprisePositioningProjection | null>(null);
   const [busy, setBusy] = useState(true);
+  const [positioningBusy, setPositioningBusy] = useState(true);
   const [advancing, setAdvancing] = useState(false);
+  const [simulating, setSimulating] = useState(false);
   const [rationale, setRationale] = useState("");
   const [evidence, setEvidence] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [positioningError, setPositioningError] = useState("");
+  const [positioningNotice, setPositioningNotice] = useState("");
+  const [positioningMode, setPositioningMode] = useState<"current" | "simulation">("current");
+  const positioningHeadingRef = useRef<HTMLHeadingElement>(null);
   const retryCommand = useRef<{
-    continuation: string;
+    logicalPayload: string;
     key: string;
     payload: {
       continuation: string;
@@ -132,7 +345,10 @@ export function TeamControlTowerPage() {
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setBusy(true);
+    setPositioningBusy(true);
     setError("");
+    setPositioningError("");
+    setPositioningNotice("");
     const sessionResponse = await fetchJson<WebSession | { detail?: string }>("/auth/session", {
       cache: "no-store",
       signal,
@@ -142,25 +358,46 @@ export function TeamControlTowerPage() {
     const sessionBody = await sessionResponse.json();
     if (!sessionResponse.ok) {
       setError("身份服务不可用；总控未读取任何跨境经营数据。");
+      setPositioningError("身份服务不可用；企业定位建议未读取。");
+      setPositioningBusy(false);
       return setBusy(false);
     }
     setSession(sessionBody as WebSession);
-    const response = await fetchJson<TeamControlBrief>(
-      "/backend/v1/team-control/brief?store_ref=ozon-primary",
-      { cache: "no-store", signal },
-    );
-    const body = await response.json();
-    if (!response.ok) {
+    const [briefOutcome, positioningOutcome] = await Promise.allSettled([
+      fetchJson<TeamControlBrief | { detail?: string }>(
+        "/backend/v1/team-control/brief?store_ref=ozon-primary",
+        { cache: "no-store", signal },
+      ).then(async (response) => ({ response, body: await response.json() })),
+      fetchJson<EnterprisePositioningProjection | { detail?: string }>(
+        "/backend/v1/enterprise-positioning/current",
+        { cache: "no-store", signal },
+      ).then(async (response) => ({ response, body: await response.json() })),
+    ]);
+    if (signal?.aborted) return;
+    if (briefOutcome.status === "rejected") {
+      setError("无法连接团队总控；页面没有生成演示状态。");
+    } else if (!briefOutcome.value.response.ok) {
       setBrief(null);
-      setError((body as { detail?: string }).detail ?? "团队总控快照不可用。");
+      setError((briefOutcome.value.body as { detail?: string }).detail ?? "团队总控快照不可用。");
     } else {
-      const nextBrief = body as TeamControlBrief;
-      if (retryCommand.current?.continuation !== nextBrief.next_action?.continuation) {
-        retryCommand.current = null;
-      }
+      const nextBrief = briefOutcome.value.body as TeamControlBrief;
+      retryCommand.current = null;
       setBrief(nextBrief);
     }
+    if (positioningOutcome.status === "rejected") {
+      setPositioningError("企业定位与角色建议服务不可用；团队总控仍保持独立可用。");
+    } else if (!positioningOutcome.value.response.ok) {
+      setPositioning(null);
+      setPositioningError(
+        (positioningOutcome.value.body as { detail?: string }).detail
+          ?? "企业定位与角色建议不可用；团队总控仍保持独立可用。",
+      );
+    } else {
+      setPositioning(positioningOutcome.value.body as EnterprisePositioningProjection);
+      setPositioningMode("current");
+    }
     setBusy(false);
+    setPositioningBusy(false);
   }, []);
 
   useEffect(() => {
@@ -168,7 +405,9 @@ export function TeamControlTowerPage() {
     void load(controller.signal).catch(() => {
       if (!controller.signal.aborted) {
         setError("无法连接团队总控；页面没有生成演示状态。");
+        setPositioningError("企业定位与角色建议服务不可用；团队总控仍保持独立可用。");
         setBusy(false);
+        setPositioningBusy(false);
       }
     });
     return () => controller.abort("team control unmounted");
@@ -178,6 +417,52 @@ export function TeamControlTowerPage() {
     () => Boolean(session?.roles.some((role) => role === "operator" || role === "admin")),
     [session?.roles],
   );
+
+  const simulatePositioning = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const profile = {
+      enterprise_ref: String(form.get("enterprise_ref") ?? ""),
+      business_model: String(form.get("business_model") ?? "") as EnterpriseBusinessModel,
+      stage: String(form.get("stage") ?? "") as EnterpriseStage,
+      headcount_band: String(form.get("headcount_band") ?? "") as EnterpriseHeadcountBand,
+      markets: String(form.get("markets") ?? "").split(",").map((item) => item.trim()).filter(Boolean),
+      platforms: String(form.get("platforms") ?? "").split(",").map((item) => item.trim()).filter(Boolean),
+      risk_class: String(form.get("risk_class") ?? "") as EnterpriseRiskClass,
+      primary_objective: String(form.get("primary_objective") ?? "") as EnterprisePrimaryObjective,
+    };
+    setSimulating(true);
+    setPositioningError("");
+    setPositioningNotice("");
+    try {
+      const response = await fetchJson<EnterprisePositioningProjection | { detail?: string; error?: { message?: string } }>(
+        "/backend/v1/enterprise-positioning/recommend",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(profile),
+        },
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        const failure = body as { detail?: string; error?: { message?: string } };
+        setPositioningError(failure.detail ?? failure.error?.message ?? "画像模拟失败；当前建议未被覆盖。");
+      } else {
+        setPositioning(body as EnterprisePositioningProjection);
+        setPositioningMode("simulation");
+        setPositioningNotice("模拟建议已更新：此画像未保存，角色未任命，权限未授予。");
+      }
+    } catch {
+      setPositioningError("画像模拟网络失败；当前建议未被覆盖，也没有保存任何输入。");
+    } finally {
+      setSimulating(false);
+    }
+  }, []);
+
+  const restorePositioning = useCallback(async () => {
+    await load();
+    requestAnimationFrame(() => positioningHeadingRef.current?.focus());
+  }, [load]);
 
   const advance = useCallback(async (result: "take" | "done" | "blocked" | "escalate" | "stop") => {
     if (!brief?.next_action) return;
@@ -197,10 +482,16 @@ export function TeamControlTowerPage() {
     setAdvancing(true);
     setNotice("");
     try {
-      if (retryCommand.current?.continuation !== brief.next_action.continuation) {
+      const logicalPayload = JSON.stringify({
+        continuation: brief.next_action.continuation,
+        result,
+        rationale: rationale.trim(),
+        evidence_ids: evidenceIds,
+      });
+      if (retryCommand.current?.logicalPayload !== logicalPayload) {
         const key = `team-control-${crypto.randomUUID()}`;
         retryCommand.current = {
-          continuation: brief.next_action.continuation,
+          logicalPayload,
           key,
           payload: {
             continuation: brief.next_action.continuation,
@@ -230,6 +521,8 @@ export function TeamControlTowerPage() {
         setRationale("");
         setEvidence("");
         await load();
+      } else {
+        retryCommand.current = null;
       }
     } catch {
       setNotice("网络失败；再次提交会复用同一幂等键，不会重复推进任务。");
@@ -259,6 +552,18 @@ export function TeamControlTowerPage() {
 
       {error ? <div className={styles.notice} role="alert"><AlertTriangle size={16} />{error}</div> : null}
       {busy ? <div className={styles.loading} role="status" aria-live="polite"><RefreshCw size={18} />读取 exact-scope、工作流租约与任务事件…</div> : null}
+
+      <EnterprisePositioningPanel
+        projection={positioning}
+        busy={positioningBusy}
+        simulating={simulating}
+        mode={positioningMode}
+        error={positioningError}
+        notice={positioningNotice}
+        onSimulate={(event) => void simulatePositioning(event)}
+        onRestore={() => void restorePositioning()}
+        focusTargetRef={positioningHeadingRef}
+      />
 
       {brief ? (
         <>

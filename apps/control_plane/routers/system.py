@@ -11,6 +11,8 @@ from ..api_contracts import (
     API_SCHEMA_VERSION,
     APP_VERSION,
     AnomalyScanInput,
+    EnterprisePositioningOutput,
+    EnterpriseProfileInput,
     EvidenceOpsPlanInput,
     GlobalExpertTaskRouteInput,
     KillSwitchInput,
@@ -163,6 +165,40 @@ def route_global_expert_task(
         "admin",
     )
     return run(lambda: runtime.global_expert_team.route(**body.model_dump()))
+
+
+_ENTERPRISE_POSITIONING_READ_ROLES = (
+    "operator",
+    "reviewer",
+    "compliance",
+    "approver",
+    "risk",
+    "monitor",
+    "admin",
+)
+
+
+@router.get(
+    "/v1/enterprise-positioning/current",
+    response_model=EnterprisePositioningOutput,
+)
+def current_enterprise_positioning(
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(principal, *_ENTERPRISE_POSITIONING_READ_ROLES)
+    return run(runtime.enterprise_positioning.position)
+
+
+@router.post(
+    "/v1/enterprise-positioning/recommend",
+    response_model=EnterprisePositioningOutput,
+)
+def recommend_enterprise_positioning(
+    body: EnterpriseProfileInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+) -> dict:
+    ensure_role(principal, *_ENTERPRISE_POSITIONING_READ_ROLES)
+    return run(lambda: runtime.enterprise_positioning.position(body.model_dump()))
 
 
 @router.get("/v1/team-control/brief", response_model=TeamControlBriefOutput)

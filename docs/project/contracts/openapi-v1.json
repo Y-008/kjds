@@ -5220,6 +5220,943 @@
         "title": "DemandReportReviewInput",
         "type": "object"
       },
+      "EnterpriseCapacityPlanOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_templates_count_as_humans": {
+            "const": false,
+            "title": "Ai Templates Count As Humans",
+            "type": "boolean"
+          },
+          "headcount_band": {
+            "enum": [
+              "solo_to_micro",
+              "small",
+              "medium",
+              "large"
+            ],
+            "title": "Headcount Band",
+            "type": "string"
+          },
+          "max_active_work_per_human": {
+            "minimum": 1.0,
+            "title": "Max Active Work Per Human",
+            "type": "integer"
+          },
+          "max_human_seats": {
+            "maximum": 4.0,
+            "minimum": 2.0,
+            "title": "Max Human Seats",
+            "type": "integer"
+          },
+          "max_parallel_workstreams": {
+            "minimum": 1.0,
+            "title": "Max Parallel Workstreams",
+            "type": "integer"
+          },
+          "planned_human_seats": {
+            "maximum": 4.0,
+            "minimum": 2.0,
+            "title": "Planned Human Seats",
+            "type": "integer"
+          },
+          "role_bundle_mode": {
+            "enum": [
+              "four_seat_compressed",
+              "four_accountability_seats",
+              "dedicated_role_bindings_preferred",
+              "dedicated_role_bindings_required"
+            ],
+            "title": "Role Bundle Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "headcount_band",
+          "max_human_seats",
+          "planned_human_seats",
+          "max_parallel_workstreams",
+          "max_active_work_per_human",
+          "role_bundle_mode",
+          "ai_templates_count_as_humans"
+        ],
+        "title": "EnterpriseCapacityPlanOutput",
+        "type": "object"
+      },
+      "EnterpriseHumanAccountabilityOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "appointment_evidence_present": {
+            "const": false,
+            "title": "Appointment Evidence Present",
+            "type": "boolean"
+          },
+          "binding_status": {
+            "const": "UNKNOWN",
+            "title": "Binding Status",
+            "type": "string"
+          },
+          "role_template_is_appointment_evidence": {
+            "const": false,
+            "title": "Role Template Is Appointment Evidence",
+            "type": "boolean"
+          },
+          "seat_ref": {
+            "title": "Seat Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seat_ref",
+          "binding_status",
+          "appointment_evidence_present",
+          "role_template_is_appointment_evidence"
+        ],
+        "title": "EnterpriseHumanAccountabilityOutput",
+        "type": "object"
+      },
+      "EnterpriseNextRoleActivationOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "current_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "required_now",
+                  "supporting_ai",
+                  "on_demand",
+                  "standby"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Status"
+          },
+          "reason_code": {
+            "enum": [
+              "primary_objective_next_capability",
+              "objective_capabilities_already_required"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "required_gate": {
+            "title": "Required Gate",
+            "type": "string"
+          },
+          "role_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Ref"
+          },
+          "role_template_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Template Ref"
+          },
+          "target_status": {
+            "const": "required_now",
+            "title": "Target Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role_ref",
+          "role_template_ref",
+          "current_status",
+          "target_status",
+          "reason_code",
+          "required_gate"
+        ],
+        "title": "EnterpriseNextRoleActivationOutput",
+        "type": "object"
+      },
+      "EnterprisePositioningBoundariesOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "is_business_truth_authority": {
+            "const": false,
+            "title": "Is Business Truth Authority",
+            "type": "boolean"
+          },
+          "is_erp_replacement": {
+            "const": false,
+            "title": "Is Erp Replacement",
+            "type": "boolean"
+          },
+          "is_generic_ai_outsourcing": {
+            "const": false,
+            "title": "Is Generic Ai Outsourcing",
+            "type": "boolean"
+          },
+          "is_unattended_autonomous_company": {
+            "const": false,
+            "title": "Is Unattended Autonomous Company",
+            "type": "boolean"
+          },
+          "profile_scope_grants_authority": {
+            "const": false,
+            "title": "Profile Scope Grants Authority",
+            "type": "boolean"
+          },
+          "role_templates_may_external_write": {
+            "const": false,
+            "title": "Role Templates May External Write",
+            "type": "boolean"
+          },
+          "system_may_appoint_humans": {
+            "const": false,
+            "title": "System May Appoint Humans",
+            "type": "boolean"
+          },
+          "system_may_grant_production_authority": {
+            "const": false,
+            "title": "System May Grant Production Authority",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_erp_replacement",
+          "is_unattended_autonomous_company",
+          "is_generic_ai_outsourcing",
+          "is_business_truth_authority",
+          "system_may_appoint_humans",
+          "system_may_grant_production_authority",
+          "role_templates_may_external_write",
+          "profile_scope_grants_authority"
+        ],
+        "title": "EnterprisePositioningBoundariesOutput",
+        "type": "object"
+      },
+      "EnterprisePositioningDetailOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "archetype_ref": {
+            "title": "Archetype Ref",
+            "type": "string"
+          },
+          "automation_ceiling": {
+            "enum": [
+              "simulation_only",
+              "read_only_recommendation_only",
+              "zero_external_action_without_professional_gate"
+            ],
+            "title": "Automation Ceiling",
+            "type": "string"
+          },
+          "boundaries": {
+            "$ref": "#/components/schemas/EnterprisePositioningBoundariesOutput"
+          },
+          "business_model_emphasis": {
+            "title": "Business Model Emphasis",
+            "type": "string"
+          },
+          "current_positioning": {
+            "title": "Current Positioning",
+            "type": "string"
+          },
+          "promotion_gate_status": {
+            "const": "BLOCKED_EVIDENCE",
+            "title": "Promotion Gate Status",
+            "type": "string"
+          },
+          "required_gates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Gates",
+            "type": "array"
+          },
+          "target_positioning": {
+            "title": "Target Positioning",
+            "type": "string"
+          },
+          "value_wedge": {
+            "title": "Value Wedge",
+            "type": "string"
+          }
+        },
+        "required": [
+          "archetype_ref",
+          "current_positioning",
+          "value_wedge",
+          "business_model_emphasis",
+          "target_positioning",
+          "promotion_gate_status",
+          "required_gates",
+          "automation_ceiling",
+          "boundaries"
+        ],
+        "title": "EnterprisePositioningDetailOutput",
+        "type": "object"
+      },
+      "EnterprisePositioningOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "capacity_plan": {
+            "$ref": "#/components/schemas/EnterpriseCapacityPlanOutput"
+          },
+          "contract_id": {
+            "const": "kjds-enterprise-positioning-advisor-v2",
+            "title": "Contract Id",
+            "type": "string"
+          },
+          "enterprise_positioning": {
+            "$ref": "#/components/schemas/EnterprisePositioningDetailOutput"
+          },
+          "enterprise_profile": {
+            "$ref": "#/components/schemas/EnterpriseProfileInput"
+          },
+          "minimum_human_accountability": {
+            "items": {
+              "$ref": "#/components/schemas/EnterpriseHumanAccountabilityOutput"
+            },
+            "title": "Minimum Human Accountability",
+            "type": "array"
+          },
+          "next_role_activation": {
+            "$ref": "#/components/schemas/EnterpriseNextRoleActivationOutput"
+          },
+          "profile_scope": {
+            "$ref": "#/components/schemas/EnterpriseProfileScopeOutput"
+          },
+          "role_gaps": {
+            "items": {
+              "$ref": "#/components/schemas/EnterpriseRoleGapOutput"
+            },
+            "title": "Role Gaps",
+            "type": "array"
+          },
+          "role_roster": {
+            "items": {
+              "$ref": "#/components/schemas/EnterpriseRoleTemplateOutput"
+            },
+            "maxItems": 35,
+            "minItems": 35,
+            "title": "Role Roster",
+            "type": "array"
+          },
+          "role_summary": {
+            "$ref": "#/components/schemas/EnterpriseRoleSummaryOutput"
+          },
+          "seat_plan": {
+            "items": {
+              "$ref": "#/components/schemas/EnterpriseSeatPlanOutput"
+            },
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Seat Plan",
+            "type": "array"
+          },
+          "separation_of_duties": {
+            "items": {
+              "$ref": "#/components/schemas/EnterpriseSeparationOfDutiesOutput"
+            },
+            "title": "Separation Of Duties",
+            "type": "array"
+          },
+          "snapshot_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Snapshot Sha256",
+            "type": "string"
+          },
+          "source_bundle_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Source Bundle Sha256",
+            "type": "string"
+          },
+          "source_hashes": {
+            "$ref": "#/components/schemas/EnterpriseSourceHashesOutput"
+          },
+          "status": {
+            "const": "RECOMMENDATION_ONLY",
+            "title": "Status",
+            "type": "string"
+          },
+          "system_actions": {
+            "$ref": "#/components/schemas/EnterpriseSystemActionsOutput"
+          },
+          "version": {
+            "const": "2.0.0",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_id",
+          "version",
+          "status",
+          "enterprise_profile",
+          "profile_scope",
+          "enterprise_positioning",
+          "role_roster",
+          "role_summary",
+          "seat_plan",
+          "minimum_human_accountability",
+          "separation_of_duties",
+          "role_gaps",
+          "next_role_activation",
+          "capacity_plan",
+          "system_actions",
+          "source_hashes",
+          "source_bundle_sha256",
+          "snapshot_sha256"
+        ],
+        "title": "EnterprisePositioningOutput",
+        "type": "object"
+      },
+      "EnterpriseProfileInput": {
+        "additionalProperties": false,
+        "properties": {
+          "business_model": {
+            "enum": [
+              "merchant_operator",
+              "commerce_control_plane_provider",
+              "hybrid_operator_and_control_plane"
+            ],
+            "title": "Business Model",
+            "type": "string"
+          },
+          "enterprise_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Enterprise Ref",
+            "type": "string"
+          },
+          "headcount_band": {
+            "enum": [
+              "solo_to_micro",
+              "small",
+              "medium",
+              "large"
+            ],
+            "title": "Headcount Band",
+            "type": "string"
+          },
+          "markets": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Markets",
+            "type": "array"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Platforms",
+            "type": "array"
+          },
+          "primary_objective": {
+            "enum": [
+              "actual_cash_truth",
+              "repeatable_growth",
+              "multi_market_scale",
+              "enterprise_ai_erp"
+            ],
+            "title": "Primary Objective",
+            "type": "string"
+          },
+          "risk_class": {
+            "enum": [
+              "standard",
+              "elevated",
+              "regulated"
+            ],
+            "title": "Risk Class",
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "validation",
+              "repeatable",
+              "scale",
+              "enterprise"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enterprise_ref",
+          "business_model",
+          "stage",
+          "headcount_band",
+          "markets",
+          "platforms",
+          "risk_class",
+          "primary_objective"
+        ],
+        "title": "EnterpriseProfileInput",
+        "type": "object"
+      },
+      "EnterpriseProfileScopeOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "enterprise_ref": {
+            "title": "Enterprise Ref",
+            "type": "string"
+          },
+          "grants_authority": {
+            "const": false,
+            "title": "Grants Authority",
+            "type": "boolean"
+          },
+          "scope_ref": {
+            "title": "Scope Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enterprise_ref",
+          "scope_ref",
+          "grants_authority"
+        ],
+        "title": "EnterpriseProfileScopeOutput",
+        "type": "object"
+      },
+      "EnterpriseRoleGapOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "authority_status": {
+            "const": "UNKNOWN",
+            "title": "Authority Status",
+            "type": "string"
+          },
+          "gap_ref": {
+            "title": "Gap Ref",
+            "type": "string"
+          },
+          "reason_code": {
+            "enum": [
+              "market_specific_role_contract_missing",
+              "platform_specific_role_contract_missing"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "recommendation_status": {
+            "const": "unsupported_gap",
+            "title": "Recommendation Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gap_ref",
+          "recommendation_status",
+          "reason_code",
+          "authority_status"
+        ],
+        "title": "EnterpriseRoleGapOutput",
+        "type": "object"
+      },
+      "EnterpriseRoleSummaryOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_specialist": {
+            "minimum": 1.0,
+            "title": "Ai Specialist",
+            "type": "integer"
+          },
+          "catalog_total": {
+            "maximum": 35.0,
+            "minimum": 1.0,
+            "title": "Catalog Total",
+            "type": "integer"
+          },
+          "core": {
+            "minimum": 1.0,
+            "title": "Core",
+            "type": "integer"
+          },
+          "independent_control": {
+            "minimum": 1.0,
+            "title": "Independent Control",
+            "type": "integer"
+          },
+          "on_demand": {
+            "maximum": 35.0,
+            "minimum": 0.0,
+            "title": "On Demand",
+            "type": "integer"
+          },
+          "required_now": {
+            "maximum": 35.0,
+            "minimum": 0.0,
+            "title": "Required Now",
+            "type": "integer"
+          },
+          "standby": {
+            "maximum": 35.0,
+            "minimum": 0.0,
+            "title": "Standby",
+            "type": "integer"
+          },
+          "supporting_ai": {
+            "maximum": 35.0,
+            "minimum": 0.0,
+            "title": "Supporting Ai",
+            "type": "integer"
+          },
+          "unsupported_gap": {
+            "minimum": 0.0,
+            "title": "Unsupported Gap",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog_total",
+          "required_now",
+          "supporting_ai",
+          "on_demand",
+          "standby",
+          "unsupported_gap",
+          "core",
+          "ai_specialist",
+          "independent_control"
+        ],
+        "title": "EnterpriseRoleSummaryOutput",
+        "type": "object"
+      },
+      "EnterpriseRoleTemplateOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "external_write_allowed": {
+            "const": false,
+            "title": "External Write Allowed",
+            "type": "boolean"
+          },
+          "formal_fact_promotion_allowed": {
+            "const": false,
+            "title": "Formal Fact Promotion Allowed",
+            "type": "boolean"
+          },
+          "human_binding_status": {
+            "const": "UNKNOWN",
+            "title": "Human Binding Status",
+            "type": "string"
+          },
+          "human_seat_eligible": {
+            "title": "Human Seat Eligible",
+            "type": "boolean"
+          },
+          "mission": {
+            "title": "Mission",
+            "type": "string"
+          },
+          "objective_priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective Priority"
+          },
+          "production_authority_granted": {
+            "const": false,
+            "title": "Production Authority Granted",
+            "type": "boolean"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "recommendation_status": {
+            "enum": [
+              "required_now",
+              "supporting_ai",
+              "on_demand",
+              "standby"
+            ],
+            "title": "Recommendation Status",
+            "type": "string"
+          },
+          "role_kind": {
+            "enum": [
+              "core",
+              "ai_specialist",
+              "independent_control"
+            ],
+            "title": "Role Kind",
+            "type": "string"
+          },
+          "role_ref": {
+            "title": "Role Ref",
+            "type": "string"
+          },
+          "role_template_ref": {
+            "title": "Role Template Ref",
+            "type": "string"
+          },
+          "runtime_mode": {
+            "const": "capability_template_only",
+            "title": "Runtime Mode",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role_ref",
+          "role_template_ref",
+          "title",
+          "mission",
+          "role_kind",
+          "recommendation_status",
+          "reason_codes",
+          "objective_priority",
+          "runtime_mode",
+          "human_binding_status",
+          "human_seat_eligible",
+          "production_authority_granted",
+          "external_write_allowed",
+          "formal_fact_promotion_allowed"
+        ],
+        "title": "EnterpriseRoleTemplateOutput",
+        "type": "object"
+      },
+      "EnterpriseSeatPlanOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_templates_excluded": {
+            "const": true,
+            "title": "Ai Templates Excluded",
+            "type": "boolean"
+          },
+          "appointment_evidence_present": {
+            "const": false,
+            "title": "Appointment Evidence Present",
+            "type": "boolean"
+          },
+          "binding_status": {
+            "const": "UNKNOWN",
+            "title": "Binding Status",
+            "type": "string"
+          },
+          "mission": {
+            "title": "Mission",
+            "type": "string"
+          },
+          "role_bundle_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Bundle Refs",
+            "type": "array"
+          },
+          "seat_ref": {
+            "title": "Seat Ref",
+            "type": "string"
+          },
+          "sod_conflict_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sod Conflict Refs",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seat_ref",
+          "title",
+          "mission",
+          "binding_status",
+          "role_bundle_refs",
+          "ai_templates_excluded",
+          "appointment_evidence_present",
+          "sod_conflict_refs"
+        ],
+        "title": "EnterpriseSeatPlanOutput",
+        "type": "object"
+      },
+      "EnterpriseSeparationOfDutiesOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "identity_authority_required": {
+            "const": true,
+            "title": "Identity Authority Required",
+            "type": "boolean"
+          },
+          "left_function_ref": {
+            "title": "Left Function Ref",
+            "type": "string"
+          },
+          "right_function_ref": {
+            "title": "Right Function Ref",
+            "type": "string"
+          },
+          "rule_ref": {
+            "title": "Rule Ref",
+            "type": "string"
+          },
+          "same_principal_allowed": {
+            "const": false,
+            "title": "Same Principal Allowed",
+            "type": "boolean"
+          },
+          "same_role_allowed": {
+            "const": false,
+            "title": "Same Role Allowed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rule_ref",
+          "left_function_ref",
+          "right_function_ref",
+          "same_role_allowed",
+          "same_principal_allowed",
+          "identity_authority_required"
+        ],
+        "title": "EnterpriseSeparationOfDutiesOutput",
+        "type": "object"
+      },
+      "EnterpriseSourceHashesOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "enterprise_ai_erp_program": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Enterprise Ai Erp Program",
+            "type": "string"
+          },
+          "enterprise_positioning_profiles": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Enterprise Positioning Profiles",
+            "type": "string"
+          },
+          "global_expert_team": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Global Expert Team",
+            "type": "string"
+          },
+          "team_control_tower": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Team Control Tower",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enterprise_ai_erp_program",
+          "enterprise_positioning_profiles",
+          "global_expert_team",
+          "team_control_tower"
+        ],
+        "title": "EnterpriseSourceHashesOutput",
+        "type": "object"
+      },
+      "EnterpriseSystemActionsOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "agents_created": {
+            "const": false,
+            "title": "Agents Created",
+            "type": "boolean"
+          },
+          "appointments_created": {
+            "const": false,
+            "title": "Appointments Created",
+            "type": "boolean"
+          },
+          "approvals_created": {
+            "const": false,
+            "title": "Approvals Created",
+            "type": "boolean"
+          },
+          "budgets_created": {
+            "const": false,
+            "title": "Budgets Created",
+            "type": "boolean"
+          },
+          "external_write_performed": {
+            "const": false,
+            "title": "External Write Performed",
+            "type": "boolean"
+          },
+          "facts_promoted": {
+            "const": false,
+            "title": "Facts Promoted",
+            "type": "boolean"
+          },
+          "humans_appointed": {
+            "const": false,
+            "title": "Humans Appointed",
+            "type": "boolean"
+          },
+          "identities_created": {
+            "const": false,
+            "title": "Identities Created",
+            "type": "boolean"
+          },
+          "permits_issued": {
+            "const": false,
+            "title": "Permits Issued",
+            "type": "boolean"
+          },
+          "production_authority_granted": {
+            "const": false,
+            "title": "Production Authority Granted",
+            "type": "boolean"
+          },
+          "roles_bound": {
+            "const": false,
+            "title": "Roles Bound",
+            "type": "boolean"
+          },
+          "tasks_started": {
+            "const": false,
+            "title": "Tasks Started",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "identities_created",
+          "agents_created",
+          "humans_appointed",
+          "appointments_created",
+          "roles_bound",
+          "tasks_started",
+          "budgets_created",
+          "approvals_created",
+          "permits_issued",
+          "production_authority_granted",
+          "facts_promoted",
+          "external_write_performed"
+        ],
+        "title": "EnterpriseSystemActionsOutput",
+        "type": "object"
+      },
       "EvidenceGrade": {
         "enum": [
           "A",
@@ -21131,6 +22068,72 @@
           }
         ],
         "summary": "Delivery Exception Workspace"
+      }
+    },
+    "/v1/enterprise-positioning/current": {
+      "get": {
+        "operationId": "current_enterprise_positioning_v1_enterprise_positioning_current_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnterprisePositioningOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Current Enterprise Positioning"
+      }
+    },
+    "/v1/enterprise-positioning/recommend": {
+      "post": {
+        "operationId": "recommend_enterprise_positioning_v1_enterprise_positioning_recommend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnterpriseProfileInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnterprisePositioningOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Recommend Enterprise Positioning"
       }
     },
     "/v1/erp/profit-items": {

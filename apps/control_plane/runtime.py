@@ -61,6 +61,7 @@ from .decision_lifecycle import DecisionLifecycleService
 from .demand_report_gate import DemandReportGateService
 from .editing_blueprint import GovernedEditingBlueprintWorkspace
 from .enterprise_ai_erp_program import EnterpriseAiErpProgram
+from .enterprise_positioning import EnterprisePositioningAdvisor
 from .evidence import (
     ClosedLoopEvidenceAuthorityAdapter,
     EvidenceService,
@@ -280,6 +281,7 @@ class RuntimeServices:
     finance: Any
     fx_evidence_intake: Any
     finance_report_reviews: Any
+    enterprise_positioning: Any
     global_expert_team: Any
     team_control_tower: Any
     governance: Any
@@ -681,6 +683,7 @@ def build_runtime() -> RuntimeServices:
     )
     automation = AutomationService(engine, repo, shadow_mode=os.getenv("KJDS_SHADOW_MODE", "true").lower() != "false")
     loop_engineering = LoopEngineeringService()
+    enterprise_positioning = EnterprisePositioningAdvisor()
     global_expert_team = GlobalPortfolioOrchestrator()
     enterprise_ai_erp_program = EnterpriseAiErpProgram()
     sourcing_store = SqlSourcingStore(engine)
@@ -1381,6 +1384,7 @@ def build_runtime() -> RuntimeServices:
         finance=finance,
         fx_evidence_intake=fx_evidence_intake,
         finance_report_reviews=finance_report_reviews,
+        enterprise_positioning=enterprise_positioning,
         global_expert_team=global_expert_team,
         team_control_tower=team_control_tower,
         governance=governance,

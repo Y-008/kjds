@@ -6,8 +6,8 @@
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | status | Active |
-| version | 5.5 |
-| last_reviewed | 2026-08-07 |
+| version | 5.6 |
+| last_reviewed | 2026-08-14 |
 | gate | G-1–G8 |
 
 本文件只做导航，不维护迁移号、测试数量或任务状态。
@@ -24,6 +24,7 @@
 | 架构决策 | [../adr/](../adr/) | 通过 ADR 修改稳定边界 |
 | 能力验收 | [evidence/](evidence/) | 证明对应版本，不自动代表当前仍通过 |
 | 商业化与俄罗斯作战合同 | [20260802_DUAL_ENGINE_COMMERCIALIZATION_AND_RUSSIA_GTM.md](20260802_DUAL_ENGINE_COMMERCIALIZATION_AND_RUSSIA_GTM.md) | 定义双轮商业模型、经营/软件 Gate 与多任务调度；动态状态仍回到 `03` |
+| 董事会战略与 90 天经营计划 | [22_BOARD_STRATEGY_AND_90_DAY_OPERATING_PLAN.md](22_BOARD_STRATEGY_AND_90_DAY_OPERATING_PLAN.md) | 冻结当前价值楔子、80/20 双线、资本放行、Truth SKU/C0/Stop Gate 与经营 KPI；不替代 `MASTER_SPEC`、动态任务表或一手经营 Evidence |
 | 一人主责双引擎经营系统 | [14_ONE_PERSON_DUAL_ENGINE_OPERATING_SYSTEM.md](14_ONE_PERSON_DUAL_ENGINE_OPERATING_SYSTEM.md) | 定义前中后台、逆漏斗、付费 MVP、案例模块化、控制轨与多线程写域 |
 | 社媒卖家情报与运营系统 | [15_SOCIAL_COMMERCE_INTELLIGENCE_AND_OPERATIONS.md](15_SOCIAL_COMMERCE_INTELLIGENCE_AND_OPERATIONS.md) | 定义全量采集、多维用户/内容分析、小红书/抖音分线与 campaign 级发布互动回读 |
 | 俄罗斯市场需求与事件雷达 | [16_RUSSIA_MARKET_DEMAND_AND_EVENT_RADAR.md](16_RUSSIA_MARKET_DEMAND_AND_EVENT_RADAR.md) | 定义 Ozon/WB/Yandex/Telegram/VK/宏观事件的全量、多源、时序和跨源验证 |

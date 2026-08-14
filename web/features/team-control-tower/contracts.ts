@@ -348,3 +348,175 @@ export type TeamAdvanceReceipt = {
   external_write_allowed: false;
   receipt_sha256: string;
 };
+
+export type EnterpriseBusinessModel =
+  | "merchant_operator"
+  | "commerce_control_plane_provider"
+  | "hybrid_operator_and_control_plane";
+
+export type EnterpriseStage = "validation" | "repeatable" | "scale" | "enterprise";
+export type EnterpriseHeadcountBand = "solo_to_micro" | "small" | "medium" | "large";
+export type EnterpriseRiskClass = "standard" | "elevated" | "regulated";
+export type EnterprisePrimaryObjective =
+  | "actual_cash_truth"
+  | "repeatable_growth"
+  | "multi_market_scale"
+  | "enterprise_ai_erp";
+
+export type EnterpriseProfile = {
+  enterprise_ref: string;
+  business_model: EnterpriseBusinessModel;
+  stage: EnterpriseStage;
+  headcount_band: EnterpriseHeadcountBand;
+  markets: string[];
+  platforms: string[];
+  risk_class: EnterpriseRiskClass;
+  primary_objective: EnterprisePrimaryObjective;
+};
+
+export type EnterpriseRoleRecommendationStatus =
+  | "required_now"
+  | "supporting_ai"
+  | "on_demand"
+  | "standby";
+
+export type EnterpriseRoleTemplate = {
+  role_ref: string;
+  role_template_ref: string;
+  title: string;
+  mission: string;
+  role_kind: "core" | "ai_specialist" | "independent_control";
+  recommendation_status: EnterpriseRoleRecommendationStatus;
+  reason_codes: string[];
+  objective_priority: number | null;
+  runtime_mode: "capability_template_only";
+  human_binding_status: "UNKNOWN";
+  human_seat_eligible: boolean;
+  production_authority_granted: false;
+  external_write_allowed: false;
+  formal_fact_promotion_allowed: false;
+};
+
+export type EnterprisePositioningProjection = {
+  contract_id: "kjds-enterprise-positioning-advisor-v2";
+  version: "2.0.0";
+  status: "RECOMMENDATION_ONLY";
+  enterprise_profile: EnterpriseProfile;
+  profile_scope: {
+    enterprise_ref: string;
+    scope_ref: string;
+    grants_authority: false;
+  };
+  enterprise_positioning: {
+    archetype_ref: string;
+    current_positioning: string;
+    value_wedge: string;
+    business_model_emphasis: string;
+    target_positioning: string;
+    promotion_gate_status: "BLOCKED_EVIDENCE";
+    required_gates: string[];
+    automation_ceiling:
+      | "simulation_only"
+      | "read_only_recommendation_only"
+      | "zero_external_action_without_professional_gate";
+    boundaries: {
+      is_erp_replacement: false;
+      is_unattended_autonomous_company: false;
+      is_generic_ai_outsourcing: false;
+      is_business_truth_authority: false;
+      system_may_appoint_humans: false;
+      system_may_grant_production_authority: false;
+      role_templates_may_external_write: false;
+      profile_scope_grants_authority: false;
+    };
+  };
+  role_roster: EnterpriseRoleTemplate[];
+  role_summary: {
+    catalog_total: number;
+    required_now: number;
+    supporting_ai: number;
+    on_demand: number;
+    standby: number;
+    unsupported_gap: number;
+    core: number;
+    ai_specialist: number;
+    independent_control: number;
+  };
+  seat_plan: Array<{
+    seat_ref: string;
+    title: string;
+    mission: string;
+    binding_status: "UNKNOWN";
+    role_bundle_refs: string[];
+    ai_templates_excluded: true;
+    appointment_evidence_present: false;
+    sod_conflict_refs: string[];
+  }>;
+  minimum_human_accountability: Array<{
+    seat_ref: string;
+    binding_status: "UNKNOWN";
+    appointment_evidence_present: false;
+    role_template_is_appointment_evidence: false;
+  }>;
+  separation_of_duties: Array<{
+    rule_ref: string;
+    left_function_ref: string;
+    right_function_ref: string;
+    same_role_allowed: false;
+    same_principal_allowed: false;
+    identity_authority_required: true;
+  }>;
+  role_gaps: Array<{
+    gap_ref: string;
+    reason_code:
+      | "market_specific_role_contract_missing"
+      | "platform_specific_role_contract_missing";
+    recommendation_status: "unsupported_gap";
+    authority_status: "UNKNOWN";
+  }>;
+  next_role_activation: {
+    role_ref: string | null;
+    role_template_ref: string | null;
+    current_status: EnterpriseRoleRecommendationStatus | null;
+    target_status: "required_now";
+    reason_code:
+      | "primary_objective_next_capability"
+      | "objective_capabilities_already_required";
+    required_gate: string;
+  };
+  capacity_plan: {
+    headcount_band: EnterpriseHeadcountBand;
+    max_human_seats: number;
+    planned_human_seats: number;
+    max_parallel_workstreams: number;
+    max_active_work_per_human: number;
+    role_bundle_mode:
+      | "four_seat_compressed"
+      | "four_accountability_seats"
+      | "dedicated_role_bindings_preferred"
+      | "dedicated_role_bindings_required";
+    ai_templates_count_as_humans: false;
+  };
+  system_actions: {
+    identities_created: false;
+    agents_created: false;
+    humans_appointed: false;
+    appointments_created: false;
+    roles_bound: false;
+    tasks_started: false;
+    budgets_created: false;
+    approvals_created: false;
+    permits_issued: false;
+    production_authority_granted: false;
+    facts_promoted: false;
+    external_write_performed: false;
+  };
+  source_hashes: {
+    enterprise_ai_erp_program: string;
+    enterprise_positioning_profiles: string;
+    global_expert_team: string;
+    team_control_tower: string;
+  };
+  source_bundle_sha256: string;
+  snapshot_sha256: string;
+};

@@ -63,6 +63,9 @@ KILL_SWITCH_CONTROL_PATHS = {
     "/v1/global-expert-team/route",
     "/v1/evidence/integrity-scan",
 }
+READ_ONLY_POST_PATHS = {
+    "/v1/enterprise-positioning/recommend",
+}
 
 
 def is_write_safety_control_path(path: str) -> bool:
@@ -77,6 +80,7 @@ def is_write_safety_control_path(path: str) -> bool:
     ) and path.endswith("/observe")
     return (
         path in KILL_SWITCH_CONTROL_PATHS
+        or path in READ_ONLY_POST_PATHS
         or agent_gate_observation
         or path.startswith("/v1/operational-incidents")
         or path.startswith("/v1/operations-control")
