@@ -68,6 +68,7 @@ from apps.control_plane.security import Principal
 
 DATABASE_URL = os.getenv("KJDS_DATABASE_URL", "")
 G1_CONTRACT_DATABASE_URL = os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")
+CLOSED_LOOP_REVISION = "20260805_0096"
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL.startswith("postgresql"),
     reason="PostgreSQL contract tests require KJDS_DATABASE_URL",
@@ -538,7 +539,7 @@ def _assert_preflight_failure_preserves_state(
         expected_control = _preflight_control_state(connection)
         expected_legacy = _legacy_artifact_snapshot(connection)
     with pytest.raises(DBAPIError) as error:
-        _upgrade_target(target_url, "head")
+        _upgrade_target(target_url, CLOSED_LOOP_REVISION)
     assert error.value.orig.sqlstate == "55000"
     assert "0096 upgrade blocked: legacy closed-loop artifacts exist" in str(error.value)
     assert "legacy://closed-loop" not in str(error.value)
@@ -876,7 +877,7 @@ def _assert_acl_downgrade_blocked(
     with engine.connect() as connection:
         assert _acl_surface_state(connection) == expected
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260805_0096"
+            CLOSED_LOOP_REVISION
         )
     return {"case_id": case_id, "sqlstate": "55000", "message": expected_message}
 
@@ -946,7 +947,7 @@ def _exercise_acl_cell_roundtrip(
         _apply_acl_cell(connection, cell, grant=True, grant_option=True)
     with engine.connect() as connection:
         baseline = _acl_surface_state(connection)
-    _upgrade_target(target_url, "head")
+    _upgrade_target(target_url, CLOSED_LOOP_REVISION)
     with engine.connect() as connection:
         rows = _assert_acl_receipts(connection)
         receipt = next(row for row in rows if row["cell_id"] == cell[0])
@@ -991,7 +992,7 @@ def _exercise_public_indirect_acl(target_url: str, engine) -> dict[str, object]:
             connection.exec_driver_sql("GRANT USAGE ON SCHEMA public TO PUBLIC")
     with engine.connect() as connection:
         baseline = _acl_surface_state(connection)
-    _upgrade_target(target_url, "head")
+    _upgrade_target(target_url, CLOSED_LOOP_REVISION)
     with engine.connect() as connection:
         rows = _assert_acl_receipts(connection)
         schema_rows = [row for row in rows if row["object_kind"] == "schema"]
@@ -1346,7 +1347,7 @@ def _exercise_acl_restore(target_url: str) -> dict[str, object]:
             for cell in ACL_CELLS
         )
 
-        _upgrade_target(target_url, "head")
+        _upgrade_target(target_url, CLOSED_LOOP_REVISION)
         with engine.connect() as connection:
             rows = _assert_acl_receipts(connection)
             receipt_set_sha256 = hashlib.sha256(
@@ -1954,7 +1955,7 @@ def postgres_gate():
             cluster_engine=cluster_engine,
             secrets=secrets,
         )
-        _upgrade_target(target_url, "head")
+        _upgrade_target(target_url, CLOSED_LOOP_REVISION)
         replay_probe = create_engine(target_url)
         try:
             with replay_probe.connect() as connection:
@@ -1980,12 +1981,12 @@ def postgres_gate():
                 )
         finally:
             replay_probe.dispose()
-        _upgrade_target(target_url, "head")
+        _upgrade_target(target_url, CLOSED_LOOP_REVISION)
         target_probe = create_engine(target_url)
         try:
             with target_probe.connect() as connection:
                 assert connection.scalar(text("SELECT current_database()")) == (g1_database_manager.DATABASE_NAME)
-                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == ("20260805_0096")
+                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (CLOSED_LOOP_REVISION)
                 final_upgrade_state = _cloe_catalog_state(connection)
                 assert final_upgrade_state == initial_upgrade_state
         finally:
@@ -2082,7 +2083,7 @@ def test_postgres_upgrade_preflight_rejects_each_legacy_reserved_source_without_
     assert all(receipt["legacy_counts"]["evidence"] >= 1 for receipt in receipts)
     with postgres_gate["admin"].connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260805_0096"
+            CLOSED_LOOP_REVISION
         )
 
 
@@ -2237,7 +2238,7 @@ def test_postgres_empty_downgrade_reupgrade_replay_is_exact(postgres_gate):
     assert receipt["initial_catalog_sha256"] == receipt["final_catalog_sha256"]
     with postgres_gate["admin"].connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "20260805_0096"
+            CLOSED_LOOP_REVISION
         )
 
 
@@ -3072,7 +3073,7 @@ def test_fresh_0096_event_issuer_functions_are_rendered_and_current(postgres_gat
     admin_engine = postgres_gate["admin"]
     runtime_engine = postgres_gate["runtime"]
     with admin_engine.connect() as admin:
-        assert admin.scalar(text("SELECT version_num FROM alembic_version")) == ("20260805_0096")
+        assert admin.scalar(text("SELECT version_num FROM alembic_version")) == (CLOSED_LOOP_REVISION)
         definitions = admin.scalars(
             text(
                 "SELECT pg_get_functiondef(p.oid) FROM pg_proc p "
