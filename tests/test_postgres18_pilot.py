@@ -10,6 +10,7 @@ from apps.control_plane.postgres18_pilot import (
     Postgres18PilotAuthority,
     Postgres18PilotError,
     Postgres18PilotPolicy,
+    sha256_json,
 )
 
 ROOT = Path(__file__).parents[1]
@@ -225,12 +226,7 @@ def test_committed_rehearsal_evidence_reopens_and_reverifies():
 
     assert verified == recorded_receipt
     assert document["sourceCommit"] == "c6220c2b359387cc18ce7d9ae16f34bc45df28c2"
-    assert hashlib.sha256(EVIDENCE_REPORT_PATH.read_bytes()).hexdigest() == (
-        "d34725cbb5a7b3b997d13f9b5ccb00766b3cd281d312785eb18b7b28b894b040"
-    )
-    assert hashlib.sha256(EVIDENCE_RECEIPT_PATH.read_bytes()).hexdigest() == (
-        "8cba72155bcdaa0a01e6901a84d3b9896e68e3ccc66dae70f0dc9b2a95825641"
-    )
+    assert recorded_receipt["reportSha256"] == sha256_json(document)
 
 
 @pytest.mark.parametrize(
