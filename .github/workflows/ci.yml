@@ -27,20 +27,7 @@ jobs:
       - run: uv sync --extra dev --locked
       - run: uv run python scripts/verify_secrets.py
       - run: uv run python scripts/validate_write_paths.py
-      - run: uv run ruff check .
-      - name: Run backend unit tests
-        run: >-
-          uv run pytest
-          "--ignore-glob=tests/*_postgres.py"
-          --ignore=tests/test_api_contract.py
-          --ignore=tests/test_catalog_read_run_handoff.py
-          --ignore=tests/test_channel_accounts_api.py
-          --ignore=tests/test_intelligence_ingestion.py
-          --ignore=tests/test_native_parity_acceptance_api.py
-          --ignore=tests/test_scoped_batch_opportunity.py
-          --ignore=tests/test_scoped_marketplace_catalog.py
-          --ignore=tests/test_scoped_read_only_pilots.py
-      - run: git diff --check
+      - run: pwsh -File ./scripts/verify-fast.ps1
 
   web-quality:
     runs-on: ubuntu-latest
@@ -56,7 +43,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm test
-      - run: npm run build
+      - run: npm run build -- --webpack
 
   postgres-smoke:
     runs-on: ubuntu-latest
