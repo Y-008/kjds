@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from .social_analysis import GovernedSocialIntelligenceAnalysis
+
 WORKSPACE_CONTRACT = "kjds-social-commerce-intelligence-workspace-v1"
 WORKSPACE_VERSION = "1.0.0"
 OBSERVATION_CONTRACT = "kjds-social-observation-batch-v1"
@@ -352,16 +354,35 @@ class GovernedSocialCommerceIntelligenceWorkspace:
                 normalized_dimensions.append(text)
         _safe_tree(dict(spec))
 
-        # Derived-only patterns: never overwrite raw records.
+        # Derived-only analysis: delegate to the deep analyzer when conserved
+        # records are available, otherwise keep the truthful placeholder.
+        analysis = None
+        if batch.records:
+            analysis = GovernedSocialIntelligenceAnalysis().analyze(
+                list(batch.records), platform=batch.platform
+            )
+
+        dimension_analysis = {
+            "actor": analysis.seller_segments if analysis else (),
+            "conversation": analysis.comment_intents if analysis else (),
+            "content": analysis.content_structures if analysis else (),
+            "seller_product": analysis.product_demands if analysis else (),
+            "time": analysis.calendar if analysis else (),
+            "engagement": (),
+            "outcome": (),
+        }
+
         patterns: list[dict[str, Any]] = []
         for dimension in normalized_dimensions:
-            patterns.append(
-                {
-                    "dimension": dimension,
-                    "record_count": len(batch.records),
-                    "derived": True,
-                }
-            )
+            pattern: dict[str, Any] = {
+                "dimension": dimension,
+                "record_count": len(batch.records),
+                "derived": True,
+                "analysis": list(dimension_analysis.get(dimension, ())),
+            }
+            if analysis is not None:
+                pattern["analysis_gaps"] = list(analysis.gaps)
+            patterns.append(pattern)
 
         bundle_document = {
             "contract_id": INSIGHT_CONTRACT,

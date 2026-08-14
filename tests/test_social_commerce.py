@@ -217,3 +217,49 @@ def test_zero_authority_all_false():
     flags = _workspace().zero_authority()
     assert flags
     assert all(not value for value in flags.values())
+
+
+def test_analyze_delegates_to_deep_analysis():
+    rich = [
+        {
+            "id": "rec-a",
+            "published_at": "2026-08-10T00:00:00Z",
+            "captured_at": "2026-08-14T00:00:00Z",
+            "source_url": "https://example.com/note/a",
+            "adapter_version": "synthetic-1.0.0",
+            "raw_hash": _sha("raw:a"),
+            "normalized": {
+                "actor": {
+                    "account_ref": "creator-1",
+                    "account_type": "creator",
+                    "verification": True,
+                    "audience_total": 5000,
+                },
+                "content": {
+                    "format": "note",
+                    "topics": ["skincare"],
+                    "product_mentions": ["sku-1"],
+                    "hook": "glow",
+                },
+                "conversation": [
+                    {
+                        "intent": "question",
+                        "sentiment": "neutral",
+                        "seller_response_status": False,
+                    }
+                ],
+                "seller_product": {"shop": "shop-1", "product_sku": "sku-1"},
+            },
+        }
+    ]
+    batch = _workspace().collect(spec=_spec(), records=rich)
+    insight = _workspace().analyze(
+        spec={"dimensions": ["actor", "content", "conversation"]},
+        batch=batch,
+    )
+    by_dimension = {p["dimension"]: p for p in insight.patterns}
+    assert by_dimension["actor"]["analysis"]
+    assert by_dimension["content"]["analysis"]
+    assert by_dimension["conversation"]["analysis"]
+    assert "analysis_gaps" in by_dimension["actor"]
+    assert insight.derived_only is True
