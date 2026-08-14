@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Any, Protocol
 
@@ -99,6 +99,117 @@ def _utc_iso(name: str, value: str) -> str:
     return parsed.astimezone(UTC).isoformat()
 
 
+def _positive_quantity(name: str, value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a positive integer")
+    if isinstance(value, int):
+        quantity = value
+    elif isinstance(value, str) and value.isascii() and value.isdigit():
+        quantity = int(value)
+    else:
+        raise ValueError(f"{name} must be a positive integer")
+    if quantity < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return quantity
+
+
+def _positive_decimal(name: str, value: Any) -> Decimal:
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a positive finite Decimal")
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"{name} must be a positive finite Decimal") from exc
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError(f"{name} must be a positive finite Decimal")
+    return amount
+
+
+def normalize_supplier_offer_attributes(
+    attributes: dict[str, Any],
+    *,
+    unit_price: Any,
+    min_order_quantity: Any,
+) -> dict[str, Any]:
+    """Normalize an optional immutable quantity-price schedule.
+
+    The canonical offer still owns one selected unit price.  When the source
+    contains multiple quantity tiers, the complete schedule and the exact
+    comparison quantity are retained in ``attributes`` and deterministically
+    prove which tier supplied that selected price.
+    """
+
+    if not isinstance(attributes, dict):
+        raise ValueError("Offer attributes must be an object")
+    normalized = dict(attributes)
+    has_tiers = "price_tiers" in normalized
+    has_quantity = "selected_quantity" in normalized
+    if not has_tiers and not has_quantity:
+        return normalized
+    if not has_tiers or not has_quantity:
+        raise ValueError(
+            "Tiered supplier offers require price_tiers and selected_quantity"
+        )
+
+    raw_tiers = normalized["price_tiers"]
+    if not isinstance(raw_tiers, list) or not raw_tiers:
+        raise ValueError("Offer price_tiers must be a non-empty list")
+    if len(raw_tiers) > 50:
+        raise ValueError("Offer price_tiers cannot exceed 50 entries")
+
+    tiers: list[tuple[int, Decimal]] = []
+    for index, raw in enumerate(raw_tiers):
+        if not isinstance(raw, dict) or set(raw) != {
+            "minimum_quantity",
+            "unit_price",
+        }:
+            raise ValueError(
+                "Each offer price tier must contain only minimum_quantity "
+                "and unit_price"
+            )
+        quantity = _positive_quantity(
+            f"price_tiers[{index}].minimum_quantity",
+            raw["minimum_quantity"],
+        )
+        price = _positive_decimal(
+            f"price_tiers[{index}].unit_price",
+            raw["unit_price"],
+        )
+        tiers.append((quantity, price))
+    if len({quantity for quantity, _ in tiers}) != len(tiers):
+        raise ValueError("Offer price tier minimum quantities must be unique")
+    tiers.sort(key=lambda item: item[0])
+
+    normalized_moq = _positive_quantity(
+        "min_order_quantity",
+        min_order_quantity,
+    )
+    selected_quantity = _positive_quantity(
+        "selected_quantity",
+        normalized["selected_quantity"],
+    )
+    if selected_quantity < normalized_moq:
+        raise ValueError("Selected quantity cannot be below the offer MOQ")
+    applicable = [price for quantity, price in tiers if quantity <= selected_quantity]
+    if not applicable:
+        raise ValueError("Selected quantity has no applicable offer price tier")
+    selected_unit_price = _positive_decimal("unit_price", unit_price)
+    if selected_unit_price != applicable[-1]:
+        raise ValueError(
+            "Offer unit_price must equal the applicable selected quantity tier"
+        )
+
+    normalized["price_tiers"] = [
+        {
+            "minimum_quantity": quantity,
+            "unit_price": str(price),
+        }
+        for quantity, price in tiers
+    ]
+    normalized["selected_quantity"] = selected_quantity
+    return normalized
+
+
 class SourcePlatform(StrEnum):
     ALIBABA_1688 = "1688"
     TAOBAO = "taobao"
@@ -157,6 +268,11 @@ class SupplierOffer:
             raise ValueError("Offer dimensions and logistics cost must be nonnegative")
         if self.min_order_quantity < 1:
             raise ValueError("Offer MOQ must be positive")
+        self.attributes = normalize_supplier_offer_attributes(
+            self.attributes,
+            unit_price=self.unit_price,
+            min_order_quantity=self.min_order_quantity,
+        )
         currency = self.currency.strip().upper()
         if len(currency) != 3 or not currency.isalpha() or not currency.isascii():
             raise ValueError("Offer currency must be a three-letter ISO code")

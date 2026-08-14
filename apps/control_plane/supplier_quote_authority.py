@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from .evidence import EvidenceGrade, EvidenceRecord, EvidenceService
+from .sourcing import normalize_supplier_offer_attributes
 
 QUOTE_DOCUMENT_KINDS = frozenset(
     {"public_display_price", "supplier_confirmed_quote", "proforma_invoice"}
@@ -63,6 +64,11 @@ class SupplierQuoteAuthorityService:
         if not supplier_ref or not external_id:
             raise ValueError("Supplier quote source requires supplier and snapshot references")
         normalized_offer = _json_value(offer_data)
+        normalized_offer["attributes"] = normalize_supplier_offer_attributes(
+            normalized_offer.get("attributes", {}),
+            unit_price=normalized_offer.get("unit_price"),
+            min_order_quantity=normalized_offer.get("min_order_quantity"),
+        )
         digest_source = (
             f"supplier-quote://{product_id}/{external_id}/{document_kind}"
         )
