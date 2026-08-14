@@ -143,6 +143,10 @@ class MarketplaceObservationItemInput(BaseModel):
     target_offer_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_url: str | None = Field(default=None, min_length=8, max_length=2000)
     product_identity: dict[str, str] = Field(default_factory=dict, max_length=40)
+    comparison_dimensions: dict[str, str] = Field(
+        default_factory=dict,
+        max_length=40,
+    )
     observed_quantity: int | None = Field(default=None, ge=1)
     checkout_verified: bool = False
     tax_included: bool | None = None
@@ -188,8 +192,35 @@ class BrowserCapturePageInput(BaseModel):
     title: str = Field(min_length=1, max_length=2000)
     canonical_url: str | None = Field(default=None, min_length=8, max_length=2000)
     language: str | None = Field(default=None, min_length=2, max_length=40)
-    extractor_version: Literal["kjds-visible-dom/1.0", "kjds-visible-dom/1.1"]
+    extractor_version: Literal[
+        "kjds-visible-dom/1.0",
+        "kjds-visible-dom/1.1",
+        "kjds-visible-dom/1.2",
+    ]
     capture_mode: Literal["active_tab_visible_dom"]
+    capture_kind: Literal[
+        "product_detail_variant_matrix",
+        "search_result_candidates",
+        "store_catalog_candidates",
+        "generic_product",
+    ] = "generic_product"
+    provider_id: str | None = Field(default=None, min_length=1, max_length=160)
+    provider_version: str | None = Field(default=None, min_length=1, max_length=80)
+    structured_data_source: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=160,
+    )
+    search_query: str | None = Field(default=None, min_length=1, max_length=500)
+    capture_coverage: dict[str, Any] = Field(default_factory=dict, max_length=20)
+
+
+class BrowserCaptureMerchantInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    supplier_ref: str = Field(min_length=1, max_length=240)
+    company_name: str | None = Field(default=None, min_length=1, max_length=500)
+    login_id: str | None = Field(default=None, min_length=1, max_length=240)
+    public_signals: dict[str, Any] = Field(default_factory=dict, max_length=80)
 
 
 class BrowserCaptureEnvelopeInput(BaseModel):
@@ -197,6 +228,7 @@ class BrowserCaptureEnvelopeInput(BaseModel):
     contract_version: Literal[
         "kjds-browser-capture-envelope/1.0",
         "kjds-browser-capture-envelope/1.1",
+        "kjds-browser-capture-envelope/1.2",
     ]
     source_profile: Literal["browser_observation"]
     marketplace: Literal["1688", "ozon"]
@@ -209,7 +241,8 @@ class BrowserCaptureEnvelopeInput(BaseModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
     )
     page: BrowserCapturePageInput
-    items: list[MarketplaceObservationItemInput] = Field(min_length=1, max_length=50)
+    merchant: BrowserCaptureMerchantInput | None = None
+    items: list[MarketplaceObservationItemInput] = Field(min_length=1, max_length=500)
     confirmed: Literal[True]
 
 
