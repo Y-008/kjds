@@ -65,3 +65,19 @@ def test_validate_taxonomy_still_rejects_real_missing_attribute() -> None:
             attributes=_contract(),
         )
     assert exc.value.code == "required_ozon_attributes_missing"
+
+
+
+def test_validate_taxonomy_rejects_omitted_required_mapping() -> None:
+    result = {
+        "candidates": [{"category_id": "97946", "reason": "match", "confidence": 0.95}],
+        "attribute_mapping": {},
+        "missing_required_attributes": [],
+    }
+    with pytest.raises(AiListingPipelineError) as exc:
+        _pipeline()._validate_taxonomy(
+            result,
+            candidates=[{"category_id": "97946"}, {"category_id": "91548"}],
+            attributes=_contract(),
+        )
+    assert exc.value.code == "required_ozon_attributes_missing"
