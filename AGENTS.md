@@ -45,7 +45,7 @@ uv run python scripts/validate_write_paths.py
 
 For Web changes also run `npm ci`, `npm test`, and `npm run build` from `web/`.
 
-For database/API changes also run PostgreSQL, verify there is one Alembic head, migrate to head, and verify `/health/ready`.
+For database/API changes run `preflight-g1.ps1`, then verify there is one Alembic head, migrate to head, and verify `/health/ready`.
 
 For every change, perform both review and verification:
 
