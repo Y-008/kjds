@@ -1,7 +1,7 @@
 param(
     [switch]$Sync,
     [string[]]$Tests = @(
-        "tests/test_ai_listing_fenced_lease.py",
+        "tests/test_ai_listing_taxonomy.py",
         "tests/test_g1_harness_contract.py",
         "tests/test_automated_commerce.py",
         "tests/test_commercial_lifecycle.py"
