@@ -1744,12 +1744,7 @@
             "type": "array"
           },
           "marketplace": {
-            "enum": [
-              "1688",
-              "ozon"
-            ],
-            "title": "Marketplace",
-            "type": "string"
+            "$ref": "#/components/schemas/ObservationMarketplace"
           },
           "merchant": {
             "anyOf": [
@@ -8892,12 +8887,7 @@
             "type": "array"
           },
           "marketplace": {
-            "enum": [
-              "1688",
-              "ozon"
-            ],
-            "title": "Marketplace",
-            "type": "string"
+            "$ref": "#/components/schemas/ObservationMarketplace"
           },
           "observed_at": {
             "title": "Observed At",
@@ -9884,6 +9874,20 @@
         ],
         "title": "ObservationInput",
         "type": "object"
+      },
+      "ObservationMarketplace": {
+        "enum": [
+          "1688",
+          "alibaba",
+          "ozon",
+          "pinduoduo",
+          "taobao",
+          "tmall",
+          "tvcmall",
+          "xianyu",
+          "yiwugo"
+        ],
+        "type": "string"
       },
       "ObservationResponse": {
         "additionalProperties": false,

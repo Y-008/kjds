@@ -19,6 +19,7 @@ from .decision_lifecycle import DecisionDisposition, ReviewVerdict
 from .domain import AgentMode, ChargeType, ContentType, PassportType
 from .evidence import EvidenceGrade
 from .finance import CashPlanStatus, FeeSignRule, FinanceEntryKind
+from .marketplace_sources import ObservationMarketplace
 from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
@@ -171,7 +172,7 @@ class MarketplaceObservationCaptureInput(BaseModel):
         "manual_verified_public_page",
         "public_search_index_observation",
     ]
-    marketplace: Literal["1688", "ozon"]
+    marketplace: ObservationMarketplace
     store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     source_url: str = Field(min_length=8, max_length=2000)
     observed_at: str
@@ -219,7 +220,7 @@ class BrowserCaptureEnvelopeInput(BaseModel):
         "kjds-browser-capture-envelope/1.2",
     ]
     source_profile: Literal["browser_observation"]
-    marketplace: Literal["1688", "ozon"]
+    marketplace: ObservationMarketplace
     store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     source_url: str = Field(min_length=8, max_length=2000)
     observed_at: str

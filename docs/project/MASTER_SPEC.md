@@ -249,6 +249,7 @@ BR-148 已由 BR-149 明确取代，仅保留历史追溯；其中“测试角�
 
 BR-149 验收补充：两个新路由必须使用 `extra=forbid` 的严格输入/输出模型，非法画像为 422；输出必须守恒 35 个唯一模板、2–4 个有序真人席位、六条 canonical SoD、来源哈希与快照哈希，所有身份、Agent、Appointment、任务、预算、Approval、Permit、Fact、权限和外写动作均显式为 false。保存的 OpenAPI 与运行时 schema 必须一致。`/team-control` 新区域必须显示服务端定位、模板状态、真人责任、SoD、缺岗、下一角色/Gate、作用域与禁止动作边界；390px、键盘焦点恢复、语义标题、状态播报、错误隔离/重试必须通过验证。推进写动作只有在同一逻辑 payload 的不确定网络失败时才能复用幂等键；payload 变化或确定性 HTTP 响应必须清除重试缓存。
 
+| BR-150 | 多平台竞品货源观察与 KJDS 自研 ERP 唯一真源 | KJDS Product、SKU、ListingDraft、SupplierOffer、ProfitScenario、库存/订单/财务事实及其 Evidence 是唯一经营真源；ERPNext、妙手、店小秘、卖家精灵及其他外部 ERP/插件只可作为对标、授权导入或可撤销导出目的地，不得成为 canonical item、利润、库存、发布或任务权威。现有 `MarketplaceObservation → BatchOpportunity → KJDS Product candidate` 单链必须同时容纳 Ozon 竞品观察以及 1688、Alibaba、拼多多、淘宝、天猫、闲鱼、义乌购、TVCMALL 货源观察，逐条保留原平台、原始链接、观察时间、Evidence 和精确身份；禁止把不同平台伪装为 1688、禁止模糊合并 SKU、禁止把公开展示价晋升为 SupplierOffer/actual cost/正式利润。批量目标继续支持 50/100/200/500/1000，筛选结果只能进入 KJDS 商品主档审核；自动采购、付款、改价、广告和发布仍必须走既有审批、Permit、执行与回读链。详见 [ADR-0100](../adr/ADR-0100-kjds-native-erp-and-multi-source-observation.md)。 | P0 |
 BR-082 精确身份补充门禁：任一身份字段或变体仍为
 `unknown/unspecified/pending/未确认` 等占位值时，不得生成或复用匹配键；历史观察在
 扫描时同样失败关闭为 `observe/no_match`，不得为扩大候选数而猜配。已冻结类别身份
