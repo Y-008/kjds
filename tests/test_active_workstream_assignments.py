@@ -624,3 +624,50 @@ def test_bas221_release_is_exact_and_preserves_bas223_leases():
     assert "82 passed, 1 skipped" in row
     assert "release-head G-1 尚未重跑" in row
     assert row.endswith("| DONE_ENGINEERING |")
+
+
+def test_enterprise_governance_seats_are_enterprise_appointed_not_system_appointed():
+    governance = _registry()["enterprise_governance"]
+
+    assert governance["contract_id"] == "kjds-enterprise-governance-v1"
+    assert governance["status"] == "configured_awaiting_human_appointment"
+    assert governance["authority_source"] == "enterprise_board"
+    assert governance["binding_authority"]["system_may_appoint_humans"] is False
+    assert governance["binding_authority"]["registry_declaration_proves_appointment"] is False
+
+    board = governance["board_owner"]
+    assert board["role_ref"] == "human_business_owner"
+    assert board["primary_human_ref"] is None
+    assert board["alternate_human_ref"] is None
+    assert board["appointment_status"] == "awaiting_enterprise_appointment"
+
+    seats = governance["independent_control_seats"]
+    control_refs = {board["role_ref"]} | {seat["role_ref"] for seat in seats}
+    assert control_refs == {
+        "human_business_owner",
+        "independent_verifier",
+        "independent_approver",
+        "risk_authority",
+        "executor",
+    }
+    assert len(seats) == 4
+    assert all(seat["primary_human_ref"] is None for seat in seats)
+    assert all(seat["alternate_human_ref"] is None for seat in seats)
+    assert all(
+        seat["appointment_status"] == "awaiting_enterprise_appointment"
+        for seat in seats
+    )
+
+    sod = governance["separation_of_duties"]
+    assert sod["self_approval_allowed"] is False
+    assert sod["author_cannot_review_own_work"] is True
+    assert sod["release_approver_disjoint_from_author"] is True
+    assert sod["independent_verifier_disjoint_from_executor"] is True
+
+    gate = governance["appointment_gate"]
+    assert gate["gate_ref"] == "organization_binding_gate"
+    assert gate["required_core_bindings"] == 18
+    assert gate["required_independent_controls"] == 5
+    assert gate["bound_core_roles"] == 0
+    assert gate["bound_independent_controls"] == 0
+    assert gate["gate_status"] == "OPEN_PENDING_ENTERPRISE_HUMANS"

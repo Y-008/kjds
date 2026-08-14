@@ -147,5 +147,8 @@ Current receipt on release HEAD `ec37cf4`:
   `backup_restore=false`, `error=null`.
 
 Out of scope for `测试跑通`: real-person seat bindings and independent
-completion review. They are deferred to the enterprise personnel configuration
-step and do not block this automated gate.
+completion review. The enterprise governance seats are now configured in
+`active_workstream_assignments.json` under `enterprise_governance` with
+`status=configured_awaiting_human_appointment`; all `primary_human_ref` and
+`alternate_human_ref` remain null because the system does not appoint humans.
+The enterprise fills those refs later.
