@@ -25,6 +25,7 @@ from .domain import ContentStatus, PassportType, new_id
 from .evidence import EvidenceGrade
 from .evidence_class import classify_evidence_class, policy_for
 from .marketplace_observation import exact_identity_complete
+from .marketplace_sources import SUPPLIER_MARKETPLACES, is_supplier_marketplace
 from .ozon_global_rules import OzonGlobalRuleRegistry
 from .risk_adjusted_profit import RiskAdjustedProfitSimulator
 from .sale_triggered_procurement import SaleTriggeredProcurementPolicy
@@ -658,11 +659,28 @@ class BatchOpportunityWorkspace:
                 page_size=scan_page_size,
                 store_refs={store, "external"},
             )
-            supplier_loaded = self._load_observations(
-                marketplace="1688",
-                page_size=scan_page_size,
-                store_refs={"external"},
-            )
+            supplier_projections = [
+                self._load_observations(
+                    marketplace=marketplace,
+                    page_size=scan_page_size,
+                    store_refs={"external"},
+                )
+                for marketplace in sorted(SUPPLIER_MARKETPLACES)
+            ]
+            supplier_loaded = {
+                "items": [
+                    item
+                    for projection in supplier_projections
+                    for item in projection["items"]
+                ],
+                "pages": sum(
+                    projection["pages"] for projection in supplier_projections
+                ),
+                "raw_rows": sum(
+                    projection["raw_rows"]
+                    for projection in supplier_projections
+                ),
+            }
         else:
             ozon_rows = [
                 item
@@ -672,7 +690,7 @@ class BatchOpportunityWorkspace:
             supplier_rows = [
                 item
                 for item in scoped_observations
-                if item.get("marketplace") == "1688"
+                if is_supplier_marketplace(item.get("marketplace"))
             ]
             ozon_loaded = {
                 "items": ozon_rows,
@@ -1375,6 +1393,14 @@ class BatchOpportunityWorkspace:
             else:
                 continue
             market_card = build_identity_card(market)
+            observed_supplier_options = [
+                option
+                for option in supplier_identity_by_key.get(key, [])
+                if not core_spec_mismatches(
+                    market_card,
+                    build_identity_card(option),
+                )
+            ]
             compatible_suppliers = [
                 option
                 for option in supplier_options
@@ -1422,6 +1448,7 @@ class BatchOpportunityWorkspace:
                     ),
                     "revenue_scenario": revenue_scenario,
                     "supplier_options": supplier_options,
+                    "observed_supplier_options": observed_supplier_options,
                     "supplier_selection": supplier_selection,
                     "sku_identity_card": sku_identity,
                     "fresh": (
@@ -2183,6 +2210,15 @@ class BatchOpportunityWorkspace:
                     supplier,
                     supply_signals,
                     density=len(match["supplier_options"]),
+                ),
+                "observed_supplier_density": len(
+                    match["observed_supplier_options"]
+                ),
+                "observed_supplier_marketplaces": sorted(
+                    {
+                        str(item.get("marketplace"))
+                        for item in match["observed_supplier_options"]
+                    }
                 ),
                 "selection": match["supplier_selection"],
             },
@@ -3398,7 +3434,7 @@ class BatchOpportunityWorkspace:
         density: int,
     ) -> dict[str, Any]:
         return {
-            "marketplace": "1688",
+            "marketplace": supplier["marketplace"],
             "supplier_ref": supplier["supplier_ref"],
             "external_item_id": supplier["external_item_id"],
             "variant_key": supplier["variant_key"],

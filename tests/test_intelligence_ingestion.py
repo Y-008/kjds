@@ -208,7 +208,7 @@ def test_registry_is_deterministic_read_only_and_entity_scoped() -> None:
     assert ready["status"] == "ready"
     assert ready["counts"] == {
         "implemented": 3,
-        "contract_only": 1,
+        "contract_only": 8,
         "external_write_enabled": 0,
     }
     assert ready["control_envelope"]["external_write_allowed"] is False
@@ -238,6 +238,55 @@ def test_registry_freezes_public_adapter_and_blocks_generic_export() -> None:
             as_of=AS_OF,
             source_profile="seller_tool_export",
             marketplace="1688",
+        )
+
+
+@pytest.mark.parametrize(
+    ("marketplace", "adapter_id", "allowed_host"),
+    [
+        ("alibaba", "allowed-public-alibaba-observation-v1", "alibaba.com"),
+        (
+            "pinduoduo",
+            "allowed-public-pinduoduo-observation-v1",
+            "pinduoduo.com",
+        ),
+        ("taobao", "allowed-public-taobao-observation-v1", "taobao.com"),
+        ("tmall", "allowed-public-tmall-observation-v1", "tmall.com"),
+        ("tvcmall", "allowed-public-tvcmall-observation-v1", "tvcmall.com"),
+        ("xianyu", "allowed-public-xianyu-observation-v1", "goofish.com"),
+        ("yiwugo", "allowed-public-yiwugo-observation-v1", "yiwugo.com"),
+    ],
+)
+def test_registry_freezes_each_supplier_platform_independently(
+    marketplace: str,
+    adapter_id: str,
+    allowed_host: str,
+) -> None:
+    registry = IntelligenceSourceAdapterRegistry()
+    snapshot = registry.snapshot(
+        principal=principal(),
+        entity_scope=entity_scope(),
+        store_ref="store-a",
+        as_of=AS_OF,
+    )
+    adapter = next(
+        item for item in snapshot["adapters"]
+        if item["adapter_id"] == adapter_id
+    )
+
+    assert adapter["status"] == "contract_only"
+    assert allowed_host in adapter["allowed_hosts"]
+    assert adapter["semantic_authority"] == (
+        "supplier_market_observation_only"
+    )
+    with pytest.raises(ValueError, match="not admitted"):
+        registry.observation_contract(
+            principal=principal(),
+            entity_scope=entity_scope(),
+            store_ref="store-a",
+            as_of=AS_OF,
+            source_profile="browser_observation",
+            marketplace=marketplace,
         )
 
 

@@ -30,6 +30,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
 from .evidence import EvidenceGrade
+from .marketplace_sources import OBSERVATION_MARKETPLACES
 from .sql_repository import Base
 
 OBSERVATION_CONTRACT_VERSION = "marketplace-observation/1.3.0"
@@ -42,6 +43,7 @@ SOURCE_PROFILES = {
     "public_search_index_observation",
 }
 MARKETPLACES = {"1688", "ozon"}
+READ_MARKETPLACES = OBSERVATION_MARKETPLACES
 PRICE_KINDS = {
     "public_display_price",
     "new_customer_price",
@@ -1120,7 +1122,7 @@ class MarketplaceObservationWorkspace:
         )
         if marketplace is not None:
             normalized_marketplace = marketplace.strip().lower()
-            if normalized_marketplace not in MARKETPLACES:
+            if normalized_marketplace not in READ_MARKETPLACES:
                 raise ValueError("Unsupported marketplace observation marketplace")
             query = query.where(
                 MarketplaceObservationSnapshotRow.marketplace
@@ -1212,7 +1214,7 @@ class MarketplaceObservationWorkspace:
         entity_ref: str | None = None,
         as_of: str | datetime | None = None,
     ) -> dict[str, Any]:
-        if marketplace not in MARKETPLACES:
+        if marketplace not in READ_MARKETPLACES:
             raise ValueError("Unsupported marketplace observation marketplace")
         if not 1 <= page_size <= 1000:
             raise ValueError("Observation page_size must be 1 to 1000")

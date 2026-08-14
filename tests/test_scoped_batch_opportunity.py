@@ -15,6 +15,7 @@ from apps.control_plane.batch_opportunity import (
     BatchOpportunityRunRow,
     BatchOpportunityWorkspace,
 )
+from apps.control_plane.marketplace_sources import SUPPLIER_MARKETPLACES
 from apps.control_plane.runtime import runtime
 from apps.control_plane.scoped_batch_opportunity import (
     ScopedBatchOpportunityAuthority,
@@ -399,6 +400,46 @@ def test_complete_cny_inputs_freeze_scope_and_create_research_run():
     assert result["control_envelope"]["internal_research_run_created"] is True
     assert result["control_envelope"]["approval_created"] is False
     assert result["control_envelope"]["external_write_allowed"] is False
+
+
+def test_scoped_batch_collects_all_registered_supplier_marketplaces() -> None:
+    batch = Batch()
+    observations = ScopedObservations(
+        {
+            "ozon": [
+                observation(
+                    marketplace="ozon",
+                    currency="CNY",
+                    evidence_id="evd-ozon",
+                )
+            ],
+            "1688": [
+                observation(
+                    marketplace="1688",
+                    currency="CNY",
+                    evidence_id="evd-1688",
+                )
+            ],
+            "tvcmall": [
+                observation(
+                    marketplace="tvcmall",
+                    currency="CNY",
+                    evidence_id="evd-tvcmall",
+                )
+            ],
+        }
+    )
+    service = authority(batch=batch, observations=observations)
+
+    result = service.prepare(**prepare_values())
+
+    assert result["status"] == "ready_with_constraints"
+    assert {
+        item["marketplace"]
+        for item in batch.prepare_calls[0]["scoped_observations"]
+    } == {"ozon", "1688", "tvcmall"}
+    collected = {call["marketplace"] for call in observations.calls}
+    assert collected == {"ozon", *SUPPLIER_MARKETPLACES}
 
 
 def test_fx_snapshot_is_as_of_scoped_and_passed_to_evaluator():

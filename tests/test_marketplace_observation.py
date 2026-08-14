@@ -127,6 +127,24 @@ def test_capture_rejects_changed_payload_and_duplicate_natural_keys() -> None:
         workspace.capture(duplicate, actor_id="operator-1")
 
 
+def test_contract_only_supplier_marketplace_is_readable_but_not_capturable() -> None:
+    database = engine()
+    workspace = MarketplaceObservationWorkspace(
+        engine=database,
+        evidence=EvidenceService(database),
+    )
+
+    assert workspace.page(marketplace="tvcmall")["items"] == []
+    request = observation_request(idempotency_key="contract-only-tvcmall")
+    request["marketplace"] = "tvcmall"
+    request["source_url"] = "https://www.tvcmall.com/details/item-1.html"
+    with pytest.raises(
+        ValueError,
+        match="Unsupported marketplace observation marketplace",
+    ):
+        workspace.capture(request, actor_id="operator-1")
+
+
 def test_capture_rejects_bad_url_currency_timestamp_and_unconfirmed_input() -> None:
     database = engine()
     workspace = MarketplaceObservationWorkspace(
