@@ -30,6 +30,20 @@ BAS223_SHARED_LEASES = {
     "master_spec": "BAS-223",
     "openapi_snapshot": "BAS-223",
 }
+BAS221_OWNER_THREAD_ID = "019fc23a-1ea8-76b0-9688-c11d40eae3e4"
+BAS221_TASK = {
+    "task_id": "BAS-221",
+    "state": "in_progress",
+    "owner_thread_id": BAS221_OWNER_THREAD_ID,
+    "write_scope": [
+        "g1_commercial_lifecycle_currentness",
+        "research_inbox_timestamp_lock_parity",
+        "outbox_media_job_coverage",
+        "write_path_marketplace_research_inventory",
+        "bas221_tests_and_evidence",
+    ],
+    "blocked_on": [],
+}
 
 
 def _registry():
@@ -141,7 +155,7 @@ def test_bas186_release_frees_media_lane_and_migration_lease():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     media = lanes["J"]
 
-    assert media["current_task"] is None
+    assert media["current_task"] == BAS221_TASK
     assert media["next_task_id"] is None
     assert registry["shared_write_leases"]["alembic_migration"] is None
     assert registry["shared_write_leases"]["api_aggregation_root"] == "BAS-223"
@@ -431,7 +445,7 @@ def test_bas217_and_bas218_releases_are_preserved_while_bas186_runs():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
     assert lanes["C"]["current_task"] == BAS223_TASK
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] is None
+    assert lanes["J"]["current_task"] == BAS221_TASK
     assert lanes["J"]["next_task_id"] is None
     assert lanes["M"]["current_task"] is None
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
@@ -484,7 +498,7 @@ def test_bas218_release_frees_traceability_scope_without_touching_bas186():
 
     assert lanes["C"]["current_task"] == BAS223_TASK
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] is None
+    assert lanes["J"]["current_task"] == BAS221_TASK
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
 
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -511,7 +525,7 @@ def test_bas219a_release_preserves_selective_core_integration_evidence():
 
     assert lanes["C"]["current_task"] == BAS223_TASK
     assert lanes["C"]["next_task_id"] is None
-    assert lanes["J"]["current_task"] is None
+    assert lanes["J"]["current_task"] == BAS221_TASK
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
 
     plan = PLAN_PATH.read_text(encoding="utf-8")
@@ -533,7 +547,7 @@ def test_bas220_release_records_exact_currentness_scope_and_gates():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
 
-    assert lanes["J"]["current_task"] is None
+    assert lanes["J"]["current_task"] == BAS221_TASK
     assert lanes["J"]["next_task_id"] is None
     assert lanes["C"]["current_task"] == BAS223_TASK
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
@@ -557,7 +571,7 @@ def test_bas223_owner_correct_claim_survives_bas220_release():
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
 
     assert lanes["C"]["current_task"] == BAS223_TASK
-    assert lanes["J"]["current_task"] is None
+    assert lanes["J"]["current_task"] == BAS221_TASK
     assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
     assert registry["as_of"] == "2026-08-03"
     assert all(value is False for value in registry["control_boundary"].values())
@@ -572,4 +586,31 @@ def test_bas223_owner_correct_claim_survives_bas220_release():
     assert "不占 migration" in row
     assert "不改变 BAS-220 当前任务" in row
     assert "不新增或宣称 BAS-221/BAS-222 状态" in row
+    assert row.endswith("| IN_PROGRESS |")
+
+
+def test_bas221_claim_is_exact_and_preserves_bas223_leases():
+    registry = _registry()
+    lanes = {lane["id"]: lane for lane in registry["lanes"]}
+
+    assert lanes["J"]["current_task"] == BAS221_TASK
+    assert lanes["J"]["next_task_id"] is None
+    assert lanes["C"]["current_task"] == BAS223_TASK
+    assert registry["shared_write_leases"] == BAS223_SHARED_LEASES
+
+    plan = PLAN_PATH.read_text(encoding="utf-8")
+    row = next(line for line in plan.splitlines() if line.startswith("| BAS-221 |"))
+    for path in (
+        "apps/control_plane/evidence.py",
+        "apps/control_plane/research_inbox.py",
+        "docs/project/registries/outbox_coverage.json",
+        "docs/project/registries/write_path_registry.json",
+        "tests/test_commercial_lifecycle.py",
+        "tests/test_research_inbox.py",
+        "tests/test_write_path_registry.py",
+        "docs/project/evidence/20260814_BAS_221_G1_INTEGRATION_DRIFT.md",
+    ):
+        assert f"`{path}`" in row
+    assert "不得改 DB/migration/API/OpenAPI/Web/依赖" in row
+    assert "不占 shared lease" in row
     assert row.endswith("| IN_PROGRESS |")
