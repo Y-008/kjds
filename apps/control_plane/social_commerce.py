@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from .campaign_authority import GovernedCampaignAuthority
 from .social_analysis import GovernedSocialIntelligenceAnalysis
 
 WORKSPACE_CONTRACT = "kjds-social-commerce-intelligence-workspace-v1"
@@ -455,6 +456,7 @@ class GovernedSocialCommerceIntelligenceWorkspace:
         spec: dict[str, Any],
         grant: dict[str, Any],
         idempotency_key: str,
+        now: str | None = None,
     ) -> CampaignReceipt:
         normalized_spec = self._validate_campaign_spec(spec)
         normalized_grant = self._validate_campaign_grant(grant)
@@ -462,6 +464,28 @@ class GovernedSocialCommerceIntelligenceWorkspace:
 
         if normalized_grant["account_ref"] != normalized_spec["account_ref"]:
             raise SocialCommerceError("grant_account_mismatch")
+
+        # Governed grant lifecycle enforcement when a clock is supplied.
+        if now is not None:
+            authority = GovernedCampaignAuthority()
+            rich_grant = {
+                "grant_id": normalized_grant["grant_id"],
+                "grantor": normalized_grant["grantor"],
+                "account_ref": normalized_grant["account_ref"],
+                "authorized_actions": normalized_spec["action_set"],
+                "purpose": normalized_spec["purpose"],
+                "audience": normalized_spec["audience"],
+                "budget": normalized_spec["budget"],
+                "stop_conditions": normalized_spec["stop_conditions"],
+                "not_before": "1970-01-01T00:00:00Z",
+                "expiry": normalized_spec["expiry"],
+                "revoked": bool(grant.get("revoked", False)),
+                "kill_switched": bool(grant.get("kill_switched", False)),
+            }
+            issued = authority.issue(rich_grant)
+            current = authority.status(issued, now=now)
+            if not current.authorization_ok:
+                raise SocialCommerceError(f"grant_{current.status.lower()}")
 
         spec_sha256 = _hash(normalized_spec)
         grant_sha256 = _hash(normalized_grant)

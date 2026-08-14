@@ -263,3 +263,47 @@ def test_analyze_delegates_to_deep_analysis():
     assert by_dimension["conversation"]["analysis"]
     assert "analysis_gaps" in by_dimension["actor"]
     assert insight.derived_only is True
+
+
+def test_operate_expired_grant_rejected_with_clock():
+    with pytest.raises(SocialCommerceError) as exc:
+        _workspace().operate(
+            spec=_campaign_spec(),
+            grant=_grant(),
+            idempotency_key="k1",
+            now="2026-08-22T00:00:00Z",
+        )
+    assert "grant_expired" in str(exc.value)
+
+
+def test_operate_revoked_grant_rejected_with_clock():
+    with pytest.raises(SocialCommerceError) as exc:
+        _workspace().operate(
+            spec=_campaign_spec(),
+            grant=_grant(revoked=True),
+            idempotency_key="k1",
+            now="2026-08-15T00:00:00Z",
+        )
+    assert "grant_revoked" in str(exc.value)
+
+
+def test_operate_kill_switched_grant_rejected_with_clock():
+    with pytest.raises(SocialCommerceError) as exc:
+        _workspace().operate(
+            spec=_campaign_spec(),
+            grant=_grant(kill_switched=True),
+            idempotency_key="k1",
+            now="2026-08-15T00:00:00Z",
+        )
+    assert "grant_kill_switched" in str(exc.value)
+
+
+def test_operate_active_grant_passes_lifecycle():
+    receipt = _workspace().operate(
+        spec=_campaign_spec(),
+        grant=_grant(),
+        idempotency_key="k1",
+        now="2026-08-15T00:00:00Z",
+    )
+    assert receipt.status == "NOT_ADMITTED"
+    assert receipt.external_write_allowed is False
