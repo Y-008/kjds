@@ -57,6 +57,7 @@ test("portfolio pilot renders only server-owned screening economics", () => {
   assert.match(panel, /kjds-scoped-marketplace-observation-v1/);
   assert.match(panel, /payload\.items/);
   assert.match(panel, /store_ref: storeRef/);
+  assert.match(panel, /searchParams\?\.get\("store_ref"\)/);
   assert.match(panel, /暂无通过作用域 Evidence/);
   assert.match(panel, /candidateScoringAllowed/);
   assert.match(panel, /!candidateScoringAllowed/);
