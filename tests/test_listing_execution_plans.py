@@ -10,6 +10,8 @@ from sqlalchemy import create_engine, update
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from apps.control_plane import ai_listing as _ai_listing  # noqa: F401
+from apps.control_plane import browser_capture_inbox as _browser_capture_inbox  # noqa: F401
 from apps.control_plane.action_policies import ActionPolicyError
 from apps.control_plane.causal_policies import CausalPolicyRow
 from apps.control_plane.domain import Product

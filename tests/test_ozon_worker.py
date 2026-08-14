@@ -1880,3 +1880,285 @@ def test_scope_drift_rejected_by_factory_never_enters_or_closes_provider_client(
 
     assert len(factory.opens) == 1
     assert events == []
+
+
+def test_category_tree_reads_official_contract_and_captures_raw_evidence():
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append((request.url.path, json.loads(request.read())))
+        return httpx.Response(
+            200,
+            json={
+                "result": [
+                    {
+                        "description_category_id": 17028634,
+                        "category_name": "Кабели и переходники",
+                        "children": [
+                            {"type_name": "Органайзер для хранения проводов", "type_id": 97946, "children": []}
+                        ],
+                    }
+                ]
+            },
+        )
+
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = client.category_tree(language="RU")
+    finally:
+        client.close()
+
+    assert calls == [("/v1/description-category/tree", {"language": "RU"})]
+    assert result["contract_version"] == "ozon-category-read-v1"
+    assert len(result["state_hash"]) == 64
+    assert result["state"]["result"][0]["category_name"] == "Кабели и переходники"
+    bundle = json.loads(result["response_evidence_bytes"])
+    assert bundle["contract_version"] == "ozon-category-read-v1"
+    assert bundle["request_context"] == {"language": "RU"}
+    assert "Кабели и переходники" in base64.b64decode(
+        bundle["responses"][0]["body_base64"]
+    ).decode("utf-8")
+
+
+def test_category_attributes_reads_official_contract_and_captures_raw_evidence():
+    calls = []
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.read())
+        calls.append((request.url.path, body))
+        return httpx.Response(
+            200,
+            json={
+                "result": [
+                    {"id": 85, "name": "Бренд", "type": "String", "is_required": True},
+                    {"id": 9048, "name": "Название модели", "type": "String", "is_required": True},
+                ]
+            },
+        )
+
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = client.category_attributes(
+            type_id=97946,
+            description_category_id=17028634,
+            language="RU",
+        )
+    finally:
+        client.close()
+
+    assert calls == [
+        (
+            "/v1/description-category/attribute",
+            {"description_category_id": 17028634, "language": "RU", "type_id": 97946},
+        )
+    ]
+    assert result["contract_version"] == "ozon-category-read-v1"
+    assert len(result["state_hash"]) == 64
+    assert result["state"]["result"][0]["id"] == 85
+    bundle = json.loads(result["response_evidence_bytes"])
+    assert bundle["request_context"] == {
+        "description_category_id": 17028634,
+        "type_id": 97946,
+        "language": "RU",
+    }
+    assert "Название модели" in base64.b64decode(
+        bundle["responses"][0]["body_base64"]
+    ).decode("utf-8")
+
+
+def test_category_attribute_values_reads_official_dictionary_and_captures_raw_evidence():
+    calls = []
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.read())
+        calls.append((request.url.path, body))
+        return httpx.Response(
+            200,
+            json={
+                "result": [
+                    {"id": 21000001, "value": "Органайзер"},
+                    {"id": 21000002, "value": "Держатель для кабеля"},
+                ],
+                "has_next": False,
+            },
+        )
+
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = client.category_attribute_values(
+            type_id=97946,
+            description_category_id=17028634,
+            attribute_id=8229,
+            language="RU",
+        )
+    finally:
+        client.close()
+
+    assert calls == [
+        (
+            "/v1/description-category/attribute/values",
+            {
+                "description_category_id": 17028634,
+                "type_id": 97946,
+                "attribute_id": 8229,
+                "language": "RU",
+                "limit": 500,
+                "last_value_id": 0,
+            },
+        )
+    ]
+    assert result["contract_version"] == "ozon-category-read-v1"
+    assert result["state"]["result"][0]["value"] == "Органайзер"
+    assert result["state"]["has_next"] is False
+    bundle = json.loads(result["response_evidence_bytes"])
+    assert bundle["request_context"]["attribute_id"] == 8229
+    assert "Органайзер" in base64.b64decode(
+        bundle["responses"][0]["body_base64"]
+    ).decode("utf-8")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"type_id": 0, "description_category_id": 17028634, "attribute_id": 8229}, "type_id"),
+        ({"type_id": 97946, "description_category_id": 0, "attribute_id": 8229}, "description_category_id"),
+        ({"type_id": 97946, "description_category_id": 17028634, "attribute_id": 0}, "attribute_id"),
+        ({"type_id": 97946, "description_category_id": 17028634, "attribute_id": 8229, "limit": 0}, "limit"),
+        ({"type_id": 97946, "description_category_id": 17028634, "attribute_id": 8229, "last_value_id": -1}, "last_value_id"),
+    ],
+)
+def test_category_attribute_values_reject_unsafe_shapes_before_network(kwargs, message):
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(lambda request: pytest.fail("network must not be reached")),
+    )
+    try:
+        with pytest.raises(ValueError, match=message):
+            client.category_attribute_values(**kwargs)
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"type_id": 0, "description_category_id": 17028634}, "type_id"),
+        ({"type_id": -1, "description_category_id": 17028634}, "type_id"),
+        ({"type_id": 97946, "description_category_id": 0}, "description_category_id"),
+        ({"type_id": True, "description_category_id": 17028634}, "type_id"),
+        ({"type_id": 97946, "description_category_id": True}, "description_category_id"),
+    ],
+)
+def test_category_attributes_reject_unsafe_shapes_before_network(kwargs, message):
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(lambda request: pytest.fail("network must not be reached")),
+    )
+    try:
+        with pytest.raises(ValueError, match=message):
+            client.category_attributes(**kwargs)
+    finally:
+        client.close()
+
+
+def test_offline_preflight_rejects_empty_evidence_ids():
+    with pytest.raises(ValueError, match="At least one Evidence id"):
+        offline_execution_preflight(
+            command_id="command-private-id",
+            offer_id="offer-private-id",
+            evidence_ids=[],
+            environment=execution_environment(),
+        )
+
+
+def test_offline_preflight_rejects_control_char_identifiers():
+    with pytest.raises(ValueError):
+        offline_execution_preflight(
+            command_id="command\nid",
+            offer_id="offer-private-id",
+            evidence_ids=["evidence-private-id"],
+            environment=execution_environment(),
+        )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example.com",
+        "http://api-seller.ozon.ru",
+        "https://api-seller.ozon.ru/v4",
+        "https://user:pass@api-seller.ozon.ru",
+        "https://api-seller.ozon.ru?x=1",
+        "https://api-seller.ozon.ru#frag",
+    ],
+)
+def test_execution_environment_rejects_non_official_ozon_origin(url):
+    env = execution_environment()
+    env["OZON_API_URL"] = url
+    with pytest.raises(ValueError):
+        ozon_worker.validate_execution_environment(env)
+
+
+def test_execution_environment_rejects_tampered_attributes_path():
+    env = execution_environment()
+    env["OZON_PRODUCT_ATTRIBUTES_PATH"] = "/v4/product/info/other"
+    with pytest.raises(ValueError):
+        ozon_worker.validate_execution_environment(env)
+
+
+def test_execution_environment_rejects_external_control_plane_url():
+    env = execution_environment()
+    env["KJDS_CONTROL_PLANE_URL"] = "http://evil.example.com"
+    with pytest.raises(ValueError):
+        ozon_worker.validate_execution_environment(env)
+
+
+def test_execution_environment_rejects_missing_identity_ref():
+    env = execution_environment()
+    del env["KJDS_OZON_EXECUTION_IDENTITY_REF"]
+    with pytest.raises(ValueError):
+        ozon_worker.validate_execution_environment(env)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:pass@example.com",
+        "https://example.com/path",
+        "https://example.com?x=1",
+        "https://example.com#frag",
+        "ftp://example.com",
+    ],
+)
+def test_safe_url_rejects_credentials_query_fragment_path_and_bad_scheme(url):
+    with pytest.raises(ValueError):
+        ozon_worker._safe_url(url, name="URL", allowed_hosts={"example.com"}, require_https=True)
+
+
+def test_safe_url_rejects_disallowed_host():
+    with pytest.raises(ValueError):
+        ozon_worker._safe_url(
+            "https://evil.example.com",
+            name="URL",
+            allowed_hosts={"example.com"},
+            require_https=True,
+        )
+
+
+def test_bounded_required_rejects_empty_oversized_and_control_chars():
+    with pytest.raises(ValueError):
+        ozon_worker._bounded_required("", "Name", 10)
+    with pytest.raises(ValueError):
+        ozon_worker._bounded_required("x" * 11, "Name", 10)
+    with pytest.raises(ValueError):
+        ozon_worker._bounded_required("x\ny", "Name", 10)
+    assert ozon_worker._bounded_required("x" * 10, "Name", 10) == "x" * 10

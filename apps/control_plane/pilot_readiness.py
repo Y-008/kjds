@@ -29,10 +29,12 @@ READ_ONLY_OPERATIONS = {
     "ozon.orders.read",
     "ozon.analytics.read",
     "ozon.finance.read",
+    "ozon.category.read",
 }
-IMPLEMENTED_READ_ONLY_OPERATIONS = {"ozon.product.read", "ozon.finance.read"}
+IMPLEMENTED_READ_ONLY_OPERATIONS = {"ozon.product.read", "ozon.finance.read", "ozon.category.read"}
 OZON_PRODUCT_READ_CONTRACT_VERSION = "ozon-product-read-v1"
 OZON_FINANCE_READ_CONTRACT_VERSION = "ozon-finance-transactions-v1"
+OZON_CATEGORY_READ_CONTRACT_VERSION = "ozon-category-read-v1"
 PILOT_CONTROLS = (
     "credentials_isolated",
     "least_privilege_scope",
