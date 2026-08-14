@@ -1408,6 +1408,18 @@ class AiListingPipeline:
                 "invented_attribute_id_rejected",
                 "AI attribute output contains an ID outside the official contract",
             )
+        if definitions:
+            required_ids = {
+                key
+                for key, value in definitions.items()
+                if value.get("is_required") is True
+            }
+            absent = required_ids - set(mapping)
+            if absent:
+                raise AiListingPipelineError(
+                    "required_ozon_attributes_missing",
+                    "Required official Ozon attributes are missing from the mapping",
+                )
         for key, value in mapping.items():
             definition = definitions.get(str(key), {})
             admitted = definition.get("enum") or definition.get("values")
