@@ -28,7 +28,9 @@ repository outbound-HTTP boundary.
 3. Research Inbox's dedicated Evidence adapter required `recorded_at`, while
    its only caller omitted it. One server-owned `captured_at` is now passed
    through the reserved Research authority and stored as the exact Evidence
-   `recorded_at`. Ordinary callers still cannot set an explicit recorded time.
+   `recorded_at`. The dedicated adapter rejects missing, non-canonical or
+   unequal capture times before writing, and the read boundary revalidates the
+   persisted equality. Ordinary callers still cannot set an explicit recorded time.
    The advisory-lock test now accepts the implementation's explicit PostgreSQL
    `CAST(... AS text)` typing without weakening exact-scope lock composition.
 4. The inventory-only SellerSprite MCP module imports `httpx` but was absent

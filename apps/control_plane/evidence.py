@@ -1543,6 +1543,20 @@ class EvidenceService:
             != RESEARCH_CAPTURE_CONTRACT_ID
         ):
             raise ValueError("Invalid reserved research Evidence contract")
+        captured_at = metadata.get("captured_at")
+        if not isinstance(captured_at, str):
+            raise ValueError("Research Evidence capture time is invalid")
+        try:
+            normalized_recorded_at = parse_timestamp(recorded_at, "recorded_at")
+            normalized_captured_at = parse_timestamp(captured_at, "captured_at")
+        except (TypeError, ValueError):
+            raise ValueError("Research Evidence capture time is invalid") from None
+        if (
+            normalized_recorded_at.isoformat() != recorded_at
+            or normalized_captured_at.isoformat() != captured_at
+            or normalized_recorded_at != normalized_captured_at
+        ):
+            raise ValueError("Research Evidence capture time drifted")
         return self.capture(
             content=content,
             filename=filename,

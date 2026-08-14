@@ -289,6 +289,20 @@ class ResearchInboxService:
             normalized_raw_fields = self._raw_fields(stored_raw_fields)
             if normalized_raw_fields != stored_raw_fields:
                 raise ValueError("Research raw fields drifted")
+            captured_at_raw = record.metadata.get("captured_at")
+            recorded_at_raw = record.recorded_at
+            if not isinstance(captured_at_raw, str) or not isinstance(
+                recorded_at_raw, str
+            ):
+                raise ValueError("Research capture time drifted")
+            captured_at = parse_timestamp(captured_at_raw, "captured_at")
+            recorded_at = parse_timestamp(recorded_at_raw, "recorded_at")
+            if (
+                captured_at.isoformat() != captured_at_raw
+                or recorded_at.isoformat() != recorded_at_raw
+                or captured_at != recorded_at
+            ):
+                raise ValueError("Research capture time drifted")
             stored_request_sha256 = self._capture_request_sha256(
                 content_sha256=record.sha256,
                 filename=record.filename,

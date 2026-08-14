@@ -426,6 +426,46 @@ def test_generic_evidence_capture_cannot_forge_research_contract(metadata):
     assert evidence_counts(evidence) == (0, 0, 0)
 
 
+@pytest.mark.parametrize(
+    ("recorded_at", "captured_at"),
+    [
+        ("2026-08-07T00:00:01+00:00", "2026-08-07T00:00:00+00:00"),
+        ("2026-08-07T00:00:00Z", "2026-08-07T00:00:00+00:00"),
+        ("2026-08-07T00:00:00+00:00", None),
+    ],
+)
+def test_research_adapter_rejects_capture_time_drift_without_residue(
+    recorded_at, captured_at
+):
+    evidence, _ = make_service()
+    metadata = {
+        "evidence_role": ResearchInboxService.EVIDENCE_ROLE,
+        "research_capture_contract_id": ResearchInboxService.CAPTURE_CONTRACT_ID,
+        "captured_at": captured_at,
+    }
+
+    with (
+        Session(evidence.engine) as session,
+        session.begin(),
+        pytest.raises(ValueError, match="capture time"),
+    ):
+        evidence.capture_research_signal_evidence(
+            content=b"drifted research row",
+            filename="research.json",
+            content_type="application/json",
+            source="research-fixture",
+            source_ref="research-fixture://drifted",
+            grade=EvidenceGrade.C,
+            effective_at="2026-08-07T00:00:00+00:00",
+            recorded_at=recorded_at,
+            created_by="test-seeder",
+            metadata=metadata,
+            session=session,
+        )
+
+    assert evidence_counts(evidence) == (0, 0, 0)
+
+
 def test_research_adapter_cannot_bypass_reserved_source_ownership():
     evidence, service = make_service()
 
@@ -433,6 +473,23 @@ def test_research_adapter_cannot_bypass_reserved_source_ownership():
         capture(service, provider=sorted(CLOSED_LOOP_RESERVED_SOURCES)[0])
 
     assert evidence_counts(evidence) == (0, 0, 0)
+
+
+def test_list_rejects_persisted_research_capture_time_drift():
+    evidence, service = make_service()
+    seed_equal_timestamp_research_rows(
+        evidence,
+        evidence_ids=["evd_research_time_drift"],
+    )
+    with Session(evidence.engine) as session, session.begin():
+        row = session.get(EvidenceRecordRow, "evd_research_time_drift")
+        assert row is not None
+        row.recorded_at = row.recorded_at + timedelta(seconds=1)
+
+    before = evidence_counts(evidence)
+    with pytest.raises(ValueError, match="metadata contract drifted"):
+        service.list(scope=DEFAULT_SCOPE)
+    assert evidence_counts(evidence) == before
 
 
 def test_missing_candidate_returns_no_data_without_falling_back_to_global_page():
