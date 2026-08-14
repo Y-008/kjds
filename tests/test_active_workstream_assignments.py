@@ -11,7 +11,7 @@ REGISTRY_PATH = (
 )
 PLAN_PATH = ROOT / "docs" / "project" / "03_REMAINING_WORK_AND_PARALLEL_PLAN.md"
 
-BAS223_OWNER_THREAD_ID = "019ffd36-1417-7321-bacb-b3c9510ec970"
+BAS223_OWNER_THREAD_ID = "019fc23a-1ea8-76b0-9688-c11d40eae3e4"
 BAS223_TASK = {
     "task_id": "BAS-223",
     "state": "in_progress",
