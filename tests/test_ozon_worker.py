@@ -1880,3 +1880,115 @@ def test_scope_drift_rejected_by_factory_never_enters_or_closes_provider_client(
 
     assert len(factory.opens) == 1
     assert events == []
+
+
+def test_category_tree_reads_official_contract_and_captures_raw_evidence():
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append((request.url.path, json.loads(request.read())))
+        return httpx.Response(
+            200,
+            json={
+                "result": [
+                    {
+                        "description_category_id": 17028634,
+                        "category_name": "Кабели и переходники",
+                        "children": [
+                            {"type_name": "Органайзер для хранения проводов", "type_id": 97946, "children": []}
+                        ],
+                    }
+                ]
+            },
+        )
+
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = client.category_tree(language="RU")
+    finally:
+        client.close()
+
+    assert calls == [("/v1/description-category/tree", {"language": "RU"})]
+    assert result["contract_version"] == "ozon-category-read-v1"
+    assert len(result["state_hash"]) == 64
+    assert result["state"]["result"][0]["category_name"] == "Кабели и переходники"
+    bundle = json.loads(result["response_evidence_bytes"])
+    assert bundle["contract_version"] == "ozon-category-read-v1"
+    assert bundle["request_context"] == {"language": "RU"}
+    assert "Кабели и переходники" in base64.b64decode(
+        bundle["responses"][0]["body_base64"]
+    ).decode("utf-8")
+
+
+def test_category_attributes_reads_official_contract_and_captures_raw_evidence():
+    calls = []
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.read())
+        calls.append((request.url.path, body))
+        return httpx.Response(
+            200,
+            json={
+                "result": [
+                    {"id": 85, "name": "Бренд", "type": "String", "is_required": True},
+                    {"id": 9048, "name": "Название модели", "type": "String", "is_required": True},
+                ]
+            },
+        )
+
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = client.category_attributes(
+            type_id=97946,
+            description_category_id=17028634,
+            language="RU",
+        )
+    finally:
+        client.close()
+
+    assert calls == [
+        (
+            "/v1/description-category/attribute",
+            {"description_category_id": 17028634, "language": "RU", "type_id": 97946},
+        )
+    ]
+    assert result["contract_version"] == "ozon-category-read-v1"
+    assert len(result["state_hash"]) == 64
+    assert result["state"]["result"][0]["id"] == 85
+    bundle = json.loads(result["response_evidence_bytes"])
+    assert bundle["request_context"] == {
+        "description_category_id": 17028634,
+        "type_id": 97946,
+        "language": "RU",
+    }
+    assert "Название модели" in base64.b64decode(
+        bundle["responses"][0]["body_base64"]
+    ).decode("utf-8")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"type_id": 0, "description_category_id": 17028634}, "type_id"),
+        ({"type_id": -1, "description_category_id": 17028634}, "type_id"),
+        ({"type_id": 97946, "description_category_id": 0}, "description_category_id"),
+        ({"type_id": True, "description_category_id": 17028634}, "type_id"),
+        ({"type_id": 97946, "description_category_id": True}, "description_category_id"),
+    ],
+)
+def test_category_attributes_reject_unsafe_shapes_before_network(kwargs, message):
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(lambda request: pytest.fail("network must not be reached")),
+    )
+    try:
+        with pytest.raises(ValueError, match=message):
+            client.category_attributes(**kwargs)
+    finally:
+        client.close()

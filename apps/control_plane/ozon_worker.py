@@ -26,6 +26,7 @@ from .channel_account_runtime_identity import (
 from .channel_worker_runtime import build_channel_worker_runtime
 from .correlation import correlation_id
 from .pilot_readiness import (
+    OZON_CATEGORY_READ_CONTRACT_VERSION,
     OZON_FINANCE_READ_CONTRACT_VERSION,
     OZON_PRODUCT_READ_CONTRACT_VERSION,
 )
@@ -441,6 +442,7 @@ def resolve_ozon_worker_credentials(
 class OzonSellerClient:
     PRODUCT_READ_CONTRACT_VERSION = OZON_PRODUCT_READ_CONTRACT_VERSION
     FINANCE_READ_CONTRACT_VERSION = OZON_FINANCE_READ_CONTRACT_VERSION
+    CATEGORY_READ_CONTRACT_VERSION = OZON_CATEGORY_READ_CONTRACT_VERSION
     RESPONSE_BUNDLE_SCHEMA_VERSION = "ozon-response-bundle-v2"
 
     def __init__(
@@ -575,6 +577,85 @@ class OzonSellerClient:
             "response_evidence_bytes": self._response_bundle(
                 [capture],
                 contract_version=self.FINANCE_READ_CONTRACT_VERSION,
+            ),
+        }
+
+    def category_tree(self, *, language: str = "RU") -> dict[str, Any]:
+        """Read the official Ozon description-category tree (read-only)."""
+        language = self._required(language, "language")
+        response, capture = self._read_with_capture(
+            "/v1/description-category/tree",
+            {"language": language},
+        )
+        result = response.get("result")
+        if not isinstance(result, list):
+            raise self._schema_error(
+                "Ozon category tree response is missing the result list"
+            )
+        state = {
+            "language": language,
+            "result": result,
+        }
+        return {
+            "contract_version": self.CATEGORY_READ_CONTRACT_VERSION,
+            "state": state,
+            "state_hash": self.state_hash(state),
+            "response_evidence_bytes": self._response_bundle(
+                [capture],
+                contract_version=self.CATEGORY_READ_CONTRACT_VERSION,
+                request_context={"language": language},
+            ),
+        }
+
+    def category_attributes(
+        self,
+        *,
+        type_id: int,
+        description_category_id: int,
+        language: str = "RU",
+    ) -> dict[str, Any]:
+        """Read the official Ozon attribute contract for one category type (read-only)."""
+        language = self._required(language, "language")
+        if isinstance(type_id, bool) or not isinstance(type_id, int) or type_id <= 0:
+            raise ValueError("type_id must be a positive integer")
+        if (
+            isinstance(description_category_id, bool)
+            or not isinstance(description_category_id, int)
+            or description_category_id <= 0
+        ):
+            raise ValueError("description_category_id must be a positive integer")
+        body = {
+            "description_category_id": description_category_id,
+            "language": language,
+            "type_id": type_id,
+        }
+        response, capture = self._read_with_capture(
+            "/v1/description-category/attribute",
+            body,
+        )
+        result = response.get("result")
+        if not isinstance(result, list):
+            raise self._schema_error(
+                "Ozon category attribute response is missing the result list"
+            )
+        state = {
+            "description_category_id": description_category_id,
+            "type_id": type_id,
+            "language": language,
+            "result": result,
+        }
+        return {
+            "contract_version": self.CATEGORY_READ_CONTRACT_VERSION,
+            "state": state,
+            "state_hash": self.state_hash(state),
+            "response_evidence_bytes": self._response_bundle(
+                [capture],
+                contract_version=self.CATEGORY_READ_CONTRACT_VERSION,
+                request_context={
+                    "description_category_id": description_category_id,
+                    "type_id": type_id,
+                    "language": language,
+                },
             ),
         }
 
