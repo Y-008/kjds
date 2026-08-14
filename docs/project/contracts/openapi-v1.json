@@ -26517,48 +26517,6 @@
         "summary": "Create Execution Observation Window"
       }
     },
-    "/v1/limited-execution-commands/{command_id}/preread-grant": {
-      "post": {
-        "operationId": "allocate_limited_execution_preread_grant_v1_limited_execution_commands__command_id__preread_grant_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "command_id",
-            "required": true,
-            "schema": {
-              "title": "Command Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "KjdsApiKey": []
-          }
-        ],
-        "summary": "Allocate Limited Execution Preread Grant"
-      }
-    },
     "/v1/limited-execution-commands/{command_id}/receipt": {
       "post": {
         "operationId": "record_limited_execution_receipt_v1_limited_execution_commands__command_id__receipt_post",
