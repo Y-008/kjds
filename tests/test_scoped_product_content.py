@@ -556,6 +556,11 @@ def test_scoped_product_content_api_requires_auth_and_store_scope(
         "authenticate",
         lambda _: principal(),
     )
+    monkeypatch.setattr(
+        runtime.kill_switch,
+        "ensure_writes_allowed",
+        lambda: None,
+    )
     assert (
         client.get(
             "/v1/product-content/workspace",
@@ -629,6 +634,11 @@ def test_product_create_missing_entity_is_409_and_does_not_write(
         runtime.authenticator,
         "authenticate",
         lambda _: principal(),
+    )
+    monkeypatch.setattr(
+        runtime.kill_switch,
+        "ensure_writes_allowed",
+        lambda: None,
     )
     monkeypatch.setattr(
         runtime.scope_grants,
