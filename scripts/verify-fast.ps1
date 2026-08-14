@@ -1,10 +1,10 @@
 param(
     [switch]$Sync,
     [string[]]$Tests = @(
-        "tests\test_ai_listing_fenced_lease.py",
-        "tests\test_g1_harness_contract.py",
-        "tests\test_automated_commerce.py",
-        "tests\test_commercial_lifecycle.py"
+        "tests/test_ai_listing_fenced_lease.py",
+        "tests/test_g1_harness_contract.py",
+        "tests/test_automated_commerce.py",
+        "tests/test_commercial_lifecycle.py"
     )
 )
 
@@ -23,7 +23,8 @@ uv run ruff check .
 if ($LASTEXITCODE -ne 0) { throw "ruff check failed" }
 
 Write-Host "== pytest focused =="
-$pytestArgs = @("-q", "-p", "no:cacheprovider", "--basetemp", ".runtime\pytest-local")
+$PytestTemp = Join-Path (Join-Path $Root ".runtime") "pytest-local"
+$pytestArgs = @("-q", "-p", "no:cacheprovider", "--basetemp", $PytestTemp)
 $pytestArgs += $Tests
 & uv run pytest @pytestArgs
 if ($LASTEXITCODE -ne 0) { throw "pytest failed" }
