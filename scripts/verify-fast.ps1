@@ -8,7 +8,8 @@ param(
         "tests/test_candidate_sourcing_handoff_api.py",
         "tests/test_supplier_rfq.py",
         "tests/test_supplier_rfq_api.py",
-        "tests/test_supplier_rfq_dispatch.py"
+        "tests/test_supplier_rfq_dispatch.py",
+        "tests/test_project_d10_launch_preflight.py"
     )
 )
 
