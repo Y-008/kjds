@@ -1396,6 +1396,7 @@ class EvidenceService:
             if _reserved_authority not in {
                 _RESERVED_CAPTURE_AUTHORITY,
                 _MEDIA_JOB_CAPTURE_AUTHORITY,
+                _RESEARCH_CAPTURE_AUTHORITY,
             }:
                 raise ValueError("Explicit Evidence recorded_at is reserved")
             now = parse_timestamp(_recorded_at, "recorded_at")
@@ -1555,6 +1556,7 @@ class EvidenceService:
             metadata=metadata,
             _reserved_authority=_RESEARCH_CAPTURE_AUTHORITY,
             _session=session,
+            _recorded_at=recorded_at,
         )
 
     def capture_media_job_evidence(

@@ -128,6 +128,7 @@ def _copy_validation_sources(tmp_path: Path) -> Path:
         Path("apps/control_plane/image_execution.py"),
         Path("apps/control_plane/intelligence.py"),
         Path("apps/control_plane/limited_executor.py"),
+        Path("apps/control_plane/marketplace_research_mcp.py"),
         Path("apps/control_plane/ozon_read_worker.py"),
         Path("apps/control_plane/ozon_worker.py"),
         Path("apps/control_plane/providers.py"),

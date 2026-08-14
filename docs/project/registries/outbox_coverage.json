@@ -222,6 +222,13 @@
       "activation_trigger": "Bundle 完成需要推送独立解析、修复或事实晋级消费者时"
     },
     {
+      "module": "media_jobs.py",
+      "status": "polling_contract",
+      "delivery_contract": "postgresql_provider_attempt_claim_and_result_receipt_api",
+      "rationale": "受治理媒体 Job 通过显式 PostgreSQL claim、不可变事件链和结果回执在控制面与本地 Worker 间交付；不依赖通知事件，也不授予 Listing 或外部平台写入。",
+      "activation_trigger": "媒体 Job 改为事件推送、跨服务通知或获得外部平台写入权限前"
+    },
+    {
       "module": "media_workbench.py",
       "status": "polling_contract",
       "delivery_contract": "postgresql_lease_claim_api",

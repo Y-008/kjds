@@ -79,6 +79,7 @@ def assert_public_research_view(view: dict) -> None:
     }
     assert set(evidence["metadata"]) == PUBLIC_RESEARCH_METADATA_FIELDS
     assert evidence["source_ref"] == evidence["metadata"]["provider_record_id"]
+    assert evidence["recorded_at"] == evidence["metadata"]["captured_at"]
 
     def nested_keys(value) -> set[str]:
         if isinstance(value, dict):
@@ -161,7 +162,11 @@ def test_postgres_capture_lock_matches_scope_grant_trigger_key():
     statement, parameters = calls[0]
     assert "pg_advisory_xact_lock" in statement
     assert "hashtextextended" in statement
-    assert "concat_ws(chr(31), :tenant_ref, :store_ref, :subject_actor_id)" in statement
+    assert (
+        "concat_ws(chr(31), CAST(:tenant_ref AS text), "
+        "CAST(:store_ref AS text), CAST(:subject_actor_id AS text))"
+        in statement
+    )
     assert parameters == {
         "tenant_ref": "tenant://default",
         "store_ref": "store://default",

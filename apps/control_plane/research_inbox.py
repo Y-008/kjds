@@ -183,6 +183,7 @@ class ResearchInboxService:
                     source_ref=governed_source_ref,
                     grade=declared_grade,
                     effective_at=observed_at,
+                    recorded_at=captured_at,
                     created_by=created_by,
                     metadata=metadata,
                     session=session,
