@@ -15,6 +15,7 @@ KJDS 是面向跨境电商经营的模块化单体控制面。它统一管理商
 
 | 内容 | 文档 |
 |---|---|
+| 老板、团队与 Coding Agent 统一入口 | [项目.md](项目.md) |
 | 稳定需求、业务不变量和架构约束 | [MASTER_SPEC.md](docs/project/MASTER_SPEC.md) |
 | 当前任务、状态、依赖、Owner 和下一动作 | [03_REMAINING_WORK_AND_PARALLEL_PLAN.md](docs/project/03_REMAINING_WORK_AND_PARALLEL_PLAN.md) |
 | 稳定系统边界 | [architecture.md](docs/architecture.md) |

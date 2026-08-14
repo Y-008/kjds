@@ -5,11 +5,25 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Integer, Numeric, String, Text, func, select
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+    select,
+    text,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
@@ -45,13 +59,65 @@ class Base(DeclarativeBase):
 
 class ProductRow(Base):
     __tablename__ = "products"
+    __table_args__ = (
+        CheckConstraint(
+            "("
+            "tenant_ref IS NULL AND entity_ref IS NULL AND store_ref IS NULL "
+            "AND scope_grant_authority_sha256 IS NULL AND scope_as_of IS NULL "
+            "AND created_by IS NULL"
+            ") OR ("
+            "tenant_ref IS NOT NULL AND length(tenant_ref) > 0 "
+            "AND entity_ref IS NOT NULL AND length(entity_ref) > 0 "
+            "AND store_ref IS NOT NULL AND length(store_ref) > 0 "
+            "AND scope_grant_authority_sha256 IS NOT NULL "
+            "AND length(scope_grant_authority_sha256) = 64 "
+            "AND scope_as_of IS NOT NULL "
+            "AND created_by IS NOT NULL AND length(created_by) > 0"
+            ")",
+            name="ck_product_scope_complete",
+        ),
+        Index(
+            "uq_product_legacy_sku",
+            "sku",
+            unique=True,
+            postgresql_where=text("tenant_ref IS NULL"),
+            sqlite_where=text("tenant_ref IS NULL"),
+        ),
+        Index(
+            "uq_product_scoped_sku",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "sku",
+            unique=True,
+            postgresql_where=text("tenant_ref IS NOT NULL"),
+            sqlite_where=text("tenant_ref IS NOT NULL"),
+        ),
+        Index(
+            "ix_product_scope_created",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "created_at",
+        ),
+    )
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    sku: Mapped[str] = mapped_column(String, unique=True)
+    sku: Mapped[str] = mapped_column(String)
     name: Mapped[str] = mapped_column(String)
     market: Mapped[str] = mapped_column(String)
     channel: Mapped[str] = mapped_column(String)
     status: Mapped[str] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    tenant_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    entity_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    store_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    scope_grant_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    scope_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
 
 
 class PassportRow(Base):
@@ -287,6 +353,14 @@ class SqlAlchemyRepository:
             channel=product.channel,
             status=product.status.value,
             created_at=_dt(product.created_at),
+            tenant_ref=product.tenant_ref,
+            entity_ref=product.entity_ref,
+            store_ref=product.store_ref,
+            scope_grant_authority_sha256=product.scope_grant_authority_sha256,
+            scope_as_of=(
+                _dt(product.scope_as_of) if product.scope_as_of else None
+            ),
+            created_by=product.created_by,
         )
         try:
             with self._session(write=True) as session:
@@ -301,17 +375,80 @@ class SqlAlchemyRepository:
             row = session.get(ProductRow, product_id)
             if row is None:
                 raise KeyError(f"Unknown product: {product_id}")
-            return Product(
-                row.sku, row.name, row.market, row.channel, ProductStatus(row.status), row.id, _iso(row.created_at)
-            )
+            return self._product(row)
+
+    @staticmethod
+    def _product(row: ProductRow) -> Product:
+        return Product(
+            sku=row.sku,
+            name=row.name,
+            market=row.market,
+            channel=row.channel,
+            status=ProductStatus(row.status),
+            id=row.id,
+            created_at=_iso(row.created_at),
+            tenant_ref=row.tenant_ref,
+            entity_ref=row.entity_ref,
+            store_ref=row.store_ref,
+            scope_grant_authority_sha256=(
+                row.scope_grant_authority_sha256
+            ),
+            scope_as_of=(
+                _iso(row.scope_as_of) if row.scope_as_of else None
+            ),
+            created_by=row.created_by,
+        )
 
     def list_products(self) -> list[Product]:
         with self._session() as session:
             rows = session.scalars(select(ProductRow).order_by(ProductRow.created_at, ProductRow.id)).all()
-        return [
-            Product(row.sku, row.name, row.market, row.channel, ProductStatus(row.status), row.id, _iso(row.created_at))
-            for row in rows
-        ]
+        return [self._product(row) for row in rows]
+
+    def get_product_scoped(
+        self,
+        *,
+        product_id: str,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        as_of: datetime,
+    ) -> Product:
+        with self._session() as session:
+            row = session.scalar(
+                select(ProductRow).where(
+                    ProductRow.id == product_id,
+                    ProductRow.tenant_ref == tenant_ref,
+                    ProductRow.entity_ref == entity_ref,
+                    ProductRow.store_ref == store_ref,
+                    ProductRow.created_at <= as_of,
+                    ProductRow.scope_as_of <= as_of,
+                )
+            )
+        if row is None:
+            raise KeyError("Unknown product in authorized operating scope")
+        return self._product(row)
+
+    def list_products_scoped(
+        self,
+        *,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        as_of: datetime,
+    ) -> list[Product]:
+        with self._session() as session:
+            rows = session.scalars(
+                select(ProductRow)
+                .where(
+                    ProductRow.tenant_ref == tenant_ref,
+                    ProductRow.entity_ref == entity_ref,
+                    ProductRow.store_ref == store_ref,
+                    ProductRow.created_at <= as_of,
+                    ProductRow.scope_as_of <= as_of,
+                )
+                .order_by(ProductRow.created_at, ProductRow.id)
+            ).all()
+        return [self._product(row) for row in rows]
 
     def save_product(self, product: Product) -> Product:
         with self._session(write=True) as session:
@@ -338,11 +475,19 @@ class SqlAlchemyRepository:
             )
         return passport
 
-    def latest_passports(self, product_id: str) -> dict[PassportType, Passport]:
+    def latest_passports(
+        self,
+        product_id: str,
+        *,
+        as_of: datetime | None = None,
+    ) -> dict[PassportType, Passport]:
         with self._session() as session:
-            rows = session.scalars(
-                select(PassportRow).where(PassportRow.product_id == product_id).order_by(PassportRow.version)
-            ).all()
+            query = select(PassportRow).where(
+                PassportRow.product_id == product_id
+            )
+            if as_of is not None:
+                query = query.where(PassportRow.created_at <= as_of)
+            rows = session.scalars(query.order_by(PassportRow.version)).all()
         result: dict[PassportType, Passport] = {}
         for row in rows:
             kind = PassportType(row.kind)
@@ -461,6 +606,66 @@ class SqlAlchemyRepository:
                 ApprovalStatus(row.status),
                 row.decided_by,
                 row.decision_reason,
+                row.id,
+                _iso(row.created_at),
+            )
+
+    def get_approval_at(
+        self,
+        approval_id: str,
+        *,
+        as_of: datetime,
+    ) -> Approval:
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must include a timezone")
+        cutoff = as_of.astimezone(UTC)
+        with self._session() as session:
+            row = session.get(ApprovalRow, approval_id)
+            created_at = (
+                row.created_at.replace(tzinfo=UTC)
+                if row is not None
+                and row.created_at.tzinfo is None
+                else row.created_at
+                if row is not None
+                else None
+            )
+            if row is None or created_at is None or created_at > cutoff:
+                raise KeyError(
+                    f"Unknown approval at requested cutoff: {approval_id}"
+                )
+            decision = session.scalar(
+                select(EventRow)
+                .where(
+                    EventRow.event_type == "approval.decided",
+                    EventRow.aggregate_id == approval_id,
+                    EventRow.occurred_at <= cutoff,
+                    EventRow.recorded_at <= cutoff,
+                )
+                .order_by(
+                    EventRow.occurred_at.desc(),
+                    EventRow.recorded_at.desc(),
+                    EventRow.sequence.desc(),
+                )
+            )
+            decided_at_cutoff = decision is not None
+            status = (
+                ApprovalStatus(row.status)
+                if decided_at_cutoff
+                else ApprovalStatus.PENDING
+            )
+            decided_by = row.decided_by if decided_at_cutoff else None
+            decision_reason = (
+                row.decision_reason if decided_at_cutoff else None
+            )
+            return Approval(
+                row.action,
+                row.resource_type,
+                row.resource_id,
+                row.requested_by,
+                row.payload_json,
+                status,
+                decided_by,
+                decision_reason,
                 row.id,
                 _iso(row.created_at),
             )
@@ -687,10 +892,79 @@ class SqlAlchemyRepository:
             row.generation_json = asset.generation
         return asset
 
-    def content_assets_for_product(self, product_id: str) -> list[ContentAsset]:
+    def content_assets_for_product(
+        self,
+        product_id: str,
+        *,
+        as_of: datetime | None = None,
+    ) -> list[ContentAsset]:
         with self._session() as session:
-            rows = session.scalars(select(ContentAssetRow).where(ContentAssetRow.product_id == product_id)).all()
+            query = select(ContentAssetRow).where(
+                ContentAssetRow.product_id == product_id
+            )
+            if as_of is not None:
+                query = query.where(ContentAssetRow.created_at <= as_of)
+            rows = session.scalars(
+                query.order_by(ContentAssetRow.created_at, ContentAssetRow.id)
+            ).all()
             return [self._asset(row) for row in rows]
+
+    def get_content_asset_scoped(
+        self,
+        *,
+        asset_id: str,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        as_of: datetime,
+    ) -> ContentAsset:
+        with self._session() as session:
+            row = session.scalar(
+                select(ContentAssetRow)
+                .join(ProductRow, ProductRow.id == ContentAssetRow.product_id)
+                .where(
+                    ContentAssetRow.id == asset_id,
+                    ContentAssetRow.created_at <= as_of,
+                    ProductRow.tenant_ref == tenant_ref,
+                    ProductRow.entity_ref == entity_ref,
+                    ProductRow.store_ref == store_ref,
+                    ProductRow.created_at <= as_of,
+                    ProductRow.scope_as_of <= as_of,
+                )
+            )
+        if row is None:
+            raise KeyError(
+                "Unknown content asset in authorized operating scope"
+            )
+        return self._asset(row)
+
+    def get_content_asset_for_products(
+        self,
+        *,
+        asset_id: str,
+        product_ids: list[str],
+        as_of: datetime,
+    ) -> ContentAsset:
+        normalized = sorted(
+            {item.strip() for item in product_ids if item.strip()}
+        )
+        if not normalized:
+            raise KeyError(
+                "Unknown content asset in authorized operating scope"
+            )
+        with self._session() as session:
+            row = session.scalar(
+                select(ContentAssetRow).where(
+                    ContentAssetRow.id == asset_id,
+                    ContentAssetRow.product_id.in_(normalized),
+                    ContentAssetRow.created_at <= as_of,
+                )
+            )
+        if row is None:
+            raise KeyError(
+                "Unknown content asset in authorized operating scope"
+            )
+        return self._asset(row)
 
     def add_experiment(self, experiment: GrowthExperiment) -> GrowthExperiment:
         with self._session(write=True) as session:

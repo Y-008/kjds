@@ -1,0 +1,203 @@
+{
+  "as_of": "2026-08-04T00:00:00+00:00",
+  "native_caps": {
+    "schema_version": "kjds-source-native-caps-v1",
+    "source_id": "marketplace.amazon_sp_api_reports",
+    "source_family": "marketplace",
+    "adapter_id": "fixture.marketplace.report.adapter",
+    "adapter_version": "1.0.0",
+    "capability_version": "2026-08-04",
+    "content_sha256": "bcf43b6052def94358b1b56c1eac062476ab468145a120622c06eb41b26f5a79",
+    "source_status": "contract_only",
+    "universe_kind": "bounded",
+    "capabilities": {
+      "fields": [
+        "record_id",
+        "event_type",
+        "observed_at",
+        "partition_ref",
+        "content_sha256"
+      ],
+      "dimensions": [
+        "region",
+        "country",
+        "language",
+        "industry",
+        "platform",
+        "subject",
+        "event",
+        "time",
+        "data_level"
+      ],
+      "pagination": {
+        "mode": "page",
+        "page_limit": 100,
+        "checkpoint_supported": true,
+        "stable_order": true,
+        "total_count_exposed": true
+      },
+      "window": {
+        "max_days": 31,
+        "historical_depth_days": 90,
+        "timezone_semantics": "utc",
+        "late_arrival_supported": true
+      },
+      "identity": {
+        "stable_ids": true,
+        "tombstones": false,
+        "delta_supported": false
+      },
+      "export_search": {
+        "export_available": true,
+        "search_available": false,
+        "search_boundable": false
+      },
+      "rate_limit": {
+        "known": true,
+        "requests_per_window": 10,
+        "window_seconds": 60
+      },
+      "authentication_mode": "export",
+      "unsupported_fields": []
+    },
+    "access_contract": {
+      "terms_ref_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "allowed_purpose": "coverage_contract_validation",
+      "retention_class": "experiment",
+      "secrets_allowed": false,
+      "raw_personal_data_allowed": false
+    },
+    "lineage_refs": [
+      "fixture://global-data-coverage/native-caps-v1"
+    ]
+  },
+  "manifest": {
+    "schema_version": "kjds-source-coverage-manifest-v1",
+    "manifest_ref": "coverage://fixture/marketplace/bounded-v1",
+    "manifest_version": "1.0.0",
+    "content_sha256": "bace9c8f52966ded34eea2deea9ad59403911b7e2d8dc82cd7db15e1416cccbd",
+    "registry_sha256": "5ee7ddc61c97c398a3b2fa8cff654e0803f419185dfce52ba4a389aad2cd48c3",
+    "native_caps_sha256": "bcf43b6052def94358b1b56c1eac062476ab468145a120622c06eb41b26f5a79",
+    "source": {
+      "source_id": "marketplace.amazon_sp_api_reports",
+      "source_family": "marketplace",
+      "source_contract_id": "fixture.marketplace.bounded-report-v1",
+      "source_contract_version": "1.0.0",
+      "source_status": "contract_only"
+    },
+    "scope": {
+      "region": "fixture-region",
+      "country": "ZZ",
+      "language": "en",
+      "industry": "fixture-industry",
+      "platform": "fixture-marketplace",
+      "subject": "fixture-subject-class",
+      "event": "fixture-observation",
+      "time": "2026-07",
+      "data_level": "synthetic-contract"
+    },
+    "universe": {
+      "kind": "bounded",
+      "denominator_known": true,
+      "expected_count": 100,
+      "expected_count_evidence_ref": "evd_fixture_denominator_v1",
+      "expected_count_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "query_bounds": {
+        "partition": "fixture-partition",
+        "window": "2026-07-01/2026-08-01"
+      }
+    },
+    "as_of": "2026-08-04T00:00:00+00:00",
+    "captured_at": "2026-08-03T22:00:00+00:00",
+    "recorded_at": "2026-08-03T23:00:00+00:00",
+    "access_contract": {
+      "terms_ref_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "allowed_purpose": "coverage_contract_validation",
+      "retention_class": "experiment",
+      "secrets_allowed": false,
+      "raw_personal_data_allowed": false
+    },
+    "lineage_refs": [
+      "fixture://global-data-coverage/manifest-v1"
+    ],
+    "evidence_refs": [
+      {
+        "id": "evd_fixture_denominator_v1",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "grade": "A",
+        "effective_at": "2026-08-03T22:00:00+00:00",
+        "effective_until": "2026-08-05T00:00:00+00:00",
+        "recorded_at": "2026-08-03T23:00:00+00:00"
+      }
+    ],
+    "coverage": {
+      "pages": {
+        "expected_count": 2,
+        "received_count": 2,
+        "failed_count": 0,
+        "duplicate_count": 0,
+        "failed_refs": [],
+        "closed": true
+      },
+      "fields": {
+        "required_count": 5,
+        "present": [
+          "record_id",
+          "event_type",
+          "observed_at",
+          "partition_ref",
+          "content_sha256"
+        ],
+        "missing": [],
+        "unparseable": [],
+        "conflicting": []
+      },
+      "window": {
+        "requested_start": "2026-07-01T00:00:00+00:00",
+        "requested_end": "2026-08-01T00:00:00+00:00",
+        "effective_start": "2026-07-01T00:00:00+00:00",
+        "effective_end": "2026-08-01T00:00:00+00:00",
+        "timezone": "UTC",
+        "gaps": [],
+        "overlaps": [],
+        "late_arrival_count": 0
+      }
+    },
+    "conservation": {
+      "expected_count": 100,
+      "observed_count": 100,
+      "source_total": 100,
+      "accepted_count": 100,
+      "quarantined_count": 0,
+      "failed_count": 0,
+      "duplicate_count": 0,
+      "suppressed_count": 0
+    },
+    "conflicts": [],
+    "checkpoint": {
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "sequence": 2,
+      "closed": true
+    },
+    "freshness": {
+      "status": "fresh",
+      "fresh_until": "2026-08-05T00:00:00+00:00",
+      "review_due": "2026-08-05T00:00:00+00:00"
+    },
+    "coverage_claim": {
+      "requested_full_coverage": true,
+      "claim_scope": "fixture-source-partition-window",
+      "denominator_evidence_ref": "evd_fixture_denominator_v1",
+      "denominator_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "invalidation_conditions": [
+        "denominator_drift",
+        "page_failure",
+        "field_gap",
+        "window_gap",
+        "checkpoint_drift",
+        "source_conflict",
+        "stale_snapshot"
+      ]
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "contract_id": "kjds-sourcing-market-benchmark-v1",
+  "registry_version": "1.0",
+  "provider_id": "accio",
+  "display_name": "Accio",
+  "observed_at": "2026-07-29T00:00:00Z",
+  "evidence_tier": "C",
+  "benchmark_only": true,
+  "provider_is_runtime_dependency": false,
+  "authorized_adapter_configured": false,
+  "external_write_allowed": false,
+  "mapping_is_implementation": false,
+  "source_documents": [
+    "https://www.accio.com/about-us",
+    "https://www.accio.com/blog/getting-started-with-accio",
+    "https://www.accio.com/blog/a-step-by-step-guide-to-searching-products-and-suppliers-with-accio"
+  ],
+  "status_vocabulary": [
+    "verified_native",
+    "implemented_unverified",
+    "gated",
+    "prohibited_with_safe_replacement"
+  ],
+  "capabilities": [
+    {
+      "id": "requirement_to_sourcing_research",
+      "observed_jtbd": "Turn a sourcing need into product selections, supplier matches and business research.",
+      "native_module": "ScopedSourcingIntelligenceWorkspace.project",
+      "native_status": "implemented_unverified",
+      "authority_boundary": "The request is a research input, never a Product, Supplier, Quote or business Fact."
+    },
+    {
+      "id": "product_and_opportunity_discovery",
+      "observed_jtbd": "Discover products and market opportunities from current research signals.",
+      "native_module": "ScopedBatchOpportunityAuthority.market_radar",
+      "native_status": "implemented_unverified",
+      "authority_boundary": "Exact identity Evidence is required; estimated demand remains observation or inference."
+    },
+    {
+      "id": "supplier_discovery_and_comparison",
+      "observed_jtbd": "Find and compare supplier options matching exact specifications.",
+      "native_module": "ScopedSourcingIntelligenceWorkspace.project",
+      "native_status": "implemented_unverified",
+      "authority_boundary": "Public supplier observations do not become accepted Supplier Offers."
+    },
+    {
+      "id": "hot_selling_and_market_analysis",
+      "observed_jtbd": "Analyze hot-selling products, price bands and market trends.",
+      "native_module": "ScopedBatchOpportunityAuthority.market_radar",
+      "native_status": "gated",
+      "authority_boundary": "Real Ozon demand evidence is still absent; no sales estimate is promoted to account Fact."
+    },
+    {
+      "id": "ai_assisted_inquiry_and_rfq",
+      "observed_jtbd": "Draft inquiries and move sourcing research toward supplier quotation.",
+      "native_module": "SupplierRfqWorkspace",
+      "native_status": "prohibited_with_safe_replacement",
+      "authority_boundary": "KJDS may draft an immutable RFQ, but supplier contact requires governed dispatch proof and independent review; Agent automatic contact is disabled."
+    },
+    {
+      "id": "three_quote_and_landed_cost_decision",
+      "observed_jtbd": "Compare supplier terms and cost implications for a sourcing decision.",
+      "native_module": "ScopedSourcingIntelligenceWorkspace.project",
+      "native_status": "implemented_unverified",
+      "authority_boundary": "Three independently accepted quotes and fifteen evidence-backed downside CM3 components are required; screening is not Actual Cash CM3."
+    },
+    {
+      "id": "new_product_idea_and_design",
+      "observed_jtbd": "Generate product concepts from consumer and market insight.",
+      "native_module": "ScopedProductContentAuthority",
+      "native_status": "gated",
+      "authority_boundary": "Generated concepts remain candidates; Product identity, rights, Passport and media QA are separate authorities."
+    },
+    {
+      "id": "agent_mode_end_to_end_sourcing",
+      "observed_jtbd": "Coordinate planning, research and final inquiries in one agent workflow.",
+      "native_module": "EnterpriseMissionRuntime",
+      "native_status": "gated",
+      "authority_boundary": "Current BAS-145 Agent artifact is decision support only; no self-approval, Permit, supplier contact, purchase or payment."
+    }
+  ],
+  "prohibited_patterns": [
+    "private_endpoint_reverse_engineering",
+    "cookie_or_session_reuse",
+    "internal_token_capture",
+    "captcha_bypass",
+    "provider_output_as_canonical_fact",
+    "automatic_supplier_contact_without_governed_dispatch",
+    "automatic_purchase_or_payment"
+  ]
+}

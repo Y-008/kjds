@@ -1,12 +1,22 @@
 import { NextResponse } from "next/server";
 
-import { mutationOriginIsAllowed, webAuthMode } from "../../../lib/identity-config";
+import {
+  mutationOriginIsAllowed,
+  rejectedLoginResponse,
+  webAuthMode,
+  webRedirect,
+  webRequestUrl,
+} from "../../../lib/identity-config";
 import { createSupabaseServerClient } from "../../../lib/supabase-server";
 import { resolveWebIdentity, WebIdentityError } from "../../../lib/web-identity";
 
+export async function GET(request: Request) {
+  return webRedirect(request, "/login");
+}
+
 export async function POST(request: Request) {
   if (!mutationOriginIsAllowed(request)) {
-    return Response.json({ detail: "Cross-site or originless login is not allowed" }, { status: 403 });
+    return rejectedLoginResponse(request);
   }
   try {
     if (webAuthMode() !== "supabase") {
@@ -21,17 +31,17 @@ export async function POST(request: Request) {
     const supabase = await createSupabaseServerClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      return NextResponse.redirect(new URL("/login?error=invalid", request.url), 303);
+      return NextResponse.redirect(webRequestUrl(request, "/login?error=invalid"), 303);
     }
     try {
       await resolveWebIdentity();
     } catch (identityError) {
       if (identityError instanceof WebIdentityError && identityError.status === 428) {
-        return NextResponse.redirect(new URL("/mfa", request.url), 303);
+        return NextResponse.redirect(webRequestUrl(request, "/mfa"), 303);
       }
-      return NextResponse.redirect(new URL("/login?error=binding", request.url), 303);
+      return NextResponse.redirect(webRequestUrl(request, "/login?error=binding"), 303);
     }
-    return NextResponse.redirect(new URL("/", request.url), 303);
+    return NextResponse.redirect(webRequestUrl(request, "/"), 303);
   } catch {
     return Response.json({ detail: "Web authentication is not configured" }, { status: 503 });
   }

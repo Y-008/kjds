@@ -5,18 +5,36 @@ import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping
+from contextlib import nullcontext
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
 
+from .channel_account_runtime_identity import (
+    SignedWorkerCredentialGrant,
+)
+from .channel_worker_runtime import build_channel_worker_runtime
 from .correlation import correlation_id
-from .ozon_worker import OzonApiError, OzonCredentials, OzonSellerClient
+from .ozon_worker import (
+    OzonApiError,
+    OzonSellerClient,
+    ozon_client_builder,
+)
 
 MAX_BATCH_SIZE = 50
 OFFICIAL_OZON_ORIGIN = "https://api-seller.ozon.ru"
 PRODUCT_ATTRIBUTES_PATH = "/v4/product/info/attributes"
 PLACEHOLDER_VALUES = {"missing", "replace-me", "replace-with-a-key", "changeme"}
+
+
+def _grant_capability(grant: Any) -> str | None:
+    if type(grant) is SignedWorkerCredentialGrant:
+        return grant.required_capability
+    if isinstance(grant, dict):
+        return grant.get("required_capability")
+    return None
 
 
 def offline_preflight(
@@ -77,9 +95,7 @@ def offline_finance_preflight(
         page=page,
         page_size=page_size,
     )
-    query_hash = hashlib.sha256(
-        json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    query_hash = hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return {
         "status": "ready_for_explicit_execution",
         "mode": "offline_preflight",
@@ -120,24 +136,12 @@ def validate_execution_environment(
         allow_http_hosts={"127.0.0.1", "localhost", "::1", "api"},
     )
 
-    required_names = ("KJDS_PILOT_READER_API_KEY", "OZON_CLIENT_ID", "OZON_API_KEY")
-    values = {name: _configured_value(env, name) for name in required_names}
-    secrets = {
-        "pilot_reader": values["KJDS_PILOT_READER_API_KEY"],
-        "ozon_api": values["OZON_API_KEY"],
-    }
-    for name in ("KJDS_API_KEY", "KJDS_EXECUTOR_API_KEY"):
-        value = str(env.get(name, "")).strip()
-        if value and value.lower() not in PLACEHOLDER_VALUES:
-            secrets[name] = value
-    if len(set(secrets.values())) != len(secrets):
-        raise ValueError("Pilot reader, Ozon, generic API, and executor credentials must be distinct")
-
     return {
         "ozon_origin_verified": True,
         "attributes_path_verified": True,
-        "required_credentials_present": len(values),
-        "credential_values_distinct": True,
+        "required_credentials_present": 0,
+        "credential_values_read": False,
+        "provider_credentials_from_environment": False,
     }
 
 
@@ -180,11 +184,7 @@ def _safe_url(
         raise ValueError(f"{name} must be a safe origin without credentials, path, query, or fragment")
     if allowed_hosts is not None and parsed.hostname.lower() not in allowed_hosts:
         raise ValueError(f"{name} host is not allowed")
-    if (
-        parsed.scheme == "http"
-        and allow_http_hosts is not None
-        and parsed.hostname.lower() not in allow_http_hosts
-    ):
+    if parsed.scheme == "http" and allow_http_hosts is not None and parsed.hostname.lower() not in allow_http_hosts:
         raise ValueError(f"{name} requires HTTPS outside local or Compose networking")
     return raw
 
@@ -354,10 +354,14 @@ class OzonReadOnlyWorker:
         self,
         *,
         control_plane: ControlPlanePilotReaderClient,
-        ozon: OzonSellerClient,
+        ozon: OzonSellerClient | None = None,
+        ozon_client_factory: Any = None,
     ) -> None:
+        if (ozon is None) == (ozon_client_factory is None):
+            raise ValueError("Exactly one Ozon client or exact-scope client factory is required")
         self.control_plane = control_plane
         self.ozon = ozon
+        self.ozon_client_factory = ozon_client_factory
 
     def run_once(
         self,
@@ -376,8 +380,17 @@ class OzonReadOnlyWorker:
         )
         if allocation.get("execution_granted") is not True:
             return allocation
+        grant = allocation.get("credential_grant")
+        if self.ozon_client_factory is not None and _grant_capability(grant) != "catalog.read":
+            raise PermissionError("Server-owned catalog.read credential grant is required")
+        lease = (
+            self.ozon_client_factory.open(grant=grant, as_of=datetime.now(UTC))
+            if self.ozon_client_factory is not None
+            else nullcontext(self.ozon)
+        )
         try:
-            result = self.ozon.offer_state(offer_id)
+            with lease as ozon:
+                result = ozon.offer_state(offer_id)
             raw = result["response_evidence_bytes"]
             response_sha256 = hashlib.sha256(raw).hexdigest()
             info = result["state"].get("info", {})
@@ -409,7 +422,7 @@ class OzonReadOnlyWorker:
                     "summary": {
                         "retryable": exc.retryable,
                         "connector_error_code": exc.code,
-                        "circuit_state": self.ozon.circuit_status()["state"],
+                        "circuit_state": self.ozon.circuit_status()["state"] if self.ozon is not None else "unknown",
                     },
                     "error_code": exc.code,
                 },
@@ -514,10 +527,14 @@ class OzonFinanceReadOnlyWorker:
         self,
         *,
         control_plane: ControlPlanePilotReaderClient,
-        ozon: OzonSellerClient,
+        ozon: OzonSellerClient | None = None,
+        ozon_client_factory: Any = None,
     ) -> None:
+        if (ozon is None) == (ozon_client_factory is None):
+            raise ValueError("Exactly one Ozon client or exact-scope client factory is required")
         self.control_plane = control_plane
         self.ozon = ozon
+        self.ozon_client_factory = ozon_client_factory
 
     def run_once(
         self,
@@ -529,15 +546,13 @@ class OzonFinanceReadOnlyWorker:
         page_size: int,
         idempotency_key: str,
     ) -> dict[str, Any]:
-        request = self.ozon.finance_request_body(
+        request = OzonSellerClient.finance_request_body(
             date_from=date_from,
             date_to=date_to,
             page=page,
             page_size=page_size,
         )
-        target_ref = hashlib.sha256(
-            json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
+        target_ref = hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         trace_id = correlation_id(None, "trace")
         allocation = self.control_plane.start(
             pilot_id,
@@ -548,13 +563,22 @@ class OzonFinanceReadOnlyWorker:
         )
         if allocation.get("execution_granted") is not True:
             return allocation
+        grant = allocation.get("credential_grant")
+        if self.ozon_client_factory is not None and _grant_capability(grant) != "finance.read":
+            raise PermissionError("Server-owned finance.read credential grant is required")
+        lease = (
+            self.ozon_client_factory.open(grant=grant, as_of=datetime.now(UTC))
+            if self.ozon_client_factory is not None
+            else nullcontext(self.ozon)
+        )
         try:
-            result = self.ozon.finance_transactions(
-                date_from=date_from,
-                date_to=date_to,
-                page=page,
-                page_size=page_size,
-            )
+            with lease as ozon:
+                result = ozon.finance_transactions(
+                    date_from=date_from,
+                    date_to=date_to,
+                    page=page,
+                    page_size=page_size,
+                )
             raw = result["response_evidence_bytes"]
             response_sha256 = hashlib.sha256(raw).hexdigest()
             summary = {
@@ -586,7 +610,7 @@ class OzonFinanceReadOnlyWorker:
                     "summary": {
                         "retryable": exc.retryable,
                         "connector_error_code": exc.code,
-                        "circuit_state": self.ozon.circuit_status()["state"],
+                        "circuit_state": self.ozon.circuit_status()["state"] if self.ozon is not None else "unknown",
                     },
                     "error_code": exc.code,
                 },
@@ -634,7 +658,9 @@ def main() -> None:
         default=int(os.getenv("KJDS_FINANCE_PAGE_SIZE", "1000")),
     )
     args = parser.parse_args()
-    offer_ids = args.offer_ids or [item.strip() for item in os.getenv("KJDS_READ_ONLY_OFFER_IDS", "").split(",") if item.strip()]
+    offer_ids = args.offer_ids or [
+        item.strip() for item in os.getenv("KJDS_READ_ONLY_OFFER_IDS", "").split(",") if item.strip()
+    ]
     if not offer_ids:
         fallback = os.getenv("KJDS_READ_ONLY_OFFER_ID", "").strip()
         offer_ids = [fallback] if fallback else []
@@ -645,9 +671,7 @@ def main() -> None:
     if args.operation == "ozon.finance.read" and (
         offer_ids or args.batch or args.cursor is not None or not args.date_from or not args.date_to
     ):
-        raise ValueError(
-            "Finance read requires date-from/date-to and does not accept product batch options"
-        )
+        raise ValueError("Finance read requires date-from/date-to and does not accept product batch options")
     if args.preflight:
         if args.operation == "ozon.finance.read":
             report = offline_finance_preflight(
@@ -674,6 +698,11 @@ def main() -> None:
             )
         )
         return
+    runtime = build_channel_worker_runtime(
+        os.environ,
+        client_builder=ozon_client_builder,
+    )
+    runtime.require_execution_ready()
     if args.operation == "ozon.finance.read":
         offline_finance_preflight(
             pilot_id=args.pilot_id,
@@ -696,36 +725,14 @@ def main() -> None:
         validate_execution_environment()
     control = ControlPlanePilotReaderClient(
         base_url=os.getenv("KJDS_CONTROL_PLANE_URL", "http://127.0.0.1:8000"),
-        api_key=os.environ.get("KJDS_PILOT_READER_API_KEY", ""),
-    )
-    ozon = OzonSellerClient(
-        OzonCredentials.from_environment(),
-        base_url=os.getenv("OZON_API_URL", "https://api-seller.ozon.ru"),
-        attributes_path=os.getenv("OZON_PRODUCT_ATTRIBUTES_PATH", "/v4/product/info/attributes"),
+        api_key=_configured_value(os.environ, "KJDS_PILOT_READER_API_KEY"),
     )
     try:
-        if args.operation == "ozon.finance.read":
-            worker = OzonFinanceReadOnlyWorker(control_plane=control, ozon=ozon)
-            control_result = worker.run_once(
-                pilot_id=args.pilot_id,
-                date_from=args.date_from,
-                date_to=args.date_to,
-                page=args.finance_page,
-                page_size=args.finance_page_size,
-                idempotency_key=args.idempotency_key,
-            )
-            output = {
-                "run_id": control_result["id"],
-                "status": control_result["status"],
-                "outcome": control_result["outcome"],
-                "evidence_id": control_result.get("evidence_id"),
-                "raw_response_stored": bool(control_result.get("raw_response_stored")),
-            }
-        else:
-            worker = OzonReadOnlyWorker(control_plane=control, ozon=ozon)
-        if args.operation == "ozon.product.read" and (
-            args.batch or len(offer_ids) > 1 or args.cursor is not None
-        ):
+        worker = OzonReadOnlyWorker(
+            control_plane=control,
+            ozon_client_factory=runtime.credential_client_factory,
+        )
+        if args.operation == "ozon.product.read" and (args.batch or len(offer_ids) > 1 or args.cursor is not None):
             output = worker.run_batch(
                 pilot_id=args.pilot_id,
                 offer_ids=offer_ids,
@@ -746,10 +753,29 @@ def main() -> None:
                 "evidence_id": control_result["evidence_id"],
                 "raw_response_stored": bool(control_result.get("raw_response_stored")),
             }
+        else:
+            finance_worker = OzonFinanceReadOnlyWorker(
+                control_plane=control,
+                ozon_client_factory=runtime.credential_client_factory,
+            )
+            control_result = finance_worker.run_once(
+                pilot_id=args.pilot_id,
+                date_from=args.date_from,
+                date_to=args.date_to,
+                page=args.finance_page,
+                page_size=args.finance_page_size,
+                idempotency_key=args.idempotency_key,
+            )
+            output = {
+                "run_id": control_result["id"],
+                "status": control_result["status"],
+                "outcome": control_result["outcome"],
+                "evidence_id": control_result["evidence_id"],
+                "raw_response_stored": bool(control_result.get("raw_response_stored")),
+            }
         print(json.dumps(output, ensure_ascii=False))
     finally:
         control.close()
-        ozon.close()
 
 
 if __name__ == "__main__":

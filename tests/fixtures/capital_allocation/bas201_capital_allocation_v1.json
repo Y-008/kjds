@@ -1,0 +1,844 @@
+{
+  "contract_id": "kjds-capital-allocation-synthetic-fixture-v1",
+  "fixture_id": "bas201-capital-allocation",
+  "version": "1.0.0",
+  "registry_sha256": "914e196fd49ea0d702a509f06a8544ba430eaded9112484c161e9878f2e08393",
+  "license_class": "repository_owned_synthetic_contract_fixture",
+  "data_classification": "synthetic_public",
+  "portfolio_ref": "bas200-gap-graph:1.1.0:5c71926c384967862c929170913ad5c9c52c5e3014090d60d5a284c787921e9f",
+  "scope": {
+    "tenant_ref": "tenant-a",
+    "entity_ref": "entity-a",
+    "store_ref": "store-a",
+    "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "data_as_of": "2026-08-01T00:00:00+00:00",
+  "source_bindings": [
+    {
+      "source_id": "gap_graph",
+      "contract_id": "kjds-governed-gap-graph-observation-v1",
+      "contract_version": "1",
+      "source_ref": "capital-source://gap_graph/synthetic-v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "synthetic_payload": {
+        "portfolio_ref": "bas200-gap-graph:1.1.0:5c71926c384967862c929170913ad5c9c52c5e3014090d60d5a284c787921e9f",
+        "portfolio_status": "admitted",
+        "opportunity_refs": [
+          "opp-build",
+          "opp-buy",
+          "opp-partner",
+          "opp-defer",
+          "opp-no-action"
+        ],
+        "dependency_edges": [],
+        "rollback_refs": [
+          "rollback-build",
+          "rollback-buy",
+          "rollback-partner",
+          "rollback-defer",
+          "rollback-no-action"
+        ]
+      },
+      "evidence_binding": {
+        "citation_ref": "citation-gap_graph",
+        "evidence_id": "evd-gap_graph",
+        "evidence_sha256": "eb16b2c30b88f2bfee193459b1ed010af6efda3c9dec988a441417e093ce1021",
+        "claims_sha256": "66dbd3ad92852402548fb488d104f0a107338b729f41fbc4d8f9eee5aae13c72",
+        "source": "gap_graph_observation",
+        "source_ref": "gap_graph_observation://synthetic/gap_graph",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00"
+      }
+    },
+    {
+      "source_id": "strategic_benchmark",
+      "contract_id": "kjds-strategic-benchmark-kernel-observation-v1",
+      "contract_version": "1",
+      "source_ref": "capital-source://strategic_benchmark/synthetic-v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "synthetic_payload": {
+        "best_solution_profile_ref": "best-solution-profile-v1",
+        "hard_elimination_dimensions": [
+          "evidence",
+          "authority",
+          "security",
+          "privacy",
+          "legal_and_license",
+          "cash_floor",
+          "maximum_loss",
+          "rollback",
+          "acceptance"
+        ],
+        "comparison_dimensions": [
+          "long_term_risk_adjusted_value",
+          "total_cost_of_ownership",
+          "time_to_value",
+          "operational_fit",
+          "maintainability",
+          "reversibility",
+          "replacement_cost"
+        ],
+        "equal_weight_total_score_allowed": false,
+        "security_status": "passed",
+        "privacy_status": "passed",
+        "legal_and_license_status": "passed"
+      },
+      "evidence_binding": {
+        "citation_ref": "citation-strategic_benchmark",
+        "evidence_id": "evd-strategic_benchmark",
+        "evidence_sha256": "6aa8ed06618e3d9de8e817acbc622432fcff7d712d4f653b41f7b855eec6d131",
+        "claims_sha256": "7c3802f7755234f91996ca43b899347b899f32227cc773a4a0864b6633bd3127",
+        "source": "strategic_benchmark_observation",
+        "source_ref": "strategic_benchmark_observation://synthetic/strategic_benchmark",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00"
+      }
+    },
+    {
+      "source_id": "capital_constraints",
+      "contract_id": "kjds-primary-source-capital-constraint-v1",
+      "contract_version": "1",
+      "source_ref": "capital-source://capital_constraints/synthetic-v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "synthetic_payload": {
+        "cash_floor": {
+          "amount_microunits": 40000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-cash-floor",
+          "evidence_sha256": "7fc0a712c318a5c2037969ab2b0e0cfefc645ddb5a7cb6629fe948a4651e7df2"
+        },
+        "treasury_cash_balance": {
+          "amount_microunits": 100000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-treasury-cash",
+          "evidence_sha256": "d5aa5876d42f1e8eb99cf201a46d17e24316e78ebff0672b9030c642888ab2bb"
+        },
+        "budget_cap": {
+          "amount_microunits": 20000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-budget-cap",
+          "evidence_sha256": "350a93fff23d4de05f74280cb3ea42d53ccbe2d3f7d10e6c3b2b7914a5c1e2f5"
+        },
+        "maximum_loss_limit": {
+          "amount_microunits": 8000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-maximum-loss-limit",
+          "evidence_sha256": "432bff13bf3860791a4dc2e890b6b05e2c93667c48c9d5f38a013b30323d28b4"
+        },
+        "runway_days": 365,
+        "board_approved_current": true,
+        "signed_thresholds_current": true,
+        "thresholds_ref": "board-approved-cash-runway-v1",
+        "evidence_coverage_basis_points": 10000
+      },
+      "evidence_binding": {
+        "citation_ref": "citation-capital_constraints",
+        "evidence_id": "evd-capital_constraints",
+        "evidence_sha256": "8d30096fa14da4b50ede7bd621285a508d48bb639e32c84a702449b281433e8e",
+        "claims_sha256": "4bd79f9019a82b0d7d8ee624b1223382737d3e0b87e50d54f2704adbac0b0cc5",
+        "source": "primary_source_intake",
+        "source_ref": "primary_source_intake://synthetic/capital_constraints",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00"
+      }
+    },
+    {
+      "source_id": "profit_truth",
+      "contract_id": "kjds-profit-truth-observation-v1",
+      "contract_version": "1",
+      "source_ref": "capital-source://profit_truth/synthetic-v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "synthetic_payload": {
+        "actual_cash_cm3": {
+          "amount_microunits": 3000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-actual-cash-cm3",
+          "evidence_sha256": "e0ab90333c14c54e84f6cd86ab9991e797624f004b5c5a506a676f58d81c9340"
+        },
+        "downside_cm3": {
+          "amount_microunits": 1000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-downside-cm3-threshold",
+          "evidence_sha256": "faa6bf3f2c7995df496c886b7d9ca43002306efb9a0307022f26f4bbdda43b1b"
+        },
+        "signed_profit_threshold_current": true,
+        "profit_threshold_ref": "signed-fin-threshold-v1",
+        "treasury_cash_authority": false
+      },
+      "evidence_binding": {
+        "citation_ref": "citation-profit_truth",
+        "evidence_id": "evd-profit_truth",
+        "evidence_sha256": "4a1a269bf63cded6db6a27e0988db67c7b604b5445baa0455447a4ec7e55ec2f",
+        "claims_sha256": "15809695f3ee8d808f878726f30cac07fae27796684d3556fdc8d94742dd8bf7",
+        "source": "profit_truth_observation",
+        "source_ref": "profit_truth_observation://synthetic/profit_truth",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00"
+      }
+    },
+    {
+      "source_id": "settlement_cash",
+      "contract_id": "kjds-settlement-cash-observation-v1",
+      "contract_version": "1",
+      "source_ref": "capital-source://settlement_cash/synthetic-v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "synthetic_payload": {
+        "settled_cash": {
+          "amount_microunits": 50000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-platform-settled-cash",
+          "evidence_sha256": "a87320500c1a6d857df14c9450d07092ee8462460d346f15bd8d91483ed843ff"
+        },
+        "unsettled_included": false,
+        "cash_status": "settled",
+        "treasury_cash_authority": false
+      },
+      "evidence_binding": {
+        "citation_ref": "citation-settlement_cash",
+        "evidence_id": "evd-settlement_cash",
+        "evidence_sha256": "d88f47aec59ad001878b1e4760bf8fa852c8803ba53b50b7d538c5bc3707c44f",
+        "claims_sha256": "dd5d71f30f047edab8852ef4976ba24007b34b10e585327d02257d403ea95fdf",
+        "source": "settlement_cash_observation",
+        "source_ref": "settlement_cash_observation://synthetic/settlement_cash",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00"
+      }
+    },
+    {
+      "source_id": "growth_outcome",
+      "contract_id": "kjds-growth-outcome-observation-v1",
+      "contract_version": "1",
+      "source_ref": "capital-source://growth_outcome/synthetic-v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "synthetic_payload": {
+        "acceptance_evidence_current": true,
+        "causal_authority_status": "verified",
+        "outcome_ref": "growth-outcome-synthetic-v1",
+        "primary_metric_ref": "risk-adjusted-value-v1"
+      },
+      "evidence_binding": {
+        "citation_ref": "citation-growth_outcome",
+        "evidence_id": "evd-growth_outcome",
+        "evidence_sha256": "a490496079607a3917b8495cbfa658333e45398199b05ada95b254e36c7051b9",
+        "claims_sha256": "0ba803b7f8ee7a7a1193381a7ce4977fea3a77ecda338dc5bdbdcf628057e510",
+        "source": "growth_outcome_observation",
+        "source_ref": "growth_outcome_observation://synthetic/growth_outcome",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00"
+      }
+    },
+    {
+      "source_id": "commercial_lifecycle",
+      "contract_id": "kjds-commercial-entitlement-observation-v1",
+      "contract_version": "1",
+      "source_ref": "capital-source://commercial_lifecycle/synthetic-v1",
+      "scope": {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "data_as_of": "2026-08-01T00:00:00+00:00",
+      "synthetic_payload": {
+        "settled_only": true,
+        "entitlement_current": true,
+        "c0_status": "not_for_sale",
+        "external_blockers": [
+          "hosted_target_and_rpo_rto_decision",
+          "payment_invoice_tax_contract_inputs",
+          "contract_dpa_sla_review_authority"
+        ],
+        "outstanding_total": {
+          "amount_microunits": 0,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-commercial-entitlement-outstanding",
+          "evidence_sha256": "bc9481e85f3f80f713a7ca2fc005f5e5785049c93b7ec3d302761878567cc325"
+        },
+        "treasury_cash_authority": false
+      },
+      "evidence_binding": {
+        "citation_ref": "citation-commercial_lifecycle",
+        "evidence_id": "evd-commercial_lifecycle",
+        "evidence_sha256": "39538b3fd3d90def107c5f162b03e5719130ec9756235554b24af1f602b825dd",
+        "claims_sha256": "453394f6f8db9d593931e478967932448d33f21e9609a2a6c079c333d512420a",
+        "source": "commercial_lifecycle_observation",
+        "source_ref": "commercial_lifecycle_observation://synthetic/commercial_lifecycle",
+        "recorded_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-01T00:00:00+00:00",
+        "effective_until": "2026-09-01T00:00:00+00:00"
+      }
+    }
+  ],
+  "option_specs": [
+    {
+      "option_id": "option-build",
+      "option_type": "build",
+      "opportunity_ref": "opp-build",
+      "timebox_days": 60,
+      "payback_days": 180,
+      "rollback_ref": "rollback-build",
+      "no_action_comparison": "build-versus-retain-cash",
+      "comparison_values": {
+        "time_to_value_days": 60,
+        "operational_fit_basis_points": 9000,
+        "maintainability_basis_points": 8500,
+        "reversibility_basis_points": 8000,
+        "long_term_risk_adjusted_value": {
+          "amount_microunits": 9000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-build-long-term-risk-adjusted-value",
+          "evidence_sha256": "2683fc9eda81439d47ad509a1b191d86282327649065812de36c40ed9103af32"
+        },
+        "total_cost_of_ownership": {
+          "amount_microunits": 10000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-build-total-cost-of-ownership",
+          "evidence_sha256": "2cd0e9c46c6101e50e971d47c2b76b2396d2250d2f9cbcc37d4317fb053573a2"
+        },
+        "replacement_cost": {
+          "amount_microunits": 2000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-build-replacement-cost",
+          "evidence_sha256": "be36ec6fac9faa1a6fc95eb982ddc3a827fc74374dfff76d38368dd05bfb19b9"
+        }
+      },
+      "dependency_refs": [],
+      "owner_ref": "capital-owner",
+      "primary_metric": "risk-adjusted-value",
+      "guardrails": [
+        "cash-floor",
+        "maximum-loss",
+        "zero-external-write"
+      ],
+      "stop_conditions": [
+        "loss-limit",
+        "evidence-stale",
+        "authority-revoked"
+      ],
+      "invalidation_conditions": [
+        "source-drift",
+        "policy-drift",
+        "cash-drift"
+      ],
+      "review_date": "2026-09-01T00:00:00+00:00",
+      "option_sha256": "86c3957dcf3077ddf73cdda69cd94481790acdd917dca052ea5f371e9233f2a4",
+      "budget_request": {
+        "amount_microunits": 10000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-build-budget-request",
+        "evidence_sha256": "42554d55d5aadf9ec6b8ef2b337c139f135b074c9e5c2227a90868694337182a"
+      },
+      "maximum_loss": {
+        "amount_microunits": 5000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-build-maximum-loss",
+        "evidence_sha256": "63867816e61698636557fa94d818c19474e23de6680277c0997e998b9553634a"
+      },
+      "downside_cm3": {
+        "amount_microunits": 2000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-build-downside-cm3",
+        "evidence_sha256": "76567ba1686b9112f3d45c2270ce2139c6ffaeba49d897668ac4887aa8c5bc85"
+      },
+      "base_cm3": {
+        "amount_microunits": 5000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-build-base-cm3",
+        "evidence_sha256": "4acc1614b70e597e416f0c4ac07ae5d4ecbcff53e89fc674624dd4a2e7112877"
+      },
+      "upside_cm3": {
+        "amount_microunits": 9000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-build-upside-cm3",
+        "evidence_sha256": "1e9d76babc00982921196e5f53b051b67b595f08d29c7ec5d2c21401a61d1062"
+      }
+    },
+    {
+      "option_id": "option-buy",
+      "option_type": "buy",
+      "opportunity_ref": "opp-buy",
+      "timebox_days": 45,
+      "payback_days": 210,
+      "rollback_ref": "rollback-buy",
+      "no_action_comparison": "buy-versus-retain-cash",
+      "comparison_values": {
+        "time_to_value_days": 45,
+        "operational_fit_basis_points": 7500,
+        "maintainability_basis_points": 7000,
+        "reversibility_basis_points": 6500,
+        "long_term_risk_adjusted_value": {
+          "amount_microunits": 7500000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-buy-long-term-risk-adjusted-value",
+          "evidence_sha256": "ec79a2ef9798bb7a3f1106c610be0996a6d123e2a3835abceb6eff0fa4d0da4e"
+        },
+        "total_cost_of_ownership": {
+          "amount_microunits": 12000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-buy-total-cost-of-ownership",
+          "evidence_sha256": "5c89210dd38fce60bf90b50feead3dd321a83b2e197500d685d40e89ff24e799"
+        },
+        "replacement_cost": {
+          "amount_microunits": 5000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-buy-replacement-cost",
+          "evidence_sha256": "67004e7265e8aa9da3373a327b0739ff7acf741708c55d3d6171baed15961041"
+        }
+      },
+      "dependency_refs": [],
+      "owner_ref": "capital-owner",
+      "primary_metric": "risk-adjusted-value",
+      "guardrails": [
+        "cash-floor",
+        "maximum-loss",
+        "zero-external-write"
+      ],
+      "stop_conditions": [
+        "loss-limit",
+        "evidence-stale",
+        "authority-revoked"
+      ],
+      "invalidation_conditions": [
+        "source-drift",
+        "policy-drift",
+        "cash-drift"
+      ],
+      "review_date": "2026-09-01T00:00:00+00:00",
+      "option_sha256": "02dacf7557959314db96e543dfbc83db2cb80fe44a58c641e86b9cfe6d397e66",
+      "budget_request": {
+        "amount_microunits": 12000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-buy-budget-request",
+        "evidence_sha256": "f4746f2de4351e1319529bfee2b642db4a8a0a70cde5f2037761af5ff3a0ba35"
+      },
+      "maximum_loss": {
+        "amount_microunits": 6000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-buy-maximum-loss",
+        "evidence_sha256": "d67c9b13acf4e244e46e41383c6ec5362aad24ba404dc618c31c2617b86f0625"
+      },
+      "downside_cm3": {
+        "amount_microunits": 1500000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-buy-downside-cm3",
+        "evidence_sha256": "6309135418408e2db7aeda14411a2f472f1ae6bbb9e26b74b5703f939c6326e2"
+      },
+      "base_cm3": {
+        "amount_microunits": 4500000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-buy-base-cm3",
+        "evidence_sha256": "47076a88d7450ee7b857a14cab953119809112af160feb995425f5e6a0c3fc5e"
+      },
+      "upside_cm3": {
+        "amount_microunits": 7500000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-buy-upside-cm3",
+        "evidence_sha256": "adc7a8dfb19b0e475fd56f9c99d279a1215b8313588e0c87e499a7a0bb826c09"
+      }
+    },
+    {
+      "option_id": "option-partner",
+      "option_type": "partner",
+      "opportunity_ref": "opp-partner",
+      "timebox_days": 50,
+      "payback_days": 190,
+      "rollback_ref": "rollback-partner",
+      "no_action_comparison": "partner-versus-retain-cash",
+      "comparison_values": {
+        "time_to_value_days": 50,
+        "operational_fit_basis_points": 8000,
+        "maintainability_basis_points": 7800,
+        "reversibility_basis_points": 9000,
+        "long_term_risk_adjusted_value": {
+          "amount_microunits": 8000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-partner-long-term-risk-adjusted-value",
+          "evidence_sha256": "b21175ff40a7c2d3660f6f35a33008a1718f5230c18d8aab25e7b5e67688071f"
+        },
+        "total_cost_of_ownership": {
+          "amount_microunits": 8000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-partner-total-cost-of-ownership",
+          "evidence_sha256": "96502dac15592aab31cef076504f088b5c5cfb16e3c74d514985b937acf62c3e"
+        },
+        "replacement_cost": {
+          "amount_microunits": 3000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-partner-replacement-cost",
+          "evidence_sha256": "f118a9e769ebe55ea4dc6e63f0115b068c6d8bc82567dbf7addaa1c7be89e291"
+        }
+      },
+      "dependency_refs": [],
+      "owner_ref": "capital-owner",
+      "primary_metric": "risk-adjusted-value",
+      "guardrails": [
+        "cash-floor",
+        "maximum-loss",
+        "zero-external-write"
+      ],
+      "stop_conditions": [
+        "loss-limit",
+        "evidence-stale",
+        "authority-revoked"
+      ],
+      "invalidation_conditions": [
+        "source-drift",
+        "policy-drift",
+        "cash-drift"
+      ],
+      "review_date": "2026-09-01T00:00:00+00:00",
+      "option_sha256": "58d08e6cf966d6ac79ddda576dbb26d771fdba9c7b66aa6b73e9716b04a7113e",
+      "budget_request": {
+        "amount_microunits": 8000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-partner-budget-request",
+        "evidence_sha256": "65dfdee8750d038654df54818b2177516eefa4e73efc875e717f73872e0536e4"
+      },
+      "maximum_loss": {
+        "amount_microunits": 4000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-partner-maximum-loss",
+        "evidence_sha256": "b0693ea034ebc97df961cb8157ab9993055161402e350195b2cfca7b0d7fabf1"
+      },
+      "downside_cm3": {
+        "amount_microunits": 1800000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-partner-downside-cm3",
+        "evidence_sha256": "30ecfd89dbb4f1ac04d0d6f747e23452ea2f91a56587ab2444f82209ad8aec13"
+      },
+      "base_cm3": {
+        "amount_microunits": 4800000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-partner-base-cm3",
+        "evidence_sha256": "1b3cd357f600fa2acbc9c1d729fe175152534c728ba5894f3d05e71a62c0a3cb"
+      },
+      "upside_cm3": {
+        "amount_microunits": 8000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-partner-upside-cm3",
+        "evidence_sha256": "5c29e6e0e2643b36d22c4b4373e4a9bc5394f3e39ace64094bd954c9067c398a"
+      }
+    },
+    {
+      "option_id": "option-defer",
+      "option_type": "defer",
+      "opportunity_ref": "opp-defer",
+      "timebox_days": 30,
+      "payback_days": 300,
+      "rollback_ref": "rollback-defer",
+      "no_action_comparison": "defer-versus-retain-cash",
+      "comparison_values": {
+        "time_to_value_days": 30,
+        "operational_fit_basis_points": 7000,
+        "maintainability_basis_points": 9000,
+        "reversibility_basis_points": 9500,
+        "long_term_risk_adjusted_value": {
+          "amount_microunits": 2000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-defer-long-term-risk-adjusted-value",
+          "evidence_sha256": "7f9b9f436e678c39694fb519a448b0eecf1cf3f14ec564b3bbbef60a56c3e940"
+        },
+        "total_cost_of_ownership": {
+          "amount_microunits": 1000000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-defer-total-cost-of-ownership",
+          "evidence_sha256": "faeabb5b48167b404ead36dfa8577f7c86e37b4574dc3496642be2fc010d0e7e"
+        },
+        "replacement_cost": {
+          "amount_microunits": 500000,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-defer-replacement-cost",
+          "evidence_sha256": "d514d52acf940229fe67b749a75d1628d99297d53864064e95b04b5ac6f2b349"
+        }
+      },
+      "dependency_refs": [],
+      "owner_ref": "capital-owner",
+      "primary_metric": "risk-adjusted-value",
+      "guardrails": [
+        "cash-floor",
+        "maximum-loss",
+        "zero-external-write"
+      ],
+      "stop_conditions": [
+        "loss-limit",
+        "evidence-stale",
+        "authority-revoked"
+      ],
+      "invalidation_conditions": [
+        "source-drift",
+        "policy-drift",
+        "cash-drift"
+      ],
+      "review_date": "2026-09-01T00:00:00+00:00",
+      "option_sha256": "54203bffcbd5510c018adfc71b74d285dcb56c0509246542061df139eedfaf73",
+      "budget_request": {
+        "amount_microunits": 1000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-defer-budget-request",
+        "evidence_sha256": "c916d4bcd3ab9d16f568f2f8a7a16bfd96b45582f0bcec66a5e7be0be07ffd69"
+      },
+      "maximum_loss": {
+        "amount_microunits": 500000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-defer-maximum-loss",
+        "evidence_sha256": "068d593201da62f7c41433d5b1a7ba721fe4e9f89f1e43dbe2a3234bf92352af"
+      },
+      "downside_cm3": {
+        "amount_microunits": 1000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-defer-downside-cm3",
+        "evidence_sha256": "fb45e2952cf024762b93e15d4199e8eed8eb2e351ce74ad571bf99e147b4bced"
+      },
+      "base_cm3": {
+        "amount_microunits": 1500000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-defer-base-cm3",
+        "evidence_sha256": "9b2ed24a70d3e63e0176d7d534ed4a819a3dbbdd69a7fd3c52dc51c2dd11dd4d"
+      },
+      "upside_cm3": {
+        "amount_microunits": 2000000,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-defer-upside-cm3",
+        "evidence_sha256": "3be2a587264db5ef3872529e0ce019ab6999acaf547f29397489a7d666391d3e"
+      }
+    },
+    {
+      "option_id": "option-no-action",
+      "option_type": "no_action",
+      "opportunity_ref": "opp-no-action",
+      "timebox_days": 0,
+      "payback_days": 0,
+      "rollback_ref": "rollback-no-action",
+      "no_action_comparison": "retain-cash-and-external-blockers",
+      "comparison_values": {
+        "time_to_value_days": 0,
+        "operational_fit_basis_points": 10000,
+        "maintainability_basis_points": 10000,
+        "reversibility_basis_points": 10000,
+        "long_term_risk_adjusted_value": {
+          "amount_microunits": 0,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-no-action-long-term-risk-adjusted-value",
+          "evidence_sha256": "1f4a796a519db3d29653e33bca21a3ae9616a1b1bb36efd7268361b7cff5d814"
+        },
+        "total_cost_of_ownership": {
+          "amount_microunits": 0,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-no-action-total-cost-of-ownership",
+          "evidence_sha256": "f4d4ad5acd02db9deae396d43353e43c21a8e7d5d84e9f781e827ee98248bfb1"
+        },
+        "replacement_cost": {
+          "amount_microunits": 0,
+          "currency": "RUB",
+          "occurred_at": "2026-07-31T00:00:00+00:00",
+          "effective_at": "2026-07-31T00:00:00+00:00",
+          "evidence_ref": "evd-option-no-action-replacement-cost",
+          "evidence_sha256": "b55f85ff545ae64f37a18a7103271a4a9759067b49dd21b0c44803e20a51087d"
+        }
+      },
+      "dependency_refs": [],
+      "owner_ref": "capital-owner",
+      "primary_metric": "risk-adjusted-value",
+      "guardrails": [
+        "cash-floor",
+        "maximum-loss",
+        "zero-external-write"
+      ],
+      "stop_conditions": [
+        "loss-limit",
+        "evidence-stale",
+        "authority-revoked"
+      ],
+      "invalidation_conditions": [
+        "source-drift",
+        "policy-drift",
+        "cash-drift"
+      ],
+      "review_date": "2026-09-01T00:00:00+00:00",
+      "option_sha256": "c3bce911ca3097bc3f07c9342cc21d8f7e5363a8bb6a6a4db06e023a11e04f2d",
+      "budget_request": {
+        "amount_microunits": 0,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-no-action-budget-request",
+        "evidence_sha256": "eb8ad66bb1e03b6acf7b1423f77a47b3b9f750c170eac05fa542021756bf73cc"
+      },
+      "maximum_loss": {
+        "amount_microunits": 0,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-no-action-maximum-loss",
+        "evidence_sha256": "aad0d17dca1f55e3f0b8a705816453481fc69e1a54d35d7d1bf9f4df33a6c0bb"
+      },
+      "downside_cm3": {
+        "amount_microunits": 0,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-no-action-downside-cm3",
+        "evidence_sha256": "855db85b7530cb1cbccdb3932bacf6584e33ffb75a1bc04346e9317b3f7040f5"
+      },
+      "base_cm3": {
+        "amount_microunits": 0,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-no-action-base-cm3",
+        "evidence_sha256": "3f7bded827429173f3aca4dc8ff4bbd45f6448cc60157eae68f71af29c600658"
+      },
+      "upside_cm3": {
+        "amount_microunits": 0,
+        "currency": "RUB",
+        "occurred_at": "2026-07-31T00:00:00+00:00",
+        "effective_at": "2026-07-31T00:00:00+00:00",
+        "evidence_ref": "evd-option-no-action-upside-cm3",
+        "evidence_sha256": "e04a176a203f7ddaa426778d4ac5f9cc59ef9dbb5000f7bead7f82f95b44d9ea"
+      }
+    }
+  ],
+  "policy": {
+    "currency": "RUB",
+    "minimum_runway_days": 180,
+    "maximum_timebox_days": 90,
+    "maximum_payback_days": 365,
+    "required_evidence_coverage_basis_points": 10000,
+    "synthetic_fixture_proves_real_finance": false,
+    "minimum_downside_cm3": {
+      "amount_microunits": 1000000,
+      "currency": "RUB",
+      "occurred_at": "2026-07-31T00:00:00+00:00",
+      "effective_at": "2026-07-31T00:00:00+00:00",
+      "evidence_ref": "evd-policy-minimum-downside-cm3",
+      "evidence_sha256": "503ab8960b64641f9f732bce8fdb56e7ba192f1dbd800d372c779537fa8d3ddb"
+    }
+  },
+  "content_sha256": "3409681c0fe48921bfdd944de63d921393eeba4a6d30741e8e92ea34db9a68df"
+}

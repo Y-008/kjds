@@ -1,0 +1,122 @@
+{
+  "registry_id": "seller-strategy-packs-cn-ozon",
+  "version": "2026.07.27.1",
+  "effective_from": "2026-07-27",
+  "effective_to": null,
+  "observed_at": "2026-07-27T10:00:00+08:00",
+  "commercial_status": "hypothesis_internal_preview_not_for_sale",
+  "portfolio_policy": {
+    "proven": "0.60",
+    "growth": "0.25",
+    "experiment": "0.10",
+    "exit": "0.05",
+    "semantics": "configurable_internal_policy_not_current_fact"
+  },
+  "governance_invariants": {
+    "facts_and_profit_kernel": "identical_for_all_plans",
+    "truth_degradation_by_plan": false,
+    "independent_approval_required": true,
+    "one_time_permit_required": true,
+    "readback_required": true,
+    "kill_switch_required": true,
+    "compensation_required": true,
+    "initial_pilot_units_max": 3
+  },
+  "strategy_packs": {
+    "novice": {
+      "label": "新手",
+      "commercial": {
+        "plan": "Starter",
+        "price_cny_month": "299",
+        "shops_max": 1,
+        "active_sku_max": 100,
+        "users_max": 1
+      },
+      "policy_envelope": {
+        "scan_batch_max": 100,
+        "external_write_default": "manual_each_batch",
+        "approval_layers": 1,
+        "permit_ttl_minutes": 15,
+        "single_sku_budget_cny": "500",
+        "scaled_inventory_cap": 100,
+        "advertising_daily_cap_cny": "0"
+      }
+    },
+    "solo": {
+      "label": "成长个人 / 小微",
+      "commercial": {
+        "plan": "Growth",
+        "price_cny_month": "999",
+        "shops_max": 3,
+        "active_sku_max": 1000,
+        "users_max": 5
+      },
+      "policy_envelope": {
+        "scan_batch_max": 500,
+        "external_write_default": "manual_frozen_batch",
+        "approval_layers": 1,
+        "permit_ttl_minutes": 15,
+        "single_sku_budget_cny": "1500",
+        "scaled_inventory_cap": 1000,
+        "advertising_daily_cap_cny": "50"
+      }
+    },
+    "small_team": {
+      "label": "中小企业",
+      "commercial": {
+        "plan": "Scale / 店群",
+        "price_cny_month": "3999",
+        "shops_max": 10,
+        "active_sku_max": 10000,
+        "users_max": 30
+      },
+      "policy_envelope": {
+        "scan_batch_max": 2000,
+        "external_write_default": "role_approved_frozen_batch",
+        "approval_layers": 2,
+        "permit_ttl_minutes": 10,
+        "single_sku_budget_cny": "5000",
+        "scaled_inventory_cap": 10000,
+        "advertising_daily_cap_cny": "300"
+      }
+    },
+    "mid_market": {
+      "label": "中型企业",
+      "commercial": {
+        "plan": "Enterprise",
+        "price_cny_year_from": "120000",
+        "shops_max": 50,
+        "active_sku_max": 100000,
+        "users_max": 300
+      },
+      "policy_envelope": {
+        "scan_batch_max": 10000,
+        "external_write_default": "segregated_multi_role_approval",
+        "approval_layers": 3,
+        "permit_ttl_minutes": 10,
+        "single_sku_budget_cny": "20000",
+        "scaled_inventory_cap": 100000,
+        "advertising_daily_cap_cny": "2000"
+      }
+    },
+    "enterprise": {
+      "label": "大卖 / 集团",
+      "commercial": {
+        "plan": "Private",
+        "price_cny_year_from": "250000",
+        "shops_max": null,
+        "active_sku_max": null,
+        "users_max": null
+      },
+      "policy_envelope": {
+        "scan_batch_max": 50000,
+        "external_write_default": "entity_scoped_multi_role_approval",
+        "approval_layers": 4,
+        "permit_ttl_minutes": 5,
+        "single_sku_budget_cny": "100000",
+        "scaled_inventory_cap": 1000000,
+        "advertising_daily_cap_cny": "10000"
+      }
+    }
+  }
+}

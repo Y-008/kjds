@@ -1,0 +1,181 @@
+.shell {
+  min-height: 100vh;
+  overflow-x: clip;
+  padding: 28px;
+  color: #f4f5ee;
+  background:
+    radial-gradient(circle at 10% 0, #3b3121, transparent 34%),
+    #0e0d0b;
+}
+
+.hero,
+.nav,
+.controls,
+.metrics,
+.card,
+.audit {
+  width: min(1320px, 100%);
+  margin: 0 auto 16px;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+  border: 1px solid #736349;
+  border-radius: 24px;
+  background: #1b1812;
+}
+
+.hero h1 {
+  margin: 8px 0;
+  font-size: clamp(2rem, 5vw, 4.15rem);
+  line-height: 1.02;
+}
+
+.hero a,
+.nav a {
+  color: #f3c979;
+  text-decoration: none;
+}
+
+.hero > strong {
+  height: fit-content;
+  padding: 9px 13px;
+  border: 1px solid #d49b47;
+  border-radius: 999px;
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.nav a {
+  padding: 7px 11px;
+  border: 1px solid #66583f;
+  border-radius: 999px;
+}
+
+.controls {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+
+.controls label {
+  display: grid;
+  flex: 1;
+  gap: 5px;
+  min-width: 0;
+}
+
+.controls input,
+.controls select,
+.controls button,
+.card button {
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid #66583f;
+  border-radius: 10px;
+  color: inherit;
+  background: #1b1812;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metrics article,
+.card,
+.audit {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #5a4f3c;
+  border-radius: 16px;
+  background: #191610;
+}
+
+.metrics article {
+  display: grid;
+  gap: 4px;
+}
+
+.metrics strong {
+  font-size: 1.7rem;
+}
+
+.rowHeader,
+.quantities {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rowHeader h2,
+.rowHeader p {
+  margin: 0;
+}
+
+.quantities span {
+  flex: 1;
+  min-width: 140px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #262016;
+}
+
+.card dl {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.card dl div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #493f31;
+  border-radius: 10px;
+}
+
+.card dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.audit {
+  display: grid;
+  gap: 8px;
+}
+
+.audit code,
+.audit p {
+  overflow-wrap: anywhere;
+}
+
+.audit code {
+  color: #f3c979;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding: 12px;
+  }
+
+  .hero,
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 18px;
+  }
+
+  .metrics,
+  .card dl {
+    grid-template-columns: 1fr;
+  }
+}

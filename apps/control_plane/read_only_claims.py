@@ -6,7 +6,17 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, UniqueConstraint, select
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+    select,
+    text,
+)
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
@@ -42,10 +52,53 @@ class ReadOnlyClaimRow(Base):
     __tablename__ = "read_only_claims"
     __table_args__ = (
         UniqueConstraint("run_id", "payload_hash", name="uq_read_only_claim_run_payload"),
+        CheckConstraint(
+            "("
+            "tenant_ref IS NULL AND entity_ref IS NULL "
+            "AND store_ref IS NULL "
+            "AND scope_grant_authority_sha256 IS NULL "
+            "AND scope_evidence_authority_sha256 IS NULL "
+            "AND scope_as_of IS NULL"
+            ") OR ("
+            "tenant_ref IS NOT NULL AND length(tenant_ref) > 0 "
+            "AND entity_ref IS NOT NULL AND length(entity_ref) > 0 "
+            "AND store_ref IS NOT NULL AND length(store_ref) > 0 "
+            "AND scope_grant_authority_sha256 IS NOT NULL "
+            "AND length(scope_grant_authority_sha256) = 64 "
+            "AND scope_evidence_authority_sha256 IS NOT NULL "
+            "AND length(scope_evidence_authority_sha256) = 64 "
+            "AND scope_as_of IS NOT NULL"
+            ")",
+            name="ck_read_only_claim_scope_complete",
+        ),
+        Index(
+            "uq_read_only_claim_legacy_idempotency",
+            "idempotency_key",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NULL"),
+            postgresql_where=text("tenant_ref IS NULL"),
+        ),
+        Index(
+            "uq_read_only_claim_scoped_idempotency",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "idempotency_key",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NOT NULL"),
+            postgresql_where=text("tenant_ref IS NOT NULL"),
+        ),
+        Index(
+            "ix_read_only_claim_scope_created",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "created_at",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    idempotency_key: Mapped[str] = mapped_column(String(300), unique=True, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(300), nullable=False)
     request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     run_id: Mapped[str] = mapped_column(ForeignKey("read_only_pilot_runs.id"), nullable=False)
     claim_type: Mapped[str] = mapped_column(String, nullable=False)
@@ -61,6 +114,21 @@ class ReadOnlyClaimRow(Base):
     rationale: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    tenant_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    entity_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    store_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    scope_grant_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    scope_evidence_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    scope_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 class ReadOnlyClaimService:
@@ -78,6 +146,7 @@ class ReadOnlyClaimService:
         source_state_sha256: str,
         effective_at: str,
         proposed_by: str,
+        scope_authority: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         key = self._text(idempotency_key, "Claim idempotency key", 300)
         normalized_type = claim_type.strip().lower()
@@ -87,6 +156,16 @@ class ReadOnlyClaimService:
         state_hash = self._digest(source_state_sha256, "Source state SHA-256")
         effective = self._datetime(effective_at, "effective_at")
         proposer = self._text(proposed_by, "Claim proposer", 120)
+        scope = self._scope_authority(scope_authority)
+        request_scope = (
+            {
+                field: value
+                for field, value in scope.items()
+                if field != "scope_as_of"
+            }
+            if scope is not None
+            else None
+        )
         payload_hash = self._hash(normalized_payload)
         request_hash = self._hash(
             {
@@ -96,13 +175,23 @@ class ReadOnlyClaimService:
                 "source_state_sha256": state_hash,
                 "effective_at": effective.isoformat(),
                 "proposed_by": proposer,
+                "scope": request_scope,
             }
         )
         now = datetime.now(UTC)
         with Session(self.engine) as session, session.begin():
-            existing = session.scalar(
-                select(ReadOnlyClaimRow).where(ReadOnlyClaimRow.idempotency_key == key)
+            query = select(ReadOnlyClaimRow).where(
+                ReadOnlyClaimRow.idempotency_key == key
             )
+            if scope is None:
+                query = query.where(ReadOnlyClaimRow.tenant_ref.is_(None))
+            else:
+                query = query.where(
+                    ReadOnlyClaimRow.tenant_ref == scope["tenant_ref"],
+                    ReadOnlyClaimRow.entity_ref == scope["entity_ref"],
+                    ReadOnlyClaimRow.store_ref == scope["store_ref"],
+                )
+            existing = session.scalar(query)
             if existing is not None:
                 if existing.request_hash != request_hash:
                     raise ValueError("Claim idempotency key already has different content")
@@ -141,6 +230,30 @@ class ReadOnlyClaimService:
                 rationale=None,
                 created_at=now,
                 reviewed_at=None,
+                tenant_ref=(
+                    scope["tenant_ref"] if scope is not None else None
+                ),
+                entity_ref=(
+                    scope["entity_ref"] if scope is not None else None
+                ),
+                store_ref=(
+                    scope["store_ref"] if scope is not None else None
+                ),
+                scope_grant_authority_sha256=(
+                    scope["scope_grant_authority_sha256"]
+                    if scope is not None
+                    else None
+                ),
+                scope_evidence_authority_sha256=(
+                    scope["scope_evidence_authority_sha256"]
+                    if scope is not None
+                    else None
+                ),
+                scope_as_of=(
+                    self._datetime(scope["scope_as_of"], "scope_as_of")
+                    if scope is not None
+                    else None
+                ),
             )
             session.add(row)
             session.flush()
@@ -255,6 +368,40 @@ class ReadOnlyClaimService:
             json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
         ).hexdigest()
 
+    @classmethod
+    def _scope_authority(
+        cls,
+        value: dict[str, Any] | None,
+    ) -> dict[str, str] | None:
+        if value is None:
+            return None
+        required = (
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "scope_evidence_authority_sha256",
+            "scope_as_of",
+        )
+        scope = {
+            field: cls._text(
+                str(value.get(field, "")),
+                field,
+                160 if field in {"tenant_ref", "entity_ref", "store_ref"} else 80,
+            )
+            for field in required
+        }
+        for field in (
+            "scope_grant_authority_sha256",
+            "scope_evidence_authority_sha256",
+        ):
+            scope[field] = cls._digest(scope[field], field)
+        scope["scope_as_of"] = cls._datetime(
+            scope["scope_as_of"],
+            "scope_as_of",
+        ).isoformat()
+        return scope
+
     @staticmethod
     def _datetime(value: str, name: str) -> datetime:
         try:
@@ -289,5 +436,23 @@ class ReadOnlyClaimService:
             "rationale": row.rationale,
             "created_at": iso(row.created_at),
             "reviewed_at": iso(row.reviewed_at),
+            "scope": {
+                "tenant_ref": row.tenant_ref,
+                "entity_ref": row.entity_ref,
+                "store_ref": row.store_ref,
+                "scope_grant_authority_sha256": (
+                    row.scope_grant_authority_sha256
+                ),
+                "scope_evidence_authority_sha256": (
+                    row.scope_evidence_authority_sha256
+                ),
+                "as_of": iso(row.scope_as_of),
+                "authority": (
+                    "native" if row.tenant_ref is not None else "legacy"
+                ),
+            },
             "formal_fact_promoted": False,
+            "external_write_allowed": False,
+            "approval_created": False,
+            "permit_created": False,
         }

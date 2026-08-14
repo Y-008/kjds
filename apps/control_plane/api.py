@@ -12,15 +12,41 @@ from . import api_contracts
 from .api_contracts import API_SCHEMA_VERSION, APP_VERSION
 from .correlation import correlation_id
 from .routers import (
+    accounts_payable,
+    agent_control,
+    ai_listing,
+    channel_accounts,
+    commerce_os,
+    commercial_lifecycle,
+    customer_service,
     decision_science,
+    delivery_exceptions,
+    erp_integration,
     evidence_governance,
     execution_operations,
+    finance_control,
     finance_imports,
+    growth_experiments,
+    inventory,
+    listing_lifecycle,
     marketplace_observation,
+    media_connectors,
+    native_parity_acceptance,
+    oms,
     ozon_platform,
+    pim,
+    primary_source_intake,
     procurement_supply,
     product_content,
+    profit_command,
+    returns_aftersales,
+    seller_erp_bridge,
+    seller_strategy,
+    sourcing_intelligence,
+    strategic_benchmark,
+    strategic_capital_dashboard,
     system,
+    warehouse_fulfillment,
 )
 from .runtime import runtime
 from .security import AuthenticationFailure, WritesDisabled
@@ -30,10 +56,15 @@ app.state.runtime = runtime
 
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 KILL_SWITCH_CONTROL_PATHS = {
+    "/v1/browser-capture-inbox/preflight",
     "/v1/system/kill-switch/engage",
     "/v1/system/kill-switch/release",
     "/v1/loop-engineering/validate",
+    "/v1/global-expert-team/route",
     "/v1/evidence/integrity-scan",
+}
+READ_ONLY_POST_PATHS = {
+    "/v1/enterprise-positioning/recommend",
 }
 
 
@@ -44,8 +75,13 @@ def is_write_safety_control_path(path: str) -> bool:
         path.endswith("/response-checkpoint")
         or path.endswith("/receipt")
     )
+    agent_gate_observation = path.startswith(
+        "/v1/agent-control/projects/"
+    ) and path.endswith("/observe")
     return (
         path in KILL_SWITCH_CONTROL_PATHS
+        or path in READ_ONLY_POST_PATHS
+        or agent_gate_observation
         or path.startswith("/v1/operational-incidents")
         or path.startswith("/v1/operations-control")
         or limited_execution_bookkeeping
@@ -121,9 +157,17 @@ async def contract_http_error(request: Request, exc: HTTPException) -> JSONRespo
 
 @app.exception_handler(RequestValidationError)
 async def contract_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    public_errors = [
+        {
+            key: value
+            for key, value in error.items()
+            if key in {"type", "loc", "msg"}
+        }
+        for error in exc.errors()
+    ]
     return contract_error(
         status_code=422,
-        detail=exc.errors(),
+        detail=public_errors,
         request_id=getattr(request.state, "request_id", request_id_for(request)),
         trace_id=getattr(request.state, "trace_id", trace_id_for(request)),
     )
@@ -187,13 +231,39 @@ async def enforce_control_plane_security(request: Request, call_next):
 
 _ROUTE_MODULES = (
     system,
+    accounts_payable,
+    agent_control,
+    ai_listing,
+    channel_accounts,
     evidence_governance,
+    erp_integration,
+    commerce_os,
+    commercial_lifecycle,
+    customer_service,
+    delivery_exceptions,
+    growth_experiments,
     decision_science,
     execution_operations,
     procurement_supply,
     ozon_platform,
     marketplace_observation,
+    media_connectors,
+    native_parity_acceptance,
+    inventory,
+    listing_lifecycle,
+    oms,
+    pim,
     product_content,
+    primary_source_intake,
+    strategic_benchmark,
+    strategic_capital_dashboard,
+    profit_command,
+    returns_aftersales,
+    warehouse_fulfillment,
+    seller_erp_bridge,
+    seller_strategy,
+    sourcing_intelligence,
+    finance_control,
     finance_imports,
 )
 for _module in _ROUTE_MODULES:

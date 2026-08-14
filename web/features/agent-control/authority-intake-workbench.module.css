@@ -1,0 +1,225 @@
+.page {
+  min-height: 100vh;
+  padding: 28px;
+  color: #eaf1fa;
+  background:
+    radial-gradient(circle at 78% 4%, rgba(67, 153, 167, .18), transparent 33%),
+    #08101d;
+}
+.header, .statusRail, .topology, .scopeCard, .steps, .artifacts {
+  max-width: 1440px;
+  margin-inline: auto;
+}
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+.header p, .scopeCard p, .stepHeading p, .artifacts > div p {
+  margin: 0 0 7px;
+  color: #77d8f2;
+  font-size: 11px;
+  letter-spacing: .15em;
+}
+.header h1 { margin: 0; font-size: clamp(36px, 5vw, 70px); }
+.header span { display: block; max-width: 780px; margin-top: 10px; color: #9aaabd; }
+.headerActions { display: flex; gap: 9px; }
+.headerActions a, .headerActions button {
+  border: 1px solid #31516c;
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #dcecf8;
+  background: #102033;
+  text-decoration: none;
+}
+.statusRail {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  border: 1px solid #29465e;
+  border-radius: 15px;
+  overflow: hidden;
+  background: #0d1928;
+}
+.statusRail > div { min-width: 0; padding: 14px; border-right: 1px solid #21394f; }
+.statusRail > div:last-child { border-right: 0; }
+.statusRail span, .statusRail small { display: block; color: #8295a7; }
+.statusRail span { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+.statusRail strong { display: block; margin: 6px 0; color: #7ee1bd; overflow-wrap: anywhere; }
+.statusRail small { font-size: 11px; overflow-wrap: anywhere; }
+.statusRail[data-state="blocked"] strong,
+.statusRail[data-state="no_data"] strong,
+.statusRail[data-state="input_required"] strong { color: #ffc278; }
+.topology, .scopeCard, .artifacts {
+  margin-top: 18px;
+  border: 1px solid #20374e;
+  border-radius: 17px;
+  padding: 20px;
+  background: #0b1624;
+}
+.topology h2, .scopeCard h2, .artifacts h2, .stepHeading h2 { margin: 0; }
+.topologyHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.topologyHeading p { margin: 0 0 7px; color: #77d8f2; font-size: 11px; letter-spacing: .15em; }
+.topologyHeading > span { color: #879bae; font-size: 11px; overflow-wrap: anywhere; }
+.topologyGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.topologyGrid article {
+  min-width: 0;
+  border: 1px solid #29445c;
+  border-radius: 11px;
+  padding: 12px;
+  background: #0e1c2c;
+}
+.topologyGrid span, .chain span { display: block; color: #8195a8; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.topologyGrid strong { display: block; margin: 5px 0; color: #75ddbb; overflow-wrap: anywhere; }
+.topologyGrid small { color: #8ca0b4; overflow-wrap: anywhere; }
+.topology[data-state="blocked"] .topologyGrid strong,
+.topology[data-state="failed"] .topologyGrid strong { color: #ffc278; }
+.chain {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr) auto minmax(0, 1fr) auto
+    minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.chain > div {
+  min-width: 0;
+  border-left: 2px solid #4591aa;
+  padding: 8px 10px;
+  background: #0f2031;
+}
+.chain strong { display: block; margin-top: 5px; overflow-wrap: anywhere; }
+.chain b { color: #50728e; }
+.topologyTruth {
+  display: grid;
+  gap: 6px;
+  margin-top: 13px;
+  border-left: 3px solid #e0a65e;
+  padding: 11px 13px;
+  background: #111f2e;
+}
+.topologyTruth p { margin: 0; color: #9eb0c2; }
+.topologyTruth small { color: #ffbd70; overflow-wrap: anywhere; }
+.topologyTruth code { color: #70cae8; overflow-wrap: anywhere; }
+.noSwitch { display: block; margin-top: 11px; color: #74889b; }
+.scopeCard form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 10px;
+  margin-top: 15px;
+  align-items: end;
+}
+.page label { display: grid; min-width: 0; gap: 6px; color: #9fb0c1; font-size: 12px; }
+.page input, .page select, .page textarea {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #2a455f;
+  border-radius: 8px;
+  padding: 10px;
+  color: #e7f1f9;
+  background: #081321;
+}
+.page textarea { min-height: 80px; resize: vertical; }
+.page button {
+  border: 1px solid #34708b;
+  border-radius: 9px;
+  padding: 10px 14px;
+  color: #e9f7fd;
+  background: #11506a;
+}
+.page button:disabled { cursor: not-allowed; color: #667687; background: #172331; border-color: #28394b; }
+.truth {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+  border-left: 3px solid #53cae5;
+  padding: 12px 14px;
+  background: #0f1e2e;
+}
+.truth p { margin: 0; color: #9fb0c1; letter-spacing: normal; font-size: 13px; }
+.truth small { color: #ffbf75; overflow-wrap: anywhere; }
+.truth code, .artifacts code { color: #70cae8; overflow-wrap: anywhere; }
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.steps > article {
+  min-width: 0;
+  border: 1px solid #20394f;
+  border-radius: 17px;
+  padding: 18px;
+  background: #0c1827;
+}
+.stepHeading {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: start;
+}
+.stepHeading > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  color: #75d7ef;
+  background: #173247;
+}
+.stepHeading b { color: #f5bb72; font-size: 11px; text-transform: uppercase; }
+.steps form { display: grid; gap: 10px; margin-top: 18px; }
+.steps fieldset { display: grid; gap: 7px; border: 1px solid #294157; border-radius: 9px; padding: 10px; }
+.steps fieldset label { display: flex; align-items: center; }
+.steps fieldset input { width: auto; }
+.steps > article > small { display: block; margin-top: 12px; color: #74879a; }
+.artifacts > article {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 14px;
+  border-top: 1px solid #20394f;
+  padding-top: 14px;
+}
+.artifacts article > div { display: grid; min-width: 0; gap: 7px; }
+.artifacts span { color: #77dcba; font-size: 11px; text-transform: uppercase; }
+.artifacts strong, .artifacts small { overflow-wrap: anywhere; }
+.artifacts small, .artifacts p { color: #8396a9; }
+.artifacts a { width: fit-content; color: #77d8f2; font-size: 12px; }
+.review { border-left: 2px solid #50728e; padding-left: 12px; }
+.empty { margin: 16px 0 0; }
+
+@media (max-width: 980px) {
+  .page { padding: 18px; }
+  .header { align-items: flex-start; flex-direction: column; }
+  .statusRail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .statusRail > div { border-bottom: 1px solid #21394f; }
+  .scopeCard form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .steps { grid-template-columns: 1fr; }
+  .topologyGrid { grid-template-columns: 1fr; }
+  .chain { grid-template-columns: 1fr; }
+  .chain b { display: none; }
+}
+@media (max-width: 420px) {
+  .page { width: 100%; padding: 12px; overflow-x: hidden; }
+  .header h1 { font-size: 35px; overflow-wrap: anywhere; }
+  .headerActions { width: 100%; flex-wrap: wrap; }
+  .statusRail, .scopeCard form, .artifacts > article { grid-template-columns: 1fr; }
+  .statusRail > div { border-right: 0; }
+  .topology, .scopeCard, .steps > article, .artifacts { padding: 14px; }
+  .topologyHeading { align-items: flex-start; flex-direction: column; }
+  .stepHeading { grid-template-columns: auto minmax(0, 1fr); }
+  .stepHeading b { grid-column: 2; }
+}

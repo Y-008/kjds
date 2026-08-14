@@ -1,0 +1,253 @@
+{
+  "schema_version": "kjds-bas182-codex-app-server-image-worker-fixture-v1",
+  "contract_id": "kjds-codex-app-server-image-worker-v1",
+  "codex_cli_version": "codex-cli 0.142.5",
+  "protocol_pin": {
+    "canonicalization": "json_parse_then_utf8_sort_keys_compact_separators_v1",
+    "aggregate_v2_canonical_sha256": "064f4e66f3f9efa34601039e80e1c57a5593fdd77bad7a6562ec014cf7452dc2",
+    "item_completed_canonical_sha256": "0ebc5cf18b3e4e37b3e5813c7f20faea64682c5b322bdc358d391d3900891b89",
+    "turn_completed_canonical_sha256": "ece1a0743df0ea913f259bdb747557d812a3e6e45aed222fa70ebeb996a57a44",
+    "canonical_bundle_observation_sha256": "004e2846436659b58b9ce4d71ab7e5a862e4756dc52dc4651d6bef368131f377"
+  },
+  "identities": {
+    "thread_id": "thread_bas182_a",
+    "turn_id": "turn_bas182_a",
+    "item_id": "image_bas182_a",
+    "completed_at_ms": 1785830400000
+  },
+  "synthetic_png_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+  "success_transcript": [
+    {
+      "direction": "client_request",
+      "id": "init-1",
+      "method": "initialize",
+      "params": {
+        "clientInfo": {
+          "name": "kjds-bas182",
+          "title": "KJDS BAS-182 Worker",
+          "version": "1.0.0"
+        },
+        "capabilities": {
+          "experimentalApi": false
+        }
+      }
+    },
+    {
+      "direction": "server_response",
+      "id": "init-1",
+      "result": {
+        "serverInfo": {
+          "name": "codex-app-server",
+          "version": "0.142.5"
+        }
+      }
+    },
+    {
+      "direction": "client_notification",
+      "method": "initialized"
+    },
+    {
+      "direction": "server_notification",
+      "method": "turn/started",
+      "params": {
+        "turn": {
+          "id": "turn_bas182_a",
+          "items": [],
+          "status": "inProgress",
+          "itemsView": "full",
+          "error": null,
+          "startedAt": 1785830399,
+          "completedAt": null,
+          "durationMs": null
+        }
+      }
+    },
+    {
+      "direction": "server_notification",
+      "method": "item/started",
+      "params": {
+        "threadId": "thread_bas182_a",
+        "turnId": "turn_bas182_a",
+        "startedAtMs": 1785830399000,
+        "item": {
+          "id": "image_bas182_a",
+          "result": "",
+          "revisedPrompt": null,
+          "status": "in_progress",
+          "type": "imageGeneration"
+        }
+      }
+    },
+    {
+      "direction": "server_notification",
+      "method": "item/completed",
+      "params": {
+        "completedAtMs": 1785830400000,
+        "threadId": "thread_bas182_a",
+        "turnId": "turn_bas182_a",
+        "item": {
+          "id": "image_bas182_a",
+          "result": "${PNG_BASE64}",
+          "revisedPrompt": "${IGNORED_REVISED_PROMPT}",
+          "savedPath": "${ARTIFACT_PATH}",
+          "status": "completed",
+          "type": "imageGeneration"
+        }
+      }
+    },
+    {
+      "direction": "server_notification",
+      "method": "turn/completed",
+      "params": {
+        "threadId": "thread_bas182_a",
+        "turn": {
+          "id": "turn_bas182_a",
+          "items": [
+            {
+              "id": "image_bas182_a",
+              "result": "${PNG_BASE64}",
+              "revisedPrompt": "${IGNORED_REVISED_PROMPT}",
+              "savedPath": "${ARTIFACT_PATH}",
+              "status": "completed",
+              "type": "imageGeneration"
+            }
+          ],
+          "status": "completed",
+          "itemsView": "full",
+          "error": null,
+          "startedAt": 1785830399,
+          "completedAt": 1785830400,
+          "durationMs": 1000
+        }
+      }
+    }
+  ],
+  "negative_cases": [
+    {
+      "case_id": "protocol-version-drift",
+      "mutation": "serverInfo.version",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "protocol_pin_mismatch"
+    },
+    {
+      "case_id": "started-status-camel-case",
+      "mutation": "imageGeneration.started.status=inProgress",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "protocol_event_malformed"
+    },
+    {
+      "case_id": "unknown-terminal-status",
+      "mutation": "imageGeneration.completed.status=done",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "image_item_terminal_semantics_unknown"
+    },
+    {
+      "case_id": "result-not-base64",
+      "mutation": "imageGeneration.completed.result",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "image_item_terminal_semantics_unknown"
+    },
+    {
+      "case_id": "saved-path-null",
+      "mutation": "imageGeneration.completed.savedPath=null",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "artifact_path_missing"
+    },
+    {
+      "case_id": "saved-path-outside-root",
+      "mutation": "imageGeneration.completed.savedPath",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "artifact_path_not_admitted"
+    },
+    {
+      "case_id": "saved-path-symlink",
+      "mutation": "filesystem.symlink",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "artifact_symlink_or_reparse"
+    },
+    {
+      "case_id": "wrong-thread-turn-item",
+      "mutation": "notification.identity",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "protocol_identity_mismatch"
+    },
+    {
+      "case_id": "completed-at-outside-claim",
+      "mutation": "completedAtMs",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "protocol_completion_time_invalid"
+    },
+    {
+      "case_id": "turn-completed-without-image-item",
+      "mutation": "remove.item.events",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "image_item_missing"
+    },
+    {
+      "case_id": "turn-failed-after-artifact",
+      "mutation": "turn.status=failed",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "turn_failed_after_artifact"
+    },
+    {
+      "case_id": "duplicate-or-out-of-order",
+      "mutation": "event.sequence",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "protocol_event_out_of_order"
+    },
+    {
+      "case_id": "unknown-thread-item",
+      "mutation": "item.type=agentMessage",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "protocol_identity_mismatch"
+    },
+    {
+      "case_id": "png-truncated",
+      "mutation": "artifact.bytes",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "artifact_format_invalid"
+    },
+    {
+      "case_id": "png-missing-iend",
+      "mutation": "artifact.chunk.IEND",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "artifact_format_invalid"
+    },
+    {
+      "case_id": "png-crc-drift",
+      "mutation": "artifact.chunk.crc32",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "artifact_format_invalid"
+    },
+    {
+      "case_id": "png-pixel-cap",
+      "mutation": "artifact.IHDR.dimensions",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "artifact_format_invalid"
+    },
+    {
+      "case_id": "connector-current-revoked",
+      "mutation": "connector.current.health",
+      "expected_state": "BLOCKED",
+      "reason": "connector_not_currently_eligible"
+    },
+    {
+      "case_id": "unknown-outcome-restart",
+      "mutation": "transport.disconnect.after_dispatch",
+      "expected_state": "UNKNOWN_OUTCOME",
+      "reason": "transport_disconnected_after_dispatch"
+    }
+  ],
+  "governance": {
+    "fact_promoted": false,
+    "finance_entry_persisted": false,
+    "approval_granted": false,
+    "permit_granted": false,
+    "pilot_started": false,
+    "outbox_emitted": false,
+    "platform_write": false,
+    "automatic_provider_retry": false,
+    "automatic_identity_rotation": false
+  },
+  "content_sha256": "14b4db5bef03232f756c071fb2b10735442ad8acfbb3eafd6c26d5d4d7a5a4ef"
+}

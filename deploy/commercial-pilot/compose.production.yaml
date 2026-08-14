@@ -1,0 +1,188 @@
+name: ${KJDS_DEPLOYMENT_NAME:?KJDS_DEPLOYMENT_NAME must be set}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${KJDS_DATABASE_NAME:?KJDS_DATABASE_NAME must be set}
+      POSTGRES_USER: ${KJDS_POSTGRES_USER:?KJDS_POSTGRES_USER must be set}
+      POSTGRES_PASSWORD_FILE: /run/secrets/kjds_postgres_password
+    secrets:
+      - kjds_postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      KJDS_DEPLOYMENT_NAME: ${KJDS_DEPLOYMENT_NAME:?KJDS_DEPLOYMENT_NAME must be set}
+      KJDS_DATABASE_NAME: ${KJDS_DATABASE_NAME:?KJDS_DATABASE_NAME must be set}
+      KJDS_POSTGRES_USER: ${KJDS_POSTGRES_USER:?KJDS_POSTGRES_USER must be set}
+      KJDS_CUSTOMER_SCOPE_JSON: ${KJDS_CUSTOMER_SCOPE_JSON:?KJDS_CUSTOMER_SCOPE_JSON must be set}
+      KJDS_BACKUP_INTERVAL_SECONDS: ${KJDS_BACKUP_INTERVAL_SECONDS:-86400}
+      KJDS_BACKUP_RETENTION_DAYS: ${KJDS_BACKUP_RETENTION_DAYS:-14}
+      KJDS_BACKUP_RUN_ONCE: ${KJDS_BACKUP_RUN_ONCE:-false}
+    secrets:
+      - kjds_postgres_password
+    volumes:
+      - ${KJDS_BACKUP_DIRECTORY:?KJDS_BACKUP_DIRECTORY must point to durable storage}:/backups
+      - ./scripts/backup-loop.sh:/usr/local/bin/kjds-backup-loop:ro
+    command: ["/bin/sh", "/usr/local/bin/kjds-backup-loop"]
+
+  api:
+    build:
+      context: ../..
+      target: api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8000"
+    environment:
+      KJDS_ENVIRONMENT: production
+      KJDS_CUSTOMER_SCOPE_JSON: ${KJDS_CUSTOMER_SCOPE_JSON:?KJDS_CUSTOMER_SCOPE_JSON must be set}
+      KJDS_API_ACTOR: ${KJDS_API_ACTOR:-production-operator}
+      KJDS_API_ROLES: ${KJDS_API_ROLES:-operator}
+      KJDS_API_TENANT: ${KJDS_API_TENANT:?KJDS_API_TENANT must be set}
+      KJDS_API_STORES: ${KJDS_API_STORES:?KJDS_API_STORES must be set}
+      KJDS_CHANNEL_LEASE_ISSUER: ${KJDS_CHANNEL_LEASE_ISSUER:-kjds-managed-store}
+      KJDS_CHANNEL_LEASE_KEY_ID: ${KJDS_CHANNEL_LEASE_KEY_ID:-lease-kid-1}
+      KJDS_PILOT_RUN_LEASE_SECONDS: ${KJDS_PILOT_RUN_LEASE_SECONDS:-900}
+      KJDS_COMFYUI_URL: ${KJDS_COMFYUI_URL:-http://host.docker.internal:8189}
+      KJDS_OLLAMA_URL: ${KJDS_OLLAMA_URL:-}
+      KJDS_N8N_URL: ${KJDS_N8N_URL:-}
+      FIRECRAWL_API_URL: ${FIRECRAWL_API_URL:-}
+      KJDS_LIMITED_EXECUTION_ENABLED: ${KJDS_LIMITED_EXECUTION_ENABLED:-false}
+      KJDS_OZON_EXECUTION_IDENTITY_REF: ${KJDS_OZON_EXECUTION_IDENTITY_REF:-ozon-worker}
+    secrets:
+      - kjds_database_url
+      - kjds_api_key
+      - kjds_api_keys_json
+      - kjds_channel_lease_signing_key
+    command:
+      - sh
+      - -lc
+      - |
+        set -eu
+        export KJDS_DATABASE_URL="$(cat /run/secrets/kjds_database_url)"
+        export KJDS_API_KEY="$(cat /run/secrets/kjds_api_key)"
+        export KJDS_API_KEYS_JSON="$(cat /run/secrets/kjds_api_keys_json)"
+        export KJDS_CHANNEL_LEASE_SIGNING_KEY="$(cat /run/secrets/kjds_channel_lease_signing_key)"
+        /app/.venv/bin/python -c 'import json,os; raw=os.environ["KJDS_CUSTOMER_SCOPE_JSON"]; scope=json.loads(raw); canonical=json.dumps(scope,separators=(",",":"),ensure_ascii=False); profiles=json.loads(os.environ["KJDS_API_KEYS_JSON"]); stores=[item.strip() for item in os.environ["KJDS_API_STORES"].split(",") if item.strip()]; assert raw == canonical, "customer scope must be canonical JSON"; assert os.environ["KJDS_API_TENANT"] == scope["tenant_ref"] and stores == [scope["store_ref"]], "deployment identity scope mismatch"; assert profiles and all(profile.get("tenant") == scope["tenant_ref"] and profile.get("stores") == stores for profile in profiles.values()), "credential identity scope mismatch"'
+        /app/.venv/bin/alembic upgrade head
+        exec /app/.venv/bin/uvicorn apps.control_plane.api:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: ../..
+      dockerfile: web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "3000"
+    environment:
+      KJDS_ENVIRONMENT: production
+      KJDS_WEB_AUTH_MODE: supabase
+      KJDS_WEB_PUBLIC_ORIGIN: ${KJDS_WEB_PUBLIC_ORIGIN:?KJDS_WEB_PUBLIC_ORIGIN must be set}
+      KJDS_API_URL: http://api:8000
+      KJDS_API_ACTOR: ${KJDS_API_ACTOR:-production-operator}
+      KJDS_API_ROLES: ${KJDS_API_ROLES:-operator}
+      KJDS_API_TENANT: ${KJDS_API_TENANT:?KJDS_API_TENANT must be set}
+      KJDS_API_STORES: ${KJDS_API_STORES:?KJDS_API_STORES must be set}
+      KJDS_CUSTOMER_SCOPE_JSON: ${KJDS_CUSTOMER_SCOPE_JSON:?KJDS_CUSTOMER_SCOPE_JSON must be set}
+    secrets:
+      - kjds_api_key
+      - kjds_api_keys_json
+      - kjds_web_user_actors_json
+      - kjds_next_public_supabase_url
+      - kjds_next_public_supabase_publishable_key
+    command:
+      - sh
+      - -lc
+      - |
+        export KJDS_API_KEY="$(cat /run/secrets/kjds_api_key)"
+        export KJDS_API_KEYS_JSON="$(cat /run/secrets/kjds_api_keys_json)"
+        export KJDS_WEB_USER_ACTORS_JSON="$(cat /run/secrets/kjds_web_user_actors_json)"
+        export NEXT_PUBLIC_SUPABASE_URL="$(cat /run/secrets/kjds_next_public_supabase_url)"
+        export NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$(cat /run/secrets/kjds_next_public_supabase_publishable_key)"
+        exec node server.js
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  edge:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      KJDS_WEB_PUBLIC_ORIGIN: ${KJDS_WEB_PUBLIC_ORIGIN:?KJDS_WEB_PUBLIC_ORIGIN must be set}
+    secrets:
+      - kjds_tls_cert
+      - kjds_tls_key
+    volumes:
+      - ./tls/Caddyfile.template:/etc/caddy/Caddyfile:ro
+      - edge_data:/data
+      - edge_config:/config
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+
+secrets:
+  kjds_postgres_password:
+    file: ${KJDS_POSTGRES_PASSWORD_FILE:?KJDS_POSTGRES_PASSWORD_FILE must point to a file}
+  kjds_database_url:
+    file: ${KJDS_DATABASE_URL_FILE:?KJDS_DATABASE_URL_FILE must point to a file}
+  kjds_api_key:
+    file: ${KJDS_API_KEY_FILE:?KJDS_API_KEY_FILE must point to a file}
+  kjds_api_keys_json:
+    file: ${KJDS_API_KEYS_JSON_FILE:?KJDS_API_KEYS_JSON_FILE must point to a file}
+  kjds_web_user_actors_json:
+    file: ${KJDS_WEB_USER_ACTORS_JSON_FILE:?KJDS_WEB_USER_ACTORS_JSON_FILE must point to a file}
+  kjds_channel_lease_signing_key:
+    file: ${KJDS_CHANNEL_LEASE_SIGNING_KEY_FILE:?KJDS_CHANNEL_LEASE_SIGNING_KEY_FILE must point to a file}
+  kjds_next_public_supabase_url:
+    file: ${NEXT_PUBLIC_SUPABASE_URL_FILE:?NEXT_PUBLIC_SUPABASE_URL_FILE must point to a file}
+  kjds_next_public_supabase_publishable_key:
+    file: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_FILE:?NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY_FILE must point to a file}
+  kjds_tls_cert:
+    file: ${KJDS_TLS_CERT_FILE:?KJDS_TLS_CERT_FILE must point to a file}
+  kjds_tls_key:
+    file: ${KJDS_TLS_KEY_FILE:?KJDS_TLS_KEY_FILE must point to a file}
+
+volumes:
+  postgres_data:
+  edge_data:
+  edge_config:

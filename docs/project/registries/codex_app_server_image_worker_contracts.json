@@ -1,0 +1,289 @@
+{
+  "schema_version": "kjds-codex-app-server-image-worker-contracts-v1",
+  "contract_id": "kjds-codex-app-server-image-worker-v1",
+  "work_item": "BAS-182",
+  "status": "engineering_contract",
+  "as_of": "2026-08-04",
+  "protocol_pin": {
+    "codex_cli_version": "codex-cli 0.142.5",
+    "schema_generation_command": "codex app-server generate-json-schema --out TARGET",
+    "schema_surface": "stable_without_experimental",
+    "canonicalization": "json_parse_then_utf8_sort_keys_compact_separators_v1",
+    "raw_aggregate_sha256_is_authoritative": false,
+    "aggregate_v2_canonical_sha256": "064f4e66f3f9efa34601039e80e1c57a5593fdd77bad7a6562ec014cf7452dc2",
+    "item_completed_canonical_sha256": "0ebc5cf18b3e4e37b3e5813c7f20faea64682c5b322bdc358d391d3900891b89",
+    "turn_completed_canonical_sha256": "ece1a0743df0ea913f259bdb747557d812a3e6e45aed222fa70ebeb996a57a44",
+    "thread_item_variant_count": 18,
+    "dual_generation_semantically_equal": true,
+    "raw_aggregate_observation": "non_deterministic_definition_order",
+    "canonical_bundle_observation_sha256": "004e2846436659b58b9ce4d71ab7e5a862e4756dc52dc4651d6bef368131f377",
+    "runtime_receipt_freshness_seconds": 300
+  },
+  "transports": {
+    "stdio": "admitted",
+    "unix": "admitted",
+    "websocket": "not_admitted_experimental",
+    "thread_shell_command": "prohibited_unsandboxed",
+    "selection_authority": "server_owned_transport_descriptor",
+    "runtime_receipt_binding_required": true,
+    "descriptor_revalidated_before_durable_peek": true
+  },
+  "handshake": {
+    "initialize_per_connection": 1,
+    "initialized_per_connection": 1,
+    "experimental_api": false,
+    "requests_before_initialized": false,
+    "client_info_exact_fields": [
+      "name",
+      "title",
+      "version"
+    ],
+    "initialize_result_exact_fields": [
+      "serverInfo"
+    ],
+    "server_info_exact_fields": [
+      "name",
+      "version"
+    ],
+    "server_name": "codex-app-server"
+  },
+  "image_item_contract": {
+    "item_type": "imageGeneration",
+    "authoritative_event": "item/completed",
+    "required_notification_fields": [
+      "completedAtMs",
+      "item",
+      "threadId",
+      "turnId"
+    ],
+    "required_item_fields": [
+      "id",
+      "result",
+      "status",
+      "type"
+    ],
+    "optional_item_fields": [
+      "revisedPrompt",
+      "savedPath"
+    ],
+    "started_state": {
+      "status": "in_progress",
+      "result": "",
+      "revisedPrompt": null,
+      "savedPath": "omitted_when_none"
+    },
+    "success_state": {
+      "status": "completed",
+      "result_encoding": "standard_base64",
+      "result_bytes_must_equal_saved_artifact": true,
+      "saved_path_required": true
+    },
+    "failure_state": {
+      "status": "failed",
+      "result": "",
+      "revisedPrompt": "string_or_null_not_projected",
+      "savedPath": "omitted_when_none"
+    },
+    "unknown_status_or_result": "unknown_outcome",
+    "turn_completed_without_accepted_item": "unknown_outcome",
+    "mcp_image_tool": "not_admitted_future_contract",
+    "agent_message_is_artifact": false,
+    "image_view_is_artifact": false,
+    "local_image_is_artifact": false,
+    "dynamic_tool_input_image_is_artifact": false,
+    "command_execution_path_is_artifact": false
+  },
+  "turn_time_contract": {
+    "turn_started_at_unit": "unix_seconds",
+    "turn_completed_at_unit": "unix_seconds",
+    "item_started_at_unit": "unix_milliseconds",
+    "item_completed_at_unit": "unix_milliseconds",
+    "duration_unit": "milliseconds",
+    "duration_quantization_window": "max(0,(delta_seconds-1)*1000)<=duration_ms<=(delta_seconds+1)*1000",
+    "claim_window_binding_required": true,
+    "synthetic_fixture_is_real_capture": false
+  },
+  "artifact_contract": {
+    "root_authority": "connector_owned_allowlisted_root",
+    "absolute_saved_path_required": true,
+    "resolved_path_must_remain_within_root": true,
+    "symlink_or_reparse_allowed": false,
+    "traversal_allowed": false,
+    "allowed_mime_types": [
+      "image/png"
+    ],
+    "minimum_bytes": 33,
+    "maximum_bytes": 26214400,
+    "minimum_dimension": 1,
+    "maximum_dimension": 16384,
+    "maximum_pixels": 67108864,
+    "maximum_decoded_rgba_bytes": 268435456,
+    "checks": [
+      "png_magic",
+      "complete_png_chunk_walk",
+      "ihdr_first_and_unique",
+      "crc32_every_chunk",
+      "idat_present",
+      "bounded_zlib_stream_decode",
+      "exact_scanline_length",
+      "scanline_filter_range_0_to_4",
+      "interlace_zero_only",
+      "iend_present_and_terminal",
+      "width_height",
+      "pixel_and_decoded_memory_bounds",
+      "sha256",
+      "result_bytes_equal_file",
+      "lstat_regular_file_and_size_before_open",
+      "no_follow_single_handle_read",
+      "fstat_identity_and_size_stable",
+      "base64_encoded_length_precheck",
+      "indexed_color_requires_plte",
+      "open_connector_root_handle_before_path_walk",
+      "opened_handle_final_path_within_frozen_root_handle",
+      "root_and_intermediate_swap_race_rejected"
+    ],
+    "bounded_scanline_decode": true,
+    "full_pixel_decode_claimed": false,
+    "artifact_body_in_observation": false,
+    "revised_prompt_in_observation": false
+  },
+  "state_contract": {
+    "states": [
+      "ARTIFACT_READY",
+      "FAILED",
+      "LOGIN_REQUIRED",
+      "LIMITED",
+      "UNKNOWN_OUTCOME",
+      "BLOCKED"
+    ],
+    "unauthorized": "LOGIN_REQUIRED",
+    "usage_limit_or_429": "LIMITED",
+    "disconnect_after_dispatch": "UNKNOWN_OUTCOME",
+    "unknown_event_or_shape": "UNKNOWN_OUTCOME",
+    "login_or_limited_resume": "fresh_same_connector_readback_then_explicit_resume",
+    "unknown_outcome_action": "readback_only",
+    "automatic_provider_retry": false,
+    "automatic_cross_provider_retry": false,
+    "automatic_identity_rotation": false
+  },
+  "scope_contract": {
+    "tenant_source": "Principal.tenant_ref",
+    "caller_tenant_input_allowed": false,
+    "connector_currentness_time_source": "trusted_worker_clock",
+    "data_as_of_is_authority_time": false,
+    "provider": "codex_oauth",
+    "required_capabilities_by_tool": {
+      "media.image_generate": "image_generation",
+      "media.image_edit": "image_editing"
+    },
+    "dispatch_roles": [
+      "admin",
+      "operator"
+    ],
+    "readback_roles": [
+      "admin",
+      "operator"
+    ],
+    "rejected_roles": [
+      "approver",
+      "compliance",
+      "executor",
+      "monitor",
+      "pilot_reader",
+      "reviewer",
+      "risk"
+    ],
+    "role_check_before_durable_peek": true
+  },
+  "durability_contract": {
+    "job_truth_owner": "BAS-183",
+    "worker_process_memory_is_truth": false,
+    "claim_is_durable_before_provider_dispatch": true,
+    "restart_unknown_outcome_dispatches_again": false,
+    "same_connector_readback_required": true,
+    "read_only_peek_before_claim": true,
+    "atomic_claim_requires_expected_peek_token": true,
+    "prospective_dispatch_requires_current_eligible_before_claim": true,
+    "paused_unknown_terminal_peek_must_prove_existing": true,
+    "stable_runtime_protocol_authority_fields": [
+      "connector_ref",
+      "connector_binding_sha256",
+      "protocol_version",
+      "codex_cli_version",
+      "aggregate_schema_canonical_sha256",
+      "item_completed_schema_canonical_sha256",
+      "turn_completed_schema_canonical_sha256",
+      "canonical_bundle_sha256",
+      "actual_transport_kind",
+      "transport_adapter_version",
+      "transport_adapter_sha256"
+    ],
+    "current_runtime_receipt_fields": [
+      "authority_sha256",
+      "checked_at",
+      "recorded_at",
+      "effective_at",
+      "fresh_until"
+    ],
+    "atomic_claim_must_match_peek_state_and_resume_flag": true
+  },
+  "observation_contract": {
+    "allowed_artifact_fields": [
+      "sha256",
+      "bytes",
+      "mime_type",
+      "width",
+      "height",
+      "evidence_ref"
+    ],
+    "prompt_body_allowed": false,
+    "artifact_bytes_allowed": false,
+    "oauth_cookie_or_secret_allowed": false,
+    "provider_error_body_allowed": false,
+    "fact_promoted": false,
+    "finance_entry_persisted": false,
+    "approval_granted": false,
+    "permit_granted": false,
+    "pilot_started": false,
+    "outbox_emitted": false,
+    "platform_write": false,
+    "protocol_dispatch_attempt_count_semantics": "worker_transport_dispatch_invocations",
+    "protocol_readback_attempt_count_semantics": "worker_transport_readback_invocations",
+    "provider_actual_call_count_claimed": false
+  },
+  "official_evidence": [
+    {
+      "url": "https://github.com/openai/codex/blob/rust-v0.142.5/codex-rs/ext/image-generation/src/tool.rs",
+      "sha256": "8f6dc1e5f71e4b7ef2224adbb1c51b3dc2bcb749c272c375f1b9440bf8464021",
+      "locator": "lines 103-154: in_progress, failed and completed ImageGeneration emission"
+    },
+    {
+      "url": "https://github.com/openai/codex/blob/rust-v0.142.5/codex-rs/app-server-protocol/src/protocol/v2/item.rs",
+      "sha256": "5525e5d8b307c228ed4b1e4b48ef1e1e2903a50a7d523244658aa03213742b50",
+      "locator": "lines 369-376: ImageGeneration required and optional protocol fields"
+    },
+    {
+      "url": "https://github.com/openai/codex/blob/rust-v0.142.5/codex-rs/app-server/tests/suite/v2/imagegen_extension.rs",
+      "sha256": "0b9074ed408c197bc9361611155a23222eb3dd4192e6224659fea54f808f1caa",
+      "locator": "lines 29-35, 106-119, 169-224 and 516-524: base64/file equality, terminal failure and item/completed authority"
+    },
+    {
+      "url": "https://github.com/openai/codex/blob/rust-v0.142.5/codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs",
+      "sha256": "f6dd5ece89cdecfc0f5644bf37a2bc9a956b34394f85d049a9336a63c62d7665",
+      "locator": "lines 188-206: Turn startedAt/completedAt Unix seconds and durationMs milliseconds"
+    }
+  ],
+  "content_sha256": "4a06aecd5e2e0c1ab4b24fd69ffe2c8253d5b91797518855f0274f33c0cb80c3",
+  "protocol_budget": {
+    "maximum_message_count": 32,
+    "maximum_non_artifact_field_characters": 16384,
+    "maximum_non_artifact_aggregate_characters": 262144,
+    "maximum_container_items": 1024,
+    "maximum_depth": 12,
+    "maximum_base64_characters": 34952536,
+    "integer_range": "signed_int64",
+    "nonfinite_float_allowed": false,
+    "budget_enforced_before_canonical_hash_and_artifact_io": true,
+    "event_chain_projection": "bounded_redacted_protocol_projection_v1"
+  }
+}

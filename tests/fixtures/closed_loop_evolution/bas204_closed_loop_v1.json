@@ -1,0 +1,92 @@
+{
+  "fixture_id": "bas204-closed-loop-v1",
+  "contract_id": "kjds-governed-closed-loop-evolution-v1",
+  "contract_version": "1.0.0",
+  "trusted_now": "2026-08-05T12:00:00+00:00",
+  "data_as_of": "2026-08-05T10:00:00+00:00",
+  "scope": {
+    "tenant_ref": "tenant-a",
+    "entity_ref": "entity-a",
+    "store_ref": "store-a",
+    "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "agent_run_ref": "run-bas204-success",
+  "idempotency_key": "bas204-fixture-1",
+  "attestations": {
+    "experiment": {
+      "attestation_ref": "experiment-attestation-1",
+      "issuer_actor_id": "experiment-authority-actor",
+      "effective_at": "2026-08-05T08:00:00+00:00",
+      "recorded_at": "2026-08-05T09:00:00+00:00",
+      "review_due_at": "2026-08-06T00:00:00+00:00",
+      "effective_until": "2026-08-07T00:00:00+00:00",
+      "claims": {
+        "experiment_ref": "experiment-1",
+        "method": "randomized_controlled_trial",
+        "treatment_ref": "treatment-a",
+        "control_ref": "control-a",
+        "sample_size": 200,
+        "minimum_sample_size": 100,
+        "metric_id": "cm3-per-order",
+        "metric_unit": "minor_currency_units",
+        "metric_currency": "USD",
+        "window_start": "2026-08-01T00:00:00+00:00",
+        "window_end": "2026-08-05T09:00:00+00:00",
+        "causal_claim_allowed": false,
+        "agent_run_ref": "run-bas204-success",
+        "confidence_level_decimal": "0.95",
+        "independent_review_passed": true
+      }
+    },
+    "cost": {
+      "attestation_ref": "cost-attestation-1",
+      "issuer_actor_id": "cost-authority-actor",
+      "effective_at": "2026-08-05T08:00:00+00:00",
+      "recorded_at": "2026-08-05T09:10:00+00:00",
+      "review_due_at": "2026-08-06T00:00:00+00:00",
+      "effective_until": "2026-08-07T00:00:00+00:00",
+      "claims": {
+        "cost_ref": "cost-1",
+        "amount_minor_units": 125000,
+        "currency": "USD",
+        "period_start": "2026-08-01T00:00:00+00:00",
+        "period_end": "2026-08-05T09:00:00+00:00",
+        "allocation_method": "direct_attribution",
+        "agent_run_ref": "run-bas204-success",
+        "experiment_ref": "experiment-1",
+        "outcome_ref": "outcome-1"
+      }
+    },
+    "business_outcome": {
+      "attestation_ref": "outcome-attestation-1",
+      "issuer_actor_id": "outcome-authority-actor",
+      "effective_at": "2026-08-05T08:00:00+00:00",
+      "recorded_at": "2026-08-05T09:20:00+00:00",
+      "review_due_at": "2026-08-06T00:00:00+00:00",
+      "effective_until": "2026-08-07T00:00:00+00:00",
+      "claims": {
+        "outcome_ref": "outcome-1",
+        "experiment_ref": "experiment-1",
+        "metric_id": "cm3-per-order",
+        "metric_unit": "minor_currency_units",
+        "metric_currency": "USD",
+        "method": "randomized_controlled_trial",
+        "sample_size": 200,
+        "interval_start": "2026-08-01T00:00:00+00:00",
+        "interval_end": "2026-08-05T09:00:00+00:00",
+        "value_decimal": "42.500000",
+        "causal_claim_allowed": false,
+        "agent_run_ref": "run-bas204-success",
+        "confidence_level_decimal": "0.95",
+        "independent_review_passed": true
+      }
+    }
+  },
+  "expected": {
+    "status": "current",
+    "candidate_created": false,
+    "transition_allowed": false,
+    "promotion_allowed": false,
+    "external_write": 0
+  }
+}

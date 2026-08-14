@@ -19,6 +19,18 @@ OZON_PRODUCT_PATHS = frozenset(
     {"/v3/product/info/list", "/v4/product/info/attributes"}
 )
 EXTERNAL_MEDIA_RIGHTS_STATUS = "unverified_external_reference"
+NATIVE_CATALOG_AUTHORITY_FIELDS = (
+    "tenant_ref",
+    "entity_ref",
+    "scope_grant_authority_sha256",
+    "scope_evidence_authority_sha256",
+    "scope_as_of",
+    "adapter_id",
+    "adapter_version",
+    "adapter_contract_sha256",
+    "source_grade",
+    "semantic_authority",
+)
 
 
 def _canonical_hash(payload: Any) -> str:
@@ -50,6 +62,185 @@ def _optional_text(value: Any, *, max_length: int) -> str | None:
     if len(normalized) > max_length:
         raise ValueError(f"Ozon catalog text exceeds {max_length} characters")
     return normalized
+
+
+def _utc_datetime(value: str | datetime, field: str) -> datetime:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"{field} must be an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must include a timezone")
+    return parsed.astimezone(UTC)
+
+
+def _hash_text(value: Any, field: str) -> str:
+    normalized = _required_text(value, field, max_length=64)
+    if (
+        len(normalized) != 64
+        or any(character not in "0123456789abcdef" for character in normalized)
+    ):
+        raise ValueError(f"{field} must be a lowercase SHA-256")
+    return normalized
+
+
+def _native_catalog_authority(
+    *,
+    store_ref: str,
+    scope_authority: dict[str, Any] | None,
+    source_contract: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if scope_authority is None and source_contract is None:
+        return {field: None for field in NATIVE_CATALOG_AUTHORITY_FIELDS}
+    if scope_authority is None or source_contract is None:
+        raise ValueError(
+            "Native Catalog import requires both scope and source authority"
+        )
+    tenant_ref = _required_text(
+        scope_authority.get("tenant_ref"),
+        "tenant_ref",
+        max_length=160,
+    )
+    entity_ref = _required_text(
+        scope_authority.get("entity_ref"),
+        "entity_ref",
+        max_length=160,
+    )
+    authority_store = _required_text(
+        scope_authority.get("store_ref"),
+        "scope store_ref",
+        max_length=160,
+    )
+    if authority_store != store_ref:
+        raise ValueError("Catalog scope authority store_ref does not match")
+    grant_hash = _hash_text(
+        scope_authority.get("scope_grant_authority_sha256"),
+        "scope_grant_authority_sha256",
+    )
+    evidence_hash = _hash_text(
+        scope_authority.get("scope_evidence_authority_sha256"),
+        "scope_evidence_authority_sha256",
+    )
+    scope_as_of = _utc_datetime(
+        scope_authority.get("scope_as_of"),
+        "scope_as_of",
+    ).isoformat()
+
+    contract_scope = source_contract.get("scope")
+    if not isinstance(contract_scope, dict):
+        raise ValueError("Catalog source adapter scope contract is incomplete")
+    if {
+        "tenant_ref": tenant_ref,
+        "entity_ref": entity_ref,
+        "store_ref": store_ref,
+        "scope_grant_authority_sha256": grant_hash,
+    } != {
+        key: contract_scope.get(key)
+        for key in (
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+        )
+    }:
+        raise ValueError(
+            "Catalog source adapter contract does not match scope authority"
+        )
+    contract_as_of = _utc_datetime(
+        source_contract.get("as_of"),
+        "adapter as_of",
+    ).isoformat()
+    if contract_as_of != scope_as_of:
+        raise ValueError(
+            "Catalog source adapter as_of does not match scope authority"
+        )
+    adapter = source_contract.get("adapter")
+    if not isinstance(adapter, dict):
+        raise ValueError("Catalog source adapter contract is incomplete")
+    if (
+        source_contract.get("import_allowed") is not True
+        or source_contract.get("external_write_allowed") is not False
+        or adapter.get("status") != "implemented"
+        or adapter.get("ingestion_surface") != "catalog_evidence_import"
+        or adapter.get("source_contract") != OZON_PRODUCT_CONTRACT_VERSION
+        or "ozon" not in adapter.get("marketplaces", [])
+        or adapter.get("requires_original_evidence") is not True
+        or adapter.get("requires_independent_scope_binding") is not True
+        or adapter.get("max_source_grade") != "A"
+        or adapter.get("semantic_authority") != "own_listing_catalog_fact"
+    ):
+        raise ValueError(
+            "Catalog source adapter is not admitted for Ozon product import"
+        )
+    registry_hash = _hash_text(
+        source_contract.get("registry_sha256"),
+        "registry_sha256",
+    )
+    declared_contract_hash = _hash_text(
+        source_contract.get("adapter_contract_sha256"),
+        "adapter_contract_sha256",
+    )
+    frozen = {
+        "registry_sha256": registry_hash,
+        "adapter": adapter,
+        "scope": contract_scope,
+        "as_of": source_contract.get("as_of"),
+    }
+    if _canonical_hash(frozen) != declared_contract_hash:
+        raise ValueError("Catalog source adapter contract hash does not match")
+    return {
+        "tenant_ref": tenant_ref,
+        "entity_ref": entity_ref,
+        "scope_grant_authority_sha256": grant_hash,
+        "scope_evidence_authority_sha256": evidence_hash,
+        "scope_as_of": scope_as_of,
+        "adapter_id": _required_text(
+            adapter.get("adapter_id"),
+            "adapter_id",
+            max_length=160,
+        ),
+        "adapter_version": _required_text(
+            adapter.get("adapter_version"),
+            "adapter_version",
+            max_length=80,
+        ),
+        "adapter_contract_sha256": declared_contract_hash,
+        "source_grade": "A",
+        "semantic_authority": "own_listing_catalog_fact",
+    }
+
+
+def _catalog_snapshot_authority(snapshot: dict[str, Any]) -> dict[str, Any]:
+    native = snapshot.get("tenant_ref") is not None
+    return {
+        "scope": {
+            "status": "frozen" if native else "legacy_evidence_bound",
+            "tenant_ref": snapshot.get("tenant_ref"),
+            "entity_ref": snapshot.get("entity_ref"),
+            "store_ref": snapshot["store_ref"],
+            "scope_grant_authority_sha256": snapshot.get(
+                "scope_grant_authority_sha256"
+            ),
+            "scope_evidence_authority_sha256": snapshot.get(
+                "scope_evidence_authority_sha256"
+            ),
+            "as_of": snapshot.get("scope_as_of"),
+        },
+        "source_adapter": {
+            "status": "frozen" if native else "legacy",
+            "adapter_id": snapshot.get("adapter_id"),
+            "adapter_version": snapshot.get("adapter_version"),
+            "adapter_contract_sha256": snapshot.get(
+                "adapter_contract_sha256"
+            ),
+            "source_grade": snapshot.get("source_grade"),
+            "semantic_authority": snapshot.get("semantic_authority"),
+        },
+        "external_write_allowed": False,
+    }
 
 
 def _json_body(response: dict[str, Any]) -> dict[str, Any]:
@@ -283,11 +474,11 @@ class InMemoryMarketplaceCatalogStore:
     """Test adapter for the marketplace catalog workspace interface."""
 
     def __init__(self) -> None:
-        self.snapshots: dict[tuple[str, str], dict[str, Any]] = {}
+        self.snapshots: dict[tuple[str, ...], dict[str, Any]] = {}
         self.bindings: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     def save_snapshot(self, snapshot: dict[str, Any]) -> dict[str, Any]:
-        key = (snapshot["store_ref"], snapshot["idempotency_key"])
+        key = self._snapshot_key(snapshot)
         existing = self.snapshots.get(key)
         if existing is not None:
             if existing["snapshot_hash"] != snapshot["snapshot_hash"]:
@@ -299,12 +490,40 @@ class InMemoryMarketplaceCatalogStore:
         self.snapshots[key] = deepcopy(snapshot)
         return deepcopy(snapshot)
 
-    def latest_items(self, *, store_ref: str, limit: int) -> list[dict[str, Any]]:
+    def latest_items(
+        self,
+        *,
+        store_ref: str,
+        limit: int,
+        as_of: datetime,
+        tenant_ref: str | None = None,
+        entity_ref: str | None = None,
+    ) -> list[dict[str, Any]]:
         candidates = [
-            {**deepcopy(item), "snapshot_id": snapshot["id"]}
+            {
+                **deepcopy(item),
+                "snapshot_id": snapshot["id"],
+                **{
+                    field: snapshot.get(field)
+                    for field in NATIVE_CATALOG_AUTHORITY_FIELDS
+                },
+                "snapshot_evidence_ids": list(
+                    snapshot.get("evidence_ids", [])
+                ),
+            }
             for snapshot in self.snapshots.values()
             if snapshot["store_ref"] == store_ref
+            and (
+                tenant_ref is None
+                or snapshot.get("tenant_ref") is None
+                or (
+                    snapshot.get("tenant_ref") == tenant_ref
+                    and snapshot.get("entity_ref") == entity_ref
+                )
+            )
+            and _utc_datetime(snapshot["imported_at"], "imported_at") <= as_of
             for item in snapshot["items"]
+            if _utc_datetime(item["observed_at"], "observed_at") <= as_of
         ]
         candidates.sort(
             key=lambda item: (
@@ -320,6 +539,11 @@ class InMemoryMarketplaceCatalogStore:
         projected = []
         for item in latest.values():
             binding = self.bindings.get(("ozon", store_ref, item["offer_id"]))
+            if (
+                binding is not None
+                and _utc_datetime(binding["bound_at"], "bound_at") > as_of
+            ):
+                binding = None
             projected.append(
                 {
                     **item,
@@ -335,6 +559,22 @@ class InMemoryMarketplaceCatalogStore:
             key=lambda item: (item["observed_at"], item["offer_id"]),
             reverse=True,
         )[:limit]
+
+    @staticmethod
+    def _snapshot_key(snapshot: dict[str, Any]) -> tuple[str, ...]:
+        if snapshot.get("tenant_ref") is None:
+            return (
+                "legacy",
+                snapshot["store_ref"],
+                snapshot["idempotency_key"],
+            )
+        return (
+            "native",
+            snapshot["tenant_ref"],
+            snapshot["entity_ref"],
+            snapshot["store_ref"],
+            snapshot["idempotency_key"],
+        )
 
     def get_binding(
         self, *, marketplace: str, store_ref: str, offer_id: str
@@ -396,14 +636,22 @@ class SqlMarketplaceCatalogStore:
                     INSERT INTO marketplace_catalog_snapshots (
                         id, marketplace, store_ref, idempotency_key, snapshot_hash,
                         contract_version, evidence_ids_json, imported_by, imported_at,
-                        observed_at, item_count
+                        observed_at, item_count, tenant_ref, entity_ref,
+                        scope_grant_authority_sha256,
+                        scope_evidence_authority_sha256, scope_as_of, adapter_id,
+                        adapter_version, adapter_contract_sha256, source_grade,
+                        semantic_authority
                     ) VALUES (
                         :id, :marketplace, :store_ref, :idempotency_key,
                         :snapshot_hash, :contract_version,
                         CAST(:evidence_ids_json AS jsonb), :imported_by, :imported_at,
-                        :observed_at, :item_count
+                        :observed_at, :item_count, :tenant_ref, :entity_ref,
+                        :scope_grant_authority_sha256,
+                        :scope_evidence_authority_sha256, :scope_as_of,
+                        :adapter_id, :adapter_version, :adapter_contract_sha256,
+                        :source_grade, :semantic_authority
                     )
-                    ON CONFLICT (store_ref, idempotency_key) DO NOTHING
+                    ON CONFLICT DO NOTHING
                     RETURNING id
                     """
                 ),
@@ -421,6 +669,7 @@ class SqlMarketplaceCatalogStore:
                             "imported_at",
                             "observed_at",
                             "item_count",
+                            *NATIVE_CATALOG_AUTHORITY_FIELDS,
                         )
                     },
                     "evidence_ids_json": json.dumps(snapshot["evidence_ids"]),
@@ -435,11 +684,22 @@ class SqlMarketplaceCatalogStore:
                             FROM marketplace_catalog_snapshots
                             WHERE store_ref = :store_ref
                               AND idempotency_key = :idempotency_key
+                              AND (
+                                  (:is_native = false AND tenant_ref IS NULL)
+                                  OR (
+                                      :is_native = true
+                                      AND tenant_ref = :tenant_ref
+                                      AND entity_ref = :entity_ref
+                                  )
+                              )
                             """
                         ),
                         {
                             "store_ref": snapshot["store_ref"],
                             "idempotency_key": snapshot["idempotency_key"],
+                            "is_native": snapshot["tenant_ref"] is not None,
+                            "tenant_ref": snapshot["tenant_ref"],
+                            "entity_ref": snapshot["entity_ref"],
                         },
                     )
                     .mappings()
@@ -503,7 +763,15 @@ class SqlMarketplaceCatalogStore:
             )
             return deepcopy(snapshot)
 
-    def latest_items(self, *, store_ref: str, limit: int) -> list[dict[str, Any]]:
+    def latest_items(
+        self,
+        *,
+        store_ref: str,
+        limit: int,
+        as_of: datetime,
+        tenant_ref: str | None = None,
+        entity_ref: str | None = None,
+    ) -> list[dict[str, Any]]:
         with self.engine.connect() as connection:
             rows = (
                 connection.execute(
@@ -513,6 +781,18 @@ class SqlMarketplaceCatalogStore:
                         FROM (
                             SELECT item.*,
                                    binding.product_id AS bound_product_id,
+                                   snapshot.tenant_ref,
+                                   snapshot.entity_ref,
+                                   snapshot.scope_grant_authority_sha256,
+                                   snapshot.scope_evidence_authority_sha256,
+                                   snapshot.scope_as_of,
+                                   snapshot.adapter_id,
+                                   snapshot.adapter_version,
+                                   snapshot.adapter_contract_sha256,
+                                   snapshot.source_grade,
+                                   snapshot.semantic_authority,
+                                   snapshot.evidence_ids_json
+                                       AS snapshot_evidence_ids,
                                    row_number() OVER (
                                        PARTITION BY item.offer_id
                                        ORDER BY item.observed_at DESC,
@@ -526,14 +806,32 @@ class SqlMarketplaceCatalogStore:
                               ON binding.marketplace = snapshot.marketplace
                              AND binding.store_ref = snapshot.store_ref
                              AND binding.offer_id = item.offer_id
+                             AND binding.bound_at <= :as_of
                             WHERE snapshot.store_ref = :store_ref
+                              AND (
+                                  :scope_filter = false
+                                  OR snapshot.tenant_ref IS NULL
+                                  OR (
+                                      snapshot.tenant_ref = :tenant_ref
+                                      AND snapshot.entity_ref = :entity_ref
+                                  )
+                              )
+                              AND snapshot.imported_at <= :as_of
+                              AND item.observed_at <= :as_of
                         ) AS ranked
                         WHERE latest_rank = 1
                         ORDER BY observed_at DESC, offer_id
                         LIMIT :limit
                         """
                     ),
-                    {"store_ref": store_ref, "limit": limit},
+                    {
+                        "store_ref": store_ref,
+                        "limit": limit,
+                        "as_of": as_of,
+                        "scope_filter": tenant_ref is not None,
+                        "tenant_ref": tenant_ref,
+                        "entity_ref": entity_ref,
+                    },
                 )
                 .mappings()
                 .all()
@@ -655,7 +953,7 @@ class SqlMarketplaceCatalogStore:
             .mappings()
             .all()
         )
-        return {
+        result = {
             "id": snapshot["id"],
             "marketplace": snapshot["marketplace"],
             "store_ref": snapshot["store_ref"],
@@ -667,8 +965,32 @@ class SqlMarketplaceCatalogStore:
             "imported_at": snapshot["imported_at"].isoformat(),
             "observed_at": snapshot["observed_at"].isoformat(),
             "item_count": snapshot["item_count"],
-            "items": [self._item(row) for row in items],
+            "items": [
+                self._item(
+                    {
+                        **dict(row),
+                        **{
+                            field: snapshot[field]
+                            for field in NATIVE_CATALOG_AUTHORITY_FIELDS
+                        },
+                        "snapshot_evidence_ids": list(
+                            snapshot["evidence_ids_json"]
+                        ),
+                    }
+                )
+                for row in items
+            ],
+            **{
+                field: (
+                    snapshot[field].isoformat()
+                    if field == "scope_as_of"
+                    and snapshot[field] is not None
+                    else snapshot[field]
+                )
+                for field in NATIVE_CATALOG_AUTHORITY_FIELDS
+            },
         }
+        return {**result, **_catalog_snapshot_authority(result)}
 
     @staticmethod
     def _item(row) -> dict[str, Any]:
@@ -696,6 +1018,18 @@ class SqlMarketplaceCatalogStore:
                 row.get("bound_product_id") or row["canonical_product_id"]
             ),
             "snapshot_id": row["snapshot_id"],
+            **{
+                field: (
+                    row[field].isoformat()
+                    if field == "scope_as_of"
+                    and row.get(field) is not None
+                    else row.get(field)
+                )
+                for field in NATIVE_CATALOG_AUTHORITY_FIELDS
+            },
+            "snapshot_evidence_ids": list(
+                row.get("snapshot_evidence_ids") or []
+            ),
         }
 
 
@@ -722,6 +1056,8 @@ class MarketplaceCatalogWorkspace:
         store_ref: str,
         idempotency_key: str,
         imported_by: str,
+        scope_authority: dict[str, Any] | None = None,
+        source_contract: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         normalized_ids = sorted(
             {item.strip() for item in evidence_ids if item.strip()}
@@ -737,6 +1073,11 @@ class MarketplaceCatalogWorkspace:
             idempotency_key, "idempotency_key", max_length=160
         )
         actor = _required_text(imported_by, "imported_by", max_length=160)
+        native_authority = _native_catalog_authority(
+            store_ref=store_scope,
+            scope_authority=scope_authority,
+            source_contract=source_contract,
+        )
 
         items: list[dict[str, Any]] = []
         evidence_times: list[datetime] = []
@@ -769,9 +1110,14 @@ class MarketplaceCatalogWorkspace:
                 "contract_version": OZON_PRODUCT_CONTRACT_VERSION,
                 "evidence_ids": normalized_ids,
                 "items": items,
+                "native_authority": (
+                    native_authority
+                    if native_authority["tenant_ref"] is not None
+                    else None
+                ),
             }
         )
-        snapshot = {
+        snapshot_base = {
             "id": new_id("mcs"),
             "marketplace": "ozon",
             "store_ref": store_scope,
@@ -784,6 +1130,11 @@ class MarketplaceCatalogWorkspace:
             "observed_at": observed_at,
             "item_count": len(items),
             "items": items,
+            **native_authority,
+        }
+        snapshot = {
+            **snapshot_base,
+            **_catalog_snapshot_authority(snapshot_base),
         }
         saved = self.store.save_snapshot(snapshot)
         for evidence_id in normalized_ids:
@@ -797,12 +1148,29 @@ class MarketplaceCatalogWorkspace:
         return saved
 
     def latest_items(
-        self, *, store_ref: str, limit: int = 100
+        self,
+        *,
+        store_ref: str,
+        limit: int = 100,
+        as_of: datetime | None = None,
+        tenant_ref: str | None = None,
+        entity_ref: str | None = None,
     ) -> list[dict[str, Any]]:
         store_scope = _required_text(store_ref, "store_ref", max_length=160)
         if limit < 1 or limit > 1000:
             raise ValueError("Marketplace catalog item limit must be 1 to 1000")
-        return self.store.latest_items(store_ref=store_scope, limit=limit)
+        cutoff = (
+            _utc_datetime(as_of, "as_of")
+            if as_of is not None
+            else datetime.max.replace(tzinfo=UTC)
+        )
+        return self.store.latest_items(
+            store_ref=store_scope,
+            limit=limit,
+            as_of=cutoff,
+            tenant_ref=tenant_ref,
+            entity_ref=entity_ref,
+        )
 
     def require_bound_current_item(
         self,
@@ -1033,6 +1401,7 @@ class MarketplaceCatalogWorkspace:
                 for candidate in self.store.latest_items(
                     store_ref=store_scope,
                     limit=1000,
+                    as_of=datetime.max.replace(tzinfo=UTC),
                 )
                 if candidate["offer_id"] == external_offer_id
             ),

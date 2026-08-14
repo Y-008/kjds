@@ -111,6 +111,7 @@ class LimitedExecutorService:
         kill_switch,
         action_policies: ActionPolicyRegistry | None = None,
         enabled: bool = False,
+        credential_grant_issuer=None,
     ) -> None:
         self.engine = engine
         self.execution_plans = execution_plans
@@ -119,6 +120,7 @@ class LimitedExecutorService:
         self.action_policies = action_policies or execution_plans.action_policies
         self.action_authorization = execution_plans.action_authorization
         self.enabled = enabled
+        self.credential_grant_issuer = credential_grant_issuer
 
     def queue(self, plan_id: str, *, queued_by: str) -> dict[str, Any]:
         self._enabled()
@@ -205,6 +207,7 @@ class LimitedExecutorService:
         self.kill_switch.ensure_writes_allowed()
         worker_id = self._required(worker_id, "Executor worker identity")
         lease_expired = False
+        credential_grant = None
         result = None
         with Session(self.engine) as session, session.begin():
             row = session.get(LimitedExecutionCommandRow, command_id, with_for_update=True)
@@ -224,11 +227,22 @@ class LimitedExecutorService:
                 self.kill_switch.ensure_writes_allowed()
                 row.status = "write_started"
                 session.flush()
+                if self.credential_grant_issuer is not None:
+                    scope = self.execution_plans.scope_for(plan)
+                    credential_grant = self.credential_grant_issuer.issue_for_execution_command(
+                        session=session,
+                        command=row,
+                        scope=scope,
+                        worker_id=worker_id,
+                        as_of=now,
+                    )
                 result = self._command(row, None)
         if lease_expired:
             raise ValueError("Execution lease expired before the write attempt; command is uncertain")
         if result is None:
             raise RuntimeError("Execution write attempt did not produce a command")
+        result["credential_grant"] = credential_grant
+        result["credential_grant_bound"] = credential_grant is not None
         return result
 
     def capture_execution_artifact(

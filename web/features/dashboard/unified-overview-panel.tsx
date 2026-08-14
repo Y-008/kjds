@@ -17,6 +17,8 @@ import {
   Waypoints,
   Workflow,
 } from "lucide-react";
+import { motion } from "framer-motion";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import type { OperatingAnalyticsSnapshot } from "./contracts";
 import type { DashboardModel } from "./use-dashboard-controller";
 import type { WorkspaceId } from "./dashboard-workspaces";
@@ -271,6 +273,23 @@ export function UnifiedOverviewPanel({ model, onNavigate }: Props) {
             <div><span>FACT COVERAGE</span><h3>经营事实覆盖图</h3><p>条形只表示对应 requirement 的 current / target。</p></div>
             <BarChart3 size={20} />
           </div>
+          <div style={{ width: "100%", height: 220, marginTop: 12 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={analytics.coverage} layout="vertical" margin={{ top: 5, right: 20, left: 40, bottom: 5 }}>
+                <XAxis type="number" domain={[0, 100]} stroke="#6b7280" fontSize={11} unit="%" />
+                <YAxis type="category" dataKey="label" stroke="#9ca3af" fontSize={11} width={80} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#111c22", borderColor: "rgba(52, 211, 153, 0.3)", borderRadius: "8px", color: "#fff" }}
+                  formatter={(val: any) => [`${val ?? 0}%`, "覆盖率"]}
+                />
+                <Bar dataKey="percent" radius={[0, 6, 6, 0]}>
+                  {analytics.coverage.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.percent >= 100 ? "#10b981" : entry.percent > 50 ? "#60a5fa" : "#fbbf24"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
           <div className="coverage-chart">
             {analytics.coverage.map((item) => (
               <div className="coverage-row" key={item.id}>
@@ -289,12 +308,18 @@ export function UnifiedOverviewPanel({ model, onNavigate }: Props) {
             <Workflow size={20} />
           </div>
           <div className="pipeline-chart">
-            {analytics.pipeline.map((item) => (
-              <div className="pipeline-row" key={item.id}>
+            {analytics.pipeline.map((item, idx) => (
+              <motion.div
+                className="pipeline-row"
+                key={item.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.08 }}
+              >
                 <span>{item.label}</span>
                 <div><i style={{ width: `${item.value === 0 ? 2 : Math.max(10, item.value / pipelineMax * 100)}%` }} /></div>
                 <strong>{item.value}<small> {item.unit}</small></strong>
-              </div>
+              </motion.div>
             ))}
           </div>
           <div className="pipeline-no-history"><BarChart3 size={15} /><span>暂无可复验历史序列：不绘制虚假 GMV、订单或利润趋势。</span></div>

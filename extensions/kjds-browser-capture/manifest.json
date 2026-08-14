@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "KJDS Browser Capture",
+  "description": "User-initiated visible-page Evidence staging for KJDS.",
+  "version": "0.1.0",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "采集当前页到 KJDS",
+    "default_popup": "popup.html"
+  },
+  "externally_connectable": {
+    "matches": [
+      "http://127.0.0.1:3000/*",
+      "http://localhost:3000/*"
+    ]
+  }
+}

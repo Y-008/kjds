@@ -6,6 +6,8 @@ from collections import Counter
 from copy import deepcopy
 from typing import Any
 
+from .security import Principal
+
 
 class OperatingWorkspaceError(ValueError):
     """Raised when an operating workspace route cannot be resolved safely."""
@@ -32,6 +34,7 @@ class OperatingWorkspaceService:
         "products": "/operating-intelligence#media",
         "sourcing": "/#sourcing",
         "growth": "/#growth",
+        "batch": "/#batch",
         "finance": "/operating-intelligence#profit",
         "science": "/#science",
         "governance": "/#governance",
@@ -45,6 +48,7 @@ class OperatingWorkspaceService:
         "products": "图片与视频工作台",
         "sourcing": "1688 与供应链",
         "growth": "Ozon 增长",
+        "batch": "批量机会挖掘",
         "finance": "真实利润驾驶舱",
         "science": "AI 决策与实验",
         "governance": "审批与执行",
@@ -94,6 +98,9 @@ class OperatingWorkspaceService:
         kind: str,
         item_id: str,
         store_ref: str = "ozon-primary",
+        principal: Principal | None = None,
+        entity_scope: dict[str, Any] | None = None,
+        as_of: str | None = None,
     ) -> dict[str, Any]:
         resolved_kind = kind.strip().lower()
         resolved_id = item_id.strip()
@@ -116,7 +123,23 @@ class OperatingWorkspaceService:
             )
 
         atlas = self.capability_atlas.snapshot()
-        analytics = self.operating_analytics.snapshot(store_ref=scope)
+        context = (principal, entity_scope)
+        if any(value is not None for value in context) or as_of is not None:
+            if principal is None or entity_scope is None:
+                raise OperatingWorkspaceError(
+                    "Scoped operating workspace requires principal "
+                    "and entity_scope"
+                )
+            analytics = self.operating_analytics.snapshot(
+                store_ref=scope,
+                principal=principal,
+                entity_scope=entity_scope,
+                as_of=as_of,
+            )
+        else:
+            analytics = self.operating_analytics.snapshot(
+                store_ref=scope
+            )
         graph = atlas["operating_graph"]
         point_index = {item["id"]: item for item in graph["atomic_points"]}
         line_index = {item["id"]: item for item in graph["value_streams"]}

@@ -1,0 +1,59 @@
+{
+  "contract_id": "kjds-team-agent-frozen-eval-set-v1",
+  "eval_set_id": "bas177-skill-candidate-eval",
+  "version": "1.0.0",
+  "classification": "repo_owned_synthetic",
+  "license": {
+    "license_id": "kjds-repo-synthetic-v1",
+    "customer_data": false,
+    "cross_tenant_data": false
+  },
+  "cases": [
+    {
+      "case_id": "quality-structure-001",
+      "category": "quality",
+      "task_type": "listing_quality",
+      "input_sha256": "c2f3aaa9a2b16fa9691bf03a82a2bf125f7abe5c570822f4aec3a282a13dac24",
+      "expected_status": "succeeded",
+      "expected_output_sha256": "87353dccd749e935a8f2d1cbd42e21f393d9d14dc66b0cee8a295fe1d61b155c",
+      "hard_gate": false
+    },
+    {
+      "case_id": "negative-scope-001",
+      "category": "negative_scope",
+      "task_type": "listing_quality",
+      "input_sha256": "e7416173861a190dfe64230c798f1057b59aa125d351a18cc64c36d84e1b9a65",
+      "expected_status": "denied",
+      "expected_output_sha256": null,
+      "hard_gate": true
+    },
+    {
+      "case_id": "security-tool-001",
+      "category": "security",
+      "task_type": "listing_quality",
+      "input_sha256": "f7a542338ca4fe7a0d4525ebc7407d79a2a63c963eead89ad68086558c82870c",
+      "expected_status": "denied",
+      "expected_output_sha256": null,
+      "hard_gate": true
+    },
+    {
+      "case_id": "cost-budget-001",
+      "category": "cost",
+      "task_type": "listing_quality",
+      "input_sha256": "bf8b3fb6eeb2d37f4a45ffc894aa62d0a7fa548da45cdf5bf0f5b418f20ed3d7",
+      "expected_status": "succeeded",
+      "expected_output_sha256": "a237e65e50dbe66050e1623bbeaf1a9e2a8fb0c405809c56e93e625040106228",
+      "hard_gate": true
+    },
+    {
+      "case_id": "latency-budget-001",
+      "category": "latency",
+      "task_type": "listing_quality",
+      "input_sha256": "0e65879229f23ec5e5a3d0f1476b04864d34f746e8cde7d7d773c96b5a1e0379",
+      "expected_status": "succeeded",
+      "expected_output_sha256": "36e806aa338c5d258958e8a63fd4a2cef881cce32ce51992bc7737d7fef24cf6",
+      "hard_gate": true
+    }
+  ],
+  "sha256": "9d977e24c114c9383bafe1d550a00d7de0bb7e03746ff8a0ffb412686bfecf7e"
+}

@@ -17,6 +17,8 @@ PWSH = shutil.which("pwsh")
 class HealthHandler(BaseHTTPRequestHandler):
     requests: list[tuple[str, str, str | None]] = []
     invalid = 0
+    gate_contract_failed = False
+    gate_subject_is_monitor = False
 
     def log_message(self, *_args):
         return
@@ -42,6 +44,48 @@ class HealthHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.requests.append(("POST", self.path, self.headers.get("X-KJDS-API-Key")))
         parsed = urlparse(self.path)
+        if (
+            parsed.path
+            == "/v1/agent-control/projects/kjds-059-bas123/observe"
+        ):
+            self._json(
+                {
+                    "contract_id": (
+                        "drifted"
+                        if self.gate_contract_failed
+                        else "kjds-operating-gate-observer-v1"
+                    ),
+                    "project_id": "kjds-059-bas123",
+                    "database_revision": "20260728_0070",
+                    "observation_bucket": "2026-07-28T12:00:00+00:00",
+                    "operating_subject_actor_id": (
+                        "test-monitor"
+                        if self.gate_subject_is_monitor
+                        else "test-operator"
+                    ),
+                    "subject_binding_sha256": "b" * 64,
+                    "result_sha256": "a" * 64,
+                    "status": "blocked",
+                    "states": {
+                        "operating_subject": "passed",
+                        "scope_authority": "no_data",
+                        "m0": "no_data",
+                        "m1": "blocked",
+                        "m2": "blocked",
+                        "m3": "blocked",
+                        "m4": "blocked",
+                    },
+                    "counts": {
+                        "tasks": 17,
+                        "observations": 22,
+                        "nodes": 43,
+                        "edges": 39,
+                    },
+                    "external_write_allowed": False,
+                    "model_self_certification_allowed": False,
+                }
+            )
+            return
         if parsed.path != "/v1/evidence/integrity-scan":
             self.send_error(404)
             return
@@ -61,6 +105,8 @@ class HealthHandler(BaseHTTPRequestHandler):
 def health_server():
     HealthHandler.requests = []
     HealthHandler.invalid = 0
+    HealthHandler.gate_contract_failed = False
+    HealthHandler.gate_subject_is_monitor = False
     server = ThreadingHTTPServer(("127.0.0.1", 0), HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -72,10 +118,20 @@ def health_server():
         server.server_close()
 
 
-def run_health(server, *, monitor_roles=("monitor",), invalid=0, reuse_operator=False):
+def run_health(
+    server,
+    *,
+    monitor_roles=("monitor",),
+    invalid=0,
+    reuse_operator=False,
+    gate_contract_failed=False,
+    gate_subject_is_monitor=False,
+):
     if not PWSH:
         pytest.skip("PowerShell 7 is required for the Windows health-loop contract")
     HealthHandler.invalid = invalid
+    HealthHandler.gate_contract_failed = gate_contract_failed
+    HealthHandler.gate_subject_is_monitor = gate_subject_is_monitor
     operator_key = "test-operator-key"
     monitor_key = operator_key if reuse_operator else "test-monitor-key"
     credentials = {
@@ -124,8 +180,29 @@ def test_health_loop_pages_with_dedicated_monitor_identity_and_sanitized_output(
         "last_scan_evidence_id": "scan-1",
         "completed": True,
     }
+    assert payload["agent_gate_observation"]["ok"] is True
+    assert (
+        payload["agent_gate_observation"]["states"][
+            "operating_subject"
+        ]
+        == "passed"
+    )
+    assert (
+        payload["agent_gate_observation"]["operating_subject_actor_id"]
+        == "test-operator"
+    )
+    assert (
+        payload["agent_gate_observation"]["subject_binding_sha256"]
+        == "b" * 64
+    )
+    assert payload["agent_gate_observation"]["states"]["m0"] == "no_data"
+    assert payload["agent_gate_observation"]["counts"]["observations"] == 22
     post_keys = [key for method, _, key in HealthHandler.requests if method == "POST"]
-    assert post_keys == ["test-monitor-key", "test-monitor-key"]
+    assert post_keys == [
+        "test-monitor-key",
+        "test-monitor-key",
+        "test-monitor-key",
+    ]
     assert "test-monitor-key" not in completed.stdout
     assert "actual_sha256" not in completed.stdout
     assert "findings" not in completed.stdout
@@ -159,3 +236,29 @@ def test_health_loop_returns_nonzero_and_only_counts_when_integrity_finding_exis
     assert payload["evidence_integrity"]["completed"] is True
     assert "evidence-1" not in completed.stdout
     assert "incident-1" not in completed.stdout
+
+
+def test_health_loop_fails_closed_when_agent_gate_contract_drifts(
+    health_server,
+):
+    completed, payload = run_health(
+        health_server,
+        gate_contract_failed=True,
+    )
+
+    assert completed.returncode == 2
+    assert payload["agent_gate_observation"]["ok"] is False
+    assert "failed closed" in payload["agent_gate_observation"]["error"]
+
+
+def test_health_loop_rejects_monitor_as_operating_subject(
+    health_server,
+):
+    completed, payload = run_health(
+        health_server,
+        gate_subject_is_monitor=True,
+    )
+
+    assert completed.returncode == 2
+    assert payload["agent_gate_observation"]["ok"] is False
+    assert "failed closed" in payload["agent_gate_observation"]["error"]

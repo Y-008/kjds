@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from apps.control_plane.operating_workbench import OperatingWorkbenchService
+from apps.control_plane.security import Principal
 
 
 class FakeReadiness:
@@ -144,3 +145,58 @@ def test_limit_is_bounded_and_does_not_change_total_source_counts():
 
     with pytest.raises(ValueError, match="between 1 and 100"):
         build_service().snapshot(limit=0)
+
+
+def test_scoped_snapshot_reads_only_scoped_queue():
+    class MustNotRead:
+        def report(self):
+            raise AssertionError("global readiness must not be read")
+
+        def list_recommendations(self):
+            raise AssertionError(
+                "global recommendations must not be read"
+            )
+
+    class ScopedQueue:
+        def projection(self, **values):
+            assert values["store_ref"] == "store-a"
+            return {
+                "status": "no_data",
+                "scope": {
+                    "tenant_ref": "tenant-a",
+                    "entity_ref": None,
+                    "store_ref": "store-a",
+                    "scope_authority_sha256": None,
+                },
+                "as_of": "2026-07-28T01:00:00+00:00",
+                "items": [],
+                "source_gaps": ["entity_scope_authority_missing"],
+                "excluded_sources": ["legacy_unscoped_incidents"],
+            }
+
+    service = OperatingWorkbenchService(
+        readiness=MustNotRead(),
+        operations_queue=ScopedQueue(),
+        automation=MustNotRead(),
+    )
+    result = service.snapshot(
+        principal=Principal(
+            actor_id="operator-a",
+            roles=frozenset({"operator"}),
+            tenant_ref="tenant-a",
+            store_refs=frozenset({"store-a"}),
+        ),
+        entity_scope={
+            "status": "no_data",
+            "entity_ref": None,
+            "authority_sha256": None,
+        },
+        store_ref="store-a",
+        as_of="2026-07-28T01:00:00+00:00",
+    )
+
+    assert result["status"] == "no_data"
+    assert result["work_items"] == []
+    assert result["summary"]["gate_blockers"] == 0
+    assert "legacy_global_gate_readiness" in result["excluded_sources"]
+    assert result["guardrails"]["platform_write_allowed"] is False

@@ -1,0 +1,318 @@
+{
+  "registry_id": "ozon-global-cn-zh",
+  "version": "2026.07.27.1",
+  "country": "CN",
+  "locale": "zh",
+  "observed_at": "2026-07-27T08:30:00+08:00",
+  "authority": "official_ozon_global_cn_rules_with_internal_fail_closed_controls",
+  "market_scope": "global_cn",
+  "rules": [
+    {
+      "rule_id": "products.passport.fail_closed",
+      "domain": "products",
+      "source_url": "https://docs.ozon.com/global/en/products/requirements/product-restrictions/",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.90",
+      "source_status": "official_source_configured",
+      "facts": {
+        "required_statuses": [
+          "category_allowed",
+          "documents_verified",
+          "brand_authorization_verified",
+          "quality_safety_verified"
+        ],
+        "prohibited_restricted_or_non_public_category": "fail_closed",
+        "restricted_brand_without_authorization": "fail_closed"
+      }
+    },
+    {
+      "rule_id": "products.content.title",
+      "domain": "products",
+      "source_url": "https://docs.ozon.com/global/en/products/upload/adding-product/product-name-requirements/",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.85",
+      "source_status": "official_source_configured",
+      "facts": {
+        "maximum_characters": 200,
+        "required_parts": [
+          "brand_or_manufacturer",
+          "product_type",
+          "model",
+          "key_feature"
+        ],
+        "require_russian": true,
+        "forbid_html": true,
+        "forbidden_terms": [
+          "скидка",
+          "распродажа",
+          "лучш",
+          "оригинал",
+          "1:1",
+          "цена",
+          "акция"
+        ],
+        "forbidden_characters": [
+          "<",
+          ">",
+          "{",
+          "}",
+          "|"
+        ],
+        "maximum_repeated_token": 2
+      }
+    },
+    {
+      "rule_id": "products.content.images",
+      "domain": "products",
+      "source_url": "https://docs.ozon.com/global/en/products/upload/adding-content/image-requirements/",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.85",
+      "source_status": "official_source_configured",
+      "facts": {
+        "aspect_ratio": "3:4",
+        "maximum_bytes": 10485760,
+        "main_image_count": 1,
+        "recommended_additional_minimum": 2,
+        "additional_maximum": 29,
+        "ownership_evidence_required": true,
+        "forbidden_overlays": [
+          "watermark",
+          "price",
+          "discount",
+          "contact",
+          "value_judgement",
+          "sales_claim"
+        ]
+      }
+    },
+    {
+      "rule_id": "prices.types_and_index",
+      "domain": "prices",
+      "source_url": "https://docs.ozon.com/global/en/products/prices/price-index/",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.90",
+      "source_status": "official_source_configured",
+      "facts": {
+        "price_types": [
+          "seller_price",
+          "list_price",
+          "buyer_price",
+          "minimum_price"
+        ],
+        "minimum_price_valid_days": 30,
+        "green_max_inclusive": "1.02",
+        "yellow_min_exclusive": "1.02",
+        "yellow_max_exclusive": "1.06",
+        "red_min_inclusive": "1.06",
+        "index_formula": {
+          "own_price_at_or_below_competitor": "own_price / competitor_price",
+          "own_price_above_competitor": "2 - competitor_price / own_price"
+        },
+        "comparison_requires_exact_product_match": true,
+        "public_source_and_confidence_required": true,
+        "downside_cm3_floor_may_not_be_overridden": true,
+        "promotion_or_autopricing_requires_permit": true
+      }
+    },
+    {
+      "rule_id": "fulfillment.global_cn.default_modes",
+      "domain": "fulfillment",
+      "source_url": "https://docs.ozon.com/global/en/fulfillment/rfbs/logistic-settings/partner-delivery-ozon/?country=CN",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.95",
+      "source_status": "official_source_verified",
+      "facts": {
+        "allowed_modes": [
+          "FBP",
+          "realFBS"
+        ],
+        "ru_local_modes_are_default": false,
+        "fbp_inventory_owner": "partner_warehouse",
+        "realfbs_inventory_owner": "seller",
+        "realfbs_multi_warehouse_priority_supported": true
+      }
+    },
+    {
+      "rule_id": "ratings.seller_cancellation_quality",
+      "domain": "ratings",
+      "source_url": "https://docs.ozon.com/global/en/ratings/seller-rating/cancellation-rate/",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.80",
+      "source_status": "official_source_configured",
+      "facts": {
+        "rolling_days": 14,
+        "official_block_threshold_percent_exclusive": "40",
+        "first_observation_days": 7,
+        "possible_account_block_days": 3,
+        "internal_warning_percent": "5",
+        "internal_freeze_percent": "10",
+        "internal_thresholds_configurable": true
+      }
+    },
+    {
+      "rule_id": "commissions.effective_dated_lookup",
+      "domain": "commissions",
+      "source_url": "https://docs.ozon.com/global/en/commissions/ozon-fees/fees/",
+      "effective_from": "2025-12-01",
+      "effective_to": null,
+      "confidence": "0.80",
+      "source_status": "official_fee_table_must_be_captured_per_row",
+      "facts": {
+        "lookup_dimensions": [
+          "category",
+          "fulfillment_mode",
+          "price_band",
+          "order_date"
+        ],
+        "settlement_trigger": "delivered",
+        "fixed_fallback_rate_allowed": false,
+        "fee_row_evidence_required": true
+      }
+    },
+    {
+      "rule_id": "accounting.cn_settlement",
+      "domain": "accounting",
+      "source_url": "https://docs.ozon.com/global/en/finance/payments/schedule/",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.80",
+      "source_status": "official_source_configured",
+      "facts": {
+        "currency": "CNY",
+        "periods": [
+          {
+            "day_from": 1,
+            "day_to": 15,
+            "pay_by_day": 25,
+            "pay_month_offset": 0
+          },
+          {
+            "day_from": 16,
+            "day_to": 31,
+            "pay_by_day": 16,
+            "pay_month_offset": 1
+          }
+        ],
+        "minimum_remittance_cny": "6500",
+        "statement_dispute_business_days": 15,
+        "lianlian_example_fee_rate": "0.012",
+        "lianlian_rate_semantics": "provider_example_not_universal_fact",
+        "actual_cash_cm3_requires_reconciled_cash": true
+      }
+    },
+    {
+      "rule_id": "api.seller_api_only",
+      "domain": "api",
+      "source_url": "https://docs.ozon.com/global/en/api/intro/",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.95",
+      "source_status": "official_source_configured",
+      "facts": {
+        "minimum_role_keys": true,
+        "ip_cidr_allowlist_required": true,
+        "forbidden_auth_sources": [
+          "cookie",
+          "localStorage",
+          "internal_api"
+        ],
+        "supported_domains": [
+          "products",
+          "prices",
+          "inventory",
+          "returns",
+          "orders",
+          "shipments",
+          "finance",
+          "analytics",
+          "attributes"
+        ]
+      }
+    },
+    {
+      "rule_id": "analytics.official_demand_fields",
+      "domain": "analytics",
+      "source_url": "https://docs.ozon.com/global/en/analytics/analytics-and-metrics/analytics-tools/",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.90",
+      "source_status": "official_source_configured",
+      "facts": {
+        "required_fields": [
+          "region_cluster_sales",
+          "carts",
+          "returns",
+          "promotion_effect",
+          "search_visibility",
+          "trend",
+          "competitive_position",
+          "buyer_profile",
+          "hot_products_28d",
+          "popular_searches",
+          "russia_bestseller_ozon_gap",
+          "stockout_subscription"
+        ],
+        "missing_semantics": "no_data",
+        "reviews_may_not_be_labeled_sales": true
+      }
+    },
+    {
+      "rule_id": "promotion.profit_floor",
+      "domain": "promotion",
+      "source_url": "https://docs.ozon.com/global/promotion/promotions/promo/?country=CN",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.95",
+      "source_status": "official_source_verified",
+      "facts": {
+        "seller_funds_discount": true,
+        "median_reference_days": 30,
+        "profit_floor_required": true,
+        "permit_required": true
+      }
+    },
+    {
+      "rule_id": "contracts.global_cn_isolation",
+      "domain": "contracts",
+      "source_url": "https://docs.ozon.com/legal/en/partners/logistics/contract/",
+      "effective_from": "2026-05-06",
+      "effective_to": null,
+      "confidence": "0.95",
+      "source_status": "official_source_verified",
+      "facts": {
+        "country_and_contract_scope_required": true,
+        "ru_local_rules_may_not_be_substituted": true,
+        "product_documents_may_be_requested": true,
+        "prohibited_or_restricted_goods_may_not_be_transferred": true
+      }
+    },
+    {
+      "rule_id": "policies.marshall_case_controls",
+      "domain": "policies",
+      "source_url": "https://seller.ozon.ru/media/interviews/",
+      "effective_from": "2026-07-27",
+      "effective_to": null,
+      "confidence": "0.65",
+      "source_status": "official_case_study_reference",
+      "facts": {
+        "semantics": "case_study_not_universal_rule",
+        "start_with_low_risk_pilot": true,
+        "bulky_logistics_first": true,
+        "cross_functional_ownership": true,
+        "cluster_inventory": true,
+        "profit_preserving_bids_and_promotions": true,
+        "known_failures": [
+          "inventory_cash_lock",
+          "ip_infringement",
+          "supplier_stockout"
+        ]
+      }
+    }
+  ]
+}

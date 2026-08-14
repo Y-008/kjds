@@ -4,6 +4,7 @@ export type WorkspaceId =
   | "research"
   | "products"
   | "pilot"
+  | "batch"
   | "sourcing"
   | "growth"
   | "finance"
@@ -35,6 +36,14 @@ export const workspaceDefinitions: WorkspaceDefinition[] = [
     eyebrow: "PRICE · CONTENT · ADS",
     title: "现有商品增长工作台",
     description: "用全成本、同行价格、评价、内容和转化证据生成可解释增长方案。",
+    group: "经营",
+  },
+  {
+    id: "batch",
+    label: "批量机会",
+    eyebrow: "SCAN · SCORE · STRATEGY",
+    title: "批量市场机会与观察成本 Pilot",
+    description: "扫描 Ozon 行情和全国供应，服务端统一计算十五项下行情景、策略、内容与变体门。",
     group: "经营",
   },
   {

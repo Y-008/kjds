@@ -1,0 +1,254 @@
+{
+  "schema_version": "kjds-media-agent-source-adoption-v1",
+  "as_of": "2026-08-03",
+  "status": "contract_only",
+  "work_item": "BAS-180",
+  "purpose": "Freeze source and pattern adoption decisions for the Commander and media subagent program without installing or executing a new runtime.",
+  "decision_vocabulary": {
+    "preferred_protocol": "Use as the first protocol candidate after pinning, fixture replay, tenant isolation and credential-boundary tests pass.",
+    "existing_runtime": "Reuse the already governed isolated runtime under its current admitted-template and evidence controls.",
+    "adopt_pattern": "Reimplement a bounded interface, event or workflow pattern without importing the upstream runtime.",
+    "pilot_isolated": "Evaluate only in a disposable environment after license, checksum, model-rights and representative-fixture review.",
+    "watch": "Track the source until a measured capability gap and complete admission evidence exist.",
+    "reject_runtime": "Keep the runtime outside KJDS because it duplicates authority or widens the credential, browser or write surface."
+  },
+  "policy": {
+    "new_runtime_execution_in_bas_180": false,
+    "automatic_install": false,
+    "official_specification_or_source_required": true,
+    "pinned_version_and_hash_required_before_runtime": true,
+    "license_review_required_before_commercial_runtime": true,
+    "chatgpt_web_dom_is_production_transport": false,
+    "oauth_material_ingestion_allowed": false,
+    "cookie_or_browser_profile_import_allowed": false,
+    "shared_credential_pool_allowed": false,
+    "automatic_identity_rotation_allowed": false,
+    "automatic_cross_provider_failover_allowed": false,
+    "explicit_provider_selection_required": true,
+    "captcha_or_rate_limit_bypass_allowed": false,
+    "formal_fact_promotion_allowed": false,
+    "platform_write_authority_granted": false,
+    "commercial_sale_readiness_granted": false
+  },
+  "evidence_ladder": [
+    {
+      "rank": 1,
+      "kind": "official_protocol_or_specification",
+      "requirements": ["version_or_commit", "protocol_fixture", "license", "security_boundary"]
+    },
+    {
+      "rank": 2,
+      "kind": "official_source_and_release",
+      "requirements": ["version_or_commit", "checksum_or_source_hash", "license", "reproducible_test"]
+    },
+    {
+      "rank": 3,
+      "kind": "maintained_open_source_pattern",
+      "requirements": ["source_locator", "license_review", "bounded_borrowed_pattern", "independent_reimplementation"]
+    },
+    {
+      "rank": 4,
+      "kind": "video_or_article_discovery",
+      "requirements": ["source_locator", "claim_reverified_against_code_or_spec", "no_binary_adoption"]
+    }
+  ],
+  "current_selection": {
+    "codex_transport": "codex_app_server_after_bas_181_connector_binding",
+    "local_image_executor": "existing_comfyui_admitted_templates_only",
+    "video_encoder": "existing_ffmpeg_fixed_command_chain",
+    "browser_dom_transport": "diagnostic_research_only",
+    "third_party_gateway_code": "pattern_reimplementation_only",
+    "runtime_installation_status": "no_new_runtime_from_bas_180",
+    "local_codex_cli_observation": "codex-cli-0.142.5",
+    "commercial_status": "not_for_sale"
+  },
+  "candidates": [
+    {
+      "id": "openai_codex_app_server",
+      "category": "codex_protocol",
+      "upstream": "openai/codex",
+      "version": "locally-observed-codex-cli-0.142.5",
+      "decision": "preferred_protocol",
+      "license": "Apache-2.0",
+      "evidence_urls": [
+        "https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md",
+        "https://github.com/openai/codex"
+      ],
+      "borrowed_patterns": ["app_owned_login_lifecycle", "account_status_events", "rate_limit_status", "structured_event_stream"],
+      "allowed_kjds_use": ["pinned_protocol_fixture", "customer_local_connector", "hosted_isolated_connector", "sanitized_job_readback"],
+      "prohibited_kjds_use": ["raw_oauth_token_import", "cookie_import", "cross_tenant_identity_reuse", "automatic_account_rotation"],
+      "entry_gate": "bas_181_exact_tenant_connector_binding_and_protocol_pin",
+      "exit_gate": "login_status_rate_limit_image_event_and_unknown_outcome_replay_pass"
+    },
+    {
+      "id": "comfyui",
+      "category": "image_executor",
+      "upstream": "Comfy-Org/ComfyUI",
+      "version": "v0.24.0_existing_kjds_baseline",
+      "decision": "existing_runtime",
+      "license": "GPL-3.0",
+      "evidence_urls": [
+        "https://github.com/Comfy-Org/ComfyUI",
+        "https://docs.comfy.org/specs/workflow_json",
+        "https://docs.comfy.org/development/comfyui-server/comms_routes"
+      ],
+      "borrowed_patterns": ["prompt_queue", "history_readback", "artifact_download", "versioned_workflow_json"],
+      "allowed_kjds_use": ["loopback_isolated_worker", "admitted_workflow_template", "versioned_parameters", "artifact_evidence_capture"],
+      "prohibited_kjds_use": ["arbitrary_workflow_json", "manager_git_install", "unreviewed_custom_nodes", "content_fact_ownership"],
+      "entry_gate": "existing_write_path_and_template_admission",
+      "exit_gate": "bas_185_fixed_fixture_vram_quality_and_failure_replay_pass"
+    },
+    {
+      "id": "ffmpeg",
+      "category": "video_encoder",
+      "upstream": "FFmpeg/FFmpeg",
+      "version": "runtime_build_manifest_required",
+      "decision": "existing_runtime",
+      "license": "LGPL-2.1-or-later_build_variant_review_required",
+      "evidence_urls": ["https://github.com/FFmpeg/FFmpeg", "https://ffmpeg.org/legal.html"],
+      "borrowed_patterns": ["deterministic_command_chain", "machine_readable_probe", "multi_aspect_render", "encoding_report"],
+      "allowed_kjds_use": ["fixed_commands", "approved_inputs", "manifest_and_hash_capture"],
+      "prohibited_kjds_use": ["caller_supplied_command", "unreviewed_codec_build", "source_media_republication_without_rights"],
+      "entry_gate": "existing_media_worker_contract",
+      "exit_gate": "editing_blueprint_fixture_render_and_manifest_replay_pass"
+    },
+    {
+      "id": "remotion",
+      "category": "video_composition",
+      "upstream": "remotion-dev/remotion",
+      "version": "reviewed-2026-08-03",
+      "decision": "watch",
+      "license": "commercial_use_review_required",
+      "evidence_urls": ["https://github.com/remotion-dev/remotion", "https://www.remotion.dev/license"],
+      "borrowed_patterns": ["typed_timeline", "componentized_scene", "deterministic_frame_render"],
+      "allowed_kjds_use": ["contract_research", "isolated_fixture_comparison_after_license_review"],
+      "prohibited_kjds_use": ["production_dependency_before_license_review", "second_media_truth_store"],
+      "entry_gate": "bas_186_measured_gap_and_commercial_license_review",
+      "exit_gate": "quality_editability_runtime_and_total_cost_beat_ffmpeg_only_baseline"
+    },
+    {
+      "id": "agent_cli_to_api",
+      "category": "codex_image_gateway_pattern",
+      "upstream": "leeguooooo/agent-cli-to-api",
+      "version": "reviewed-2026-08-03",
+      "decision": "adopt_pattern",
+      "license": "upstream_license_review_required",
+      "evidence_urls": ["https://github.com/leeguooooo/agent-cli-to-api"],
+      "borrowed_patterns": ["openai_compatible_facade", "image_tool_event_mapping", "base64_artifact_normalization"],
+      "allowed_kjds_use": ["independent_contract_reimplementation", "fixture_design"],
+      "prohibited_kjds_use": ["unreviewed_runtime_import", "credential_file_import", "provider_identity_pool"],
+      "entry_gate": "source_and_license_review",
+      "exit_gate": "independent_parser_fixture_replay_pass"
+    },
+    {
+      "id": "ima2_gen",
+      "category": "codex_image_studio_pattern",
+      "upstream": "lidge-jun/ima2-gen",
+      "version": "reviewed-2026-08-03",
+      "decision": "adopt_pattern",
+      "license": "upstream_license_review_required",
+      "evidence_urls": ["https://github.com/lidge-jun/ima2-gen"],
+      "borrowed_patterns": ["prompt_history", "reference_image_contract", "codex_oauth_user_flow"],
+      "allowed_kjds_use": ["ux_and_contract_reference"],
+      "prohibited_kjds_use": ["credential_copy", "runtime_embedding", "source_of_truth_ownership"],
+      "entry_gate": "source_and_license_review",
+      "exit_gate": "kjds_owned_contract_proves_equivalent_reference_image_flow"
+    },
+    {
+      "id": "catgpt_gateway",
+      "category": "browser_diagnostic_pattern",
+      "upstream": "GautamVhavle/CatGPT-Gateway",
+      "version": "reviewed-2026-08-03",
+      "decision": "adopt_pattern",
+      "license": "upstream_license_review_required",
+      "evidence_urls": ["https://github.com/GautamVhavle/CatGPT-Gateway"],
+      "borrowed_patterns": ["persistent_context_diagnostics", "selector_fallback_telemetry", "download_observation"],
+      "allowed_kjds_use": ["diagnostic_fixture_design_only"],
+      "prohibited_kjds_use": ["production_chatgpt_dom_transport", "fingerprint_mutation", "cookie_pool", "risk_control_bypass"],
+      "entry_gate": "measured_app_server_diagnostic_gap",
+      "exit_gate": "diagnostic_value_without_credential_or_browser_surface_expansion"
+    },
+    {
+      "id": "garden_skills_gpt_image_templates",
+      "category": "prompt_template_pattern",
+      "upstream": "ConardLi/garden-skills",
+      "version": "gpt-image-2-v1.0.3-observed",
+      "decision": "adopt_pattern",
+      "license": "upstream_license_review_required",
+      "evidence_urls": ["https://github.com/ConardLi/garden-skills"],
+      "borrowed_patterns": ["categorized_prompt_templates", "reference_image_instruction", "output_purpose_profiles"],
+      "allowed_kjds_use": ["static_prompt_structure_review", "independent_template_authoring"],
+      "prohibited_kjds_use": ["automatic_skill_install", "credential_access", "unversioned_prompt_promotion"],
+      "entry_gate": "license_prompt_and_supply_chain_review",
+      "exit_gate": "shadow_eval_beats_existing_prompt_contract"
+    },
+    {
+      "id": "qwen_image",
+      "category": "local_image_model",
+      "upstream": "QwenLM/Qwen-Image",
+      "version": "reviewed-2026-08-03",
+      "decision": "pilot_isolated",
+      "license": "Apache-2.0_model_card_and_weights_review_required",
+      "evidence_urls": ["https://github.com/QwenLM/Qwen-Image"],
+      "borrowed_patterns": ["text_rendering", "image_editing", "structured_prompting"],
+      "allowed_kjds_use": ["bas_185_fixed_fixture_and_8gb_feasibility_test"],
+      "prohibited_kjds_use": ["automatic_model_download", "production_default_before_qa", "product_fact_mutation"],
+      "entry_gate": "commit_weight_hash_license_and_vram_plan",
+      "exit_gate": "fidelity_text_accuracy_latency_cost_and_vram_thresholds_pass"
+    },
+    {
+      "id": "ltx_video",
+      "category": "local_video_model",
+      "upstream": "Lightricks/LTX-Video",
+      "version": "0.9.8-2b-distilled-observed",
+      "decision": "watch",
+      "license": "code_and_model_license_review_required",
+      "evidence_urls": ["https://github.com/Lightricks/LTX-Video"],
+      "borrowed_patterns": ["low_vram_video_generation", "image_to_video", "distilled_workflow"],
+      "allowed_kjds_use": ["bas_186_isolated_fixture_after_image_closed_loop"],
+      "prohibited_kjds_use": ["first_release_blocker", "automatic_weight_download", "unreviewed_commercial_output"],
+      "entry_gate": "image_closed_loop_and_license_hash_vram_plan",
+      "exit_gate": "8gb_fixture_quality_latency_and_recovery_pass"
+    },
+    {
+      "id": "wan2gp",
+      "category": "low_vram_video_runtime",
+      "upstream": "deepbeepmeep/Wan2GP",
+      "version": "reviewed-2026-08-03",
+      "decision": "watch",
+      "license": "code_model_and_dependency_review_required",
+      "evidence_urls": ["https://github.com/deepbeepmeep/Wan2GP"],
+      "borrowed_patterns": ["low_vram_offload", "quantized_video_pipeline", "memory_failure_reporting"],
+      "allowed_kjds_use": ["disposable_benchmark_after_bas_185"],
+      "prohibited_kjds_use": ["production_install", "model_rights_assumption", "second_workflow_owner"],
+      "entry_gate": "measured_ltx_or_comfy_video_gap",
+      "exit_gate": "representative_fixture_beats_existing_candidate_on_risk_adjusted_value"
+    },
+    {
+      "id": "browser_fingerprint_mutation_stacks",
+      "category": "browser_identity_mutation",
+      "upstream": "multiple_unverified_projects",
+      "version": "reviewed-2026-08-03",
+      "decision": "reject_runtime",
+      "license": "not_applicable",
+      "evidence_urls": ["https://github.com/openai/codex"],
+      "borrowed_patterns": [],
+      "allowed_kjds_use": ["none"],
+      "prohibited_kjds_use": ["ua_mutation", "webgl_mutation", "canvas_mutation", "device_fingerprint_rotation", "captcha_bypass", "risk_control_bypass"],
+      "entry_gate": "not_scheduled",
+      "exit_gate": "not_scheduled"
+    }
+  ],
+  "promotion_requirements": [
+    "source_and_license_review",
+    "version_or_commit_pin",
+    "artifact_or_source_hash",
+    "sbom_or_dependency_inventory",
+    "tenant_isolation_negative_test",
+    "credential_redaction_test",
+    "fixture_replay_and_drift_test",
+    "failure_and_unknown_outcome_test",
+    "representative_quality_cost_latency_review",
+    "rollback_or_removal_verification"
+  ]
+}

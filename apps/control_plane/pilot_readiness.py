@@ -5,7 +5,19 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, select
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    select,
+    text,
+)
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import new_id
@@ -17,10 +29,12 @@ READ_ONLY_OPERATIONS = {
     "ozon.orders.read",
     "ozon.analytics.read",
     "ozon.finance.read",
+    "ozon.category.read",
 }
-IMPLEMENTED_READ_ONLY_OPERATIONS = {"ozon.product.read", "ozon.finance.read"}
+IMPLEMENTED_READ_ONLY_OPERATIONS = {"ozon.product.read", "ozon.finance.read", "ozon.category.read"}
 OZON_PRODUCT_READ_CONTRACT_VERSION = "ozon-product-read-v1"
 OZON_FINANCE_READ_CONTRACT_VERSION = "ozon-finance-transactions-v1"
+OZON_CATEGORY_READ_CONTRACT_VERSION = "ozon-category-read-v1"
 PILOT_CONTROLS = (
     "credentials_isolated",
     "least_privilege_scope",
@@ -31,9 +45,54 @@ PILOT_CONTROLS = (
 
 class ReadOnlyPilotRow(Base):
     __tablename__ = "read_only_pilots"
+    __table_args__ = (
+        CheckConstraint(
+            "("
+            "tenant_ref IS NULL AND entity_ref IS NULL "
+            "AND store_ref IS NULL "
+            "AND scope_grant_authority_sha256 IS NULL "
+            "AND scope_evidence_authority_sha256 IS NULL "
+            "AND scope_as_of IS NULL"
+            ") OR ("
+            "tenant_ref IS NOT NULL AND length(tenant_ref) > 0 "
+            "AND entity_ref IS NOT NULL AND length(entity_ref) > 0 "
+            "AND store_ref IS NOT NULL AND length(store_ref) > 0 "
+            "AND scope_grant_authority_sha256 IS NOT NULL "
+            "AND length(scope_grant_authority_sha256) = 64 "
+            "AND scope_evidence_authority_sha256 IS NOT NULL "
+            "AND length(scope_evidence_authority_sha256) = 64 "
+            "AND scope_as_of IS NOT NULL"
+            ")",
+            name="ck_read_only_pilot_scope_complete",
+        ),
+        Index(
+            "uq_read_only_pilot_legacy_idempotency",
+            "idempotency_key",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NULL"),
+            postgresql_where=text("tenant_ref IS NULL"),
+        ),
+        Index(
+            "uq_read_only_pilot_scoped_idempotency",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "idempotency_key",
+            unique=True,
+            sqlite_where=text("tenant_ref IS NOT NULL"),
+            postgresql_where=text("tenant_ref IS NOT NULL"),
+        ),
+        Index(
+            "ix_read_only_pilot_scope_created",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "created_at",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    idempotency_key: Mapped[str] = mapped_column(String(300), unique=True, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(300), nullable=False)
     platform: Mapped[str] = mapped_column(String, nullable=False)
     account_alias: Mapped[str] = mapped_column(String, nullable=False)
     allowed_operations_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
@@ -49,6 +108,30 @@ class ReadOnlyPilotRow(Base):
     activated_by: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    tenant_ref: Mapped[str | None] = mapped_column(
+        String(160),
+        nullable=True,
+    )
+    entity_ref: Mapped[str | None] = mapped_column(
+        String(160),
+        nullable=True,
+    )
+    store_ref: Mapped[str | None] = mapped_column(
+        String(160),
+        nullable=True,
+    )
+    scope_grant_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    scope_evidence_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    scope_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 class PilotControlAttestationRow(Base):
@@ -90,6 +173,7 @@ class PilotReadinessService:
         ends_at: str,
         evidence_ids: list[str],
         requested_by: str,
+        scope_authority: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         idempotency_key = self._required(idempotency_key, "Pilot idempotency key")
         platform = self._required(platform, "Pilot platform").lower()
@@ -111,6 +195,7 @@ class PilotReadinessService:
             raise ValueError("Read-only pilot duration must be positive and no longer than 14 days")
         evidence_ids = self._evidence(evidence_ids)
         requested_by = self._required(requested_by, "Pilot requester")
+        scope = self._scope_authority(scope_authority)
         canonical = {
             "platform": platform,
             "account_alias": account_alias,
@@ -121,12 +206,22 @@ class PilotReadinessService:
             "ends_at": ends.isoformat(),
             "evidence_ids": evidence_ids,
             "requested_by": requested_by,
+            "scope": scope,
         }
         now = datetime.now(UTC)
         with Session(self.engine) as session, session.begin():
-            existing = session.scalar(
-                select(ReadOnlyPilotRow).where(ReadOnlyPilotRow.idempotency_key == idempotency_key)
+            query = select(ReadOnlyPilotRow).where(
+                ReadOnlyPilotRow.idempotency_key == idempotency_key
             )
+            if scope is None:
+                query = query.where(ReadOnlyPilotRow.tenant_ref.is_(None))
+            else:
+                query = query.where(
+                    ReadOnlyPilotRow.tenant_ref == scope["tenant_ref"],
+                    ReadOnlyPilotRow.entity_ref == scope["entity_ref"],
+                    ReadOnlyPilotRow.store_ref == scope["store_ref"],
+                )
+            existing = session.scalar(query)
             if existing is not None:
                 if self._pilot_payload(existing) != canonical:
                     raise ValueError("Pilot idempotency key already has different content")
@@ -150,6 +245,30 @@ class PilotReadinessService:
                     activated_by=None,
                     created_at=now,
                     updated_at=now,
+                    tenant_ref=(
+                        scope["tenant_ref"] if scope is not None else None
+                    ),
+                    entity_ref=(
+                        scope["entity_ref"] if scope is not None else None
+                    ),
+                    store_ref=(
+                        scope["store_ref"] if scope is not None else None
+                    ),
+                    scope_grant_authority_sha256=(
+                        scope["scope_grant_authority_sha256"]
+                        if scope is not None
+                        else None
+                    ),
+                    scope_evidence_authority_sha256=(
+                        scope["scope_evidence_authority_sha256"]
+                        if scope is not None
+                        else None
+                    ),
+                    scope_as_of=(
+                        self._datetime(scope["scope_as_of"], "scope_as_of")
+                        if scope is not None
+                        else None
+                    ),
                 )
                 session.add(row)
                 session.flush()
@@ -365,6 +484,25 @@ class PilotReadinessService:
                 "updated_at": self._iso(row.updated_at),
                 "controls": controls,
                 "required_controls": list(PILOT_CONTROLS),
+                "scope": {
+                    "tenant_ref": row.tenant_ref,
+                    "entity_ref": row.entity_ref,
+                    "store_ref": row.store_ref,
+                    "scope_grant_authority_sha256": (
+                        row.scope_grant_authority_sha256
+                    ),
+                    "scope_evidence_authority_sha256": (
+                        row.scope_evidence_authority_sha256
+                    ),
+                    "as_of": (
+                        self._iso(row.scope_as_of)
+                        if row.scope_as_of is not None
+                        else None
+                    ),
+                    "authority": (
+                        "native" if row.tenant_ref is not None else "legacy"
+                    ),
+                },
                 "platform_write_allowed": False,
                 "execution_eligible": False,
                 "credential_material_stored": False,
@@ -412,6 +550,42 @@ class PilotReadinessService:
         ).hexdigest()
 
     @classmethod
+    def _scope_authority(
+        cls,
+        value: dict[str, Any] | None,
+    ) -> dict[str, str] | None:
+        if value is None:
+            return None
+        required = (
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "scope_evidence_authority_sha256",
+            "scope_as_of",
+        )
+        scope = {
+            field: cls._required(str(value.get(field, "")), field)
+            for field in required
+        }
+        for field in (
+            "scope_grant_authority_sha256",
+            "scope_evidence_authority_sha256",
+        ):
+            digest = scope[field].lower()
+            if len(digest) != 64 or any(
+                character not in "0123456789abcdef"
+                for character in digest
+            ):
+                raise ValueError(f"{field} must be SHA-256")
+            scope[field] = digest
+        scope["scope_as_of"] = cls._datetime(
+            scope["scope_as_of"],
+            "scope_as_of",
+        ).isoformat()
+        return scope
+
+    @classmethod
     def _pilot_payload(cls, row: ReadOnlyPilotRow) -> dict[str, Any]:
         return {
             "platform": row.platform,
@@ -423,4 +597,21 @@ class PilotReadinessService:
             "ends_at": cls._iso(row.ends_at),
             "evidence_ids": row.evidence_json,
             "requested_by": row.requested_by,
+            "scope": (
+                {
+                    "tenant_ref": row.tenant_ref,
+                    "entity_ref": row.entity_ref,
+                    "store_ref": row.store_ref,
+                    "scope_grant_authority_sha256": (
+                        row.scope_grant_authority_sha256
+                    ),
+                    "scope_evidence_authority_sha256": (
+                        row.scope_evidence_authority_sha256
+                    ),
+                    "scope_as_of": cls._iso(row.scope_as_of),
+                }
+                if row.tenant_ref is not None
+                and row.scope_as_of is not None
+                else None
+            ),
         }

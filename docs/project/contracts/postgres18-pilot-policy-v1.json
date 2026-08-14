@@ -1,0 +1,56 @@
+{
+  "contract_id": "kjds-postgres18-pilot-policy-v1",
+  "as_of": "2026-08-03",
+  "baseline": {
+    "compose_image": "postgres:17-alpine",
+    "pilot_image": "postgres:17.10-alpine",
+    "required_major": 17,
+    "minimum_minor": 10
+  },
+  "candidate": {
+    "pilot_image": "postgres:18.4-alpine",
+    "required_major": 18,
+    "minimum_minor": 4
+  },
+  "migration": {
+    "required_head": "20260803_0090",
+    "downgrade_checkpoint": "20260717_0024",
+    "require_empty_upgrade": true,
+    "require_downgrade_replay": true
+  },
+  "dataset": {
+    "synthetic_rows": 20000,
+    "classification": "synthetic_non_business",
+    "production_data_allowed": false
+  },
+  "benchmark": {
+    "warmup_runs": 2,
+    "measured_runs": 7,
+    "maximum_regression_ratio": 3.0,
+    "absolute_latency_budget_ms": 75.0,
+    "lock_timeout_ms": 1200,
+    "lock_observation_minimum_ms": 150,
+    "lock_observation_maximum_ms": 2500
+  },
+  "isolation": {
+    "container_prefix": "kjds-bas176-",
+    "loopback_ports_only": true,
+    "tmpfs_data_only": true,
+    "named_volumes_allowed": false,
+    "compose_mutation_allowed": false,
+    "production_database_allowed": false
+  },
+  "rollback": {
+    "method": "restore_frozen_pre_cutover_pg17_custom_dump",
+    "candidate_writes_during_cutover_allowed": false,
+    "in_place_major_downgrade_claimed": false
+  },
+  "promotion": {
+    "engineering_rehearsal_can_promote_baseline": false,
+    "production_migration_runbook_state": "UNKNOWN",
+    "independent_recovery_approval_state": "UNKNOWN",
+    "exit_gate_state": "not_passed",
+    "external_write_allowed": false,
+    "formal_fact_promotion_allowed": false
+  }
+}

@@ -18,7 +18,12 @@ from apps.control_plane.finance import (
     FxRateRow,
 )
 from apps.control_plane.profit_ledger import EROSION_CATEGORIES, ProfitLedgerService
-from apps.control_plane.sql_repository import Base, SqlAlchemyRepository
+from apps.control_plane.sql_repository import (
+    Base,
+    OrderRow,
+    ProductRow,
+    SqlAlchemyRepository,
+)
 
 
 class EmptySourcingStore:
@@ -348,3 +353,37 @@ def test_fx_rate_selection_uses_only_rates_effective_on_accounting_date():
         blocker.startswith("missing_fx:RUB/CNY")
         for blocker in snapshot["rows"][0]["blockers"]
     )
+
+
+def test_explicit_as_of_excludes_core_orders_recorded_after_cutoff():
+    engine, repo, _, _, ledger = services()
+    product = repo.add_product(Product("SKU-LATE", "晚于快照的商品"))
+    order = repo.add_order(
+        Order(
+            external_id="late-order",
+            product_id=product.id,
+            quantity=1,
+            currency="CNY",
+            gross_revenue=Decimal("100"),
+            booked_fx_rate=Decimal("1"),
+        )
+    )
+    with Session(engine) as session, session.begin():
+        product_row = session.get(ProductRow, product.id)
+        order_row = session.get(OrderRow, order.id)
+        assert product_row is not None
+        assert order_row is not None
+        product_row.created_at = datetime(2026, 7, 28, tzinfo=UTC)
+        order_row.created_at = datetime(2026, 7, 28, tzinfo=UTC)
+
+    before = ledger.snapshot(as_of="2026-07-27T00:00:00Z")
+    replay = ledger.snapshot(as_of="2026-07-27T00:00:00Z")
+    after = ledger.snapshot(as_of="2026-07-29T00:00:00Z")
+
+    assert before == replay
+    assert before["status"] == "no_data"
+    assert before["rows"] == []
+    assert before["unallocated"] == []
+    assert len(after["rows"]) == 1
+    assert after["rows"][0]["order_ref"] == "late-order"
+    assert after["rows"][0]["actual_profit"] is None

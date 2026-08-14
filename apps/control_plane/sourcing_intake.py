@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from .evidence import EvidenceGrade
+from .logistics import LogisticsScopeContext
 from .sourcing import (
     PROFIT_TEMPLATE_ID,
     REQUIRED_COST_EVIDENCE_KEYS,
@@ -162,6 +163,7 @@ class SupplierComparisonIntakeService:
         logistics_rate_card_id: str | None = None,
         logistics_currency_to_cny_rate: Decimal | None = None,
         logistics_fx_evidence_id: str | None = None,
+        logistics_context: LogisticsScopeContext | None = None,
     ) -> dict:
         self._require_sourcing_handoff(product_id)
         normalized_quote_ids = [item.strip() for item in quote_evidence_ids if item.strip()]
@@ -169,6 +171,34 @@ class SupplierComparisonIntakeService:
             raise ValueError("Supplier comparison requires exactly three distinct quote evidence records")
         if logistics_fx_evidence_id and not logistics_rate_card_id:
             raise ValueError("FX evidence requires a selected logistics rate card")
+        if logistics_context is not None and not logistics_rate_card_id:
+            raise ValueError("Logistics scope context requires a selected rate card")
+        selected_rate_card = None
+        if logistics_rate_card_id:
+            if self.logistics is None:
+                raise ValueError("Logistics calculation workspace is not configured")
+            if logistics_context is None:
+                raise ValueError("Logistics rate card requires exact scope context")
+            if logistics_context.principal.actor_id != created_by:
+                raise PermissionError(
+                    "Logistics scope identity must match comparison creator"
+                )
+            if profit_inputs.international_freight_cny_per_kg != 0:
+                raise ValueError(
+                    "Manual international freight must be zero when a logistics "
+                    "rate card is selected"
+                )
+            if logistics_currency_to_cny_rate is None:
+                raise ValueError("Logistics currency-to-CNY rate is required")
+            selected_rate_card = self.logistics.get_rate_card(
+                logistics_context,
+                logistics_rate_card_id,
+            )
+            if selected_rate_card.declared_value_currency != "RUB":
+                raise ValueError(
+                    "Supplier comparison currently requires a RUB "
+                    "declared-value logistics tier"
+                )
         if not assumption_content:
             raise ValueError("Profit assumptions evidence cannot be empty")
         normalized_states = cost_states or {
@@ -273,22 +303,10 @@ class SupplierComparisonIntakeService:
             }
             logistics_calculation_id = None
             if logistics_rate_card_id:
-                if self.logistics is None:
-                    raise ValueError("Logistics calculation workspace is not configured")
-                if profit_inputs.international_freight_cny_per_kg != 0:
-                    raise ValueError(
-                        "Manual international freight must be zero when a logistics rate card is selected"
-                    )
-                if logistics_currency_to_cny_rate is None:
-                    raise ValueError("Logistics currency-to-CNY rate is required")
-                selected_rate_card = self.logistics.get_rate_card(
-                    logistics_rate_card_id
-                )
-                if selected_rate_card.declared_value_currency != "RUB":
-                    raise ValueError(
-                        "Supplier comparison currently requires a RUB declared-value logistics tier"
-                    )
+                if logistics_context is None or selected_rate_card is None:
+                    raise RuntimeError("Logistics preflight invariant was not established")
                 logistics_calculation = self.logistics.calculate(
+                    logistics_context,
                     rate_card_id=logistics_rate_card_id,
                     physical_weight_kg=offer.weight_kg,
                     length_cm=offer.length_cm,
@@ -313,6 +331,7 @@ class SupplierComparisonIntakeService:
                 normalized_states,
                 template_id or PROFIT_TEMPLATE_ID,
                 logistics_calculation_id,
+                logistics_context,
             )
             for evidence_id in scenario.evidence:
                 self.evidence.link(

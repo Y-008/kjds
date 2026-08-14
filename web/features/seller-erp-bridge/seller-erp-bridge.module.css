@@ -1,0 +1,388 @@
+.page {
+  min-height: 100vh;
+  overflow-x: hidden;
+  padding: 24px;
+  color: #f4f1e8;
+  background:
+    radial-gradient(circle at 8% 2%, rgba(107, 75, 35, 0.5), transparent 30%),
+    radial-gradient(circle at 95% 18%, rgba(31, 65, 79, 0.62), transparent 32%),
+    #101311;
+  font-family: Arial, sans-serif;
+}
+
+.page nav,
+.page header,
+.boundary,
+.authorityFlow,
+.filters,
+.metrics,
+.authorityState,
+.notice,
+.error,
+.diffGrid,
+.pagination,
+.page footer {
+  width: min(1320px, 100%);
+  margin-inline: auto;
+}
+
+.page nav {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.page nav a:last-child {
+  text-align: right;
+}
+
+.page a {
+  color: #8ed4dc;
+}
+
+.page header {
+  padding: 70px 0 34px;
+}
+
+.page header p {
+  color: #e9ac62;
+  letter-spacing: 0.15em;
+  font-size: 11px;
+}
+
+.page h1 {
+  max-width: 1080px;
+  margin: 12px 0;
+  font-size: clamp(38px, 6vw, 76px);
+  line-height: 0.98;
+}
+
+.page h1 em {
+  color: #8ad5dd;
+  font-style: normal;
+}
+
+.page header span,
+.notice,
+.diffBody {
+  color: #adb8b4;
+}
+
+.boundary {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.boundary span,
+.metrics article,
+.authorityState,
+.notice,
+.error,
+.diffCard,
+.page footer {
+  border: 1px solid #465a56;
+  border-radius: 14px;
+  background: rgba(24, 31, 29, 0.94);
+  padding: 16px;
+}
+
+.authorityFlow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+  align-items: center;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.authorityFlow article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border-top: 2px solid #ca884b;
+  padding: 12px 8px;
+  background: rgba(23, 37, 39, 0.7);
+}
+
+.authorityFlow span {
+  color: #aeb9b5;
+  font-size: 13px;
+}
+
+.authorityFlow i {
+  color: #ca884b;
+  font-style: normal;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 0.7fr auto;
+  align-items: end;
+  gap: 10px;
+  margin-block: 18px;
+}
+
+.filters label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #aeb9b5;
+  font-size: 12px;
+}
+
+.filters input,
+.filters select,
+.filters button,
+.error button,
+.pagination button {
+  min-width: 0;
+  border: 1px solid #54706f;
+  border-radius: 9px;
+  padding: 11px;
+  color: #f4f1e8;
+  background: #172625;
+}
+
+.filters button,
+.pagination button {
+  cursor: pointer;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.metrics strong {
+  display: block;
+  font-size: 30px;
+}
+
+.metrics span,
+.authorityState span {
+  color: #9fada8;
+}
+
+.authorityState {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.authorityState[data-ready="true"] {
+  border-color: #428d83;
+}
+
+.authorityState div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.authorityState b {
+  overflow-wrap: anywhere;
+}
+
+.notice,
+.error {
+  margin-top: 14px;
+}
+
+.error {
+  border-color: #a15b55;
+}
+
+.gaps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gaps code,
+.notice code {
+  display: inline-block;
+  margin: 3px;
+  color: #e2b479;
+  overflow-wrap: anywhere;
+}
+
+.diffGrid {
+  display: grid;
+  gap: 10px;
+  margin-block: 16px;
+}
+
+.diffCard summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+}
+
+.diffCard summary span {
+  display: grid;
+  min-width: 0;
+}
+
+.diffCard summary small {
+  color: #ca884b;
+  text-transform: uppercase;
+}
+
+.diffCard summary b {
+  overflow-wrap: anywhere;
+  font-size: 20px;
+}
+
+.diffCard summary i {
+  align-self: center;
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: #d3d7d4;
+  background: #29302e;
+  font-style: normal;
+}
+
+.diffCard summary i[data-state="matched"] {
+  color: #9be0cc;
+  background: #173a34;
+}
+
+.diffCard summary i[data-state="conflict"],
+.diffCard summary i[data-state="blocked"] {
+  color: #ffd0c2;
+  background: #5b302e;
+}
+
+.diffCard summary i[data-state="source_only"],
+.diffCard summary i[data-state="canonical_only"] {
+  color: #f0c88c;
+  background: #473a25;
+}
+
+.diffBody {
+  display: grid;
+  gap: 9px;
+  padding-top: 14px;
+}
+
+.diffBody p {
+  margin: 0;
+}
+
+.diffBody > code,
+.page footer code {
+  color: #7daaa5;
+  overflow-wrap: anywhere;
+}
+
+.fieldDiffs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.fieldDiffs article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border-left: 2px solid #bf755d;
+  padding: 9px;
+  background: #141d1c;
+}
+
+.fieldDiffs span {
+  overflow-wrap: anywhere;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #adb8b4;
+}
+
+.page footer {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+@media (max-width: 900px) {
+  .authorityFlow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .authorityFlow i {
+    display: none;
+  }
+
+  .filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .authorityState {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .fieldDiffs {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .boundary,
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .page {
+    padding: 16px;
+  }
+
+  .page nav {
+    grid-template-columns: 1fr auto;
+  }
+
+  .page nav strong {
+    display: none;
+  }
+
+  .page header {
+    padding: 44px 0 24px;
+  }
+
+  .page h1 {
+    font-size: 40px;
+  }
+
+  .authorityFlow,
+  .filters,
+  .authorityState,
+  .fieldDiffs {
+    grid-template-columns: 1fr;
+  }
+
+  .boundary,
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .metrics article:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .diffCard summary {
+    gap: 10px;
+  }
+
+  .pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -1,7 +1,25 @@
 {
-  "registry_version": "1.8",
-  "last_reviewed": "2026-07-26",
+  "registry_version": "2.1",
+  "last_reviewed": "2026-07-29",
   "principle": "Borrow product workflow patterns, never third-party truth claims or unapproved write authority.",
+  "baseline_policy": {
+    "requirement": "must_have_native_parity",
+    "safe_capability_omission_allowed": false,
+    "mapping_is_not_implementation": true,
+    "providers_are_runtime_dependencies": false,
+    "prohibited_patterns_require_safe_jtbd_replacement": true,
+    "coverage_dimensions": [
+      "code",
+      "migration",
+      "api",
+      "web",
+      "permissions",
+      "runtime_replay",
+      "evidence"
+    ],
+    "ai_advantage_is_scored_separately": true,
+    "external_write_allowed": false
+  },
   "shared_contracts": [
     {
       "id": "three_candidate_portfolio_decision_view_v1",
@@ -56,8 +74,12 @@
     {
       "id": "seerfar",
       "url": "https://www.seerfar.cn/features/",
-      "observed_capabilities": ["product_trends_30_90_days", "market_and_keyword_analysis", "competitor_monitoring", "open_api_entry"],
-      "patterns_to_borrow": ["research_inbox", "trend_snapshot", "keyword_competitor_candidate_graph", "change_alert"],
+      "source_documents": [
+        "https://www.seerfar.cn/features/",
+        "user_provided_feature_menu_screenshot_20260729"
+      ],
+      "observed_capabilities": ["product_trends_30_90_days", "market_and_keyword_analysis", "competitor_listing_store_monitoring", "keyword_rank_tracking", "product_card_ai_optimization", "review_analysis", "pricing_tool", "promotion_management", "advertising_analysis_and_strategy", "open_api_entry"],
+      "patterns_to_borrow": ["research_inbox", "trend_snapshot", "keyword_competitor_candidate_graph", "change_alert", "listing_and_store_monitor", "review_insight_packet", "profit_bounded_ad_experiment"],
       "do_not_copy": ["estimated_sales_as_account_fact", "session_sharing", "unreviewed_browser_extension"],
       "evidence_tier": "C",
       "integration_status": "open_api_documentation_requires_review",
@@ -67,6 +89,7 @@
     },
     {
       "id": "miaoshou_erp",
+      "display_name": "妙手 ERP",
       "url": "https://erp.91miaoshou.com/",
       "observed_capabilities": ["multi_platform_collection_and_listing", "pricing_template", "order_procurement_inventory_logistics", "batch_content_tools"],
       "patterns_to_borrow": ["collection_box_claim_edit_review", "batch_job_progress", "exception_retry_queue"],
@@ -78,6 +101,7 @@
     },
     {
       "id": "selling51_erp",
+      "display_name": "无忧易售",
       "url": "https://www.51selling.com/HelpDocument/Details/156",
       "observed_capabilities": ["ozon_listing", "order_and_return_workflow", "ozon_inventory", "bill_and_gross_profit_report", "field_level_bill_provenance", "unmapped_fee_visibility", "scan_ship_and_weight"],
       "patterns_to_borrow": ["operations_exception_queue", "measured_weight_capture", "batch_edit_preview", "bill_to_profit_navigation", "field_level_source_badge", "explicit_unmapped_finance_queue"],
@@ -89,19 +113,53 @@
       "next_contract": "controlled_batch_diff_workspace_after_real_usage_bottleneck"
     },
     {
+      "id": "mango_erp",
+      "display_name": "芒果店长",
+      "url": "https://www.mangoerp.com/index",
+      "observed_capabilities": ["multi_platform_collection_and_listing", "order_processing", "procurement_and_inventory", "logistics_tracking", "returns_and_customer_service", "profit_and_settlement_reports", "ai_title_and_description"],
+      "patterns_to_borrow": ["store_scoped_batch_listing", "order_to_fulfillment_workbench", "procurement_inventory_diff", "logistics_exception_tracking", "profit_settlement_navigation"],
+      "do_not_copy": ["automatic_listing_without_profit_gate", "automatic_purchase", "automatic_inventory_write", "marketing_claim_as_operating_fact"],
+      "evidence_tier": "C",
+      "integration_status": "official_public_workflow_reference_only",
+      "requires_review": true,
+      "next_contract": "authorized_official_export_or_api_adapter_after_admission"
+    },
+    {
+      "id": "dianxiaomi_erp",
+      "display_name": "店小秘 ERP",
+      "url": "https://www.dianxiaomi.com/",
+      "source_documents": [
+        "https://www.dianxiaomi.com/",
+        "https://help.dianxiaomi.com/"
+      ],
+      "observed_capabilities": ["multi_platform_store_authorization", "product_collection_migration_and_listing", "batch_edit_translation_and_image_tools", "order_rules_and_processing", "customer_service_and_disputes", "procurement_and_1688_purchase_tracking", "inventory_warehouse_and_overseas_warehouse", "pda_scan_pick_pack_ship", "logistics_rate_and_tracking", "data_finance_and_profit", "advertising_repricing_and_review_monitoring", "role_and_subaccount_management"],
+      "patterns_to_borrow": ["one_account_multi_store_workspace", "collection_to_pim_diff", "order_rule_preview", "purchase_order_and_supplier_relation", "sku_mapping_and_inventory_deduction", "wave_pick_pack_ship", "logistics_exception_tracking", "finance_drilldown"],
+      "do_not_copy": ["collection_to_listing_without_profit_gate", "automatic_purchase_without_real_order_and_review", "automatic_inventory_or_price_write", "session_or_cookie_reuse", "marketing_usage_claim_as_kjds_fact"],
+      "evidence_tier": "C",
+      "integration_status": "official_public_workflow_reference_only",
+      "requires_review": true,
+      "next_contract": "native_parity_by_m0_m4_with_authorized_adapter_only_after_admission"
+    },
+    {
       "id": "maozierp",
+      "display_name": "Maozi ERP",
       "url": "https://www.maozierp.com/",
-      "observed_capabilities": ["sales_and_revenue_trends", "product_and_category_research", "1688_capture", "ai_listing_draft", "price_inventory_order_sync"],
-      "patterns_to_borrow": ["provider_neutral_research_inbox", "source_listing_snapshot", "listing_draft_diff", "sync_exception_queue"],
-      "do_not_copy": ["unsigned_desktop_binary", "all_url_browser_injection", "session_cookie_reuse", "csp_removal", "unapproved_platform_write"],
+      "source_documents": [
+        "https://mcn5ze6lo0iz.feishu.cn/wiki/Zd2xwn5m4ijIaQkiDc7c34qgnye"
+      ],
+      "benchmark_registry": "maozierp_feishu_capability_benchmark.json",
+      "observed_capabilities": ["plugin_installation", "store_api_and_cookie_binding", "manual_automatic_store_sync", "one_click_multi_store_listing", "editable_ai_listing", "1688_taobao_pdd_capture", "image_copy_redraw_and_suite", "single_bulk_inventory", "promotion_batch_management", "cross_border_pricing_profit_calculator", "store_analytics", "multi_store_management", "listing_status_and_repair", "watermark_templates", "rule_based_selection_and_auto_favorite", "automatic_promotion_removal", "passport_pickup_review_reminders", "operating_dashboard", "multi_device_management", "order_management", "reverse_topic_tag_lookup", "listing_error_runbook"],
+      "patterns_to_borrow": ["provider_neutral_research_inbox", "source_listing_snapshot", "listing_draft_diff", "sync_exception_queue", "batch_diff_and_readback", "rule_based_candidate_badges", "store_scoped_media_templates", "typed_listing_repair_queue", "device_and_session_inventory"],
+      "do_not_copy": ["unsigned_desktop_binary", "all_url_browser_injection", "session_cookie_reuse", "cookie_binding", "csp_removal", "unlicensed_image_copy", "automatic_bulk_listing_without_profit_and_governance_gates", "unapproved_platform_write"],
       "evidence_tier": "C",
       "integration_status": "public_workflow_reference_and_local_static_observation_only",
       "requires_review": true,
-      "implemented_contract": "manual_export_research_signal_inbox_v1",
-      "next_contract": "controlled_listing_diff_workspace_after_real_usage_bottleneck"
+      "implemented_contract": "browser_capture_inbox_v1_in_progress",
+      "next_contract": "complete_pim_oms_inventory_promotion_media_bi_and_device_capability_waves"
     },
     {
       "id": "lizhi_ozon_assistant",
+      "display_name": "荔枝 Ozon 助手",
       "url": "https://www.lzozon.com/",
       "observed_capabilities": ["multi_source_import", "dashboard_and_monitoring", "ai_assisted_analysis", "export", "browser_capture", "candidate_filtering"],
       "patterns_to_borrow": ["provider_neutral_import", "source_snapshot", "evidence_backed_dashboard", "exportable_decision_packet"],
@@ -114,6 +172,7 @@
     },
     {
       "id": "linkfox",
+      "display_name": "LinkFox",
       "url": "https://www.linkfox.com/home",
       "observed_capabilities": ["product_and_link_management", "brand_and_compliance_assets", "general_asset_library", "apparel_product_image_suites", "agent_image_workflows", "image_repair_and_batch_generation", "image_to_video_and_spokesperson_video", "listing_and_market_research_skills", "agent_tool_orchestration", "scheduled_tasks", "team_workspace", "usage_based_compute_plans"],
       "patterns_to_borrow": ["goal_to_tool_plan", "research_to_report", "product_asset_workspace", "content_generation_workbench", "batch_job_workspace", "team_asset_and_compute_governance"],

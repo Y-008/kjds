@@ -1,0 +1,1491 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from copy import deepcopy
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
+
+import apps.control_plane.team_control_tower as team_control_tower_module
+from apps.control_plane.enterprise_ai_erp_program import EnterpriseAiErpProgram
+from apps.control_plane.global_expert_team import GlobalPortfolioOrchestrator
+from apps.control_plane.operating_intelligence import OperatingIntelligenceService
+from apps.control_plane.security import Principal
+from apps.control_plane.sql_repository import Base
+from apps.control_plane.team_control_tower import (
+    TeamControlTower,
+    TeamControlTowerError,
+)
+
+REGISTRY_PATH = (
+    Path(__file__).parents[1]
+    / "docs"
+    / "project"
+    / "registries"
+    / "team_control_tower_registry.json"
+)
+WORKSTREAM_PATH = (
+    Path(__file__).parents[1]
+    / "docs"
+    / "project"
+    / "registries"
+    / "active_workstream_assignments.json"
+)
+_DEFAULT_ENTERPRISE_PROGRAM = object()
+
+
+def _canonical_hash(value) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _reseal_program_projection(projection: dict) -> None:
+    source_map = {
+        item["source_ref"]: item["sha256"]
+        for item in projection["source_hashes"]
+    }
+    projection["contract_integrity"]["source_bundle_sha256"] = _canonical_hash(
+        source_map
+    )
+    basis = deepcopy(projection)
+    basis.pop("snapshot_sha256", None)
+    projection["snapshot_sha256"] = _canonical_hash(basis)
+
+
+class FakeLedger:
+    pass
+
+
+class FakeEvidence:
+    def __init__(self) -> None:
+        self.validated: list[list[str]] = []
+
+    def require_valid(self, evidence_ids) -> None:
+        self.validated.append(list(evidence_ids))
+
+
+class FakeScopedEvidence:
+    def __init__(self) -> None:
+        self.projected: list[list[str]] = []
+
+    def project(self, *, evidence_ids, **_) -> dict:
+        self.projected.append(list(evidence_ids))
+        return {"status": "ready"}
+
+
+class FakeBenchmark:
+    def __init__(self, *, groups: list[dict] | None = None, no_data: bool = False) -> None:
+        self.groups = groups or []
+        self.no_data = no_data
+        self.reads = 0
+        self.request_sha256 = "b" * 64
+
+    def list(self, **kwargs) -> dict:
+        self.reads += 1
+        assert kwargs["expected_scope_authority_sha256"] == "a" * 64
+        return {
+            "contract_id": "kjds-strategic-benchmark-kernel-v1",
+            "items": [] if self.no_data else [self._snapshot()],
+            "next_cursor": None,
+        }
+
+    def get(self, **kwargs) -> dict:
+        self.reads += 1
+        assert kwargs["expected_scope_authority_sha256"] == "a" * 64
+        return {
+            "contract_id": "kjds-strategic-benchmark-kernel-v1",
+            "snapshot": self._snapshot(),
+            "groups": self.groups,
+        }
+
+    def _snapshot(self) -> dict:
+        return {
+            "snapshot_ref": "benchmark-snapshot-1",
+            "store_ref": "ozon-primary",
+            "registry_schema": "kjds-strategic-benchmark-contracts-v1",
+            "registry_sha256": "c" * 64,
+            "as_of": "2026-08-06T07:00:00+00:00",
+            "created_at": "2026-08-06T07:01:00+00:00",
+            "request_sha256": self.request_sha256,
+            "global_top1_claim": False,
+        }
+
+
+class DriftingBenchmark(FakeBenchmark):
+    def list(self, **kwargs) -> dict:
+        self.reads += 1
+        raise RuntimeError("authority drift")
+
+
+class FakeSettlementCash:
+    def __init__(
+        self,
+        *,
+        verified: bool = False,
+        sku_attribution: bool = True,
+        product_sha256: str = "1" * 64,
+        profit_snapshot_sha256: str = "7" * 64,
+        order_count: int = 1,
+    ) -> None:
+        self.verified = verified
+        self.sku_attribution = sku_attribution
+        self.product_sha256 = product_sha256
+        self.profit_snapshot_sha256 = profit_snapshot_sha256
+        self.order_count = order_count
+        self.reads = 0
+
+    def project(self, **kwargs) -> dict:
+        self.reads += 1
+        assert kwargs["entity_scope"]["authority_sha256"] == "a" * 64
+        cycles = []
+        if self.verified:
+            profit_snapshot_sha256 = self.profit_snapshot_sha256
+            profit_row_sha256 = "4" * 64
+            order_ref_sha256 = _canonical_hash("private-order-ref")
+            scope_receipt = {
+                "tenant_ref": kwargs["principal"].tenant_ref,
+                "entity_ref": kwargs["entity_scope"]["entity_ref"],
+                "store_ref": kwargs["store_ref"],
+                "scope_grant_authority_sha256": kwargs["entity_scope"][
+                    "authority_sha256"
+                ],
+            }
+            receipt_payload = {
+                "contract_id": "canonical_order_sku_receipt_v1",
+                "issuer_contract_id": (
+                    "kjds-native-exact-scope-actual-profit-ledger-v1"
+                ),
+                "scope_sha256": _canonical_hash(scope_receipt),
+                "scope_grant_authority_sha256": kwargs[
+                    "entity_scope"
+                ]["authority_sha256"],
+                "order_ref_sha256": order_ref_sha256,
+                "product_sha256": self.product_sha256,
+                "sku_sha256": "2" * 64,
+                "order_fact_receipt_sha256": "3" * 64,
+                "profit_row_basis_sha256": "5" * 64,
+            }
+            profit_receipt_sha256 = _canonical_hash(receipt_payload)
+            attribution = {
+                "schema_version": "single-sku-attribution/2",
+                "status": "verified",
+                "identity_count": 1,
+                "scope_sha256": receipt_payload["scope_sha256"],
+                "scope_grant_authority_sha256": receipt_payload[
+                    "scope_grant_authority_sha256"
+                ],
+                "product_sha256": self.product_sha256,
+                "sku_sha256": "2" * 64,
+                "order_ref_sha256": order_ref_sha256,
+                "order_fact_receipt_sha256": receipt_payload[
+                    "order_fact_receipt_sha256"
+                ],
+                "profit_row_basis_sha256": receipt_payload[
+                    "profit_row_basis_sha256"
+                ],
+                "profit_row_sha256": profit_row_sha256,
+                "profit_receipt_sha256": profit_receipt_sha256,
+            }
+            attribution["lineage_sha256"] = hashlib.sha256(
+                json.dumps(
+                    attribution,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            cycles = [
+                {
+                    "reconciliation_key": "private-order-ref",
+                    "reconciliation_key_sha256": attribution[
+                        "order_ref_sha256"
+                    ],
+                    "stage": "reconciled",
+                    "books": {
+                        "order_accrual": {
+                            "order_fact_count": self.order_count
+                        },
+                        "platform_settlement": {"status": "observed"},
+                        "bank_cash": {"status": "observed"},
+                    },
+                    "actual_cash_cm3": {
+                        "status": "available",
+                        "amount": "321.00",
+                        "profit_snapshot_sha256": profit_snapshot_sha256,
+                        **(
+                            {
+                                "single_sku_attribution": attribution
+                            }
+                            if self.sku_attribution
+                            else {}
+                        ),
+                    },
+                    "evidence": {"all_current_and_exact_scope": True},
+                    "blockers": [],
+                }
+            ]
+        count = 1 if self.verified else 0
+        core = {
+            "contract_id": "kjds-native-exact-scope-settlement-cash-control-v1",
+            "status": "ready" if self.verified else "no_data",
+            "as_of": kwargs["as_of"],
+            "scope": {
+                "tenant_ref": kwargs["principal"].tenant_ref,
+                "entity_ref": kwargs["entity_scope"]["entity_ref"],
+                "store_ref": kwargs["store_ref"],
+                "scope_grant_authority_sha256": kwargs["entity_scope"][
+                    "authority_sha256"
+                ],
+            },
+            "counts": {
+                "total_cycles": count,
+                "order_fact_cycles": count,
+                "settlement_cycles": count,
+                "cash_cycles": count,
+                "reconciled": count,
+                "actual_cash_cm3_available": count,
+                "filtered": count,
+                "page": count,
+            },
+            "pagination": {"page_size": 100, "next_cursor": None},
+            "cycles": cycles,
+            "excluded": {
+                "count": 0,
+                "reason_counts": {},
+                "business_values_exposed": False,
+            },
+            "source_gaps": [],
+            "blockers": [],
+            "control_envelope": {
+                "read_only": True,
+                "scoped_input_read": True,
+                "external_write_allowed": False,
+                "finance_entry_created": False,
+                "reconciliation_created": False,
+                "fact_created": False,
+                "approval_created": False,
+                "permit_created": False,
+                "payment_initiated": False,
+            },
+        }
+        core["snapshot_sha256"] = hashlib.sha256(
+            json.dumps(
+                core,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        return core
+
+
+class FakeEnterpriseAiErpProgram:
+    def __init__(self, projection: dict | None = None) -> None:
+        self.projection = projection or EnterpriseAiErpProgram().project()
+        self.reads = 0
+
+    def project(self) -> dict:
+        self.reads += 1
+        return deepcopy(self.projection)
+
+
+def benchmark_group(
+    *,
+    peer_count: int = 5,
+    leader: bool = True,
+    state: str = "comparable",
+    group_ref: str = "group-customer-outcome",
+) -> dict:
+    current = {
+        "observation_ref": "kjds-current-1",
+        "subject_class": "kjds_current",
+        "value_projection": {"mode": "public_exact", "value": "0.91"},
+        "freshness_due_at": "2026-09-01T00:00:00+00:00",
+        "eligibility_state": "stale" if state == "stale" else "eligible",
+    }
+    peers = [
+        {
+            "observation_ref": f"peer-{index}",
+            "subject_class": "peer",
+            "value_projection": {"mode": "public_exact", "value": "0.80"},
+            "freshness_due_at": "2026-09-01T00:00:00+00:00",
+            "eligibility_state": "eligible",
+        }
+        for index in range(peer_count)
+    ]
+    return {
+        "group_ref": group_ref,
+        "domain": "product_experience",
+        "metric_id": "core_task_success",
+        "comparison_state": state,
+        "leader_observation_refs": ["kjds-current-1" if leader else "peer-0"],
+        "cohort_ref": "ru-ozon-peer-cohort",
+        "market": "RU",
+        "window": {
+            "start": "2026-07-01T00:00:00+00:00",
+            "end": "2026-08-01T00:00:00+00:00",
+        },
+        "result_sha256": "d" * 64,
+        "observations": [current, *peers],
+        "global_top1_claim": False,
+    }
+
+
+def build_service(
+    *,
+    strategic_benchmark=None,
+    settlement_cash=None,
+    enterprise_ai_erp_program=_DEFAULT_ENTERPRISE_PROGRAM,
+    clock=None,
+) -> tuple[TeamControlTower, OperatingIntelligenceService]:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    evidence = FakeEvidence()
+    scoped = FakeScopedEvidence()
+    tasks = OperatingIntelligenceService(
+        engine=engine,
+        profit_ledger=FakeLedger(),
+        evidence=evidence,
+        scoped_evidence=scoped,
+    )
+    control_now = datetime.now(UTC) + timedelta(days=1)
+    program = (
+        EnterpriseAiErpProgram()
+        if enterprise_ai_erp_program is _DEFAULT_ENTERPRISE_PROGRAM
+        else enterprise_ai_erp_program
+    )
+    return (
+        TeamControlTower(
+            expert_team=GlobalPortfolioOrchestrator(),
+            operating_tasks=tasks,
+            scoped_evidence=scoped,
+            strategic_benchmark=strategic_benchmark,
+            settlement_cash=settlement_cash,
+            enterprise_ai_erp_program=program,
+            clock=clock or (lambda: control_now),
+        ),
+        tasks,
+    )
+
+
+def scope() -> dict:
+    return {
+        "principal": Principal(
+            actor_id="operator-1",
+            roles=frozenset({"operator"}),
+            tenant_ref="tenant-cn-1",
+            store_refs=frozenset({"ozon-primary"}),
+        ),
+        "entity_scope": {
+            "status": "ready",
+            "entity_ref": "entity-cn-1",
+            "authority_sha256": "a" * 64,
+        },
+        "store_ref": "ozon-primary",
+    }
+
+
+def finish_campaign_phase_one(tower: TeamControlTower) -> None:
+    brief = tower.brief(**scope())
+    assert brief["next_action"]["target"]["type"] == "campaign_phase"
+    tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="take",
+        rationale="打开组织和战役冻结阶段",
+        evidence_ids=(),
+        idempotency_key="campaign-open",
+    )
+    brief = tower.brief(**scope())
+    tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="take",
+        rationale="Program Director 领取阶段",
+        evidence_ids=(),
+        idempotency_key="campaign-ack",
+    )
+    brief = tower.brief(**scope())
+    tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="take",
+        rationale="以当前 exact-scope Evidence 正式 kickoff",
+        evidence_ids=("evd-campaign-kickoff",),
+        idempotency_key="campaign-start",
+    )
+    brief = tower.brief(**scope())
+    tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="done",
+        rationale="阶段工作交接完成，等待正式 Gate",
+        evidence_ids=("evd-campaign-phase-one",),
+        idempotency_key="campaign-resolve",
+    )
+
+
+def test_brief_projects_the_four_image_flows_and_exactly_one_next_action():
+    tower, _ = build_service()
+
+    result = tower.brief(**scope())
+
+    assert [item["flow_ref"] for item in result["flows"]] == [
+        "project_control_commercialization",
+        "sku_closed_loop",
+        "dual_engine_commercialization",
+        "lg001_exact_scope",
+    ]
+    assert result["next_action"]["target"] == {
+        "type": "campaign_phase",
+        "campaign_ref": "ru-ozon-top1-90d",
+        "phase_ref": "day_1_7_organization_freeze",
+        "expected_status": "BLOCKED",
+    }
+    assert result["next_action"]["allowed_results"] == ["take"]
+    assert len(result["next_action"]["continuation"]) == 64
+    assert result["executive_summary"]["flow_count"] == 4
+    assert result["team"] == {
+        "leader": "global_chief_commerce_officer",
+        "specialist_count": 12,
+        "control_role_count": 5,
+        "escalation_chain": [
+            "accountable_specialist",
+            "country_or_domain_lead",
+            "global_chief_commerce_officer",
+            "independent_professional_authority",
+            "human_business_owner_and_independent_approver",
+        ],
+    }
+    assert result["control_envelope"]["projection_only"] is True
+    assert all(
+        value is False
+        for key, value in result["control_envelope"].items()
+        if key != "projection_only"
+    )
+
+
+def test_brief_projects_top1_organization_cash_campaign_and_five_gates_without_claims():
+    tower, _ = build_service()
+
+    result = tower.brief(**scope())
+
+    assert result["organization_readiness"]["status"] == "UNKNOWN"
+    assert result["organization_readiness"]["contract_counts"] == {
+        "human_core_required": 18,
+        "ai_specialists_required": 12,
+        "expert_pool_target": {"minimum": 20, "maximum": 40},
+        "independent_control_roles_required": 5,
+    }
+    assert result["organization_readiness"]["verified_bindings"]["human_core"] == 0
+    assert result["critical_path"]["actual_campaign_day"] is None
+    assert result["critical_path"]["planned_end_on"] == "2026-11-04"
+    assert len(result["critical_path"]["phases"]) == 4
+    assert result["top1_scorecard"]["global_top1_claim"] is False
+    assert len(result["top1_scorecard"]["dimensions"]) == 12
+    assert result["cash_at_risk"]["status"] == "UNKNOWN"
+    assert result["cash_at_risk"]["forecast_invoked"] is False
+    assert result["cash_at_risk"]["thirteen_week_cash"]["forecast"] is None
+    assert result["cash_at_risk"]["actual_cash_truth"]["status"] == "UNKNOWN"
+    assert result["delivery_gate"]["gate_count"] == 5
+    assert result["delivery_gate"]["passed_gate_count"] == 0
+    assert len(result["decision_basis_sha256"]) == 64
+    assert result["next_action"]["decision_basis_sha256"] == result["decision_basis_sha256"]
+
+
+def test_brief_projects_six_enterprise_ai_erp_contracts_without_runtime_claims():
+    tower, _ = build_service()
+
+    result = tower.brief(**scope())
+
+    projection_names = (
+        "squad_readiness",
+        "role_conflicts",
+        "parallel_execution",
+        "integration_queue",
+        "capacity_risk",
+        "next_release_train",
+    )
+    assert all(result[name]["projection"] == name for name in projection_names)
+    assert all(result[name]["status"] == "UNKNOWN" for name in projection_names)
+    assert all(
+        result[name]["program_contract"]["static_contract_integrity"]
+        == "VERIFIED"
+        for name in projection_names
+    )
+    assert all(
+        result[name]["program_contract"]["runtime_authority_connected"] is False
+        for name in projection_names
+    )
+    assert result["squad_readiness"]["contract_count"] == 8
+    assert len(result["squad_readiness"]["items"]) == 8
+    assert len(result["role_conflicts"]["rules"]) == 6
+    assert result["parallel_execution"]["policy"]["max_active_writers"] == 3
+    assert result["integration_queue"]["planned_initial_state"] == "NOT_STARTED"
+    assert len(result["integration_queue"]["items"]) == 6
+    assert result["capacity_risk"]["capacity_proven_available"] is False
+    assert result["next_release_train"]["scheduled_at"] is None
+    assert result["next_release_train"]["gate_status"] == "UNKNOWN"
+    rendered = json.dumps(
+        {name: result[name] for name in projection_names},
+        ensure_ascii=False,
+    )
+    for forbidden in (
+        '"primary_human_ref"',
+        '"current_task"',
+        '"verified_evidence_refs"',
+        '"gate_passed"',
+        '"maturity_status"',
+        '"external_write_allowed": true',
+    ):
+        assert forbidden not in rendered
+
+
+def test_missing_enterprise_ai_erp_dependency_is_explicit_unknown():
+    tower, _ = build_service(enterprise_ai_erp_program=None)
+
+    result = tower.brief(**scope())
+
+    for name in (
+        "squad_readiness",
+        "role_conflicts",
+        "parallel_execution",
+        "integration_queue",
+        "capacity_risk",
+        "next_release_train",
+    ):
+        assert result[name]["status"] == "UNKNOWN"
+        assert result[name]["reason_codes"] == [
+            "enterprise_ai_erp_program_unavailable"
+        ]
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (
+            lambda projection: projection.update(contract_id="future-contract"),
+            "contract drift",
+        ),
+        (
+            lambda projection: projection["squad_readiness"].update(
+                status="VERIFIED"
+            ),
+            "dynamic truth drift",
+        ),
+        (
+            lambda projection: projection["control_envelope"].update(
+                external_write_allowed=True
+            ),
+            "authority boundary drift",
+        ),
+        (
+            lambda projection: projection["squad_readiness"]["items"][0].pop(
+                "title"
+            ),
+            "squad truth drift",
+        ),
+        (
+            lambda projection: projection["parallel_execution"]["policy"].update(
+                max_active_writers=4
+            ),
+            "parallel policy drift",
+        ),
+    ],
+)
+def test_enterprise_ai_erp_contract_or_truth_drift_fails_closed(mutate, match: str):
+    program = FakeEnterpriseAiErpProgram()
+    mutate(program.projection)
+    _reseal_program_projection(program.projection)
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+
+    with pytest.raises(TeamControlTowerError, match=match):
+        tower.brief(**scope())
+
+
+def test_enterprise_ai_erp_snapshot_tampering_fails_closed():
+    program = FakeEnterpriseAiErpProgram()
+    program.projection["snapshot_sha256"] = "0" * 64
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+
+    with pytest.raises(TeamControlTowerError, match="snapshot drift"):
+        tower.brief(**scope())
+
+
+def test_resealed_untrusted_enterprise_ai_erp_source_change_fails_closed():
+    program = FakeEnterpriseAiErpProgram()
+    changed_registry_sha256 = "f" * 64
+    program.projection["contract_integrity"][
+        "registry_sha256"
+    ] = changed_registry_sha256
+    for source in program.projection["source_hashes"]:
+        if source["source_ref"] == "enterprise_ai_erp_program":
+            source["sha256"] = changed_registry_sha256
+    _reseal_program_projection(program.projection)
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+
+    with pytest.raises(TeamControlTowerError, match="trusted contract drift"):
+        tower.brief(**scope())
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda projection: projection["squad_readiness"]["items"][0].update(
+            title="Forged Squad title"
+        ),
+        lambda projection: projection["squad_readiness"]["items"][0].update(
+            owner_role_ref="risk_authority"
+        ),
+        lambda projection: projection["role_conflicts"]["rules"][0].update(
+            same_role_allowed=True
+        ),
+        lambda projection: projection["integration_queue"]["items"][3].update(
+            dependency_refs=[]
+        ),
+        lambda projection: projection["squad_readiness"].update(
+            reason_codes=["forged_reason"]
+        ),
+    ],
+)
+def test_resealed_program_semantic_forgery_fails_trusted_contract(mutate):
+    program = FakeEnterpriseAiErpProgram()
+    mutate(program.projection)
+    _reseal_program_projection(program.projection)
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+
+    with pytest.raises(TeamControlTowerError, match="trusted contract drift"):
+        tower.brief(**scope())
+
+
+def test_approved_enterprise_ai_erp_upgrade_invalidates_old_continuation(
+    monkeypatch,
+):
+    program = FakeEnterpriseAiErpProgram()
+    tower, _ = build_service(enterprise_ai_erp_program=program)
+    first = tower.brief(**scope())
+
+    changed_registry_sha256 = "f" * 64
+    program.projection["contract_integrity"][
+        "registry_sha256"
+    ] = changed_registry_sha256
+    for source in program.projection["source_hashes"]:
+        if source["source_ref"] == "enterprise_ai_erp_program":
+            source["sha256"] = changed_registry_sha256
+    _reseal_program_projection(program.projection)
+    monkeypatch.setattr(
+        team_control_tower_module,
+        "ENTERPRISE_AI_ERP_TRUSTED_REGISTRY_SHA256",
+        changed_registry_sha256,
+    )
+    monkeypatch.setattr(
+        team_control_tower_module,
+        "ENTERPRISE_AI_ERP_TRUSTED_SOURCE_BUNDLE_SHA256",
+        program.projection["contract_integrity"]["source_bundle_sha256"],
+    )
+    monkeypatch.setattr(
+        team_control_tower_module,
+        "ENTERPRISE_AI_ERP_TRUSTED_SNAPSHOT_SHA256",
+        program.projection["snapshot_sha256"],
+    )
+    second = tower.brief(**scope())
+
+    assert first["decision_basis_sha256"] != second["decision_basis_sha256"]
+    assert first["next_action"]["continuation"] != second["next_action"]["continuation"]
+    with pytest.raises(TeamControlTowerError, match="continuation is stale"):
+        tower.advance(
+            **scope(),
+            continuation=first["next_action"]["continuation"],
+            result="take",
+            rationale="使用已失效的 Enterprise AI ERP 决策基线",
+            evidence_ids=(),
+            idempotency_key="stale-enterprise-ai-erp-basis",
+        )
+
+
+def test_registry_has_exact_machine_verifiable_team_contract():
+    payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    organization = payload["organization_model"]
+
+    assert len(organization["core_roles"]) == 18
+    assert len({item["role_id"] for item in organization["core_roles"]}) == 18
+    assert organization["ai_specialists_required"] == 12
+    assert len(organization["ai_specialist_role_refs"]) == 12
+    assert len(set(organization["ai_specialist_role_refs"])) == 12
+    assert organization["expert_pool_target"] == {"minimum": 20, "maximum": 40}
+    assert len(organization["control_role_refs"]) == 5
+    assert len(payload["top1_scorecard_profile"]["dimensions"]) == 12
+    assert [(item["day_from"], item["day_to"]) for item in payload["campaign_90d"]["phases"]] == [
+        (1, 7),
+        (8, 30),
+        (31, 60),
+        (61, 90),
+    ]
+
+
+def test_scope_invalid_brief_reads_no_operating_tasks_and_exposes_no_continuation():
+    benchmark = FakeBenchmark(groups=[benchmark_group()])
+    settlement = FakeSettlementCash(verified=True)
+    program = FakeEnterpriseAiErpProgram()
+    tower, tasks = build_service(
+        strategic_benchmark=benchmark,
+        settlement_cash=settlement,
+        enterprise_ai_erp_program=program,
+    )
+    values = scope()
+    values["entity_scope"] = {"status": "no_data", "reason": "grant_missing"}
+
+    result = tower.brief(**values)
+
+    assert result["status"] == "scope_invalid"
+    assert result["scope"] is None
+    assert result["next_action"] is None
+    assert all(item["runtime_status"] == "scope_invalid" for item in result["flows"])
+    assert tasks.tasks() == []
+    assert benchmark.reads == 0
+    assert settlement.reads == 0
+    assert program.reads == 0
+    assert result["decision_basis_sha256"] is None
+    assert result["top1_scorecard"]["status"] == "UNKNOWN"
+    assert result["squad_readiness"]["status"] == "UNKNOWN"
+    assert result["next_release_train"]["status"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    ("groups", "expected_status", "leadership_status", "gap_status"),
+    [
+        ([benchmark_group()], "VERIFIED", "METRIC_LEADER", "CLOSED"),
+        ([benchmark_group(leader=False)], "VERIFIED", "NOT_LEADER", "OPEN"),
+        ([benchmark_group(peer_count=4)], "PARTIAL", "UNKNOWN", "UNKNOWN"),
+        ([benchmark_group(state="stale")], "STALE", "UNKNOWN", "UNKNOWN"),
+        (
+            [benchmark_group(), benchmark_group(group_ref="duplicate-group")],
+            "CONFLICTED",
+            "UNKNOWN",
+            "UNKNOWN",
+        ),
+    ],
+)
+def test_benchmark_selector_projects_existing_leader_refs_without_reranking(
+    groups: list[dict],
+    expected_status: str,
+    leadership_status: str,
+    gap_status: str,
+):
+    tower, _ = build_service(strategic_benchmark=FakeBenchmark(groups=groups))
+
+    result = tower.brief(**scope())
+    dimension = result["top1_scorecard"]["dimensions"][0]
+
+    assert dimension["status"] == expected_status
+    assert dimension["leadership_status"] == leadership_status
+    assert dimension["gap_status"] == gap_status
+    assert result["top1_scorecard"]["global_top1_claim"] is False
+
+
+def test_benchmark_no_data_and_authority_drift_remain_explicit_unknown_or_conflicted():
+    no_data, _ = build_service(strategic_benchmark=FakeBenchmark(no_data=True))
+    drift, _ = build_service(strategic_benchmark=DriftingBenchmark())
+
+    no_data_result = no_data.brief(**scope())
+    drift_result = drift.brief(**scope())
+
+    assert no_data_result["top1_scorecard"]["status"] == "UNKNOWN"
+    assert "strategic_benchmark_no_data" in no_data_result["top1_scorecard"]["reason_codes"]
+    assert drift_result["top1_scorecard"]["status"] == "CONFLICTED"
+    assert "strategic_benchmark_authority_drift" in drift_result["top1_scorecard"]["reason_codes"]
+
+
+def test_malformed_benchmark_projection_fails_closed():
+    malformed = benchmark_group()
+    malformed.pop("result_sha256")
+    tower, _ = build_service(strategic_benchmark=FakeBenchmark(groups=[malformed]))
+
+    with pytest.raises(TeamControlTowerError, match="group shape drift"):
+        tower.brief(**scope())
+
+
+def test_benchmark_projection_change_invalidates_old_continuation():
+    benchmark = FakeBenchmark(groups=[benchmark_group(leader=False)])
+    tower, _ = build_service(strategic_benchmark=benchmark)
+    first = tower.brief(**scope())
+    benchmark.groups = [benchmark_group(leader=True)]
+    benchmark.request_sha256 = "e" * 64
+
+    second = tower.brief(**scope())
+
+    assert first["decision_basis_sha256"] != second["decision_basis_sha256"]
+    assert first["next_action"]["continuation"] != second["next_action"]["continuation"]
+    with pytest.raises(TeamControlTowerError, match="continuation is stale"):
+        tower.advance(
+            **scope(),
+            continuation=first["next_action"]["continuation"],
+            result="take",
+            rationale="使用已失效的决策基线",
+            evidence_ids=(),
+            idempotency_key="stale-benchmark-basis",
+        )
+
+
+def test_campaign_kickoff_requires_evidence_and_never_auto_passes_gate():
+    tower, _ = build_service()
+    brief = tower.brief(**scope())
+    tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="take",
+        rationale="打开战役首阶段",
+        evidence_ids=(),
+        idempotency_key="kickoff-open",
+    )
+    brief = tower.brief(**scope())
+    tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="take",
+        rationale="领取战役首阶段",
+        evidence_ids=(),
+        idempotency_key="kickoff-ack",
+    )
+    start_brief = tower.brief(**scope())
+
+    assert start_brief["next_action"]["evidence_required"] is True
+    assert start_brief["critical_path"]["actual_campaign_day"] is None
+    with pytest.raises(TeamControlTowerError, match="requires exact-scope Evidence"):
+        tower.advance(
+            **scope(),
+            continuation=start_brief["next_action"]["continuation"],
+            result="take",
+            rationale="缺少 Evidence 的 kickoff",
+            evidence_ids=(),
+            idempotency_key="kickoff-start-missing",
+        )
+    tower.advance(
+        **scope(),
+        continuation=start_brief["next_action"]["continuation"],
+        result="take",
+        rationale="绑定 exact-scope Evidence 的 kickoff",
+        evidence_ids=("evd-kickoff-current-scope",),
+        idempotency_key="kickoff-start-ready",
+    )
+
+    kicked_off = tower.brief(**scope())
+    assert kicked_off["critical_path"]["kickoff"]["status"] == "VERIFIED"
+    assert kicked_off["critical_path"]["actual_campaign_day"] >= 1
+    assert kicked_off["critical_path"]["phases"][0]["status"] == "PARTIAL"
+    assert kicked_off["delivery_gate"]["passed_gate_count"] == 0
+    assert all(
+        gate["formal_gate_pass"] is False
+        for gate in kicked_off["delivery_gate"]["gates"]
+    )
+
+
+def test_phase_completion_is_handoff_only_and_returns_focus_to_frozen_flows():
+    tower, _ = build_service()
+
+    finish_campaign_phase_one(tower)
+    brief = tower.brief(**scope())
+
+    assert brief["critical_path"]["phases"][0]["runtime_task_status"] == "resolved"
+    assert brief["critical_path"]["phases"][0]["status"] == "PARTIAL"
+    assert brief["critical_path"]["phases"][1]["current_operating_task"] is None
+    assert brief["next_action"]["target"]["flow_ref"] == "lg001_exact_scope"
+    assert brief["delivery_gate"]["passed_gate_count"] == 0
+
+
+def test_exact_scope_reconciled_cash_cycle_is_projected_without_raw_values():
+    settlement = FakeSettlementCash(verified=True)
+    tower, _ = build_service(settlement_cash=settlement)
+
+    result = tower.brief(**scope())
+    truth = result["cash_at_risk"]["actual_cash_truth"]
+
+    assert truth["status"] == "PARTIAL"
+    assert truth["verified_cycle_count"] == 1
+    assert truth["verified_single_sku_cycle_count"] == 1
+    assert truth["single_sku_attribution_status"] == "VERIFIED"
+    assert truth["reason_codes"] == [
+        "offer_mapping_and_return_window_authority_missing"
+    ]
+    assert "platform_settlement" not in result["cash_at_risk"]["missing_authorities"]
+    assert "bank_cash" not in result["cash_at_risk"]["missing_authorities"]
+    assert result["cash_at_risk"]["status"] == "UNKNOWN"
+    assert result["cash_at_risk"]["forecast_invoked"] is False
+    serialized = json.dumps(truth)
+    assert "private-order-ref" not in serialized
+    assert "321.00" not in serialized
+    russia_gate = next(
+        gate
+        for gate in result["delivery_gate"]["gates"]
+        if gate["gate_ref"] == "russia_operating_truth_gate"
+    )
+    assert russia_gate["readiness_status"] != "VERIFIED"
+    assert russia_gate["formal_gate_pass"] is False
+
+
+def test_reconciled_order_cycle_without_sku_attribution_never_verifies_sku_truth():
+    settlement = FakeSettlementCash(
+        verified=True,
+        sku_attribution=False,
+    )
+    tower, _ = build_service(settlement_cash=settlement)
+
+    result = tower.brief(**scope())
+    truth = result["cash_at_risk"]["actual_cash_truth"]
+
+    assert truth["status"] == "PARTIAL"
+    assert truth["verified_cycle_count"] == 0
+    assert truth["verified_single_sku_cycle_count"] == 0
+    assert truth["reason_codes"] == [
+        "single_sku_cash_attribution_missing"
+    ]
+    russia_gate = next(
+        gate
+        for gate in result["delivery_gate"]["gates"]
+        if gate["gate_ref"] == "russia_operating_truth_gate"
+    )
+    assert russia_gate["readiness_status"] != "VERIFIED"
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        "product_without_lineage",
+        "product_resigned",
+        "sku_resigned",
+        "product_sku_resigned",
+        "wrong_order_resigned",
+        "wrong_profit_basis_resigned",
+        "arbitrary_lineage",
+    ],
+)
+def test_resealed_sku_attribution_drift_never_verifies(drift):
+    class DriftingSettlement(FakeSettlementCash):
+        def project(self, **kwargs):
+            result = super().project(**kwargs)
+            cycle = result["cycles"][0]
+            actual = cycle["actual_cash_cm3"]
+            attribution = actual["single_sku_attribution"]
+            if drift == "product_without_lineage":
+                attribution["product_sha256"] = "9" * 64
+            elif drift == "arbitrary_lineage":
+                attribution["lineage_sha256"] = "9" * 64
+            else:
+                if drift == "product_resigned":
+                    attribution["product_sha256"] = "6" * 64
+                if drift == "sku_resigned":
+                    attribution["sku_sha256"] = "5" * 64
+                if drift == "product_sku_resigned":
+                    attribution["product_sha256"] = "6" * 64
+                    attribution["sku_sha256"] = "5" * 64
+                if drift == "wrong_order_resigned":
+                    attribution["order_ref_sha256"] = "9" * 64
+                if drift == "wrong_profit_basis_resigned":
+                    attribution["profit_row_basis_sha256"] = "7" * 64
+                attribution.pop("lineage_sha256")
+                attribution["lineage_sha256"] = _canonical_hash(attribution)
+            result.pop("snapshot_sha256")
+            result["snapshot_sha256"] = _canonical_hash(result)
+            return result
+
+    tower, _ = build_service(
+        settlement_cash=DriftingSettlement(verified=True)
+    )
+
+    with pytest.raises(TeamControlTowerError, match="attribution"):
+        tower.brief(**scope())
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ["old_as_of", "next_cursor", "hidden_page", "excluded_reason_drift"],
+)
+def test_incomplete_or_historical_cash_projection_never_verifies(drift):
+    class DriftingSettlement(FakeSettlementCash):
+        def project(self, **kwargs):
+            result = super().project(**kwargs)
+            if drift == "old_as_of":
+                result["as_of"] = "2026-08-06T00:00:00+00:00"
+            elif drift == "next_cursor":
+                result["pagination"]["next_cursor"] = "opaque-more"
+            elif drift == "hidden_page":
+                result["counts"]["total_cycles"] = 2
+                result["counts"]["filtered"] = 2
+            else:
+                result["excluded"]["reason_counts"] = {
+                    "hidden_exclusion": 1
+                }
+            result.pop("snapshot_sha256")
+            result["snapshot_sha256"] = _canonical_hash(result)
+            return result
+
+    tower, _ = build_service(
+        settlement_cash=DriftingSettlement(verified=True)
+    )
+
+    with pytest.raises(TeamControlTowerError, match="cash|pagination|count"):
+        tower.brief(**scope())
+
+
+def test_partial_source_with_blocked_back_page_cannot_verify_attribution():
+    class PartialSettlement(FakeSettlementCash):
+        def project(self, **kwargs):
+            result = super().project(**kwargs)
+            result["status"] = "partial"
+            result["source_gaps"] = ["blocked_cycle_not_projected"]
+            result["blockers"] = [
+                {"code": "blocked_cycle_not_projected"}
+            ]
+            result.pop("snapshot_sha256")
+            result["snapshot_sha256"] = _canonical_hash(result)
+            return result
+
+    tower, _ = build_service(
+        settlement_cash=PartialSettlement(verified=True)
+    )
+    result = tower.brief(**scope())
+    truth = result["cash_at_risk"]["actual_cash_truth"]
+
+    assert truth["status"] == "PARTIAL"
+    assert truth["single_sku_attribution_status"] == "UNKNOWN"
+    assert truth["verified_cycle_count"] == 0
+    assert truth["verified_single_sku_cycle_count"] == 0
+    assert "settlement_cash_source_incomplete" in truth["reason_codes"]
+
+
+@pytest.mark.parametrize("source_status", ["blocked", "no_data"])
+def test_non_ready_cash_source_always_reports_zero_verified_counts(
+    source_status,
+):
+    if source_status == "no_data":
+        settlement = FakeSettlementCash(verified=False)
+    else:
+        class BlockedSettlement(FakeSettlementCash):
+            def project(self, **kwargs):
+                result = super().project(**kwargs)
+                result["status"] = "blocked"
+                result["source_gaps"] = ["blocked_source"]
+                result["blockers"] = [{"code": "blocked_source"}]
+                result.pop("snapshot_sha256")
+                result["snapshot_sha256"] = _canonical_hash(result)
+                return result
+
+        settlement = BlockedSettlement(verified=True)
+    tower, _ = build_service(settlement_cash=settlement)
+
+    truth = tower.brief(**scope())["cash_at_risk"]["actual_cash_truth"]
+
+    assert truth["verified_cycle_count"] == 0
+    assert truth["verified_single_sku_cycle_count"] == 0
+    assert truth["single_sku_attribution_status"] == "UNKNOWN"
+
+
+def test_multiple_order_facts_cannot_verify_single_sku_attribution():
+    tower, _ = build_service(
+        settlement_cash=FakeSettlementCash(
+            verified=True,
+            order_count=2,
+        )
+    )
+
+    with pytest.raises(TeamControlTowerError, match="attribution"):
+        tower.brief(**scope())
+
+
+def test_cash_truth_projection_exposes_no_business_canaries():
+    canaries = {
+        "PRODUCT-CANARY",
+        "SKU-CANARY",
+        "ORDER-CANARY",
+        "BANK-CANARY",
+        "AMOUNT-CANARY",
+    }
+
+    class CanarySettlement(FakeSettlementCash):
+        def project(self, **kwargs):
+            result = super().project(**kwargs)
+            cycle = result["cycles"][0]
+            cycle["product_id"] = "PRODUCT-CANARY"
+            cycle["sku"] = "SKU-CANARY"
+            cycle["customer_order"] = "ORDER-CANARY"
+            cycle["books"]["bank_cash"]["amount"] = "BANK-CANARY"
+            cycle["actual_cash_cm3"]["amount"] = "AMOUNT-CANARY"
+            result.pop("snapshot_sha256")
+            result["snapshot_sha256"] = _canonical_hash(result)
+            return result
+
+    tower, _ = build_service(
+        settlement_cash=CanarySettlement(verified=True)
+    )
+    result = tower.brief(**scope())
+    serialized = json.dumps(result, ensure_ascii=False)
+
+    assert all(canary not in serialized for canary in canaries)
+    assert result["cash_at_risk"]["actual_cash_truth"][
+        "single_sku_attribution_status"
+    ] == "VERIFIED"
+    assert result["cash_at_risk"]["actual_cash_truth"]["status"] == "PARTIAL"
+
+
+def test_settlement_exception_business_canaries_are_never_projected():
+    canaries = {
+        "PRODUCT-ERROR-CANARY",
+        "SKU-ERROR-CANARY",
+        "ORDER-ERROR-CANARY",
+        "BANK-ERROR-CANARY",
+        "AMOUNT-ERROR-CANARY",
+    }
+
+    class ExplodingSettlement:
+        def project(self, **_kwargs):
+            raise RuntimeError(" | ".join(sorted(canaries)))
+
+    tower, _ = build_service(settlement_cash=ExplodingSettlement())
+    result = tower.brief(**scope())
+    truth = result["cash_at_risk"]["actual_cash_truth"]
+    russia_gate = next(
+        gate
+        for gate in result["delivery_gate"]["gates"]
+        if gate["gate_ref"] == "russia_operating_truth_gate"
+    )
+    serialized = json.dumps(result, ensure_ascii=False)
+
+    assert truth["status"] == "CONFLICTED"
+    assert truth["reason_codes"] == ["settlement_cash_authority_drift"]
+    assert truth["source_refs"] == []
+    assert truth["single_sku_attribution_status"] == "UNKNOWN"
+    assert russia_gate["readiness_status"] != "VERIFIED"
+    assert result["decision_basis_sha256"]
+    assert result["next_action"]["continuation"]
+    assert all(canary not in serialized for canary in canaries)
+
+
+def test_cash_authority_change_invalidates_old_continuation():
+    settlement = FakeSettlementCash()
+    tower, _ = build_service(settlement_cash=settlement)
+    first = tower.brief(**scope())
+    settlement.verified = True
+
+    second = tower.brief(**scope())
+
+    assert first["decision_basis_sha256"] != second["decision_basis_sha256"]
+    assert first["next_action"]["continuation"] != second["next_action"]["continuation"]
+    with pytest.raises(TeamControlTowerError, match="continuation is stale"):
+        tower.advance(
+            **scope(),
+            continuation=first["next_action"]["continuation"],
+            result="take",
+            rationale="使用现金权威变化前的 continuation",
+            evidence_ids=(),
+            idempotency_key="stale-cash-basis",
+        )
+
+
+def test_single_sku_lineage_change_invalidates_old_continuation():
+    settlement = FakeSettlementCash(
+        verified=True,
+        product_sha256="1" * 64,
+    )
+    tower, _ = build_service(settlement_cash=settlement)
+    first = tower.brief(**scope())
+    settlement.product_sha256 = "6" * 64
+
+    second = tower.brief(**scope())
+
+    assert first["decision_basis_sha256"] != second["decision_basis_sha256"]
+    assert first["next_action"]["continuation"] != second["next_action"][
+        "continuation"
+    ]
+    with pytest.raises(TeamControlTowerError, match="continuation is stale"):
+        tower.advance(
+            **scope(),
+            continuation=first["next_action"]["continuation"],
+            result="take",
+            rationale="使用 SKU lineage 变化前的 continuation",
+            evidence_ids=(),
+            idempotency_key="stale-sku-lineage",
+        )
+
+
+def test_observation_time_change_keeps_decision_basis_and_continuation_stable():
+    observed_at = [datetime.now(UTC) + timedelta(days=1)]
+    settlement = FakeSettlementCash(verified=True)
+    tower, _ = build_service(
+        settlement_cash=settlement,
+        clock=lambda: observed_at[0],
+    )
+    first = tower.brief(**scope())
+    observed_at[0] += timedelta(seconds=5)
+    settlement.profit_snapshot_sha256 = "8" * 64
+
+    second = tower.brief(**scope())
+
+    assert first["snapshot_sha256"] != second["snapshot_sha256"]
+    assert first["decision_basis_sha256"] == second["decision_basis_sha256"]
+    assert first["next_action"]["continuation"] == second["next_action"]["continuation"]
+    receipt = tower.advance(
+        **scope(),
+        continuation=first["next_action"]["continuation"],
+        result="take",
+        rationale="时间推进但业务权威未变化",
+        evidence_ids=(),
+        idempotency_key="stable-across-observation-time",
+    )
+    assert receipt["outcome"] == "accepted"
+
+
+def test_settlement_cash_scope_drift_fails_closed():
+    class WrongScopeSettlement(FakeSettlementCash):
+        def project(self, **kwargs) -> dict:
+            result = super().project(**kwargs)
+            result.pop("snapshot_sha256")
+            result["scope"]["entity_ref"] = "wrong-entity"
+            result["snapshot_sha256"] = hashlib.sha256(
+                json.dumps(
+                    result,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+            return result
+
+    tower, _ = build_service(settlement_cash=WrongScopeSettlement(verified=True))
+
+    with pytest.raises(TeamControlTowerError, match="exact scope drift"):
+        tower.brief(**scope())
+
+
+def test_advance_opens_existing_operating_task_then_progresses_idempotently():
+    tower, tasks = build_service()
+    finish_campaign_phase_one(tower)
+    first_brief = tower.brief(**scope())
+    assert first_brief["next_action"]["target"]["flow_ref"] == "lg001_exact_scope"
+
+    opened = tower.advance(
+        **scope(),
+        continuation=first_brief["next_action"]["continuation"],
+        result="take",
+        rationale="开始总控工程交付",
+        evidence_ids=(),
+        idempotency_key="lg001-open-v1",
+    )
+
+    assert opened["outcome"] == "accepted"
+    assert opened["operating_task"]["status"] == "open"
+    task_id = opened["operating_task"]["id"]
+    persisted = tasks.tasks()[0]
+    assert persisted["id"] == task_id
+    assert persisted["metric_id"].startswith("internal:team_control:")
+    assert persisted["snapshot"]["control_tower"]["flow_ref"] == "lg001_exact_scope"
+    assert persisted["snapshot"]["expert_route"]["accountable_specialist"] == (
+        "architecture_engineering_security_release"
+    )
+    assert persisted["snapshot"]["external_write_allowed"] is False
+
+    acknowledge_brief = tower.brief(**scope())
+    command = {
+        **scope(),
+        "continuation": acknowledge_brief["next_action"]["continuation"],
+        "result": "take",
+        "rationale": "负责人确认领取",
+        "evidence_ids": (),
+        "idempotency_key": "lg001-ack-v1",
+    }
+    acknowledged = tower.advance(**command)
+    replayed = tower.advance(**command)
+
+    assert acknowledged["operating_task"]["status"] == "acknowledged"
+    assert replayed["outcome"] == "idempotent_replay"
+    assert replayed["operating_task"]["id"] == task_id
+    assert [item["event_type"] for item in tasks.task_events(task_id)] == [
+        "opened",
+        "acknowledge",
+    ]
+
+
+def test_completion_requires_exact_scope_evidence_and_moves_focus_to_sku_loop():
+    tower, _ = build_service()
+    finish_campaign_phase_one(tower)
+    brief = tower.brief(**scope())
+    tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="take",
+        rationale="打开 LG-001",
+        evidence_ids=(),
+        idempotency_key="open-lg001",
+    )
+    brief = tower.brief(**scope())
+    tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="take",
+        rationale="领取 LG-001",
+        evidence_ids=(),
+        idempotency_key="ack-lg001",
+    )
+    brief = tower.brief(**scope())
+    tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="take",
+        rationale="开始 LG-001",
+        evidence_ids=(),
+        idempotency_key="start-lg001",
+    )
+    brief = tower.brief(**scope())
+
+    with pytest.raises(TeamControlTowerError, match="requires Evidence"):
+        tower.advance(
+            **scope(),
+            continuation=brief["next_action"]["continuation"],
+            result="done",
+            rationale="完成 LG-001",
+            evidence_ids=(),
+            idempotency_key="resolve-lg001-missing-evidence",
+        )
+    resolved = tower.advance(
+        **scope(),
+        continuation=brief["next_action"]["continuation"],
+        result="done",
+        rationale="完成 LG-001 并绑定工程 Evidence",
+        evidence_ids=("evd-lg001-engineering",),
+        idempotency_key="resolve-lg001",
+    )
+
+    assert resolved["operating_task"]["status"] == "resolved"
+    next_brief = tower.brief(**scope())
+    assert next_brief["next_action"]["target"]["flow_ref"] == "sku_closed_loop"
+    assert next_brief["flows"][3]["runtime_status"] == "resolved"
+
+
+def test_stale_continuation_and_idempotency_drift_fail_closed():
+    tower, _ = build_service()
+    brief = tower.brief(**scope())
+    command = {
+        **scope(),
+        "continuation": brief["next_action"]["continuation"],
+        "result": "take",
+        "rationale": "打开当前唯一动作",
+        "evidence_ids": (),
+        "idempotency_key": "same-key",
+    }
+    tower.advance(**command)
+
+    with pytest.raises(TeamControlTowerError, match="payload drift"):
+        tower.advance(**{**command, "rationale": "不同请求内容"})
+    with pytest.raises(TeamControlTowerError, match="continuation is stale"):
+        tower.advance(**{**command, "idempotency_key": "new-key"})
+
+
+def test_registry_drift_fails_closed(tmp_path: Path):
+    payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    payload["control_boundary"]["performs_external_write"] = True
+    path = tmp_path / "team-control.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    tower, tasks = build_service()
+
+    with pytest.raises(TeamControlTowerError, match="boundary"):
+        TeamControlTower(
+            expert_team=GlobalPortfolioOrchestrator(),
+            operating_tasks=tasks,
+            registry_path=path,
+        )
+
+
+def test_registry_flow_must_reference_a_current_authoritative_lane(tmp_path: Path):
+    payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    payload["flows"][3]["source_lane_ids"] = ["C", "UNKNOWN-LANE"]
+    path = tmp_path / "team-control.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    tower, tasks = build_service()
+
+    with pytest.raises(TeamControlTowerError, match="unknown workstream lane"):
+        TeamControlTower(
+            expert_team=GlobalPortfolioOrchestrator(),
+            operating_tasks=tasks,
+            registry_path=path,
+            workstream_path=WORKSTREAM_PATH,
+        )
+
+
+@pytest.mark.parametrize(
+    ("drift", "match"),
+    [
+        ("core_count", "18 core role"),
+        ("unknown_selector", "selector is unknown"),
+        ("duplicate_phase", "phase identifiers"),
+        ("verified_binding_without_evidence", "binding Evidence"),
+        ("control_role_reference", "control role set"),
+        ("campaign_authority", "coordination authority"),
+        ("actual_cash_authority", "Actual cash authority"),
+        ("delivery_gate_authority", "Delivery gate authority"),
+    ],
+)
+def test_v12_registry_contract_drift_fails_closed(
+    tmp_path: Path,
+    drift: str,
+    match: str,
+):
+    payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    if drift == "core_count":
+        payload["organization_model"]["core_roles"].pop()
+    elif drift == "unknown_selector":
+        payload["top1_scorecard_profile"]["dimensions"][0]["benchmark_selector"] = {
+            "domain": "unknown",
+            "metric_id": "unknown",
+        }
+    elif drift == "duplicate_phase":
+        payload["campaign_90d"]["phases"][1]["phase_ref"] = payload[
+            "campaign_90d"
+        ]["phases"][0]["phase_ref"]
+    elif drift == "verified_binding_without_evidence":
+        binding = payload["organization_model"]["core_roles"][0]["binding"]
+        binding.update(
+            {
+                "status": "verified_active",
+                "primary_human_ref": "human-primary",
+                "alternate_human_ref": "human-alternate",
+                "conflict_attestation_evidence_ref": "evidence-conflict",
+                "budget_cap_status": "VERIFIED",
+                "maximum_loss_status": "VERIFIED",
+            }
+        )
+    elif drift == "control_role_reference":
+        payload["organization_model"]["control_role_refs"][0] = "unknown_control"
+    elif drift == "campaign_authority":
+        payload["campaign_90d"]["coordination"][
+            "task_completion_proves_gate_pass"
+        ] = True
+    elif drift == "actual_cash_authority":
+        payload["cash_at_risk_policy"]["actual_cash_authority"][
+            "satisfies_thirteen_week_forecast"
+        ] = True
+    else:
+        payload["delivery_gate_profile"]["task_or_calendar_can_pass"] = True
+    path = tmp_path / f"team-control-{drift}.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    _, tasks = build_service()
+
+    with pytest.raises(TeamControlTowerError, match=match):
+        TeamControlTower(
+            expert_team=GlobalPortfolioOrchestrator(),
+            operating_tasks=tasks,
+            registry_path=path,
+            workstream_path=WORKSTREAM_PATH,
+        )

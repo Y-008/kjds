@@ -1,0 +1,21 @@
+{$KJDS_WEB_PUBLIC_ORIGIN} {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=86400"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer"
+  }
+
+  @api path /v1/* /health/* /version /docs* /openapi.json
+  handle @api {
+    reverse_proxy api:8000
+  }
+
+  handle {
+    reverse_proxy web:3000
+  }
+
+  tls /run/secrets/kjds_tls_cert /run/secrets/kjds_tls_key
+}

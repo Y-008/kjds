@@ -1,0 +1,30 @@
+{
+  "schema": "kjds-bas203-dashboard-contract-fixture-v1",
+  "fixture_kind": "contract_test_only",
+  "content_sha256": "bf3472c6eab33c40be4793e33ad71bb832b10149fe9ebab9ff665e7a27868572",
+  "request": {
+    "store_ref": "store-fixture",
+    "data_as_of": "2026-08-05T00:00:00Z",
+    "authority_checked_at": "2026-08-05T01:00:00Z"
+  },
+  "expected": {
+    "section_order": [
+      "primary_source_coverage",
+      "strategic_benchmark",
+      "strategic_gaps",
+      "opportunity_portfolio",
+      "experiment_portfolio",
+      "capital_proposals",
+      "verified_outcomes",
+      "invalidation_review"
+    ],
+    "missing_port_status": "not_connected",
+    "connected_empty_status": "no_data",
+    "authority_failure_status": "UNKNOWN",
+    "global_top1_claim": false,
+    "production_admission": false,
+    "budget_authority": false,
+    "all_side_effect_counts": 0,
+    "loads_by_production_runtime": false
+  }
+}

@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from .action_policies import ActionAuthorizationService, require_action_authorization
 from .domain import ContentStatus, ContentType, ProductStatus, new_id, utc_now
+from .logistics import LogisticsScopeContext
 from .repository import Repository
 
 MONEY = Decimal("0.01")
@@ -469,6 +470,14 @@ class ListingDraft:
     approval_id: str | None = None
     id: str = field(default_factory=lambda: new_id("lst"))
     created_at: str = field(default_factory=utc_now)
+    tenant_ref: str | None = None
+    entity_ref: str | None = None
+    store_ref: str | None = None
+    scope_grant_authority_sha256: str | None = None
+    scoped_product_content_sha256: str | None = None
+    approval_plan_sha256: str | None = None
+    evidence_ids: list[str] = field(default_factory=list)
+    scope_as_of: str | None = None
 
 
 def listing_snapshot(draft: ListingDraft) -> dict[str, Any]:
@@ -478,6 +487,20 @@ def listing_snapshot(draft: ListingDraft) -> dict[str, Any]:
         "scenario_id": draft.scenario_id,
         "target_platform": draft.target_platform,
         "listing_data": draft.listing_data,
+        "scope": {
+            "tenant_ref": draft.tenant_ref,
+            "entity_ref": draft.entity_ref,
+            "store_ref": draft.store_ref,
+            "scope_grant_authority_sha256": (
+                draft.scope_grant_authority_sha256
+            ),
+            "scoped_product_content_sha256": (
+                draft.scoped_product_content_sha256
+            ),
+            "scope_as_of": draft.scope_as_of,
+        },
+        "approval_plan_sha256": draft.approval_plan_sha256,
+        "evidence_ids": sorted(draft.evidence_ids),
     }
 
 
@@ -514,6 +537,18 @@ def listing_approval_payload(draft: ListingDraft, scenario: ProfitScenario) -> d
         "missing_cost_evidence": scenario.missing_cost_evidence,
         "unknown_costs": scenario.unknown_costs,
         "scenario_evidence_ids": list(scenario.evidence),
+        "evidence_ids": sorted(draft.evidence_ids),
+        "tenant_ref": draft.tenant_ref,
+        "entity_ref": draft.entity_ref,
+        "store_ref": draft.store_ref,
+        "scope_grant_authority_sha256": (
+            draft.scope_grant_authority_sha256
+        ),
+        "scoped_product_content_sha256": (
+            draft.scoped_product_content_sha256
+        ),
+        "approval_plan_sha256": draft.approval_plan_sha256,
+        "scope_as_of": draft.scope_as_of,
         "listing_snapshot_sha256": listing_snapshot_sha256(draft),
         "platform_write_executed": False,
     }
@@ -530,6 +565,24 @@ class SourcingStore(Protocol):
     def attach_listing_approval(self, draft: ListingDraft) -> ListingDraft: ...
     def get_listing_draft(self, draft_id: str) -> ListingDraft: ...
     def list_listing_drafts(self, limit: int = 100) -> list[ListingDraft]: ...
+    def list_listing_drafts_scoped(
+        self,
+        *,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        as_of: datetime,
+        limit: int = 100,
+    ) -> list[ListingDraft]: ...
+    def get_listing_draft_scoped(
+        self,
+        *,
+        draft_id: str,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        as_of: datetime,
+    ) -> ListingDraft: ...
 
 
 class SourcingService:
@@ -597,6 +650,7 @@ class SourcingService:
         cost_states: dict[str, str] | None = None,
         template_id: str = PROFIT_TEMPLATE_ID,
         logistics_calculation_id: str | None = None,
+        logistics_context: LogisticsScopeContext | None = None,
     ) -> ProfitScenario:
         if template_id != PROFIT_TEMPLATE_ID:
             raise ValueError(f"Unsupported profit template: {template_id}")
@@ -627,11 +681,14 @@ class SourcingService:
         if logistics_calculation_id:
             if self.logistics_profit_resolver is None:
                 raise ValueError("Logistics calculation workspace is not configured")
+            if logistics_context is None:
+                raise ValueError("Logistics calculation requires exact scope context")
             if inputs.international_freight_cny_per_kg != 0:
                 raise ValueError(
                     "Set manual international freight rate to zero when using a logistics calculation"
                 )
             logistics_calculation = self.logistics_profit_resolver(
+                logistics_context,
                 logistics_calculation_id,
                 marketplace="OZON",
                 destination_country="RU",
@@ -835,7 +892,47 @@ class SourcingService:
         content_asset_ids: list[str],
         listing_data: dict[str, Any],
         requested_by: str,
+        scope_authority: dict[str, Any] | None = None,
+        approval_plan_sha256: str | None = None,
+        evidence_ids: list[str] | None = None,
     ) -> ListingDraft:
+        if scope_authority is not None:
+            required_scope = {
+                "tenant_ref",
+                "entity_ref",
+                "store_ref",
+                "scope_grant_authority_sha256",
+                "scoped_product_content_sha256",
+                "scope_as_of",
+            }
+            missing_scope = sorted(
+                key
+                for key in required_scope
+                if not str(scope_authority.get(key) or "").strip()
+            )
+            if missing_scope:
+                raise ValueError(
+                    "Listing draft scope authority is incomplete: "
+                    + ", ".join(missing_scope)
+                )
+            if (
+                not isinstance(approval_plan_sha256, str)
+                or len(approval_plan_sha256) != 64
+            ):
+                raise ValueError(
+                    "Scoped Listing draft requires approval plan SHA-256"
+                )
+            evidence_ids = sorted(
+                {
+                    str(item).strip()
+                    for item in evidence_ids or []
+                    if str(item).strip()
+                }
+            )
+            if not evidence_ids:
+                raise ValueError(
+                    "Scoped Listing draft requires frozen Evidence references"
+                )
         require_action_authorization(
             self.action_authorization,
             self.repository,
@@ -892,6 +989,9 @@ class SourcingService:
                     "target_platform": "OZON",
                     "listing_data": listing_data,
                     "requested_by": requested_by,
+                    "scope_authority": scope_authority,
+                    "approval_plan_sha256": approval_plan_sha256,
+                    "evidence_ids": evidence_ids,
                 },
                 ensure_ascii=False,
                 separators=(",", ":"),
@@ -916,6 +1016,38 @@ class SourcingService:
             listing_data=listing_data,
             requested_by=requested_by,
             id=draft_id,
+            tenant_ref=(
+                scope_authority.get("tenant_ref")
+                if scope_authority
+                else None
+            ),
+            entity_ref=(
+                scope_authority.get("entity_ref")
+                if scope_authority
+                else None
+            ),
+            store_ref=(
+                scope_authority.get("store_ref")
+                if scope_authority
+                else None
+            ),
+            scope_grant_authority_sha256=(
+                scope_authority.get("scope_grant_authority_sha256")
+                if scope_authority
+                else None
+            ),
+            scoped_product_content_sha256=(
+                scope_authority.get("scoped_product_content_sha256")
+                if scope_authority
+                else None
+            ),
+            approval_plan_sha256=approval_plan_sha256,
+            evidence_ids=evidence_ids or [],
+            scope_as_of=(
+                scope_authority.get("scope_as_of")
+                if scope_authority
+                else None
+            ),
         )
         saved = self.store.save_listing_draft(draft)
         if listing_snapshot(saved) != listing_snapshot(draft):

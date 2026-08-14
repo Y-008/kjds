@@ -1,0 +1,117 @@
+{
+  "schema": "kjds-strategic-capital-dashboard-contracts-v1",
+  "contract_id": "kjds-strategic-capital-dashboard-v1",
+  "version": "1.0.0",
+  "content_sha256": "8c0f8538008d796b2e335d49324bcfa06a61d94a1c20aeab486567312380c6a7",
+  "section_order": [
+    "primary_source_coverage",
+    "strategic_benchmark",
+    "strategic_gaps",
+    "opportunity_portfolio",
+    "experiment_portfolio",
+    "capital_proposals",
+    "verified_outcomes",
+    "invalidation_review"
+  ],
+  "section_statuses": [
+    "ready",
+    "partial",
+    "no_data",
+    "not_connected",
+    "stale",
+    "invalidated",
+    "UNKNOWN"
+  ],
+  "read_roles": [
+    "operator",
+    "reviewer",
+    "compliance",
+    "monitor",
+    "admin"
+  ],
+  "source_contracts": {
+    "primary_source_coverage": {
+      "contract_id": "kjds-primary-source-intake-v1",
+      "contract_version": "1.0.0",
+      "contract_sha256": "82d7bdf93fa566ebf5bf0732ce248c4bd245f021884dba96634259046f16df21",
+      "registry_path": "docs/project/registries/primary_source_intake.json"
+    },
+    "strategic_benchmark": {
+      "contract_id": "kjds-strategic-benchmark-kernel-v1",
+      "contract_version": "1.0.0",
+      "contract_sha256": "bb86be646f6c61e6c940bbf5420ab55b6615341c429c66f14e5df032fa3e8598",
+      "registry_path": "docs/project/registries/strategic_benchmark_contracts.json"
+    },
+    "strategic_gaps": {
+      "contract_id": "kjds-governed-gap-graph-observation-v1",
+      "contract_version": "1.0.0",
+      "contract_sha256": "5dd080cb9bf946ab976c69691f6f4033dea3a6f4303aa0eef46ae757d8e9fcda",
+      "registry_path": "docs/project/registries/gap_graph_contracts.json"
+    },
+    "opportunity_portfolio": {
+      "contract_id": "kjds-governed-gap-graph-observation-v1",
+      "contract_version": "1.0.0",
+      "contract_sha256": "5dd080cb9bf946ab976c69691f6f4033dea3a6f4303aa0eef46ae757d8e9fcda",
+      "registry_path": "docs/project/registries/gap_graph_contracts.json"
+    },
+    "experiment_portfolio": {
+      "contract_id": "kjds-native-exact-scope-growth-experiment-v1",
+      "contract_version": "1.0.0",
+      "contract_sha256": "bb86be646f6c61e6c940bbf5420ab55b6615341c429c66f14e5df032fa3e8598",
+      "registry_path": "docs/project/registries/strategic_benchmark_contracts.json"
+    },
+    "capital_proposals": {
+      "contract_id": "kjds-capital-allocation-observation-v1",
+      "contract_version": "1.0.0",
+      "contract_sha256": "e67f5a84ac55aaeaa1b56eb0258c7be3bc4c2c4b3a832e4928fb0a4246232e2b",
+      "registry_path": "docs/project/registries/capital_allocation_contracts.json"
+    },
+    "verified_outcomes": {
+      "contract_id": "kjds-governed-closed-loop-evolution-v1",
+      "contract_version": "1.0.0",
+      "contract_sha256": "3b46a8730ab6cf32eed49793c5c4d04889dd412a048c226f2a13de96599b022d",
+      "registry_path": "docs/project/registries/closed_loop_evolution_contracts.json"
+    },
+    "invalidation_review": {
+      "contract_id": "kjds-governed-closed-loop-evolution-event-v1",
+      "contract_version": "1.0.0",
+      "contract_sha256": "3b46a8730ab6cf32eed49793c5c4d04889dd412a048c226f2a13de96599b022d",
+      "registry_path": "docs/project/registries/closed_loop_evolution_contracts.json"
+    }
+  },
+  "limits": {
+    "max_display_items_per_section": 32,
+    "max_citations_per_section": 32,
+    "max_reason_codes_per_section": 16,
+    "max_invalidation_conditions_per_section": 16,
+    "max_display_text_length": 512
+  },
+  "client_contract": {
+    "method": "GET",
+    "query_fields": [
+      "store_ref",
+      "as_of"
+    ],
+    "read_only": true,
+    "loads_synthetic_fixtures": false,
+    "recomputes_facts": false,
+    "recomputes_rankings": false,
+    "recomputes_gates": false,
+    "recomputes_budget_authority": false
+  },
+  "zero_authority": {
+    "global_top1_claim": false,
+    "production_admission": false,
+    "budget_authority": false,
+    "evidence_writes": false,
+    "fact_writes": false,
+    "finance_entry_writes": false,
+    "graph_writes": false,
+    "approval_writes": false,
+    "permit_writes": false,
+    "pilot_writes": false,
+    "outbox_writes": false,
+    "external_writes": false,
+    "network_writes": false
+  }
+}
