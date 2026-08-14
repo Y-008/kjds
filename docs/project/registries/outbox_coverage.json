@@ -75,6 +75,13 @@
       "activation_trigger": "grant 消费需要事件推送或跨服务通知合同时"
     },
     {
+      "module": "closed_loop_evolution.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_exact_scope_closed_loop_outcome_and_evidence_ledger",
+      "rationale": "闭环演化只在同一事务保存 exact-scope outcome root、supporting links、状态事件与受控 Evidence；V1 固定 causal=false、outbox=0、external_write=false，不创建 Approval、Permit 或任何平台、供应商、客户外部动作。",
+      "activation_trigger": "闭环 Observation 获准交付独立跨进程消费者或外部执行编排前"
+    },
+    {
       "module": "commercial_lifecycle.py",
       "status": "internal_only",
       "delivery_contract": "scoped_commercial_lifecycle_event_and_evidence_ledger",

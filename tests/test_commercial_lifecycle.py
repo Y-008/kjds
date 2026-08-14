@@ -642,7 +642,7 @@ def test_database_commercial_lifecycle_records_append_only_lineage_and_derives_e
         tax_amount=Decimal("10"),
         gross_amount=Decimal("100"),
         issued_at=datetime(2026, 8, 2, 0, 10, tzinfo=UTC),
-        due_at=datetime(2026, 8, 12, 0, 10, tzinfo=UTC),
+        due_at=datetime(2099, 8, 12, 0, 10, tzinfo=UTC),
         evidence=invoice_evidence,
         idempotency_key="inv-1",
     )
