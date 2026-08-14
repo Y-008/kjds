@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, integration/pony-full-20260807]
+    branches: [main]
   push:
-    branches: [main, integration/pony-full-20260807]
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,10 +12,6 @@ permissions:
 jobs:
   backend-quality:
     runs-on: ubuntu-latest
-    env:
-      KJDS_REPOSITORY: memory
-      KJDS_STRATEGIC_BENCHMARK_SEALING_KEY: "0123456789abcdef0123456789abcdef"
-      KJDS_API_KEY: "ci-test-key"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,18 +24,7 @@ jobs:
       - run: uv run python scripts/verify_secrets.py
       - run: uv run python scripts/validate_write_paths.py
       - run: uv run ruff check .
-      - name: Run backend unit tests
-        run: >-
-          uv run pytest
-          "--ignore-glob=tests/*_postgres.py"
-          --ignore=tests/test_api_contract.py
-          --ignore=tests/test_catalog_read_run_handoff.py
-          --ignore=tests/test_channel_accounts_api.py
-          --ignore=tests/test_intelligence_ingestion.py
-          --ignore=tests/test_native_parity_acceptance_api.py
-          --ignore=tests/test_scoped_batch_opportunity.py
-          --ignore=tests/test_scoped_marketplace_catalog.py
-          --ignore=tests/test_scoped_read_only_pilots.py
+      - run: uv run pytest
       - run: git diff --check
 
   web-quality:
