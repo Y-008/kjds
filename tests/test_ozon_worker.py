@@ -1972,6 +1972,82 @@ def test_category_attributes_reads_official_contract_and_captures_raw_evidence()
     ).decode("utf-8")
 
 
+def test_category_attribute_values_reads_official_dictionary_and_captures_raw_evidence():
+    calls = []
+
+    def handler(request: httpx.Request):
+        body = json.loads(request.read())
+        calls.append((request.url.path, body))
+        return httpx.Response(
+            200,
+            json={
+                "result": [
+                    {"id": 21000001, "value": "Органайзер"},
+                    {"id": 21000002, "value": "Держатель для кабеля"},
+                ],
+                "has_next": False,
+            },
+        )
+
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = client.category_attribute_values(
+            type_id=97946,
+            description_category_id=17028634,
+            attribute_id=8229,
+            language="RU",
+        )
+    finally:
+        client.close()
+
+    assert calls == [
+        (
+            "/v1/description-category/attribute/values",
+            {
+                "description_category_id": 17028634,
+                "type_id": 97946,
+                "attribute_id": 8229,
+                "language": "RU",
+                "limit": 500,
+                "last_value_id": 0,
+            },
+        )
+    ]
+    assert result["contract_version"] == "ozon-category-read-v1"
+    assert result["state"]["result"][0]["value"] == "Органайзер"
+    assert result["state"]["has_next"] is False
+    bundle = json.loads(result["response_evidence_bytes"])
+    assert bundle["request_context"]["attribute_id"] == 8229
+    assert "Органайзер" in base64.b64decode(
+        bundle["responses"][0]["body_base64"]
+    ).decode("utf-8")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"type_id": 0, "description_category_id": 17028634, "attribute_id": 8229}, "type_id"),
+        ({"type_id": 97946, "description_category_id": 0, "attribute_id": 8229}, "description_category_id"),
+        ({"type_id": 97946, "description_category_id": 17028634, "attribute_id": 0}, "attribute_id"),
+        ({"type_id": 97946, "description_category_id": 17028634, "attribute_id": 8229, "limit": 0}, "limit"),
+        ({"type_id": 97946, "description_category_id": 17028634, "attribute_id": 8229, "last_value_id": -1}, "last_value_id"),
+    ],
+)
+def test_category_attribute_values_reject_unsafe_shapes_before_network(kwargs, message):
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(lambda request: pytest.fail("network must not be reached")),
+    )
+    try:
+        with pytest.raises(ValueError, match=message):
+            client.category_attribute_values(**kwargs)
+    finally:
+        client.close()
+
+
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
