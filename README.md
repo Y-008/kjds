@@ -51,7 +51,19 @@ uv run python -m alembic upgrade head
 
 ## 质量门
 
-基础检查：
+日常快速门禁：
+
+```powershell
+.\scripts\verify-fast.ps1
+```
+
+清理或降本审计：
+
+```powershell
+.\scripts\audit-cleanup.ps1 -IncludeCommands
+```
+
+基础检查（快速门禁会执行其中核心步骤）：
 
 ```powershell
 uv run python scripts/verify_secrets.py
