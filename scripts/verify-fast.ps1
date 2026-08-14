@@ -4,7 +4,7 @@ param(
         "tests/test_ai_listing_taxonomy.py",
         "tests/test_g1_harness_contract.py",
         "tests/test_automated_commerce.py",
-        "tests/test_commercial_lifecycle.py"
+        "tests/test_browser_capture_inbox.py"
     )
 )
 
@@ -50,6 +50,7 @@ if ($LASTEXITCODE -ne 0) { throw "ruff check failed" }
 
 Write-Host "== pytest focused =="
 $PytestTemp = Join-Path (Join-Path $Root ".runtime") "pytest-local"
+New-Item -ItemType Directory -Force -Path $PytestTemp | Out-Null
 $pytestArgs = @("-q", "-p", "no:cacheprovider", "--basetemp", $PytestTemp)
 $pytestArgs += $Tests
 & uv run pytest @pytestArgs
