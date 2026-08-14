@@ -659,6 +659,77 @@ class OzonSellerClient:
             ),
         }
 
+    def category_attribute_values(
+        self,
+        *,
+        type_id: int,
+        description_category_id: int,
+        attribute_id: int,
+        language: str = "RU",
+        limit: int = 500,
+        last_value_id: int = 0,
+    ) -> dict[str, Any]:
+        """Read the official Ozon dictionary values for one attribute (read-only)."""
+        language = self._required(language, "language")
+        if isinstance(type_id, bool) or not isinstance(type_id, int) or type_id <= 0:
+            raise ValueError("type_id must be a positive integer")
+        if (
+            isinstance(description_category_id, bool)
+            or not isinstance(description_category_id, int)
+            or description_category_id <= 0
+        ):
+            raise ValueError("description_category_id must be a positive integer")
+        if (
+            isinstance(attribute_id, bool)
+            or not isinstance(attribute_id, int)
+            or attribute_id <= 0
+        ):
+            raise ValueError("attribute_id must be a positive integer")
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0 or limit > 5000:
+            raise ValueError("limit must be an integer between 1 and 5000")
+        if isinstance(last_value_id, bool) or not isinstance(last_value_id, int) or last_value_id < 0:
+            raise ValueError("last_value_id must be a nonnegative integer")
+        body = {
+            "description_category_id": description_category_id,
+            "type_id": type_id,
+            "attribute_id": attribute_id,
+            "language": language,
+            "limit": limit,
+            "last_value_id": last_value_id,
+        }
+        response, capture = self._read_with_capture(
+            "/v1/description-category/attribute/values",
+            body,
+        )
+        result = response.get("result")
+        if not isinstance(result, list):
+            raise self._schema_error(
+                "Ozon attribute values response is missing the result list"
+            )
+        state = {
+            "description_category_id": description_category_id,
+            "type_id": type_id,
+            "attribute_id": attribute_id,
+            "language": language,
+            "has_next": bool(response.get("has_next", False)),
+            "result": result,
+        }
+        return {
+            "contract_version": self.CATEGORY_READ_CONTRACT_VERSION,
+            "state": state,
+            "state_hash": self.state_hash(state),
+            "response_evidence_bytes": self._response_bundle(
+                [capture],
+                contract_version=self.CATEGORY_READ_CONTRACT_VERSION,
+                request_context={
+                    "description_category_id": description_category_id,
+                    "type_id": type_id,
+                    "attribute_id": attribute_id,
+                    "language": language,
+                },
+            ),
+        }
+
     @classmethod
     def finance_request_body(
         cls,
