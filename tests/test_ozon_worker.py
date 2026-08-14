@@ -96,6 +96,20 @@ def execution_environment():
     }
 
 
+class RecordingEnvironment(dict):
+    def __init__(self, values):
+        super().__init__(values)
+        self.reads = []
+
+    def get(self, key, default=None):
+        self.reads.append(key)
+        return super().get(key, default)
+
+    def __getitem__(self, key):
+        self.reads.append(key)
+        return super().__getitem__(key)
+
+
 def command():
     value = {
         "id": "lxc-1",
@@ -135,9 +149,7 @@ def command():
         "target": {"offer_id": "offer-1"},
         "patch": {"item": {"offer_id": "offer-1", "name": "Updated name"}},
     }
-    value["portfolio_risk"]["snapshot_hash"] = OzonExecutionWorker._hash(
-        value["portfolio_risk"]
-    )
+    value["portfolio_risk"]["snapshot_hash"] = OzonExecutionWorker._hash(value["portfolio_risk"])
     value["authorization_hash"] = OzonExecutionWorker._authorization_hash(value)
     return value
 
@@ -155,7 +167,9 @@ def test_execution_preflight_is_offline_hashed_and_single_command():
     assert report["network_calls_performed"] is False
     assert report["target_count"] == 1
     assert report["evidence_count"] == 1
-    assert report["credential_values_distinct"] is True
+    assert report["credential_values_read"] is False
+    assert report["required_credentials_present"] == 0
+    assert report["provider_credentials_from_environment"] is False
     serialized = json.dumps(report)
     for private_value in (
         "command-private-id",
@@ -226,11 +240,77 @@ def test_execution_preflight_cli_returns_before_http_clients(monkeypatch, capsys
     assert "private" not in output
 
 
+@pytest.mark.parametrize("mode", ["--preflight", "--execute"])
+def test_worker_modes_do_not_read_credentials_before_runtime_admission(monkeypatch, mode):
+    environment = RecordingEnvironment(execution_environment())
+    monkeypatch.setattr(ozon_worker.os, "environ", environment)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ozon_worker",
+            mode,
+            "--command-id",
+            "command-private-id",
+            "--offer-id",
+            "offer-private-id",
+            "--evidence-id",
+            "evidence-private-id",
+        ],
+    )
+    if mode == "--execute":
+        with pytest.raises(RuntimeError, match="resolver is not bound"):
+            ozon_worker.main()
+    else:
+        ozon_worker.main()
+    forbidden = {
+        "KJDS_EXECUTOR_API_KEY",
+        "KJDS_API_KEY",
+        "KJDS_PILOT_READER_API_KEY",
+        "OZON_CLIENT_ID",
+        "OZON_API_KEY",
+        "KJDS_CHANNEL_SECRET_LOCATOR",
+        "KJDS_CHANNEL_CREDENTIAL_FINGERPRINT",
+    }
+    assert forbidden.isdisjoint(environment.reads)
+
+
+def test_unbound_runtime_resolver_blocks_before_any_worker_client(monkeypatch):
+    for name, value in execution_environment().items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ozon_worker",
+            "--execute",
+            "--command-id",
+            "command-private-id",
+            "--offer-id",
+            "offer-private-id",
+            "--evidence-id",
+            "evidence-private-id",
+        ],
+    )
+    constructed = []
+    monkeypatch.setattr(
+        ozon_worker,
+        "ControlPlaneExecutorClient",
+        lambda *args, **kwargs: constructed.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        ozon_worker,
+        "OzonSellerClient",
+        lambda *args, **kwargs: constructed.append((args, kwargs)),
+    )
+    with pytest.raises(RuntimeError, match="resolver is not bound"):
+        ozon_worker.main()
+    assert constructed == []
+
+
 def test_execution_worker_compose_and_script_require_explicit_one_shot_intent():
     compose = Path("compose.yaml").read_text(encoding="utf-8")
-    worker = compose.split("  ozon-worker:", maxsplit=1)[1].split(
-        "  ozon-read-worker:", maxsplit=1
-    )[0]
+    worker = compose.split("  ozon-worker:", maxsplit=1)[1].split("  ozon-read-worker:", maxsplit=1)[0]
     script = Path("scripts/run-ozon-worker.ps1").read_text(encoding="utf-8")
 
     assert "      - --execute" in worker
@@ -239,10 +319,10 @@ def test_execution_worker_compose_and_script_require_explicit_one_shot_intent():
     assert "KJDS_EXECUTION_EVIDENCE_IDS" in worker
     assert "KJDS_EXECUTION_EVIDENCE_ID:-" not in worker
     assert "KJDS_EXECUTION_EVIDENCE_ID =" not in script
-    assert "OZON_WRITE_CLIENT_ID" in worker
-    assert "OZON_WRITE_API_KEY" in worker
-    assert "OZON_CLIENT_ID:-" not in worker
-    assert "OZON_API_KEY:-" not in worker
+    assert "OZON_WRITE_CLIENT_ID" not in worker
+    assert "OZON_WRITE_API_KEY" not in worker
+    assert "OZON_CLIENT_ID" not in worker
+    assert "OZON_API_KEY" not in worker
     assert "[switch]$Execute" in script
     assert "--rm --no-deps ozon-worker" in script
     assert script.index("--preflight") < script.index("if (-not $Execute)")
@@ -271,7 +351,7 @@ def test_ozon_worker_isolates_credentials_reads_state_and_confirms_async_import(
             )
         raise AssertionError(f"Unexpected path: {request.url.path}")
 
-    credentials = OzonCredentials(client_id="client-1", api_key="secret-key")
+    credentials = OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key")
     assert "secret-key" not in repr(credentials)
     ozon = OzonSellerClient(credentials, transport=httpx.MockTransport(handler))
     control = FakeControlPlane([command()])
@@ -325,9 +405,7 @@ def test_ozon_worker_rejects_expired_or_tampered_execution_permits():
         **internally_tampered["portfolio_risk"],
         "risk_totals": {"expected_loss": "1", "quantity": "1"},
     }
-    internally_tampered["authorization_hash"] = OzonExecutionWorker._authorization_hash(
-        internally_tampered
-    )
+    internally_tampered["authorization_hash"] = OzonExecutionWorker._authorization_hash(internally_tampered)
     with pytest.raises(ValueError, match="portfolio risk snapshot"):
         OzonExecutionWorker._validate_claimed_command(internally_tampered)
 
@@ -342,7 +420,7 @@ def test_ozon_write_transport_failure_is_never_blindly_retried():
         return httpx.Response(200, json={})
 
     client = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     try:
@@ -421,11 +499,7 @@ class ScriptedExecutionOzon:
             if self.status_error.response_evidence_bytes is not None and on_response is not None:
                 on_response(self.status_error.response_evidence_bytes, len(captures))
             raise self.status_error
-        return {
-            key: value
-            for key, value in self.status_result.items()
-            if key != "response_evidence_bytes"
-        }
+        return {key: value for key, value in self.status_result.items() if key != "response_evidence_bytes"}
 
 
 def test_worker_records_uncertainty_when_import_response_checkpoint_fails():
@@ -450,7 +524,7 @@ def test_worker_records_uncertainty_when_import_response_checkpoint_fails():
         raise AssertionError(f"Unexpected path after lost import checkpoint: {request.url.path}")
 
     ozon = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     control = FailingImportCheckpointControlPlane([command()])
@@ -505,7 +579,7 @@ def test_worker_preserves_known_task_and_terminal_status_evidence_after_poll_fai
             status_code=503,
             retryable=True,
             response_evidence_bytes=b"terminal-status-response",
-        )
+        ),
     )
     control = FakeControlPlane([command()])
 
@@ -606,7 +680,7 @@ def test_ozon_read_retries_rate_limit_without_leaking_response_body(monkeypatch)
         return httpx.Response(200, json={"result": {"items": []}})
 
     client = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     try:
@@ -631,7 +705,7 @@ def test_offer_state_falls_back_to_v3_attributes_contract_on_not_found():
         raise AssertionError(request.url.path)
 
     client = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     try:
@@ -653,16 +727,14 @@ def test_finance_transactions_use_bounded_official_contract_and_capture_raw_evid
             200,
             json={
                 "result": {
-                    "operations": [
-                        {"operation_id": 123, "amount": 42.5, "posting": "private-order"}
-                    ],
+                    "operations": [{"operation_id": 123, "amount": 42.5, "posting": "private-order"}],
                     "page_count": 4,
                 }
             },
         )
 
     client = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     try:
@@ -722,7 +794,7 @@ def test_finance_transactions_reject_unsafe_query_shapes_before_network(override
     }
     values.update(overrides)
     client = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(lambda request: calls.append(request)),
     )
     try:
@@ -735,10 +807,8 @@ def test_finance_transactions_reject_unsafe_query_shapes_before_network(override
 
 def test_finance_transactions_fail_closed_on_schema_drift():
     client = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
-        transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json={"result": {"transactions": []}})
-        ),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"result": {"transactions": []}})),
     )
     try:
         with pytest.raises(OzonApiError) as caught:
@@ -778,7 +848,7 @@ def test_offer_state_fails_closed_when_single_target_binding_is_not_proven(
         raise AssertionError(request.url.path)
 
     client = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     try:
@@ -878,7 +948,7 @@ def test_read_only_worker_calls_only_read_contract_and_returns_sanitized_summary
         raise AssertionError(request.url.path)
 
     ozon = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     control = FakePilotControlPlane()
@@ -920,16 +990,14 @@ def test_finance_read_worker_checkpoints_raw_response_and_only_safe_summary():
             200,
             json={
                 "result": {
-                    "operations": [
-                        {"operation_id": "private-transaction", "amount": "999.99"}
-                    ],
+                    "operations": [{"operation_id": "private-transaction", "amount": "999.99"}],
                     "page_count": 1,
                 }
             },
         )
 
     ozon = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     control = FakePilotControlPlane()
@@ -964,6 +1032,70 @@ def test_finance_read_worker_checkpoints_raw_response_and_only_safe_summary():
     assert b"private-transaction" in base64.b64decode(bundle["responses"][0]["body_base64"])
 
 
+def test_finance_worker_uses_managed_client_factory_without_instance_client():
+    class GrantingControl(FakePilotControlPlane):
+        def start(self, pilot_id, *, trace_id, **body):
+            self.trace_ids.append(trace_id)
+            self.start_calls.append((pilot_id, body))
+            return {
+                "id": "ror-finance-factory",
+                "status": "started",
+                "execution_granted": True,
+                "credential_grant": {"required_capability": "finance.read"},
+                "idempotency_replay": False,
+            }
+
+    class FakeOzon:
+        def finance_transactions(self, *, date_from, date_to, page, page_size):
+            return {
+                "contract_version": "ozon-finance-transactions-v1",
+                "query_window_sha256": "q" * 64,
+                "page": 1,
+                "page_size": 1000,
+                "page_count": 1,
+                "operation_count": 1,
+                "response_evidence_bytes": json.dumps(
+                    {
+                        "result": {
+                            "operations": [
+                                {"operation_id": "op-factory"}
+                            ]
+                        }
+                    }
+                ).encode(),
+            }
+
+    class Factory:
+        def __init__(self, ozon):
+            self.ozon = ozon
+
+        def open(self, *, grant, as_of):
+            return self
+
+        def __enter__(self):
+            return self.ozon
+
+        def __exit__(self, *exc):
+            return False
+
+    control = GrantingControl()
+    worker = OzonFinanceReadOnlyWorker(
+        control_plane=control,
+        ozon_client_factory=Factory(FakeOzon()),
+    )
+    result = worker.run_once(
+        pilot_id="rop-finance-factory",
+        date_from="2026-07-01T00:00:00Z",
+        date_to="2026-07-02T00:00:00Z",
+        page=1,
+        page_size=1000,
+        idempotency_key="finance-factory-1",
+    )
+    assert result["outcome"] == "succeeded"
+    assert control.start_calls[0][1]["operation"] == "ozon.finance.read"
+    assert len(control.start_calls[0][1]["target_ref"]) == 64
+
+
 def test_read_only_worker_returns_replay_without_calling_ozon_or_completing_again():
     class ReplayControl(FakePilotControlPlane):
         def start(self, pilot_id, *, trace_id, **body):
@@ -993,6 +1125,101 @@ def test_read_only_worker_returns_replay_without_calling_ozon_or_completing_agai
     assert result["idempotency_replay"] is True
     assert control.response_captures == []
     assert control.completion_bodies == []
+
+
+class _ClientLease:
+    def __init__(self, client, events, capability):
+        self.client = client
+        self.events = events
+        self.capability = capability
+
+    def __enter__(self):
+        self.events.append(("client_enter", self.capability))
+        return self.client
+
+    def __exit__(self, *_exc):
+        self.events.append(("client_exit", self.capability))
+
+
+class _GrantBoundClientFactory:
+    def __init__(self, clients, events):
+        self.clients = clients
+        self.events = events
+        self.opens = []
+
+    def open(self, *, grant, as_of):
+        capability = grant["required_capability"]
+        self.events.append(("client_open", capability))
+        self.opens.append((grant, as_of))
+        return _ClientLease(self.clients[capability], self.events, capability)
+
+
+class _ReadGrantClient:
+    def offer_state(self, _offer_id):
+        payload = b'{"responses":[]}'
+        return {
+            "contract_version": "ozon-product-read-v1",
+            "state": {"info": {"items": []}, "attributes": {"result": []}},
+            "state_hash": "a" * 64,
+            "response_evidence_bytes": payload,
+        }
+
+
+def test_read_worker_opens_exact_scope_client_only_after_execution_grant():
+    events = []
+    grant = {
+        "grant_id": "read-grant-1",
+        "required_capability": "catalog.read",
+        "tenant_ref": "tenant-1",
+        "entity_ref": "entity-1",
+        "store_ref": "store-1",
+    }
+
+    class GrantedControl(FakePilotControlPlane):
+        def start(self, pilot_id, *, trace_id, **body):
+            events.append(("control_start", pilot_id))
+            result = super().start(pilot_id, trace_id=trace_id, **body)
+            events.append(("execution_granted", result["execution_granted"]))
+            return {**result, "credential_grant": grant}
+
+    factory = _GrantBoundClientFactory(
+        {"catalog.read": _ReadGrantClient()},
+        events,
+    )
+    result = OzonReadOnlyWorker(
+        control_plane=GrantedControl(),
+        ozon_client_factory=factory,
+    ).run_once(
+        pilot_id="pilot-1",
+        offer_id="offer-1",
+        idempotency_key="read-grant-order-1",
+    )
+
+    assert result["outcome"] == "succeeded"
+    assert events.index(("execution_granted", True)) < events.index(
+        ("client_open", "catalog.read")
+    )
+    assert factory.opens[0][0] is grant
+
+
+def test_read_worker_missing_credential_grant_fails_before_client_factory():
+    events = []
+    factory = _GrantBoundClientFactory(
+        {"catalog.read": _ReadGrantClient()},
+        events,
+    )
+
+    with pytest.raises(PermissionError, match="credential grant"):
+        OzonReadOnlyWorker(
+            control_plane=FakePilotControlPlane(),
+            ozon_client_factory=factory,
+        ).run_once(
+            pilot_id="pilot-1",
+            offer_id="offer-1",
+            idempotency_key="missing-read-grant",
+        )
+
+    assert factory.opens == []
 
 
 def test_read_only_worker_batch_is_bounded_cursored_and_does_not_leak_targets():
@@ -1078,7 +1305,7 @@ def test_read_only_worker_records_target_mismatch_without_raw_capture_or_target_
         raise AssertionError(request.url.path)
 
     ozon = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     control = FakePilotControlPlane()
@@ -1286,7 +1513,7 @@ def test_ozon_schema_drift_fails_closed_without_leaking_response_body():
         return httpx.Response(200, json={"unexpected": [{"secret": "upstream-private"}]})
 
     client = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
     )
     try:
@@ -1311,7 +1538,7 @@ def test_ozon_circuit_opens_after_bounded_5xx_failures_and_recovers(monkeypatch)
         return httpx.Response(200, json={"result": {"items": []}})
 
     client = OzonSellerClient(
-        OzonCredentials(client_id="client-1", api_key="secret-key"),
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(handler),
         circuit_failure_threshold=2,
         circuit_cooldown_seconds=10,
@@ -1333,3 +1560,323 @@ def test_ozon_circuit_opens_after_bounded_5xx_failures_and_recovers(monkeypatch)
         assert client.circuit_status()["state"] == "closed"
     finally:
         client.close()
+
+
+class _BeforeWriteReadClient:
+    def offer_state(self, offer_id):
+        state = {
+            "contract_version": "ozon-product-read-v1",
+            "offer_id": offer_id,
+            "info": {"items": [{"offer_id": offer_id, "version": 1}]},
+            "attributes": {"result": [{"offer_id": offer_id, "name": "Name"}]},
+        }
+        return {
+            "state": state,
+            "state_hash": OzonSellerClient.state_hash(state),
+            "response_evidence_bytes": b"before-response",
+        }
+
+
+class _WriteClientOpened(RuntimeError):
+    pass
+
+
+class _WriteOrderFactory(_GrantBoundClientFactory):
+    def open(self, *, grant, as_of):
+        capability = grant["required_capability"]
+        self.events.append(("client_open", capability))
+        self.opens.append((grant, as_of))
+        if capability == "catalog.write":
+            raise _WriteClientOpened("write client opened after authorization")
+        return _ClientLease(self.clients[capability], self.events, capability)
+
+
+def _grant(capability):
+    return {
+        "grant_id": f"grant-{capability}",
+        "required_capability": capability,
+        "tenant_ref": "tenant-1",
+        "entity_ref": "entity-1",
+        "store_ref": "store-1",
+    }
+
+
+def test_write_worker_opens_catalog_write_only_after_claim_and_begin_attempt():
+    events = []
+    queued = {**command(), "credential_grant": _grant("catalog.read")}
+
+    class GrantControl(FakeControlPlane):
+        def get_command(self, command_id, *, trace_id):
+            events.append(("get_command", command_id))
+            return super().get_command(command_id, trace_id=trace_id)
+
+        def claim(self, command_id, state_hash, *, trace_id):
+            events.append(("claim", command_id))
+            return super().claim(command_id, state_hash, trace_id=trace_id)
+
+        def begin_write_attempt(self, command_id, *, trace_id):
+            events.append(("begin_write_attempt", command_id))
+            result = super().begin_write_attempt(command_id, trace_id=trace_id)
+            events.append(("write_attempt_consumed", True))
+            return {**result, "credential_grant": _grant("catalog.write")}
+
+    factory = _WriteOrderFactory(
+        {"catalog.read": _BeforeWriteReadClient()},
+        events,
+    )
+    worker = OzonExecutionWorker(
+        control_plane=GrantControl([queued]),
+        ozon_client_factory=factory,
+    )
+
+    with pytest.raises(_WriteClientOpened):
+        worker.run_once(
+            command_id=queued["id"],
+            offer_id="offer-1",
+            evidence_ids=["evidence-1"],
+        )
+
+    write_open = events.index(("client_open", "catalog.write"))
+    assert events.index(("claim", queued["id"])) < write_open
+    assert events.index(("begin_write_attempt", queued["id"])) < write_open
+    assert events.index(("write_attempt_consumed", True)) < write_open
+
+
+def test_write_worker_missing_catalog_write_grant_fails_before_write_client():
+    events = []
+    queued = {**command(), "credential_grant": _grant("catalog.read")}
+
+    class MissingWriteGrantControl(FakeControlPlane):
+        def begin_write_attempt(self, command_id, *, trace_id):
+            events.append(("begin_write_attempt", command_id))
+            return super().begin_write_attempt(command_id, trace_id=trace_id)
+
+    factory = _GrantBoundClientFactory(
+        {"catalog.read": _BeforeWriteReadClient()},
+        events,
+    )
+    worker = OzonExecutionWorker(
+        control_plane=MissingWriteGrantControl([queued]),
+        ozon_client_factory=factory,
+    )
+
+    with pytest.raises(PermissionError, match="credential grant"):
+        worker.run_once(
+            command_id=queued["id"],
+            offer_id="offer-1",
+            evidence_ids=["evidence-1"],
+        )
+
+    assert [grant["required_capability"] for grant, _as_of in factory.opens] == [
+        "catalog.read"
+    ]
+
+
+class _LifecycleWriteClient:
+    def __init__(self, events, outcome):
+        self.events = events
+        self.outcome = outcome
+
+    def import_product(self, _item):
+        self.events.append(("write_call", "import_product"))
+        if self.outcome == "exception":
+            raise RuntimeError("synthetic write client failure")
+        return {
+            "task_id": "42",
+            "response_evidence_bytes": b"import-response",
+        }
+
+    def wait_for_import(self, task_id, *, on_response=None):
+        assert task_id == "42"
+        self.events.append(("write_call", "wait_for_import"))
+        if on_response is not None:
+            on_response(b"status-response", 0)
+        return {
+            "status": "uncertain" if self.outcome == "uncertain" else "succeeded"
+        }
+
+    def offer_state(self, offer_id):
+        self.events.append(("write_call", "after_offer_state"))
+        state = {
+            "contract_version": "ozon-product-read-v1",
+            "offer_id": offer_id,
+            "info": {"items": [{"offer_id": offer_id, "version": 2}]},
+            "attributes": {
+                "result": [{"offer_id": offer_id, "name": "Updated name"}]
+            },
+        }
+        return {
+            "state": state,
+            "state_hash": OzonSellerClient.state_hash(state),
+            "response_evidence_bytes": b"after-response",
+        }
+
+
+class _LifecycleGrantControl(FakeControlPlane):
+    def begin_write_attempt(self, command_id, *, trace_id):
+        return {
+            **super().begin_write_attempt(command_id, trace_id=trace_id),
+            "credential_grant": _grant("catalog.write"),
+        }
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected_calls", "expected_receipt"),
+    [
+        (
+            "normal",
+            ["import_product", "wait_for_import", "after_offer_state"],
+            "succeeded",
+        ),
+        (
+            "uncertain",
+            ["import_product", "wait_for_import"],
+            "uncertain",
+        ),
+    ],
+)
+def test_write_client_lease_exits_once_only_after_all_provider_calls(
+    outcome,
+    expected_calls,
+    expected_receipt,
+):
+    events = []
+    queued = {**command(), "credential_grant": _grant("catalog.read")}
+    factory = _GrantBoundClientFactory(
+        {
+            "catalog.read": _BeforeWriteReadClient(),
+            "catalog.write": _LifecycleWriteClient(events, outcome),
+        },
+        events,
+    )
+
+    receipt = OzonExecutionWorker(
+        control_plane=_LifecycleGrantControl([queued]),
+        ozon_client_factory=factory,
+    ).run_once(
+        command_id=queued["id"],
+        offer_id="offer-1",
+        evidence_ids=["evidence-1"],
+    )
+
+    assert receipt["outcome"] == expected_receipt
+    assert [value for kind, value in events if kind == "write_call"] == expected_calls
+    write_exit = events.index(("client_exit", "catalog.write"))
+    assert all(
+        events.index(("write_call", call)) < write_exit for call in expected_calls
+    )
+    assert events.count(("client_enter", "catalog.write")) == 1
+    assert events.count(("client_exit", "catalog.write")) == 1
+
+
+def test_write_client_lease_exception_path_exits_exactly_once_after_failure():
+    events = []
+    queued = {**command(), "credential_grant": _grant("catalog.read")}
+    factory = _GrantBoundClientFactory(
+        {
+            "catalog.read": _BeforeWriteReadClient(),
+            "catalog.write": _LifecycleWriteClient(events, "exception"),
+        },
+        events,
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic write client failure"):
+        OzonExecutionWorker(
+            control_plane=_LifecycleGrantControl([queued]),
+            ozon_client_factory=factory,
+        ).run_once(
+            command_id=queued["id"],
+            offer_id="offer-1",
+            evidence_ids=["evidence-1"],
+        )
+
+    failure_call = events.index(("write_call", "import_product"))
+    write_exit = events.index(("client_exit", "catalog.write"))
+    assert failure_call < write_exit
+    assert events.count(("client_enter", "catalog.write")) == 1
+    assert events.count(("client_exit", "catalog.write")) == 1
+
+
+@pytest.mark.parametrize(
+    "grant",
+    [
+        None,
+        {},
+        {"required_capability": "finance.read"},
+        {"required_capability": "catalog.write"},
+    ],
+)
+def test_read_worker_rejects_forged_or_capability_drifted_grant_before_factory(
+    grant,
+):
+    events = []
+
+    class DriftedGrantControl(FakePilotControlPlane):
+        def start(self, pilot_id, *, trace_id, **body):
+            return {
+                **super().start(pilot_id, trace_id=trace_id, **body),
+                "credential_grant": grant,
+            }
+
+    factory = _GrantBoundClientFactory(
+        {"catalog.read": _ReadGrantClient()},
+        events,
+    )
+    with pytest.raises(PermissionError, match="credential grant"):
+        OzonReadOnlyWorker(
+            control_plane=DriftedGrantControl(),
+            ozon_client_factory=factory,
+        ).run_once(
+            pilot_id="pilot-1",
+            offer_id="offer-1",
+            idempotency_key="forged-read-grant",
+        )
+
+    assert factory.opens == []
+    assert not [event for event in events if event[0].startswith("client_")]
+
+
+def test_scope_drift_rejected_by_factory_never_enters_or_closes_provider_client():
+    events = []
+    drifted = {
+        "grant_id": "read-grant-drifted",
+        "required_capability": "catalog.read",
+        "tenant_ref": "other-tenant",
+        "entity_ref": "entity-1",
+        "store_ref": "store-1",
+    }
+
+    class DriftedGrantControl(FakePilotControlPlane):
+        def start(self, pilot_id, *, trace_id, **body):
+            return {
+                **super().start(pilot_id, trace_id=trace_id, **body),
+                "credential_grant": drifted,
+            }
+
+    class ExactScopeFactory:
+        def __init__(self):
+            self.opens = []
+
+        def open(self, *, grant, as_of):
+            self.opens.append((grant, as_of))
+            if (
+                grant.get("tenant_ref"),
+                grant.get("entity_ref"),
+                grant.get("store_ref"),
+            ) != ("tenant-1", "entity-1", "store-1"):
+                raise PermissionError("credential grant exact-scope drift")
+            raise AssertionError("drifted grant must not create a client lease")
+
+    factory = ExactScopeFactory()
+    with pytest.raises(PermissionError, match="exact-scope drift"):
+        OzonReadOnlyWorker(
+            control_plane=DriftedGrantControl(),
+            ozon_client_factory=factory,
+        ).run_once(
+            pilot_id="pilot-1",
+            offer_id="offer-1",
+            idempotency_key="scope-drift-read-grant",
+        )
+
+    assert len(factory.opens) == 1
+    assert events == []

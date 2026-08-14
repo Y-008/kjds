@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Annotated
 from urllib.parse import quote
 
@@ -11,21 +12,122 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, Upl
 
 from ..api_contracts import (
     DemandReportReviewInput,
+    EvidenceScopeBindingRecordInput,
+    EvidenceScopeBindingReviewInput,
+    EvidenceScopeBindingSubmitInput,
     GateReviewDecisionInput,
     GateReviewInput,
     GateReviewSubmitInput,
     LineageLinkInput,
     current_principal,
     ensure_role,
+    ensure_store_scope,
     run,
 )
-from ..evidence import EvidenceGrade
+from ..evidence import (
+    CHANNEL_ACCOUNT_RESERVED_CONTRACTS,
+    CHANNEL_ACCOUNT_RESERVED_SOURCES,
+    CLOSED_LOOP_RESERVED_CONTRACTS,
+    CLOSED_LOOP_RESERVED_SOURCES,
+    EvidenceGrade,
+)
 from ..research_inbox import ResearchInboxService
 from ..runtime import runtime
 from ..security import Principal
 from ..source_connectors import source_connector_catalog
 
 router = APIRouter()
+STRATEGIC_BENCHMARK_EVIDENCE_SOURCES = {
+    "strategic-benchmark-observation",
+    "strategic-benchmark-snapshot",
+}
+
+
+def _scope_context(
+    principal: Principal,
+    *,
+    store_ref: str,
+    as_of: str | None,
+):
+    cutoff = (
+        datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        if as_of
+        else datetime.now(UTC)
+    )
+    if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+        raise ValueError("as_of must include a timezone")
+    cutoff = cutoff.astimezone(UTC)
+    entity_scope = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=cutoff,
+    )
+    return cutoff, entity_scope
+
+
+def _ensure_channel_evidence_access(
+    record,
+    principal: Principal,
+    *,
+    content: bool = False,
+) -> None:
+    if record.source in CLOSED_LOOP_RESERVED_SOURCES:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+    if record.source in STRATEGIC_BENCHMARK_EVIDENCE_SOURCES:
+        metadata = record.metadata
+        store_ref = str(metadata.get("store_ref") or "")
+        canonical_scope = (
+            runtime.scope_grants.current(
+                principal=principal,
+                store_ref=store_ref,
+                as_of=datetime.now(UTC),
+            )
+            if store_ref and principal.can_access_store(store_ref)
+            else {"status": "no_data"}
+        )
+        if (
+            metadata.get("tenant_ref") != principal.tenant_ref
+            or canonical_scope.get("status") != "ready"
+            or canonical_scope.get("tenant_ref") != principal.tenant_ref
+            or canonical_scope.get("store_ref") != store_ref
+            or canonical_scope.get("entity_ref") != metadata.get("entity_ref")
+            or canonical_scope.get("authority_sha256")
+            != metadata.get("scope_authority_sha256")
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Evidence not found",
+            )
+        return
+    if record.source not in CHANNEL_ACCOUNT_RESERVED_SOURCES:
+        return
+    metadata = record.metadata
+    store_ref = str(metadata.get("store_ref") or "")
+    if metadata.get("tenant_ref") != principal.tenant_ref or not principal.can_access_store(store_ref):
+        raise HTTPException(
+            status_code=403,
+            detail="Reserved Evidence is outside authenticated scope",
+        )
+    canonical_scope = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=datetime.now(UTC),
+    )
+    if (
+        canonical_scope.get("status") != "ready"
+        or canonical_scope.get("tenant_ref") != principal.tenant_ref
+        or canonical_scope.get("store_ref") != store_ref
+        or canonical_scope.get("entity_ref") != metadata.get("entity_ref")
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Reserved Evidence canonical entity scope is forbidden",
+        )
+    if content:
+        raise HTTPException(
+            status_code=403,
+            detail=("Reserved channel account Evidence content is not downloadable"),
+        )
 
 
 @router.post("/v1/evidence", status_code=201)
@@ -41,17 +143,26 @@ async def capture_evidence(
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin")
     if source.strip().lower() in {
+        *CHANNEL_ACCOUNT_RESERVED_SOURCES,
+        *CLOSED_LOOP_RESERVED_SOURCES,
         "candidate_evidence_authority_review",
         "gate_requirement_review",
         "listing_russian_native_review",
         "ozon_execution_identity_authority_review",
         "ozon-isolated-execution-worker",
         "ozon_finance_report_review",
+        "scope_authority_review",
+        "scope_authority_source",
+        "seller_erp_bridge_binding",
+        "seller_erp_bridge_review",
+        "seller_erp_bridge_revocation",
+        "seller_erp_bridge_source",
         "supplier_quote_authority_review",
         "supplier_quote_source",
         "supplier_rfq_dispatch",
         "supplier_rfq_dispatch_review",
         "supplier_rfq_package",
+        *STRATEGIC_BENCHMARK_EVIDENCE_SOURCES,
     }:
         raise HTTPException(status_code=422, detail="Reserved evidence source requires its dedicated workflow")
     max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
@@ -66,6 +177,30 @@ async def capture_evidence(
         raise HTTPException(status_code=422, detail="metadata_json must be a JSON object")
     if str(metadata.get("evidence_role", "")).strip().lower() == ResearchInboxService.EVIDENCE_ROLE:
         raise HTTPException(status_code=422, detail="Reserved research evidence role requires its dedicated workflow")
+    if {
+        "scope_authority_review_contract_id",
+        "scope_authority_source_contract_id",
+    }.intersection(metadata):
+        raise HTTPException(
+            status_code=422,
+            detail="Reserved scope authority metadata requires its dedicated workflow",
+        )
+    if (
+        str(metadata.get("contract_id") or "").strip() in CHANNEL_ACCOUNT_RESERVED_CONTRACTS
+        or str(metadata.get("channel_account_review_contract_id") or "").strip() == "kjds-channel-account-sod-review-v1"
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=("Reserved channel account authority metadata requires its dedicated separation-of-duties workflow"),
+        )
+    if str(metadata.get("contract_id") or "").strip() in CLOSED_LOOP_RESERVED_CONTRACTS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Reserved closed-loop authority metadata requires its "
+                "dedicated workflow"
+            ),
+        )
     return run(
         lambda: runtime.evidence.capture(
             content=content_bytes,
@@ -82,9 +217,147 @@ async def capture_evidence(
     )
 
 
+@router.post("/v1/scope-grants/evidence", status_code=201)
+async def submit_scope_grant_source(
+    file: Annotated[UploadFile, File()],
+    entity_ref: Annotated[str, Form()],
+    store_ref: Annotated[str, Form()],
+    subject_actor_id: Annotated[str, Form()],
+    event_type: Annotated[str, Form()],
+    effective_at: Annotated[str, Form()],
+    idempotency_key: Annotated[str, Form()],
+    principal: Annotated[Principal, Depends(current_principal)],
+    effective_until: Annotated[str | None, Form()] = None,
+) -> dict:
+    ensure_role(principal, "reviewer", "admin")
+    ensure_store_scope(principal, store_ref)
+    max_bytes = int(os.getenv("KJDS_EVIDENCE_MAX_BYTES", str(10 * 1024 * 1024)))
+    content = await file.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Evidence file exceeds {max_bytes} bytes",
+        )
+    return run(
+        lambda: runtime.scope_grants.submit_source(
+            principal=principal,
+            entity_ref=entity_ref,
+            store_ref=store_ref,
+            subject_actor_id=subject_actor_id,
+            event_type=event_type,
+            effective_at=effective_at,
+            effective_until=effective_until,
+            idempotency_key=idempotency_key,
+            content=content,
+            filename=file.filename or "scope-authority-source.bin",
+            content_type=(file.content_type or "application/octet-stream"),
+        )
+    )
+
+
+@router.post("/v1/evidence/scope-bindings", status_code=201)
+def submit_evidence_scope_binding(
+    body: EvidenceScopeBindingSubmitInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "operator", "admin")
+    ensure_store_scope(principal, body.store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=body.store_ref,
+        as_of=None,
+    )
+    return run(
+        lambda: runtime.evidence_scope_binding.submit_binding(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=body.store_ref,
+            target_evidence_id=body.target_evidence_id,
+            idempotency_key=body.idempotency_key,
+            effective_at=body.effective_at,
+            as_of=cutoff,
+        )
+    )
+
+
+@router.post("/v1/evidence/scope-bindings/{submission_id}/review")
+def review_evidence_scope_binding(
+    submission_id: str,
+    body: EvidenceScopeBindingReviewInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(
+        principal,
+        "reviewer",
+        "compliance",
+        "risk",
+        "admin",
+    )
+    ensure_store_scope(principal, body.store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=body.store_ref,
+        as_of=None,
+    )
+    return run(
+        lambda: runtime.evidence_scope_binding.review_binding(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=body.store_ref,
+            submission_evidence_id=submission_id,
+            accepted=body.accepted,
+            rationale=body.rationale,
+            effective_at=body.effective_at,
+            idempotency_key=body.idempotency_key,
+            as_of=cutoff,
+        )
+    )
+
+
+@router.post("/v1/evidence/scope-bindings/{submission_id}/record")
+def record_evidence_scope_binding(
+    submission_id: str,
+    body: EvidenceScopeBindingRecordInput,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    ensure_role(principal, "compliance", "admin")
+    ensure_store_scope(principal, body.store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=body.store_ref,
+        as_of=None,
+    )
+    return run(
+        lambda: runtime.evidence_scope_binding.record_binding(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=body.store_ref,
+            submission_evidence_id=submission_id,
+            review_evidence_id=body.review_evidence_id,
+            effective_at=body.effective_at,
+            idempotency_key=body.idempotency_key,
+            as_of=cutoff,
+        )
+    )
+
+
 @router.get("/v1/evidence")
-def list_evidence(limit: int = 100):
-    return [asdict(item) for item in runtime.evidence.list(min(max(limit, 1), 500))]
+def list_evidence(
+    principal: Annotated[Principal, Depends(current_principal)],
+    limit: int = 100,
+):
+    records = runtime.evidence.list_for_governance(
+        closed_loop_scopes=(),
+        limit=min(max(limit, 1), 500),
+    )
+    visible = []
+    for item in records:
+        try:
+            _ensure_channel_evidence_access(item, principal)
+        except HTTPException:
+            continue
+        visible.append(asdict(item))
+    return visible
 
 
 @router.post("/v1/evidence/integrity-scan")
@@ -101,29 +374,67 @@ def scan_evidence_integrity(
 
 
 @router.get("/v1/evidence/{evidence_id}")
-def get_evidence(evidence_id: str):
-    return run(lambda: runtime.evidence.get(evidence_id))
+def get_evidence(
+    evidence_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    def load():
+        record = runtime.evidence.get_metadata(evidence_id)
+        _ensure_channel_evidence_access(record, principal)
+        return runtime.evidence.get(evidence_id)
+
+    return run(load)
 
 
 @router.get("/v1/evidence/{evidence_id}/verify")
-def verify_evidence(evidence_id: str):
-    return run(lambda: runtime.evidence.verify(evidence_id))
+def verify_evidence(
+    evidence_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    def verify():
+        record = runtime.evidence.get_metadata(evidence_id)
+        _ensure_channel_evidence_access(record, principal)
+        return runtime.evidence.verify(evidence_id)
+
+    return run(verify)
 
 
 @router.get("/v1/evidence/{evidence_id}/retention")
-def evidence_retention(evidence_id: str):
-    return run(lambda: runtime.evidence.retention(evidence_id))
+def evidence_retention(
+    evidence_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
+    def retention():
+        record = runtime.evidence.get_metadata(evidence_id)
+        _ensure_channel_evidence_access(record, principal)
+        return runtime.evidence.retention(evidence_id)
+
+    return run(retention)
 
 
 @router.get("/v1/evidence/{evidence_id}/content")
-def evidence_content(evidence_id: str):
+def evidence_content(
+    evidence_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+):
 
     def load():
-        content_bytes, record = runtime.evidence.content(evidence_id)
+        record = runtime.evidence.get_metadata(evidence_id)
+        _ensure_channel_evidence_access(
+            record,
+            principal,
+            content=True,
+        )
+        content_bytes, content_record = runtime.evidence.content(evidence_id)
+        if content_record.id != record.id:
+            raise HTTPException(
+                status_code=409,
+                detail="Evidence content binding drift",
+            )
         return Response(
             content=content_bytes,
-            media_type=record.content_type,
-            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(record.filename)}"},
+            media_type=content_record.content_type,
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(content_record.filename)}"},
         )
 
     return run(load)
@@ -153,20 +464,44 @@ def link_evidence(
             "rfq_dispatch_context_for",
             "supplier_outreach_for",
         }
-        or (
-            target_type == ResearchInboxService.TARGET_TYPE
-            and relationship == ResearchInboxService.RELATIONSHIP
-        )
+        or (target_type == ResearchInboxService.TARGET_TYPE and relationship == ResearchInboxService.RELATIONSHIP)
     ):
         raise HTTPException(status_code=422, detail="Reserved lineage requires its dedicated workflow")
-    return run(
-        lambda: runtime.evidence.link(evidence_id=evidence_id, **body.model_dump(), created_by=principal.actor_id)
-    )
+
+    def link():
+        source_record = runtime.evidence.get_metadata(evidence_id)
+        _ensure_channel_evidence_access(source_record, principal)
+        if target_type == "evidence":
+            target_record = runtime.evidence.get_metadata(body.target_id)
+            _ensure_channel_evidence_access(target_record, principal)
+        return runtime.evidence.link(
+            evidence_id=evidence_id,
+            **body.model_dump(),
+            created_by=principal.actor_id,
+        )
+
+    return run(link)
 
 
 @router.get("/v1/evidence/{evidence_id}/lineage")
-def evidence_lineage(evidence_id: str):
-    return [asdict(item) for item in runtime.evidence.lineage(evidence_id)]
+def evidence_lineage(
+    evidence_id: str,
+    principal: Annotated[
+        Principal,
+        Depends(current_principal),
+    ],
+):
+    def load():
+        record = runtime.evidence.get_metadata(evidence_id)
+        _ensure_channel_evidence_access(record, principal)
+        edges = runtime.evidence.lineage(evidence_id)
+        for edge in edges:
+            if edge.to_type == "evidence":
+                target = runtime.evidence.get_metadata(edge.to_id)
+                _ensure_channel_evidence_access(target, principal)
+        return [asdict(item) for item in edges]
+
+    return run(load)
 
 
 @router.get("/v1/sourcing/connectors")

@@ -1,0 +1,358 @@
+{
+  "schema_version": "kjds-global-expert-team-v1",
+  "contract_id": "kjds-global-portfolio-orchestrator-v1",
+  "version": "1.0",
+  "status": "active_contract",
+  "as_of": "2026-08-06",
+  "selection": {
+    "team_model": "ai_core_human_professional_review",
+    "portfolio_scope": "global_research_russia_ozon_execution_first",
+    "leader_authority": "business_decision_high_risk_dual_sign"
+  },
+  "operating_status": {
+    "current_mode": "proposal_shadow",
+    "active_requires_named_human_business_owner": true,
+    "active_requires_current_professional_reviewers": true,
+    "registry_proves_human_appointment": false,
+    "registry_proves_market_gate": false
+  },
+  "leader": {
+    "role_id": "global_chief_commerce_officer",
+    "title": "全球跨境经营总负责人",
+    "role_kind": "hybrid_ai_coordinator_with_human_accountable_owner",
+    "mission": "Set portfolio outcomes, allocate bounded work, resolve business trade-offs and stop unsafe or uneconomic work.",
+    "human_accountable_owner_required": true,
+    "authority": {
+      "may_set_objectives": true,
+      "may_prioritize": true,
+      "may_allocate_internal_budget": true,
+      "may_assign_accountable_specialist": true,
+      "may_continue_pause_pivot_or_stop": true,
+      "may_trigger_kill_switch_request": true,
+      "may_verify_own_proposal": false,
+      "may_approve_own_proposal": false,
+      "may_override_failed_professional_gate": false,
+      "may_issue_permit": false,
+      "may_hold_marketplace_credentials": false,
+      "may_perform_external_write": false
+    }
+  },
+  "required_specialist_fields": [
+    "role_id",
+    "title",
+    "mission",
+    "task_types",
+    "deliverables",
+    "human_review_roles",
+    "tool_allowlist",
+    "data_allowlist",
+    "default_sla_hours"
+  ],
+  "role_control_defaults": {
+    "exact_scope": "task_ref_market_platform_risk_and_evidence_refs",
+    "cost_budget": "bounded_by_task_contract",
+    "time_budget": "default_sla_hours_and_task_deadline",
+    "handoff_contract": "kjds-expert-task-contract-v1",
+    "trace_id": "required_for_every_agent_run",
+    "eval_policy_version": "kjds-team-agent-eval-v1",
+    "human_alternate_binding_required": true,
+    "forbidden_inputs": ["credential", "api_key", "cookie", "password", "bank_account", "customer_raw_data"]
+  },
+  "specialist_roles": [
+    {
+      "role_id": "global_market_intelligence",
+      "title": "全球市场与国家策略专家",
+      "mission": "Separate verified demand, competition, macro and entry signals from inference for each market.",
+      "task_types": ["market_research", "country_entry"],
+      "deliverables": ["market_evidence_pack", "country_entry_gate", "market_signal_review"],
+      "human_review_roles": ["country_lead", "local_market_expert"],
+      "tool_allowlist": ["official_source_read", "authorized_market_analytics_read", "evidence_query", "internal_analysis"],
+      "data_allowlist": ["public_sources", "authorized_market_aggregates", "exact_scope_evidence_metadata"],
+      "default_sla_hours": 48
+    },
+    {
+      "role_id": "product_category_portfolio",
+      "title": "商品与类目组合专家",
+      "mission": "Own product identity, category fit, price bands, SKU qualification and portfolio stop-or-scale proposals.",
+      "task_types": ["product_portfolio"],
+      "deliverables": ["sku_episode", "category_strategy", "portfolio_decision_inputs"],
+      "human_review_roles": ["product_owner", "category_owner"],
+      "tool_allowlist": ["canonical_product_read", "market_radar_read", "profit_scenario_read", "internal_analysis"],
+      "data_allowlist": ["approved_product_facts", "market_observations", "profit_scenario_aggregates"],
+      "default_sla_hours": 48
+    },
+    {
+      "role_id": "marketplace_channel_operations",
+      "title": "平台与渠道运营专家",
+      "mission": "Interpret official marketplace contracts, account state, listing operations and channel calendars without inheriting semantics across platforms.",
+      "task_types": ["platform_operations"],
+      "deliverables": ["platform_rule_pack", "channel_operating_plan", "listing_operation_review"],
+      "human_review_roles": ["platform_account_owner", "channel_operator"],
+      "tool_allowlist": ["official_platform_contract_read", "authorized_account_state_read", "listing_diff_read", "internal_draft"],
+      "data_allowlist": ["official_platform_contracts", "exact_scope_channel_projection", "approved_listing_facts"],
+      "default_sla_hours": 24
+    },
+    {
+      "role_id": "sourcing_supplier_quality",
+      "title": "采购、供应商与质量专家",
+      "mission": "Control supplier evidence, three quotes, samples, packaging, inspection and supply continuity.",
+      "task_types": ["sourcing_quality"],
+      "deliverables": ["supplier_evidence_pack", "three_quote_review", "sample_quality_passport"],
+      "human_review_roles": ["procurement_owner", "quality_inspector"],
+      "tool_allowlist": ["supplier_evidence_read", "quote_read", "sample_quality_read", "internal_analysis"],
+      "data_allowlist": ["exact_scope_supplier_evidence", "accepted_quote_metadata", "sample_quality_evidence"],
+      "default_sla_hours": 72
+    },
+    {
+      "role_id": "logistics_customs_fulfillment",
+      "title": "物流、关务与履约专家",
+      "mission": "Control classification, customs, warehousing, fulfillment, returns and reverse-logistics evidence.",
+      "task_types": ["logistics_customs"],
+      "deliverables": ["logistics_cost_pack", "customs_classification_review", "fulfillment_runbook"],
+      "human_review_roles": ["customs_broker", "logistics_owner"],
+      "tool_allowlist": ["official_customs_rule_read", "logistics_quote_read", "fulfillment_evidence_read", "internal_analysis"],
+      "data_allowlist": ["official_customs_rules", "exact_scope_logistics_evidence", "fulfillment_aggregates"],
+      "default_sla_hours": 48
+    },
+    {
+      "role_id": "finance_treasury_profit",
+      "title": "财务、资金与真实利润专家",
+      "mission": "Own fifteen-component cost completeness, FX, settlement, bank cash, reconciliation and Actual Cash CM3 truth.",
+      "task_types": ["finance_profit"],
+      "deliverables": ["profit_truth_pack", "thirteen_week_cash", "three_book_reconciliation"],
+      "human_review_roles": ["finance_controller", "treasury_owner"],
+      "tool_allowlist": ["finance_evidence_read", "profit_ledger_read", "reconciliation_read", "internal_analysis"],
+      "data_allowlist": ["exact_scope_finance_aggregates", "approved_fx_evidence", "reconciled_profit_projection"],
+      "default_sla_hours": 48
+    },
+    {
+      "role_id": "legal_tax_compliance_ip",
+      "title": "法务、税务、合规与知识产权专家",
+      "mission": "Identify entity, contract, tax, certification, labeling, sanctions, privacy and intellectual-property gates.",
+      "task_types": ["legal_compliance"],
+      "deliverables": ["legal_gate_pack", "tax_review", "product_compliance_passport"],
+      "human_review_roles": ["licensed_counsel", "tax_adviser", "certification_expert"],
+      "tool_allowlist": ["official_legal_source_read", "compliance_evidence_read", "internal_analysis"],
+      "data_allowlist": ["official_legal_sources", "exact_scope_compliance_evidence", "approved_product_facts"],
+      "default_sla_hours": 72
+    },
+    {
+      "role_id": "localization_content_customer_experience",
+      "title": "本地化、内容与客户体验专家",
+      "mission": "Produce evidence-bound local-language listing, media, customer support and consumer-expression review.",
+      "task_types": ["localization_content"],
+      "deliverables": ["localized_listing_pack", "media_qa_pack", "customer_service_playbook"],
+      "human_review_roles": ["native_language_reviewer", "customer_operations_owner"],
+      "tool_allowlist": ["approved_passport_read", "approved_media_read", "internal_draft", "quality_review_proposal"],
+      "data_allowlist": ["approved_product_facts", "rights_approved_media_refs", "official_language_rules"],
+      "default_sla_hours": 48
+    },
+    {
+      "role_id": "growth_ads_commercial",
+      "title": "增长、广告与商业专家",
+      "mission": "Design bounded acquisition, advertising, sales and partner experiments measured against cash profit and customer value.",
+      "task_types": ["growth_commercial"],
+      "deliverables": ["growth_experiment", "commercial_hypothesis", "campaign_stop_conditions"],
+      "human_review_roles": ["growth_owner", "platform_ads_owner"],
+      "tool_allowlist": ["market_analytics_read", "approved_profit_summary_read", "internal_experiment_draft"],
+      "data_allowlist": ["market_aggregates", "approved_profit_summary", "consented_commercial_evidence"],
+      "default_sla_hours": 48
+    },
+    {
+      "role_id": "product_management_customer_success",
+      "title": "产品管理与客户成功专家",
+      "mission": "Own JTBD, product roadmap, bounded Pilot scope, adoption, delivery economics, renewal and customer exit.",
+      "task_types": ["product_management"],
+      "deliverables": ["product_requirement", "pilot_contract", "customer_success_plan"],
+      "human_review_roles": ["product_owner", "customer_success_owner"],
+      "tool_allowlist": ["operating_workspace_read", "customer_evidence_minimized_read", "internal_analysis"],
+      "data_allowlist": ["operating_aggregates", "consented_customer_evidence_minimized", "product_metrics"],
+      "default_sla_hours": 48
+    },
+    {
+      "role_id": "data_evidence_ai",
+      "title": "数据、Evidence 与 AI 专家",
+      "mission": "Control source coverage, lineage, metrics, Agent evaluation, model routing, knowledge freshness and evidence promotion boundaries.",
+      "task_types": ["data_ai"],
+      "deliverables": ["source_coverage_manifest", "evidence_quality_report", "agent_eval_pack"],
+      "human_review_roles": ["data_steward", "independent_ai_reviewer"],
+      "tool_allowlist": ["source_registry_read", "evidence_metadata_read", "agent_eval_read", "internal_analysis"],
+      "data_allowlist": ["source_metadata", "redacted_agent_run", "deidentified_eval_fixture"],
+      "default_sla_hours": 48
+    },
+    {
+      "role_id": "architecture_engineering_security_release",
+      "title": "系统架构、工程、安全与发布专家",
+      "mission": "Own deep-module interfaces, adapters, IAM, reliability, security review, recovery and release evidence.",
+      "task_types": ["architecture_delivery"],
+      "deliverables": ["architecture_decision", "delivery_plan", "security_release_gate"],
+      "human_review_roles": ["engineering_owner", "security_reviewer", "release_auditor"],
+      "tool_allowlist": ["architecture_registry_read", "test_evidence_read", "runtime_health_read", "internal_analysis"],
+      "data_allowlist": ["architecture_contracts", "test_evidence", "redacted_runtime_health"],
+      "default_sla_hours": 72
+    }
+  ],
+  "control_roles": [
+    {
+      "role_id": "human_business_owner",
+      "purpose": "Current human accountability for active business decisions and high-risk dual sign."
+    },
+    {
+      "role_id": "independent_verifier",
+      "purpose": "Verify evidence and reasoning without authorship or approval conflict."
+    },
+    {
+      "role_id": "independent_approver",
+      "purpose": "Approve an admitted L3 action after all professional gates pass."
+    },
+    {
+      "role_id": "risk_authority",
+      "purpose": "Block unsafe, non-reversible, over-budget or authority-drifted work."
+    },
+    {
+      "role_id": "executor",
+      "purpose": "Execute only an admitted one-time Permit and return independent readback."
+    }
+  ],
+  "task_routes": {
+    "market_research": {
+      "accountable_role": "global_market_intelligence",
+      "consulted_roles": ["product_category_portfolio", "data_evidence_ai"],
+      "independent_review_roles": ["independent_verifier"]
+    },
+    "country_entry": {
+      "accountable_role": "global_market_intelligence",
+      "consulted_roles": ["finance_treasury_profit", "legal_tax_compliance_ip", "logistics_customs_fulfillment", "marketplace_channel_operations"],
+      "independent_review_roles": ["independent_verifier", "risk_authority"]
+    },
+    "product_portfolio": {
+      "accountable_role": "product_category_portfolio",
+      "consulted_roles": ["global_market_intelligence", "sourcing_supplier_quality", "finance_treasury_profit"],
+      "independent_review_roles": ["independent_verifier"]
+    },
+    "platform_operations": {
+      "accountable_role": "marketplace_channel_operations",
+      "consulted_roles": ["legal_tax_compliance_ip", "architecture_engineering_security_release"],
+      "independent_review_roles": ["independent_verifier", "risk_authority"]
+    },
+    "sourcing_quality": {
+      "accountable_role": "sourcing_supplier_quality",
+      "consulted_roles": ["product_category_portfolio", "finance_treasury_profit", "logistics_customs_fulfillment"],
+      "independent_review_roles": ["independent_verifier"]
+    },
+    "logistics_customs": {
+      "accountable_role": "logistics_customs_fulfillment",
+      "consulted_roles": ["finance_treasury_profit", "legal_tax_compliance_ip"],
+      "independent_review_roles": ["independent_verifier", "risk_authority"]
+    },
+    "finance_profit": {
+      "accountable_role": "finance_treasury_profit",
+      "consulted_roles": ["sourcing_supplier_quality", "logistics_customs_fulfillment", "data_evidence_ai"],
+      "independent_review_roles": ["independent_verifier", "risk_authority"]
+    },
+    "legal_compliance": {
+      "accountable_role": "legal_tax_compliance_ip",
+      "consulted_roles": ["marketplace_channel_operations", "logistics_customs_fulfillment", "data_evidence_ai"],
+      "independent_review_roles": ["independent_verifier", "risk_authority"]
+    },
+    "localization_content": {
+      "accountable_role": "localization_content_customer_experience",
+      "consulted_roles": ["product_category_portfolio", "marketplace_channel_operations", "legal_tax_compliance_ip"],
+      "independent_review_roles": ["independent_verifier"]
+    },
+    "growth_commercial": {
+      "accountable_role": "growth_ads_commercial",
+      "consulted_roles": ["finance_treasury_profit", "product_management_customer_success", "marketplace_channel_operations"],
+      "independent_review_roles": ["independent_verifier", "risk_authority"]
+    },
+    "product_management": {
+      "accountable_role": "product_management_customer_success",
+      "consulted_roles": ["global_market_intelligence", "growth_ads_commercial", "architecture_engineering_security_release"],
+      "independent_review_roles": ["independent_verifier"]
+    },
+    "data_ai": {
+      "accountable_role": "data_evidence_ai",
+      "consulted_roles": ["architecture_engineering_security_release", "legal_tax_compliance_ip"],
+      "independent_review_roles": ["independent_verifier", "risk_authority"]
+    },
+    "architecture_delivery": {
+      "accountable_role": "architecture_engineering_security_release",
+      "consulted_roles": ["data_evidence_ai", "product_management_customer_success"],
+      "independent_review_roles": ["independent_verifier", "risk_authority"]
+    }
+  },
+  "russia_execution_cell": {
+    "market": "RU",
+    "primary_platform": "ozon",
+    "mode": "first_execution_theater",
+    "research_only_neighbor_platforms": ["wildberries", "yandex_market"],
+    "required_human_bindings": [
+      "russia_theater_lead",
+      "ozon_account_owner",
+      "licensed_russia_counsel",
+      "russia_tax_customs_adviser",
+      "eaeu_eac_labeling_expert",
+      "finance_controller",
+      "quality_inspector",
+      "native_russian_reviewer",
+      "independent_approver"
+    ],
+    "execution_gate_status": "unchanged_existing_gates_apply"
+  },
+  "decision_levels": [
+    {
+      "level": "L0",
+      "scope": "public_read_hash_dedupe_health",
+      "leader_may_make_business_disposition": true,
+      "human_dual_sign_required": false,
+      "autonomous_external_action_allowed": false
+    },
+    {
+      "level": "L1",
+      "scope": "internal_reversible_draft_analysis_test",
+      "leader_may_make_business_disposition": true,
+      "human_dual_sign_required": false,
+      "autonomous_external_action_allowed": false
+    },
+    {
+      "level": "L2",
+      "scope": "preauthorized_bounded_read_only",
+      "leader_may_make_business_disposition": true,
+      "human_dual_sign_required": false,
+      "autonomous_external_action_allowed": false
+    },
+    {
+      "level": "L3",
+      "scope": "marketplace_supplier_inventory_price_ads_or_customer_write",
+      "leader_may_make_business_disposition": true,
+      "human_dual_sign_required": true,
+      "autonomous_external_action_allowed": false
+    },
+    {
+      "level": "L4",
+      "scope": "payment_bank_contract_legal_conclusion_account_permission_secret_or_evidence_deletion",
+      "leader_may_make_business_disposition": false,
+      "human_dual_sign_required": true,
+      "autonomous_external_action_allowed": false
+    }
+  ],
+  "cadence": {
+    "daily": "gate_blocker_owner_sla_budget_stop_condition",
+    "weekly_monday": "freeze_at_most_three_portfolio_outcomes",
+    "weekly_midweek": "russia_entry_profit_truth_and_c0_gate_clinic",
+    "weekly_friday": "evidence_failure_unknown_outcome_and_next_action_review",
+    "monthly": "global_market_platform_product_and_capital_portfolio_review",
+    "event_driven": "sanctions_regulation_platform_fee_security_or_supply_disruption"
+  },
+  "control_boundary": {
+    "creates_operating_task": false,
+    "records_business_decision": false,
+    "promotes_fact": false,
+    "creates_finance_entry": false,
+    "creates_approval": false,
+    "issues_permit": false,
+    "performs_external_write": false,
+    "proves_human_expert_appointment": false,
+    "changes_existing_gate": false
+  }
+}

@@ -1,0 +1,289 @@
+{
+  "schema_version": "kjds-active-workstream-assignments-v1",
+  "as_of": "2026-08-14",
+  "plan_source": "docs/project/03_REMAINING_WORK_AND_PARALLEL_PLAN.md",
+  "policy": {
+    "max_current_tasks_per_lane": 1,
+    "legacy_in_progress_is_execution_lease": false,
+    "current_task_is_execution_lease": true,
+    "external_write_allowed": false,
+    "self_approval_allowed": false,
+    "shared_schema_requires_single_integrator": true
+  },
+  "lanes": [
+    {
+      "id": "A",
+      "name": "operating_truth",
+      "accountable_role": "business_owner",
+      "current_task": {
+        "task_id": "DAY0-TRUTH-20260802",
+        "state": "active_blocked",
+        "write_scope": [
+          "operating_evidence",
+          "finance_evidence",
+          "gate_observation"
+        ],
+        "blocked_on": [
+          "real_order_evidence",
+          "platform_settlement_evidence",
+          "bank_cash_evidence",
+          "signed_profit_thresholds"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "B",
+      "name": "commercial_discovery",
+      "accountable_role": "commercial_owner",
+      "current_task": {
+        "task_id": "COM-001",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "qualification_contract",
+          "diagnostic_deliverable",
+          "sales_copy",
+          "contract_checklist"
+        ],
+        "blocked_on": [
+          "c0_commercial_pilot_gate"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "C",
+      "name": "product_engineering",
+      "accountable_role": "engineering_owner",
+      "current_task": null,
+      "next_task_id": null
+    },
+    {
+      "id": "D",
+      "name": "commercial_platform",
+      "accountable_role": "commercial_platform_owner",
+      "current_task": {
+        "task_id": "COM-002",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "commercial_pilot_deployment",
+          "commercial_lifecycle",
+          "customer_exit_export",
+          "c0_engineering_evidence"
+        ],
+        "blocked_on": [
+          "hosted_target_and_rpo_rto_decision",
+          "payment_invoice_tax_contract_inputs",
+          "contract_dpa_sla_review_authority"
+        ]
+      },
+      "next_task_id": null,
+      "blocked_on": [
+        "c0_commercial_pilot_gate"
+      ]
+    },
+    {
+      "id": "E",
+      "name": "risk_review",
+      "accountable_role": "risk_owner",
+      "current_task": null,
+      "next_task_id": null
+    },
+    {
+      "id": "F",
+      "name": "social_intelligence_platform",
+      "accountable_role": "market_intelligence_owner",
+      "current_task": {
+        "task_id": "BAS-178",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "social_source_adoption",
+          "collection_contract",
+          "analysis_contract",
+          "campaign_contract",
+          "adapter_evaluation"
+        ],
+        "blocked_on": [
+          "dedicated_platform_account_binding",
+          "real_source_fixture",
+          "campaign_authority_contract"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "G",
+      "name": "xiaohongshu_operations",
+      "accountable_role": "xiaohongshu_operator",
+      "current_task": {
+        "task_id": "OPS-XHS-001",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "xiaohongshu_research_questions",
+          "xiaohongshu_content_hypotheses",
+          "xiaohongshu_campaign_drafts",
+          "xiaohongshu_analysis_taxonomy",
+          "xiaohongshu_operator_runbook"
+        ],
+        "blocked_on": [
+          "dedicated_qr_login",
+          "real_account_baseline",
+          "campaign_grant"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "H",
+      "name": "douyin_operations",
+      "accountable_role": "douyin_operator",
+      "current_task": {
+        "task_id": "OPS-DY-001",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "douyin_research_questions",
+          "douyin_content_hypotheses",
+          "douyin_campaign_drafts",
+          "douyin_analysis_taxonomy",
+          "douyin_operator_runbook"
+        ],
+        "blocked_on": [
+          "official_oauth_or_dedicated_profile",
+          "real_account_baseline",
+          "campaign_grant"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "I",
+      "name": "russia_market_intelligence",
+      "accountable_role": "russia_market_intelligence_owner",
+      "current_task": {
+        "task_id": "BAS-179",
+        "state": "in_progress_preparation_only",
+        "write_scope": [
+          "russia_market_source_registry",
+          "russia_demand_query_taxonomy",
+          "russia_hot_event_taxonomy",
+          "russia_market_radar_contract",
+          "russia_market_research_evidence"
+        ],
+        "blocked_on": [
+          "marketplace_analytics_scopes",
+          "yandex_search_api_identity",
+          "telegram_vk_dedicated_identity",
+          "real_market_fixtures"
+        ]
+      },
+      "next_task_id": null
+    },
+    {
+      "id": "J",
+      "name": "media_agent_platform",
+      "accountable_role": "media_agent_platform_owner",
+      "current_task": null,
+      "next_task_id": null
+    },
+    {
+      "id": "K",
+      "name": "local_demo_client",
+      "accountable_role": "local_demo_product_owner",
+      "current_task": null,
+      "next_task_id": null
+    },
+    {
+      "id": "L",
+      "name": "strategic_intelligence",
+      "accountable_role": "strategy_and_capital_allocation_owner",
+      "current_task": null,
+      "next_task_id": null
+    },
+    {
+      "id": "M",
+      "name": "global_data_coverage",
+      "accountable_role": "global_data_coverage_owner",
+      "current_task": null,
+      "next_task_id": null
+    }
+  ],
+  "shared_write_leases": {
+    "alembic_migration": null,
+    "api_aggregation_root": null,
+    "master_spec": null,
+    "openapi_snapshot": null
+  },
+  "control_boundary": {
+    "registry_grants_business_authority": false,
+    "registry_grants_repository_write": false,
+    "registry_grants_external_write": false,
+    "registry_grants_approval_or_permit": false
+  },
+  "enterprise_governance": {
+    "contract_id": "kjds-enterprise-governance-v1",
+    "as_of": "2026-08-14",
+    "authority_source": "enterprise_board",
+    "status": "configured_awaiting_human_appointment",
+    "binding_authority": {
+      "system_may_appoint_humans": false,
+      "registry_declaration_proves_appointment": false,
+      "human_appointment_authority": "enterprise_board"
+    },
+    "board_owner": {
+      "role_ref": "human_business_owner",
+      "title": "企业经营责任人 / Board Owner",
+      "duty": "对企业定位、P&L、预算、最大损失与继续/停止决定承担最终责任。",
+      "primary_human_ref": null,
+      "alternate_human_ref": null,
+      "appointment_status": "awaiting_enterprise_appointment"
+    },
+    "independent_control_seats": [
+      {
+        "role_ref": "independent_verifier",
+        "title": "独立验证人",
+        "duty": "独立验证证据、结果与声明，不参与被验证产物的编写。",
+        "primary_human_ref": null,
+        "alternate_human_ref": null,
+        "appointment_status": "awaiting_enterprise_appointment"
+      },
+      {
+        "role_ref": "independent_approver",
+        "title": "独立批准人",
+        "duty": "在职责分离条件下批准受控高风险决定，但不执行该决定。",
+        "primary_human_ref": null,
+        "alternate_human_ref": null,
+        "appointment_status": "awaiting_enterprise_appointment"
+      },
+      {
+        "role_ref": "risk_authority",
+        "title": "风险与合规权威",
+        "duty": "维护风险红线、否决条件、专业签字与升级路径。",
+        "primary_human_ref": null,
+        "alternate_human_ref": null,
+        "appointment_status": "awaiting_enterprise_appointment"
+      },
+      {
+        "role_ref": "executor",
+        "title": "受控执行人",
+        "duty": "只执行已批准、限额、幂等且可回读的动作，不自批。",
+        "primary_human_ref": null,
+        "alternate_human_ref": null,
+        "appointment_status": "awaiting_enterprise_appointment"
+      }
+    ],
+    "separation_of_duties": {
+      "self_approval_allowed": false,
+      "author_cannot_review_own_work": true,
+      "release_approver_disjoint_from_author": true,
+      "independent_verifier_disjoint_from_executor": true
+    },
+    "appointment_gate": {
+      "gate_ref": "organization_binding_gate",
+      "required_core_bindings": 18,
+      "required_independent_controls": 5,
+      "bound_core_roles": 0,
+      "bound_independent_controls": 0,
+      "gate_status": "OPEN_PENDING_ENTERPRISE_HUMANS"
+    }
+  }
+}

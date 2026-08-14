@@ -1,0 +1,367 @@
+{
+  "registry_id": "kjds-store-category-strategy-v1",
+  "version": "2026.08.08.1",
+  "effective_from": "2026-08-08",
+  "effective_to": null,
+  "status": "active_internal_policy",
+  "official_taxonomy_semantics": "platform_category_ids_are_evidence_bound_and_never_inferred_from_derived_tags",
+  "derived_tag_semantics": "internal_operating_archetypes_not_platform_taxonomy",
+  "store_positionings": [
+    "general",
+    "category_specialist",
+    "brand_flagship",
+    "test_lab",
+    "outlet",
+    "regional"
+  ],
+  "assortment_modes": [
+    "controlled_distribution",
+    "refined_operation",
+    "hero_sku",
+    "brand_building",
+    "store_cluster",
+    "hybrid"
+  ],
+  "price_bands": ["budget", "value", "mid", "premium", "luxury", "mixed"],
+  "category_roles": ["core", "adjacent", "experimental", "excluded"],
+  "growth_channels": ["ozon", "vk", "telegram"],
+  "derived_archetypes": {
+    "accessory": {
+      "preferred_modes": ["controlled_distribution", "hybrid", "refined_operation"],
+      "required_gates": ["exact_variant", "positive_downside_cm3"],
+      "focus_metrics": ["cash_cycle", "bundle_cm3", "price_competition"]
+    },
+    "replacement_part": {
+      "preferred_modes": ["controlled_distribution", "refined_operation"],
+      "required_gates": ["compatibility_evidence", "exact_variant"],
+      "focus_metrics": ["search_intent_match", "return_rate", "cash_cm3"]
+    },
+    "size_variant": {
+      "preferred_modes": ["refined_operation", "hero_sku"],
+      "required_gates": ["variant_matrix", "return_evidence"],
+      "focus_metrics": ["return_adjusted_cm3", "variant_stock", "size_conversion"]
+    },
+    "fragile": {
+      "preferred_modes": ["refined_operation"],
+      "required_gates": ["packaging_evidence", "damage_cost"],
+      "focus_metrics": ["damage_rate", "absolute_cm3", "return_logistics"]
+    },
+    "heavy": {
+      "preferred_modes": ["refined_operation"],
+      "required_gates": ["volume_weight", "route_cost"],
+      "focus_metrics": ["absolute_cm3", "logistics_ratio", "regional_margin"]
+    },
+    "regulated": {
+      "preferred_modes": ["refined_operation", "brand_building"],
+      "required_gates": ["compliance_evidence", "claims_review"],
+      "focus_metrics": ["risk_adjusted_cm3", "complaint_rate", "document_freshness"]
+    },
+    "repeat_purchase": {
+      "preferred_modes": ["hero_sku", "brand_building", "hybrid"],
+      "required_gates": ["settled_cohort_evidence"],
+      "focus_metrics": ["repeat_cash_cm3", "cohort_retention", "cash_payback"]
+    },
+    "seasonal": {
+      "preferred_modes": ["hybrid", "refined_operation"],
+      "required_gates": ["season_window", "exit_plan"],
+      "focus_metrics": ["sell_through_probability", "remaining_value", "time_to_cash"]
+    },
+    "high_ticket": {
+      "preferred_modes": ["refined_operation", "brand_building"],
+      "required_gates": ["fraud_risk", "warranty_cost", "return_evidence"],
+      "focus_metrics": ["absolute_cm3", "cash_cycle", "refund_tail_loss"]
+    },
+    "giftable": {
+      "preferred_modes": ["refined_operation", "hero_sku"],
+      "required_gates": ["content_rights", "season_window"],
+      "focus_metrics": ["content_conversion", "bundle_cm3", "seasonal_cash_cm3"]
+    },
+    "content_led": {
+      "preferred_modes": ["refined_operation", "brand_building"],
+      "required_gates": ["content_rights", "russian_native_review"],
+      "focus_metrics": ["query_view_conversion", "content_conversion", "incremental_cash_cm3"]
+    },
+    "bundle": {
+      "preferred_modes": ["refined_operation", "hero_sku"],
+      "required_gates": ["bundle_identity", "bundle_cost"],
+      "focus_metrics": ["bundle_cm3", "attach_rate", "return_adjusted_cm3"]
+    }
+  },
+  "routing_precedence": [
+    "exact_official_exclusion",
+    "exact_leaf_category",
+    "exact_product_type",
+    "exact_hierarchy_level_3",
+    "exact_hierarchy_level_2",
+    "exact_hierarchy_level_1",
+    "derived_tag_advisory_only",
+    "needs_category_data"
+  ],
+  "operating_playbook_semantics": "open_ended_research_backed_proposals_projected_from_existing_truths_not_a_second_workflow",
+  "source_catalog": {
+    "ozon_product_launch_2026": "https://seller.ozon.ru/media/boost/kak-vyvesti-tovar-na-marketplejs-i-rasschitat-pervuy-partiyu/",
+    "ozon_search_query_analytics": "https://seller.ozon.ru/media/news/novaya-analitika-po-zaprosam-tovarov/",
+    "ozon_video_cover": "https://docs.ozon.ru/global/products/upload/adding-content/videocover/",
+    "ozon_ppc_controls": "https://docs.ozon.ru/global/promotion/product-promotions/pay-per-click/edit-and-pause/",
+    "ozon_promo_analytics": "https://seller.ozon.ru/media/news/ocenivajte-effektivnost-vashih-promokodov/",
+    "ozon_fbo_turnover": "https://seller.ozon.ru/media/news/fbo-novoe-v-otchyotah-po-prodazham-so-skladov/",
+    "ozon_cross_border_logistics": "https://docs.ozon.ru/legal/en/partners/logistics/contract/",
+    "ozon_seasonal_trends_2026": "https://seller.ozon.ru/media/trends/letnie-trendy-2026-goda-ot-pinterest/",
+    "openai_product_discovery_2026": "https://openai.com/index/powering-product-discovery-in-chatgpt/",
+    "openai_agentic_commerce": "https://openai.com/index/buy-it-in-chatgpt/",
+    "openai_graders": "https://platform.openai.com/docs/api-reference/graders",
+    "mcp_authorization": "https://modelcontextprotocol.io/specification/2025-03-26/basic/authorization",
+    "kjds_automated_commerce_prd": "../19_AUTOMATED_COMMERCE_AND_RECURSIVE_STORE_MINING_PRD.md",
+    "kjds_profit_truth": "../MASTER_SPEC.md#profit-model"
+  },
+  "source_refresh_policy": {
+    "last_verified_at": "2026-08-08",
+    "volatile_platform_source_review_days": 30,
+    "strategy_source_review_days": 90,
+    "stale_source_effect": "awaiting_source_review_not_silent_reuse",
+    "business_threshold_semantics": "thresholds_must_come_from_current_store_policy_or_evidence_not_article_examples"
+  },
+  "operating_graph": {
+    "truth_state_authority": "existing_commerce_os_state_machine",
+    "truth_states": ["observe", "identity", "qualify", "item_draft", "content", "listing_approval", "publish", "order", "procurement_review", "fulfill", "settle", "reconcile", "learn"],
+    "feedback_edges": [
+      {"from": "learn", "to": "observe", "signal": "new_market_supplier_or_store_hypothesis"},
+      {"from": "learn", "to": "qualify", "signal": "actual_cash_return_or_cost_drift"},
+      {"from": "learn", "to": "content", "signal": "query_review_or_return_root_cause"},
+      {"from": "reconcile", "to": "qualify", "signal": "planned_vs_actual_cash_cm3_variance"},
+      {"from": "fulfill", "to": "content", "signal": "packaging_usage_or_expectation_gap"},
+      {"from": "settle", "to": "procurement_review", "signal": "cash_and_replenishment_capacity"}
+    ],
+    "decision_heads": ["eligibility", "evidence_gap", "next_best_action", "budget_and_loss_cap", "experiment", "readback", "cash_outcome", "continue_hold_or_exit"],
+    "parallel_workstreams": ["market_and_source", "identity_and_compliance", "profit_and_cash", "content_and_media", "listing_and_channel", "order_and_fulfillment", "returns_and_quality", "experiments_and_learning"]
+  },
+  "technology_profile": {
+    "product_digital_twin": "exact_variant_identity_with_source_listing_order_return_settlement_and_cash_lineage",
+    "adaptive_policy": "registry_version_hash_source_freshness_and_stage_specific_projection",
+    "agent_contract": "structured_input_output_tools_trace_cost_eval_fallback_and_human_owner",
+    "agent_evaluation": "golden_cases_deterministic_checks_model_graders_trace_review_and_promotion_gate",
+    "integration": "official_api_or_authorized_export_first_then_bounded_public_browser_capture_with_provenance",
+    "protocol_authorization": "per_tool_least_privilege_oauth_or_server_identity_without_browser_secrets",
+    "commerce_channel_readiness": "canonical_fresh_product_feed_price_availability_media_and_policy_status_without_replacing_merchant_systems",
+    "write_control": "approval_one_time_permit_minimum_privilege_executor_readback_kill_switch_and_compensation",
+    "source_refs": ["openai_product_discovery_2026", "openai_agentic_commerce", "openai_graders", "mcp_authorization"]
+  },
+  "human_decision_contract": {
+    "proposal_statuses": ["awaiting_evidence", "pending_human_decision", "approved_for_existing_gate_flow", "rejected_with_reason", "deferred_until", "blocked_by_route"],
+    "allowed_decisions": ["approve_for_existing_gate_flow", "reject_with_reason", "defer_until", "request_more_evidence"],
+    "approval_semantics": "human_approval_routes_the_proposal_to_existing_evidence_approval_permit_executor_and_readback_gates_and_never_bypasses_them",
+    "numeric_recommendation_semantics": "recommended_price_budget_bid_quantity_or_loss_cap_is_null_until_its_complete_authoritative_inputs_and_formula_are_available",
+    "proposal_type_by_playbook": {
+      "supplier_evidence_sprint": "supplier_rfq_work_item",
+      "recursive_seller_store_discovery": "market_discovery_work_item",
+      "evidence_first_micro_pilot": "pilot_launch_proposal",
+      "search_content_conversion": "listing_content_change_proposal",
+      "media_readiness_and_conversion": "media_change_proposal",
+      "controlled_paid_growth": "advertising_budget_bid_change_proposal",
+      "promotion_attribution": "promotion_change_proposal",
+      "price_and_margin_guard": "price_change_proposal",
+      "inventory_cluster_replenishment": "replenishment_proposal",
+      "fulfillment_packaging_guard": "fulfillment_change_proposal",
+      "returns_voice_of_customer_recovery": "quality_corrective_action",
+      "seasonal_trend_test_and_exit": "seasonal_test_or_exit_proposal",
+      "portfolio_cash_compounding": "portfolio_allocation_proposal",
+      "aging_stock_exit": "markdown_return_or_disposal_proposal"
+    }
+  },
+  "automation_mode_contract": {
+    "checkbox_visible": true,
+    "master_switch_default": false,
+    "action_switch_default": false,
+    "default_mode": "manual_each_action",
+    "modes": {
+      "manual_each_action": {"runtime_state": "enabled", "effect": "every_external_action_waits_for_a_human_decision"},
+      "supervised_batch": {"runtime_state": "planned", "effect": "human_approves_a_bounded_batch_then_each_action_revalidates_and_reads_back"},
+      "policy_bound_autonomous": {"runtime_state": "planned", "effect": "eligible_actions_execute_within_a_scoped_time_bounded_grant_and_stop_on_any_guardrail"}
+    },
+    "selection_semantics": "the_store_master_and_action_checkbox_record_an_automation_request_and_never_grant_execution_by_themselves",
+    "effective_mode_semantics": "effective_mode_remains_manual_until_master_action_runtime_admission_and_existing_execution_grant_are_all_ready",
+    "caps_semantics": "caps_bound_the_request_but_never_replace_evidence_policy_independent_approval_execution_authorization_or_readback",
+    "grant_requirements": ["exact_tenant_entity_store", "playbook_and_action_type", "sku_or_category_scope", "price_budget_quantity_and_loss_caps", "valid_from_and_until", "evidence_and_policy_version", "independent_approval", "idempotency", "execution_time_authorization", "authoritative_readback", "kill_switch", "compensation"],
+    "out_of_bounds_effect": "pause_and_route_to_pending_human_decision"
+  },
+  "operating_playbooks": {
+    "supplier_evidence_sprint": {
+      "priority": 10,
+      "objective": "turn_public_source_signals_into_comparable_multi_supplier_rfq_evidence",
+      "applicable_lifecycles": ["research", "pilot", "qualified"],
+      "requires_store_route": false,
+      "required_evidence": ["exact_variant_identity", "comparable_bom", "supplier_source_url"],
+      "action_sequence": ["collect_parallel_supplier_candidates", "normalize_variant_and_moq", "request_three_comparable_quotes", "promote_only_accepted_quote_evidence"],
+      "focus_metrics": ["comparable_supplier_count", "rfq_response_coverage", "quote_freshness", "variant_mismatch_rate"],
+      "stop_conditions": ["identity_conflict", "comparison_dimensions_incomplete", "collection_budget_exhausted"],
+      "automation_scope": "internal_capture_and_proposal_only",
+      "source_refs": ["kjds_automated_commerce_prd", "kjds_profit_truth"]
+    },
+    "recursive_seller_store_discovery": {
+      "priority": 20,
+      "objective": "expand_verified_seeds_through_same_product_sellers_store_catalogs_and_new_arrivals",
+      "applicable_lifecycles": ["research", "pilot", "qualified", "growth"],
+      "requires_store_route": false,
+      "required_evidence": ["seed_identity", "public_store_snapshot", "snapshot_lineage"],
+      "action_sequence": ["find_same_product_sellers", "capture_bounded_store_catalog", "diff_new_arrivals", "deduplicate_candidates", "route_to_supplier_and_profit_evidence"],
+      "focus_metrics": ["qualified_candidates_per_store", "new_arrival_novelty", "formal_profit_hit_rate", "cost_per_qualified_candidate"],
+      "stop_conditions": ["depth_or_breadth_budget_exhausted", "no_incremental_candidates", "identity_conflict"],
+      "automation_scope": "bounded_public_observation_and_internal_proposal_only",
+      "source_refs": ["kjds_automated_commerce_prd"]
+    },
+    "evidence_first_micro_pilot": {
+      "priority": 30,
+      "objective": "validate_demand_conversion_returns_and_cash_with_a_bounded_first_batch",
+      "applicable_lifecycles": ["pilot", "qualified"],
+      "requires_store_route": true,
+      "required_evidence": ["positive_downside_cm3", "approved_maximum_loss", "content_readiness", "supply_lead_time"],
+      "action_sequence": ["freeze_pilot_hypothesis", "freeze_quantity_and_loss_cap", "prepare_listing_and_fulfillment", "observe_orders_returns_settlement_and_cash", "promote_hold_or_exit"],
+      "focus_metrics": ["view_to_order_conversion", "return_adjusted_cm3", "planned_vs_actual_cash_cm3", "time_to_cash"],
+      "stop_conditions": ["approved_loss_cap_reached", "profit_gate_failed", "content_or_compliance_conflict", "supply_lead_time_breach"],
+      "automation_scope": "proposal_only_external_actions_require_existing_gates",
+      "source_refs": ["ozon_product_launch_2026", "ozon_seasonal_trends_2026", "kjds_profit_truth"]
+    },
+    "search_content_conversion": {
+      "priority": 40,
+      "objective": "convert_observed_search_intent_into_exact_factual_russian_content",
+      "applicable_lifecycles": ["pilot", "qualified", "growth"],
+      "requires_store_route": true,
+      "required_evidence": ["query_observations", "product_passport", "russian_native_review"],
+      "action_sequence": ["rank_observed_queries", "map_queries_to_verified_attributes", "prepare_title_characteristics_description_and_faq", "run_controlled_content_variant", "measure_query_view_order_and_return_effect"],
+      "focus_metrics": ["query_impressions", "query_to_view_conversion", "view_to_order_conversion", "return_rate", "incremental_cash_cm3"],
+      "stop_conditions": ["unsupported_claim_required", "variant_identity_conflict", "no_validated_incremental_lift"],
+      "automation_scope": "internal_draft_and_evaluation_only",
+      "source_refs": ["ozon_search_query_analytics"]
+    },
+    "media_readiness_and_conversion": {
+      "priority": 50,
+      "objective": "produce_traceable_sku_exact_images_video_and_media_qa_before_listing",
+      "applicable_lifecycles": ["research", "pilot", "qualified", "growth"],
+      "requires_store_route": true,
+      "required_evidence": ["product_passport", "asset_rights", "sku_media_identity", "media_qa"],
+      "action_sequence": ["freeze_shot_list", "prepare_sku_exact_assets", "render_platform_variants", "run_identity_rights_ocr_and_format_qa", "submit_for_native_and_listing_review"],
+      "focus_metrics": ["media_readiness", "variant_mismatch_rate", "moderation_rework_rate", "content_conversion"],
+      "stop_conditions": ["asset_rights_missing", "sku_visual_mismatch", "media_qa_failed", "moderation_rejection"],
+      "automation_scope": "internal_asset_draft_only_until_existing_listing_gates",
+      "source_refs": ["ozon_video_cover", "kjds_automated_commerce_prd"]
+    },
+    "controlled_paid_growth": {
+      "priority": 60,
+      "objective": "buy_incremental_demand_only_when_actual_cash_and_measurement_support_it",
+      "applicable_lifecycles": ["growth"],
+      "requires_store_route": true,
+      "required_evidence": ["positive_actual_cash_cm3", "campaign_budget", "stop_loss", "inventory_readiness", "incrementality_measurement"],
+      "action_sequence": ["freeze_campaign_hypothesis", "freeze_budget_bid_and_stop_loss", "run_bounded_campaign", "read_campaign_change_history", "compare_incremental_cash_cm3", "scale_hold_or_stop"],
+      "focus_metrics": ["incremental_orders", "cac", "advertising_cost_ratio", "incremental_cash_cm3", "stockout_risk"],
+      "stop_conditions": ["cash_cm3_nonpositive_after_acquisition", "budget_or_bid_limit_breached", "stock_or_return_guardrail_breached", "readback_missing"],
+      "automation_scope": "external_change_requires_approval_permit_executor_and_readback",
+      "source_refs": ["ozon_ppc_controls", "kjds_profit_truth"]
+    },
+    "promotion_attribution": {
+      "priority": 70,
+      "objective": "separate_promotion_revenue_from_discount_cost_and_incremental_cash_profit",
+      "applicable_lifecycles": ["growth"],
+      "requires_store_route": true,
+      "required_evidence": ["promotion_or_promo_code_identity", "discount_cost", "orders", "settlement_and_cash"],
+      "action_sequence": ["assign_traceable_promotion_identity", "freeze_baseline", "observe_applications_orders_revenue_and_discount", "reconcile_to_actual_cash_cm3", "continue_adjust_or_stop"],
+      "focus_metrics": ["promo_application_to_order_conversion", "promotion_revenue", "discount_cost", "incremental_cash_cm3"],
+      "stop_conditions": ["attribution_conflict", "discount_cost_unknown", "actual_cash_cm3_nonpositive"],
+      "automation_scope": "analysis_and_proposal_only",
+      "source_refs": ["ozon_promo_analytics", "kjds_profit_truth"]
+    },
+    "price_and_margin_guard": {
+      "priority": 80,
+      "objective": "protect_variant_exact_margin_while_testing_price_position",
+      "applicable_lifecycles": ["pilot", "qualified", "growth"],
+      "requires_store_route": true,
+      "required_evidence": ["variant_exact_price", "complete_cost_stack", "competitor_observation_scope", "approved_price_floor"],
+      "action_sequence": ["freeze_price_hypothesis", "calculate_downside_and_actual_cash_cm3", "compare_only_equivalent_variants", "propose_bounded_price_change", "readback_and_measure_conversion_margin_tradeoff"],
+      "focus_metrics": ["price_index", "view_to_order_conversion", "cm3_per_order", "actual_cash_cm3"],
+      "stop_conditions": ["price_floor_breach", "cost_or_variant_conflict", "cash_cm3_nonpositive"],
+      "automation_scope": "external_price_change_requires_existing_write_gates",
+      "source_refs": ["kjds_profit_truth"]
+    },
+    "inventory_cluster_replenishment": {
+      "priority": 90,
+      "objective": "place_and_replenish_stock_by_sku_and_warehouse_without_freezing_excess_cash",
+      "applicable_lifecycles": ["growth"],
+      "requires_store_route": true,
+      "required_evidence": ["sku_warehouse_stock", "sales_velocity_window", "lead_time", "cash_budget"],
+      "action_sequence": ["observe_idc_and_turnover", "separate_sku_warehouse_demand", "calculate_cash_constrained_replenishment", "propose_distribution", "monitor_stockout_and_aging"],
+      "focus_metrics": ["idc", "inventory_turnover", "stockout_rate", "aging_stock", "cash_cycle"],
+      "stop_conditions": ["velocity_or_lead_time_unknown", "cash_budget_breach", "aging_or_return_guardrail_breached"],
+      "automation_scope": "replenishment_proposal_only_no_auto_procurement",
+      "source_refs": ["ozon_fbo_turnover", "kjds_profit_truth"]
+    },
+    "fulfillment_packaging_guard": {
+      "priority": 100,
+      "objective": "prevent_delivery_rejection_damage_and_return_cost_before_dispatch",
+      "applicable_lifecycles": ["pilot", "qualified", "growth"],
+      "requires_store_route": true,
+      "required_evidence": ["exact_weight_and_dimensions", "packaging_plan", "barcode_readiness", "prohibited_goods_check"],
+      "action_sequence": ["validate_route_limits", "validate_packaging_and_barcode", "record_fragile_or_high_value_packing", "dispatch_with_traceable_manifest", "classify_delivery_and_return_exceptions"],
+      "focus_metrics": ["dispatch_rejection_rate", "damage_rate", "return_logistics_cost", "on_time_handoff"],
+      "stop_conditions": ["route_limit_breach", "barcode_or_packaging_failure", "prohibited_goods_conflict"],
+      "automation_scope": "internal_validation_and_tasking_only",
+      "source_refs": ["ozon_cross_border_logistics"]
+    },
+    "returns_voice_of_customer_recovery": {
+      "priority": 110,
+      "objective": "turn_return_reasons_reviews_and_support_events_into_product_content_and_supply_corrections",
+      "applicable_lifecycles": ["pilot", "qualified", "growth", "exit"],
+      "requires_store_route": true,
+      "required_evidence": ["return_reason", "exact_sku", "order_and_refund", "settlement_or_cash_effect"],
+      "action_sequence": ["classify_root_cause", "separate_product_content_packaging_and_logistics_causes", "open_owner_task", "validate_corrective_action", "measure_return_adjusted_cash_cm3"],
+      "focus_metrics": ["return_rate", "damage_rate", "reason_recurrence", "return_adjusted_cash_cm3"],
+      "stop_conditions": ["safety_or_compliance_incident", "repeat_defect_threshold_reached", "return_adjusted_cash_cm3_nonpositive"],
+      "automation_scope": "internal_diagnosis_and_tasking_only",
+      "source_refs": ["ozon_cross_border_logistics", "kjds_profit_truth"]
+    },
+    "seasonal_trend_test_and_exit": {
+      "priority": 120,
+      "objective": "test_time_bounded_demand_without_stranding_inventory_after_the_window",
+      "applicable_lifecycles": ["research", "pilot", "qualified", "growth"],
+      "requires_store_route": true,
+      "required_evidence": ["season_window", "demand_observation", "small_batch_or_jit_plan", "exit_plan"],
+      "action_sequence": ["freeze_trend_and_window", "map_to_existing_or_adjacent_assortment", "run_small_batch_or_collection_test", "monitor_sell_through_and_remaining_value", "replenish_or_exit_before_window_closes"],
+      "focus_metrics": ["sell_through_probability", "remaining_value", "time_to_cash", "seasonal_cash_cm3"],
+      "stop_conditions": ["season_window_too_short", "no_validated_demand", "remaining_value_guardrail_breached"],
+      "automation_scope": "proposal_only_no_auto_procurement_or_publish",
+      "source_refs": ["ozon_seasonal_trends_2026", "ozon_product_launch_2026"]
+    },
+    "portfolio_cash_compounding": {
+      "priority": 130,
+      "objective": "reallocate_cash_to_proven_skus_and_bounded_cross_sell_or_bundle_tests",
+      "applicable_lifecycles": ["growth"],
+      "requires_store_route": true,
+      "required_evidence": ["reconciled_actual_cash_cm3", "inventory_turnover", "return_adjustment", "portfolio_cash_budget"],
+      "action_sequence": ["rank_by_actual_cash_cm3_and_cash_cycle", "protect_proven_availability", "propose_bundle_or_adjacent_test", "reallocate_with_portfolio_cap", "reconcile_and_repeat"],
+      "focus_metrics": ["actual_cash_cm3", "cash_cycle", "return_adjusted_cm3", "portfolio_concentration", "incremental_bundle_cm3"],
+      "stop_conditions": ["actual_cash_cm3_nonpositive", "portfolio_cash_limit_breached", "concentration_or_return_guardrail_breached"],
+      "automation_scope": "internal_portfolio_proposal_only",
+      "source_refs": ["ozon_fbo_turnover", "ozon_seasonal_trends_2026", "kjds_profit_truth"]
+    },
+    "aging_stock_exit": {
+      "priority": 140,
+      "objective": "stop_replenishment_and_recover_cash_before_storage_or_disposal_erodes_value",
+      "applicable_lifecycles": ["exit"],
+      "requires_store_route": false,
+      "required_evidence": ["sku_warehouse_stock", "aging_or_turnover", "remaining_value", "exit_costs"],
+      "action_sequence": ["stop_replenishment", "calculate_hold_discount_return_or_disposal_scenarios", "select_approved_exit_route", "execute_through_existing_gates", "reconcile_recovered_cash_and_loss"],
+      "focus_metrics": ["aging_stock", "remaining_value", "storage_and_disposal_cost", "recovered_cash", "final_cash_loss"],
+      "stop_conditions": ["exit_cost_unknown", "inventory_identity_conflict", "approval_or_readback_missing"],
+      "automation_scope": "proposal_only_external_exit_requires_existing_gates",
+      "source_refs": ["ozon_fbo_turnover", "kjds_profit_truth"]
+    }
+  },
+  "control_envelope": {
+    "derived_tag_can_create_official_category": false,
+    "derived_tag_can_authorize_listing": false,
+    "automatic_cross_store_publish": false,
+    "automatic_advertising": false,
+    "automatic_procurement": false,
+    "approval_required": true,
+    "permit_required": true,
+    "readback_required": true
+  }
+}

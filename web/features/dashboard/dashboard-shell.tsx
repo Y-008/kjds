@@ -1,14 +1,17 @@
 import {
   Activity,
   BrainCircuit,
+  Boxes,
   ChevronRight,
   CircleDollarSign,
+  Command,
   Database,
   LayoutDashboard,
   LockKeyhole,
   LogOut,
   Network,
   PackageSearch,
+  PanelsTopLeft,
   Radar,
   RefreshCw,
   ScanSearch,
@@ -32,6 +35,7 @@ const workspaceIcons: Record<WorkspaceId, LucideIcon> = {
   data: Database,
   research: ScanSearch,
   products: PackageSearch,
+  batch: ScanSearch,
   pilot: Radar,
   sourcing: Waypoints,
   growth: TrendingUp,
@@ -125,9 +129,25 @@ export function DashboardShell({
             <p>{current.description}</p>
           </div>
           <div className="topbar-actions">
+            <Link className="evidenceops-launch atlas-launch" href="/team-control">
+              <Command size={16} />
+              团队总控
+            </Link>
+            <Link className="evidenceops-launch atlas-launch" href="/profit-command">
+              <CircleDollarSign size={16} />
+              利润指挥
+            </Link>
+            <Link className="evidenceops-launch atlas-launch" href="/commerce-os">
+              <Boxes size={16} />
+              智能 ERP
+            </Link>
             <Link className="evidenceops-launch atlas-launch" href="/capability-atlas">
               <Network size={16} />
               AI 能力树
+            </Link>
+            <Link className="evidenceops-launch atlas-launch" href="/frontend-toolkit">
+              <PanelsTopLeft size={16} />
+              卖家成交页
             </Link>
             <Link className="evidenceops-launch" href="/evidenceops">
               <BrainCircuit size={16} />

@@ -1,6 +1,6 @@
 [project]
 name = "kjds-control-plane"
-version = "0.58.0"
+version = "0.60.0"
 description = "AI-native cross-border commerce control plane"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -14,10 +14,16 @@ dependencies = [
   "sqlalchemy>=2.0,<3",
   "uvicorn[standard]>=0.34,<1",
   "python-dotenv>=1.2.2",
+  "mcp>=1.27.2,<2",
+  "cryptography>=49,<50",
+  "jsonschema>=4.26,<5",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "ruff>=0.11,<1"]
+
+[project.scripts]
+kjds-commerce-mcp = "apps.control_plane.commerce_mcp:main"
 
 [build-system]
 requires = ["setuptools>=75"]

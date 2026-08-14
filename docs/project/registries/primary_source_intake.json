@@ -1,0 +1,314 @@
+{
+  "schema_version": "kjds-primary-source-intake-v1",
+  "as_of": "2026-08-03",
+  "purpose": "Freeze the admissible first-party and primary-source data packs used by strategic benchmarking, operating truth, commercial discovery and capital allocation.",
+  "policy": {
+    "canonical_record_system": "existing_kjds_evidence_lineage_fact_finance_domains",
+    "git_may_store_raw_business_records": false,
+    "git_may_store_credentials_or_cookies": false,
+    "git_may_store_bank_or_customer_rows": false,
+    "model_output_is_primary_source": false,
+    "marketing_claim_is_benchmark_fact": false,
+    "external_write_allowed": false,
+    "outreach_allowed_by_intake": false,
+    "fact_promotion_requires_independent_review": true,
+    "lower_grade_may_override_higher_grade": false
+  },
+  "primary_source_envelope": {
+    "required_fields": [
+      "source_contract_id",
+      "source_contract_version",
+      "subject_ref",
+      "source_uri_or_file_ref",
+      "blob_sha256",
+      "byte_count",
+      "mime_type",
+      "captured_at",
+      "effective_at",
+      "recorded_at",
+      "as_of",
+      "scope",
+      "license_and_terms",
+      "allowed_purpose",
+      "retention_and_deletion",
+      "data_classification",
+      "parser_version",
+      "record_count",
+      "field_count",
+      "conservation_report",
+      "uploader_actor_ref",
+      "reviewer_actor_ref",
+      "evidence_refs",
+      "lineage_refs",
+      "review_due_on"
+    ],
+    "integrity": {
+      "sha256_lower_hex_length": 64,
+      "raw_blob_reverification_required": true,
+      "pagination_checkpoint_required_when_paged": true,
+      "failed_page_register_required": true,
+      "schema_drift_fails_closed": true
+    },
+    "privacy": {
+      "secrets_in_payload_allowed": false,
+      "raw_personal_contact_in_contract_fixture_allowed": false,
+      "public_professional_contact_requires_purpose_and_jurisdiction": true,
+      "do_not_contact_and_withdrawal_state_required": true,
+      "cross_border_transfer_classification_required": true
+    }
+  },
+  "source_grades": {
+    "A": "Direct first-party operating artifact or official source, byte-verifiable and independently accepted for the stated scope.",
+    "B": "Licensed or directly captured source with clear provenance but pending independent acceptance or incomplete scope.",
+    "C": "Public observation, vendor claim or secondary research usable only as a hypothesis or benchmark candidate.",
+    "D": "Unverified, synthetic, model-generated or ambiguous material; structure/testing only."
+  },
+  "source_packs": [
+    {
+      "id": "operating_cash_truth",
+      "priority": "P0",
+      "owner": "business_owner+finance_owner",
+      "minimum_grade_for_fact": "A",
+      "artifacts": [
+        "official_platform_order_export_or_api_response",
+        "official_platform_settlement_and_transaction_report",
+        "bank_receipt_or_statement_reference",
+        "signed_profit_cash_and_loss_thresholds"
+      ],
+      "eligible_outputs": ["order_fact", "settlement_fact", "cash_fact", "actual_profit_readiness"],
+      "prohibited_in_git": ["raw_order_rows", "bank_details", "customer_pii", "credentials"]
+    },
+    {
+      "id": "marketplace_demand_and_catalog",
+      "priority": "P0",
+      "owner": "market_intelligence_owner",
+      "minimum_grade_for_fact": "A",
+      "artifacts": [
+        "official_category_analytics",
+        "official_search_term_or_demand_report",
+        "official_catalog_listing_inventory_traffic_return_export",
+        "authorized_marketplace_api_response"
+      ],
+      "eligible_outputs": ["market_observation", "catalog_fact", "demand_signal", "return_signal"],
+      "prohibited_in_git": ["account_identifier", "customer_row", "session_cookie", "api_secret"]
+    },
+    {
+      "id": "unit_economics_supply_and_logistics",
+      "priority": "P0",
+      "owner": "supply_chain_owner+finance_owner",
+      "minimum_grade_for_fact": "A",
+      "artifacts": [
+        "accepted_supplier_quote",
+        "sample_and_quality_report",
+        "freight_warehouse_and_last_mile_invoice",
+        "tax_customs_and_fx_artifact"
+      ],
+      "eligible_outputs": ["supplier_offer", "cost_authority", "landed_cost", "downside_cm3"],
+      "prohibited_in_git": ["supplier_contact_raw", "invoice_raw", "payment_account", "private_chat"]
+    },
+    {
+      "id": "global_trade_lead_intelligence",
+      "priority": "P0",
+      "owner": "commercial_owner+market_intelligence_owner",
+      "minimum_grade_for_fact": "A",
+      "source_families": {
+        "retail_marketplaces": [
+          "amazon",
+          "aliexpress",
+          "shopee",
+          "tiktok_shop",
+          "temu",
+          "mercado_libre",
+          "wildberries",
+          "ozon",
+          "ebay",
+          "lazada",
+          "rakuten",
+          "yahoo_shopping",
+          "walmart_marketplace"
+        ],
+        "b2b_and_export_platforms": [
+          "alibaba_com",
+          "global_sources",
+          "made_in_china",
+          "world_factory"
+        ],
+        "china_supply_platforms": [
+          "yiwugo",
+          "1688",
+          "global_huapin",
+          "baobaoniu",
+          "17zwd",
+          "souk",
+          "eelly",
+          "toybaba",
+          "meizhuang",
+          "zhiai_muying",
+          "shipinwang",
+          "91jiafang",
+          "gongpinhui",
+          "global_shoes"
+        ],
+        "independent_and_primary_data": [
+          "independent_storefront",
+          "customs_data",
+          "linkedin_company_and_public_professional_data"
+        ]
+      },
+      "alias_normalization": {
+        "tk": "tiktok_shop",
+        "wb": "wildberries",
+        "美客多": "mercado_libre",
+        "阿里巴巴国际站": "alibaba_com",
+        "速卖通": "aliexpress",
+        "虾皮": "shopee",
+        "环球资源网": "global_sources",
+        "中国制造网": "made_in_china",
+        "义乌购": "yiwugo",
+        "1688拿货网": "1688",
+        "搜款网": "souk"
+      },
+      "allowed_acquisition_modes": [
+        "official_api",
+        "account_owner_export",
+        "licensed_dataset",
+        "terms_permitted_public_business_observation",
+        "consented_first_party_crm_import"
+      ],
+      "required_entity_types": [
+        "seller_account",
+        "supplier_entity",
+        "prospect_account",
+        "buyer_signal",
+        "verified_contact_point",
+        "qualified_opportunity"
+      ],
+      "required_lead_fields": [
+        "source_family",
+        "source_contract_version",
+        "business_entity_name",
+        "country_or_region",
+        "marketplace_or_site",
+        "category",
+        "public_business_url",
+        "entity_type",
+        "signal_type",
+        "signal_observed_at",
+        "license_or_terms_basis",
+        "contact_purpose_basis",
+        "jurisdiction",
+        "do_not_contact_status",
+        "confidence",
+        "evidence_refs"
+      ],
+      "qualification_lifecycle": [
+        "observed",
+        "entity_resolved",
+        "icp_matched",
+        "contact_basis_verified",
+        "outreach_proposed",
+        "interaction_observed",
+        "need_verified",
+        "qualified_opportunity",
+        "won_or_lost",
+        "cash_reconciled"
+      ],
+      "semantic_guards": {
+        "seller_presence_implies_buyer_intent": false,
+        "product_presence_implies_purchase_budget": false,
+        "public_contact_implies_unlimited_outreach": false,
+        "buyer_signal_requires_time_bounded_behavior_semantics": true,
+        "qualified_opportunity_requires_first_party_interaction_evidence": true
+      },
+      "collection_controls": {
+        "terms_and_field_license_recorded": true,
+        "rate_limit_and_robots_policy_recorded": true,
+        "private_profile_collection_allowed": false,
+        "captcha_or_login_bypass_allowed": false,
+        "cookie_or_fingerprint_pool_allowed": false,
+        "automatic_message_or_platform_write_allowed": false,
+        "opt_out_suppression_required": true
+      },
+      "eligible_outputs": [
+        "prospect_observation",
+        "icp_fit_proposal",
+        "outreach_draft",
+        "commercial_funnel_observation"
+      ],
+      "prohibited_in_git": [
+        "personal_email",
+        "personal_phone",
+        "profile_cookie",
+        "private_message",
+        "customer_list",
+        "vendor_export_rows"
+      ]
+    },
+    {
+      "id": "customer_product_and_revenue",
+      "priority": "P1",
+      "owner": "product_owner+commercial_owner",
+      "minimum_grade_for_fact": "A",
+      "artifacts": [
+        "consented_interview_or_task_observation",
+        "crm_stage_and_outcome_export",
+        "signed_sow_contract_invoice_and_payment_reference",
+        "support_churn_and_exit_export"
+      ],
+      "eligible_outputs": ["product_problem_fact", "funnel_fact", "revenue_fact", "retention_fact"],
+      "prohibited_in_git": ["customer_identity", "recording_raw", "contract_raw", "payment_detail"]
+    },
+    {
+      "id": "ai_technology_and_cost_benchmark",
+      "priority": "P1",
+      "owner": "architecture_owner+agent_platform_owner",
+      "minimum_grade_for_fact": "A",
+      "artifacts": [
+        "official_release_spec_or_security_advisory",
+        "frozen_local_eval_trace",
+        "provider_usage_and_cost_receipt",
+        "local_hardware_latency_throughput_energy_trace"
+      ],
+      "eligible_outputs": ["technology_candidate", "eval_observation", "cost_observation", "adoption_proposal"],
+      "prohibited_in_git": ["provider_request_body", "secret", "tenant_prompt", "model_output_body"]
+    },
+    {
+      "id": "competitor_enterprise_and_capital",
+      "priority": "P2",
+      "owner": "strategy_owner+finance_owner",
+      "minimum_grade_for_fact": "A",
+      "artifacts": [
+        "audited_financial_filing",
+        "official_pricing_terms_changelog_or_api_contract",
+        "lawfully_captured_product_teardown_measurement",
+        "board_approved_cash_runway_and_investment_constraints"
+      ],
+      "eligible_outputs": ["benchmark_candidate", "business_model_observation", "capital_constraint"],
+      "prohibited_in_git": ["cap_table_raw", "term_sheet_raw", "bank_forecast_raw", "private_competitor_data"]
+    },
+    {
+      "id": "risk_legal_security_and_compliance",
+      "priority": "P0",
+      "owner": "risk_owner+compliance_owner",
+      "minimum_grade_for_fact": "A",
+      "artifacts": [
+        "signed_legal_review",
+        "approved_dpa_sla_and_retention_schedule",
+        "security_incident_and_recovery_evidence",
+        "software_data_and_media_license_record"
+      ],
+      "eligible_outputs": ["risk_constraint", "compliance_gate", "recovery_observation"],
+      "prohibited_in_git": ["legal_privileged_raw", "security_secret", "incident_sensitive_payload"]
+    }
+  ],
+  "intake_order": [
+    "operating_cash_truth",
+    "global_trade_lead_intelligence",
+    "marketplace_demand_and_catalog",
+    "unit_economics_supply_and_logistics",
+    "risk_legal_security_and_compliance",
+    "customer_product_and_revenue",
+    "ai_technology_and_cost_benchmark",
+    "competitor_enterprise_and_capital"
+  ]
+}

@@ -17,6 +17,7 @@ class OzonRecordType(StrEnum):
     ACCRUAL = "ozon_accrual"
     RETURN = "ozon_return"
     SETTLEMENT = "ozon_settlement"
+    INVENTORY = "ozon_inventory"
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +32,7 @@ CONTRACTS: dict[OzonRecordType, RecordContract] = {
     OzonRecordType.ORDER: RecordContract(
         OzonRecordType.ORDER,
         frozenset({"external_id", "sku", "quantity", "currency", "gross_revenue", "effective_at"}),
-        frozenset({"status"}),
+        frozenset({"status", "store_ref"}),
         "Ozon order or shipment fact",
     ),
     OzonRecordType.FEE: RecordContract(
@@ -51,7 +52,15 @@ CONTRACTS: dict[OzonRecordType, RecordContract] = {
     OzonRecordType.RETURN: RecordContract(
         OzonRecordType.RETURN,
         frozenset({"external_id", "sku", "quantity", "effective_at"}),
-        frozenset({"amount", "currency", "return_reason", "status"}),
+        frozenset(
+            {
+                "amount",
+                "currency",
+                "order_external_id",
+                "return_reason",
+                "status",
+            }
+        ),
         "Ozon return, cancellation, or non-collection fact",
     ),
     OzonRecordType.SETTLEMENT: RecordContract(
@@ -60,6 +69,30 @@ CONTRACTS: dict[OzonRecordType, RecordContract] = {
         frozenset({"status"}),
         "Ozon settlement statement fact",
     ),
+    OzonRecordType.INVENTORY: RecordContract(
+        OzonRecordType.INVENTORY,
+        frozenset(
+            {
+                "external_id",
+                "sku",
+                "warehouse_ref",
+                "fulfillment_mode",
+                "available_quantity",
+                "reserved_quantity",
+                "effective_at",
+            }
+        ),
+        frozenset(
+            {
+                "cluster_ref",
+                "damaged_quantity",
+                "in_transit_quantity",
+                "quarantine_quantity",
+                "store_ref",
+            }
+        ),
+        "Ozon exact-SKU warehouse inventory snapshot; never inferred from listings",
+    ),
 }
 
 
@@ -67,6 +100,18 @@ def detect_record_type(filename: str, headers: list[str]) -> OzonRecordType:
     signature = " ".join([Path(filename).stem.lower(), *(header.lower() for header in headers)])
     if "начислен" in signature and "группа услуг" in signature and "тип начисления" in signature:
         return OzonRecordType.ACCRUAL
+    if any(
+        token in signature
+        for token in (
+            "inventory",
+            "stock",
+            "warehouse stock",
+            "остаток",
+            "остатки",
+            "складские остатки",
+        )
+    ):
+        return OzonRecordType.INVENTORY
     if any(token in signature for token in ("settlement", "payout", "payment", "выплат", "реализац")):
         return OzonRecordType.SETTLEMENT
     if any(token in signature for token in ("return", "refund", "возврат", "невыкуп")):
@@ -89,6 +134,39 @@ def normalize_record(record_type: OzonRecordType, values: dict[str, Any]) -> tup
             normalized["quantity"] = str(int(quantity))
         except (InvalidOperation, OverflowError, ValueError):
             errors.append("quantity: must be a positive integer")
+
+    for field in (
+        "available_quantity",
+        "reserved_quantity",
+        "in_transit_quantity",
+        "damaged_quantity",
+        "quarantine_quantity",
+    ):
+        if normalized.get(field):
+            try:
+                quantity = Decimal(_numeric_text(normalized[field]))
+                if (
+                    not quantity.is_finite()
+                    or quantity != quantity.to_integral_value()
+                    or quantity < 0
+                ):
+                    raise ValueError
+                normalized[field] = str(int(quantity))
+            except (InvalidOperation, OverflowError, ValueError):
+                errors.append(f"{field}: must be a non-negative integer")
+
+    if record_type is OzonRecordType.INVENTORY:
+        fulfillment_mode = normalized.get("fulfillment_mode", "")
+        canonical_mode = {
+            "fbp": "FBP",
+            "realfbs": "realFBS",
+            "real_fbs": "realFBS",
+            "real-fbs": "realFBS",
+        }.get(fulfillment_mode.lower())
+        if canonical_mode is None:
+            errors.append("fulfillment_mode: must be FBP or realFBS")
+        else:
+            normalized["fulfillment_mode"] = canonical_mode
 
     for field in ("gross_revenue", "amount"):
         if normalized.get(field):
@@ -119,6 +197,15 @@ def natural_key(record_type: OzonRecordType, payload: dict[str, Any]) -> str:
     external_id = str(payload["external_id"])
     if record_type is OzonRecordType.FEE:
         return f"{external_id}:{payload['fee_type']}"
+    if record_type is OzonRecordType.INVENTORY:
+        return ":".join(
+            (
+                str(payload["sku"]),
+                str(payload["warehouse_ref"]),
+                str(payload["fulfillment_mode"]),
+                str(payload.get("cluster_ref") or "-"),
+            )
+        )
     return external_id
 
 

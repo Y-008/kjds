@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useState } from "react";
 import { fetchJson, settleJsonRequests } from "../../lib/fetch-json";
+import { scopedCollection } from "../../lib/scoped-collection";
 import type { DomainState } from "./domain-status-panel";
 import type {
   Health,
@@ -251,7 +252,12 @@ export function useDashboardController() {
     if (rfqDispatchesResponse.ok) setSupplierRfqDispatches(await rfqDispatchesResponse.json());
     if (quoteEvidenceResponse.ok) setSupplierQuoteEvidence(await quoteEvidenceResponse.json());
     if (marketplaceCatalogResponse.ok) {
-      setMarketplaceCatalogItems(await marketplaceCatalogResponse.json());
+      setMarketplaceCatalogItems(
+        scopedCollection<MarketplaceCatalogItem>(
+          await marketplaceCatalogResponse.json(),
+          "items",
+        ),
+      );
       setMarketplaceCatalogLoaded(true);
     }
     const gateData: GateReadiness | null = gateResponse.ok ? await gateResponse.json() : null;
@@ -303,14 +309,28 @@ export function useDashboardController() {
     if (executionObservationResponse.ok) setExecutionObservationWindows(await executionObservationResponse.json());
     if (capabilityEconomicsResponse.ok) setCapabilityEconomicAssessments(await capabilityEconomicsResponse.json());
     if (operationalIncidentsResponse.ok) setOperationalIncidents(await operationalIncidentsResponse.json());
-    if (operationsQueueResponse.ok) setOperationsQueue(await operationsQueueResponse.json());
+    if (operationsQueueResponse.ok) {
+      setOperationsQueue(
+        scopedCollection<OperationsQueueItem>(
+          await operationsQueueResponse.json(),
+          "items",
+        ),
+      );
+    }
     if (readOnlyPilotsResponse.ok) {
-      const rows: ReadOnlyPilot[] = await readOnlyPilotsResponse.json(); setReadOnlyPilots(rows);
+      const rows = scopedCollection<ReadOnlyPilot>(
+        await readOnlyPilotsResponse.json(),
+        "items",
+      );
+      setReadOnlyPilots(rows);
       const evaluations = await Promise.all(rows.map(async (item) => { const response = await request(`/backend/v1/read-only-pilots/${item.id}/evaluation`, { cache: "no-store" }); return [item.id, response.ok ? await response.json() as PilotEvaluation : null] as const; }));
       const indexed: Record<string, PilotEvaluation> = {}; evaluations.forEach(([id, evaluation]) => { if (evaluation) indexed[id] = evaluation; }); setPilotEvaluations(indexed);
     }
     if (productsResponse.ok) {
-      const products: ProductIdentity[] = await productsResponse.json();
+      const products = scopedCollection<ProductIdentity>(
+        await productsResponse.json(),
+        "products",
+      );
       setProducts(products);
       const candidateProducts = gateData?.candidate_portfolio.rows.map((item) => item.product) ?? [];
       const readiness = await Promise.all(
@@ -1573,7 +1593,7 @@ export function useDashboardController() {
         return;
       }
       setMarketplaceCatalogStoreRef(scope);
-      const items = result as MarketplaceCatalogItem[];
+      const items = scopedCollection<MarketplaceCatalogItem>(result, "items");
       setMarketplaceCatalogItems(items);
       if (items.length) {
         setNotice(`已加载 ${items.length} 个真实 Ozon 目录条目；媒体仍是未核权外部引用`);

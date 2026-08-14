@@ -1,0 +1,72 @@
+{
+  "registry_id": "kjds-channel-account-adapters",
+  "version": "1.0.0",
+  "observed_at": "2026-07-31T00:00:00+08:00",
+  "adapters": [
+    {
+      "platform": "ozon",
+      "adapter_id": "ozon-seller-api-read",
+      "adapter_version": "v1",
+      "status": "production_bindable",
+      "effective_from": "2026-07-31T00:00:00+08:00",
+      "effective_to": null,
+      "authorization_sources": [
+        "official"
+      ],
+      "credential_kinds": [
+        "api_key_ref",
+        "oauth_client_ref",
+        "service_account_ref"
+      ],
+      "allowed_capabilities": [
+        "catalog.read",
+        "finance.read",
+        "inventory.read",
+        "orders.read",
+        "returns.read"
+      ],
+      "verification_ttl_hours": 24,
+      "read_only": true,
+      "official_or_authorized_only": true,
+      "private_endpoint_allowed": false,
+      "cookie_allowed": false,
+      "device_session_allowed": false
+    },
+    {
+      "platform": "seller_erp",
+      "adapter_id": "authorized-seller-erp-read",
+      "adapter_version": "v1",
+      "status": "production_bindable",
+      "effective_from": "2026-07-31T00:00:00+08:00",
+      "effective_to": null,
+      "authorization_sources": [
+        "explicit_written_authorization"
+      ],
+      "credential_kinds": [
+        "api_key_ref",
+        "oauth_client_ref",
+        "service_account_ref"
+      ],
+      "allowed_capabilities": [
+        "catalog.export.read",
+        "inventory.export.read",
+        "orders.export.read",
+        "schema.read"
+      ],
+      "verification_ttl_hours": 24,
+      "read_only": true,
+      "official_or_authorized_only": true,
+      "private_endpoint_allowed": false,
+      "cookie_allowed": false,
+      "device_session_allowed": false
+    }
+  ],
+  "forbidden_sources": [
+    "browser_cookie",
+    "internal_token",
+    "device_session",
+    "private_endpoint",
+    "captcha_bypass",
+    "access_control_bypass"
+  ]
+}

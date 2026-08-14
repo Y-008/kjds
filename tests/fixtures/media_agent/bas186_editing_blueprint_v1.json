@@ -1,0 +1,74 @@
+{
+  "contract_id": "kjds-editing-source-receipt-v1",
+  "contract_version": "1.0.0",
+  "scope": {
+    "tenant_ref": "tenant-bas186",
+    "entity_ref": "entity-bas186",
+    "store_ref": "store-bas186",
+    "authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "subject_actor_id": "actor-bas186"
+  },
+  "scope_binding_sha256": "36dc45999ab537917f535fd9457bb2cd819156e05ee74e204c0585e7a3bb3998",
+  "rights_status": "approved",
+  "product_id": "product-bas186",
+  "campaign_asset_refs": ["content-asset://campaign-001"],
+  "reference_asset_refs": ["content-asset://reference-video-001"],
+  "input_artifacts": [
+    {
+      "content_asset_ref": "content-asset://campaign-001",
+      "evidence_ref": "evidence://campaign-001",
+      "evidence_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "content_type": "image/png",
+      "role": "campaign"
+    },
+    {
+      "content_asset_ref": "content-asset://reference-video-001",
+      "evidence_ref": "evidence://video-001",
+      "evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "content_type": "video/mp4",
+      "role": "reference_video"
+    }
+  ],
+  "analysis_receipt": {
+    "contract_id": "kjds-reference-video-analysis-v1",
+    "source_snapshot_sha256": "8aeb3fd374b680850ca814142f2a7482ab95dda0ad58b22ac2ee14fff1ecac6f",
+    "semantic_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "observed_at": "2026-08-09T00:00:00+00:00",
+    "evidence_ref": "evidence://analysis-001",
+    "evidence_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "source_video_artifacts": [
+      {
+        "content_asset_ref": "content-asset://reference-video-001",
+        "evidence_ref": "evidence://video-001",
+        "evidence_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ]
+  },
+  "source_snapshot_sha256": "a17dce0233dea33ef3f607a611202c2fd1a54c115d94839a129c60283d22b129",
+  "scenes": [
+    {
+      "scene_id": "scene-001",
+      "source_asset_ref": "content-asset://reference-video-001",
+      "source_start_ms": 0,
+      "source_end_ms": 3000,
+      "timeline_start_ms": 0,
+      "timeline_end_ms": 3000,
+      "transition": "cut",
+      "caption_ref": "evidence://caption-001"
+    },
+    {
+      "scene_id": "scene-002",
+      "source_asset_ref": "content-asset://reference-video-001",
+      "source_start_ms": 3000,
+      "source_end_ms": 6000,
+      "timeline_start_ms": 3000,
+      "timeline_end_ms": 6000,
+      "transition": "fade",
+      "caption_ref": "evidence://caption-002"
+    }
+  ],
+  "audio_asset_ref": null,
+  "subtitle_asset_ref": "evidence://subtitle-001",
+  "target_channels": ["ozon"],
+  "render_profile_sha256": "b197700a4c9421d48ea7470359abe94c6698961c30dfd401acdcb4f69927860e"
+}

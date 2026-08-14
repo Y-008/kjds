@@ -1,6 +1,6 @@
 {
   "contract": "kjds-outbox-coverage-v1",
-  "as_of": "2026-07-18",
+  "as_of": "2026-08-03",
   "scope": "apps/control_plane 中直接创建 SQLAlchemy Session 且开启 session.begin() 的模块",
   "full_system_outbox": false,
   "status_definitions": {
@@ -12,11 +12,102 @@
   },
   "modules": [
     {
+      "module": "accounts_payable.py",
+      "status": "internal_only",
+      "delivery_contract": "immutable_scoped_invoice_and_independent_review_ledger",
+      "rationale": "供应商发票、明细和独立权威复核只形成 exact-scope 内部应付账证据；不创建付款 Approval、执行命令、Permit 或任何供应商、银行和平台外部动作。",
+      "activation_trigger": "独立会计导出、付款消费者或跨服务通知合同上线前"
+    },
+    {
+      "module": "agent_harness.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_verifier_observation_and_read_projection",
+      "rationale": "Harness 只追加内部 Verifier Observation、Goal/TODO 与 canonical Graph；不创建 Approval、Permit、业务 Fact 或任何外部平台动作。",
+      "activation_trigger": "Observation 需要推送到独立监控/告警消费者时"
+    },
+    {
+      "module": "agent_inference.py",
+      "status": "covered",
+      "delivery_contract": "transactional_outbox:agent.run.*+agent.artifact.feedback",
+      "rationale": "Agent 推理尝试、不可变响应 Evidence、版本化 Artifact、失败与人工反馈状态均在同一事务追加最小脱敏 Outbox 事件；事件不含 Prompt、Provider 原文、凭据、Permit 或外部写权限。",
+      "activation_trigger": "none"
+    },
+    {
+      "module": "ai_listing.py",
+      "status": "covered",
+      "delivery_contract": "transactional_outbox:ai_listing.run.*",
+      "rationale": "AI Listing run、阶段事件与 proposal-only Artifact 在业务事务中追加最小脱敏 Outbox；Dry-run 不创建 Permit、执行命令或平台写。",
+      "activation_trigger": "none"
+    },
+    {
       "module": "automation.py",
       "status": "covered",
       "delivery_contract": "transactional_outbox:decision.recommended",
       "rationale": "自动化建议需要在业务事务提交后可靠交付给后续消费者。",
       "activation_trigger": "none"
+    },
+    {
+      "module": "batch_opportunity.py",
+      "status": "internal_only",
+      "delivery_contract": "operations_queue_projection",
+      "rationale": "批量市场扫描、评分、策略、变体与内容准备只写不可变 Evidence/run 并投影到既有 OperatingTask，不创建 Permit、Listing 或外部平台动作。",
+      "activation_trigger": "候选通过独立批准并进入既有有限执行权威"
+    },
+    {
+      "module": "browser_capture_inbox.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_evidence_inbox_and_authenticated_polling",
+      "rationale": "浏览器采集只在同一事务写入不可变 C 级 Evidence 与隔离收件箱回执；页面通过认证列表刷新读取，不创建正式 Observation、Supplier Offer、actual cost、Product、Listing、Approval、Permit 或外部平台动作。",
+      "activation_trigger": "收件箱获得独立晋级消费者或跨服务通知合同前"
+    },
+    {
+      "module": "channel_account_authority.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_exact_scope_channel_account_authority",
+      "rationale": "渠道账户授权事件、独立复核决定与 Kill Switch 状态只形成 exact-scope、非秘密、只读控制面权威；公开 API 不提供 mutation，生产 credential resolver、provider readback 与外部写均未绑定。",
+      "activation_trigger": "正式受控授权治理入口、managed credential resolver 或 provider execution consumer 上线前"
+    },
+    {
+      "module": "channel_worker_runtime.py",
+      "status": "internal_only",
+      "delivery_contract": "single_use_grant_redemption_ledger",
+      "rationale": "Worker 组合根只按 server-issued 一次性 grant 在单个事务内完成签名复验、exact-scope lease 解析与条件消费；grant 账本由控制面读取，不存在跨进程通知交付合同。",
+      "activation_trigger": "grant 消费需要事件推送或跨服务通知合同时"
+    },
+    {
+      "module": "closed_loop_evolution.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_exact_scope_closed_loop_outcome_and_evidence_ledger",
+      "rationale": "闭环演化只在同一事务保存 exact-scope outcome root、supporting links、状态事件与受控 Evidence；V1 固定 causal=false、outbox=0、external_write=false，不创建 Approval、Permit 或任何平台、供应商、客户外部动作。",
+      "activation_trigger": "闭环 Observation 获准交付独立跨进程消费者或外部执行编排前"
+    },
+    {
+      "module": "commercial_lifecycle.py",
+      "status": "internal_only",
+      "delivery_contract": "scoped_commercial_lifecycle_event_and_evidence_ledger",
+      "rationale": "套餐、订阅、授权、发票、支付尝试、退款与税务 Evidence 只形成 tenant/entity/store exact-scope 内部商业账本；当前不连接 Stripe、银行、PSP、税务申报或任何外部投递消费者，也不触发真实收款、退款或开票。",
+      "activation_trigger": "真实支付、发票、退款、税务申报或跨服务计费消费者上线前"
+    },
+    {
+      "module": "managed_credential_leases.py",
+      "status": "internal_only",
+      "delivery_contract": "authoritative_managed_credential_lease_store",
+      "rationale": "授权 managed lease 权威表只保存租约与凭据持有事实，服务端写入前必须携带 fresh provider readback 与外部 verifier；行内容绝不进入 Evidence、Graph、日志或 API 投影。",
+      "activation_trigger": "租约状态需要推送独立告警或密钥生命周期消费者时"
+    },
+    {
+      "module": "customer_service.py",
+      "status": "internal_only",
+      "delivery_contract": "immutable_scoped_case_and_event_ledger",
+      "rationale": "客服 Case 与 Event 只在 exact-scope 控制面事务中保存脱敏摘要、正文哈希和 Evidence 引用；不保存原始正文或客户 PII，也不创建 Approval、Permit、发送命令、退款、争议处置或平台外部动作。",
+      "activation_trigger": "正式授权的消息 Adapter、独立执行 Worker 与回读消费者上线前"
+    },
+    {
+      "module": "catalog_read_run_handoff.py",
+      "status": "polling_contract",
+      "delivery_contract": "scoped_idempotent_resume_api",
+      "rationale": "Ozon 只读 run 到 Catalog 的 handoff 通过显式认证 API、PostgreSQL prepared/completed/blocked 账本和 Catalog 幂等键恢复；只生成内部 Catalog 快照，不创建商品绑定、Approval、Permit 或平台写入。",
+      "activation_trigger": "handoff 改为独立 Worker 或事件推送时"
     },
     {
       "module": "capability_economics.py",
@@ -124,11 +215,39 @@
       "activation_trigger": "观察结果驱动独立供应商联系、采购或平台执行服务"
     },
     {
+      "module": "market_recon_bundle.py",
+      "status": "internal_only",
+      "delivery_contract": "immutable_exact_scope_bundle_and_quarantine_ledger",
+      "rationale": "全量侦察 Bundle 只在同一事务保存原始 Evidence、accepted/quarantine 分类与守恒账；不晋升正式 Fact，不触发采购、广告、Listing、Approval、Permit 或外部写。",
+      "activation_trigger": "Bundle 完成需要推送独立解析、修复或事实晋级消费者时"
+    },
+    {
+      "module": "media_jobs.py",
+      "status": "polling_contract",
+      "delivery_contract": "postgresql_provider_attempt_claim_and_result_receipt_api",
+      "rationale": "受治理媒体 Job 通过显式 PostgreSQL claim、不可变事件链和结果回执在控制面与本地 Worker 间交付；不依赖通知事件，也不授予 Listing 或外部平台写入。",
+      "activation_trigger": "媒体 Job 改为事件推送、跨服务通知或获得外部平台写入权限前"
+    },
+    {
       "module": "media_workbench.py",
       "status": "polling_contract",
       "delivery_contract": "postgresql_lease_claim_api",
       "rationale": "媒体执行通过 PostgreSQL 租约领取，产物和不可变事件保留在控制面内。",
       "activation_trigger": "媒体 Worker 改为事件推送或获得外部平台写入权限"
+    },
+    {
+      "module": "operating_gate_bootstrap.py",
+      "status": "internal_only",
+      "delivery_contract": "disposable_canonical_gate_graph_and_subject_binding",
+      "rationale": "G1 引导仅在受限的一次性 PostgreSQL 验收库中创建 canonical Gate Graph、任务依赖与追加式经营主体绑定，使 monitor 能记录真实 no_data/blocked 状态；不创建业务 Fact、Approval、Permit、订单、结算、到账或任何外部平台动作。",
+      "activation_trigger": "引导能力扩展到生产环境或需要向独立监控、告警消费者投递状态前"
+    },
+    {
+      "module": "operating_gate_observer.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_harness_observation_and_observed_graph_hash",
+      "rationale": "专用 monitor 观察器只在同一控制面事务更新 Gate task binding/observed Graph hash，并通过 Agent Harness 追加内部 Verifier Observation；不创建业务 Fact、Approval、Permit 或任何外部平台动作。",
+      "activation_trigger": "Gate Observation 需要推送到独立告警或跨服务消费者时"
     },
     {
       "module": "operating_intelligence.py",
@@ -187,11 +306,60 @@
       "activation_trigger": "G3 采购动作放行前"
     },
     {
+      "module": "profit_command.py",
+      "status": "internal_only",
+      "delivery_contract": "immutable_profit_decision_snapshot_and_pilot_proposal_ledger",
+      "rationale": "利润指挥只冻结同作用域决策快照和 proposal-only Pilot 请求；不创建独立 Approval、Permit、采购、调价、投放、Listing 或平台写。",
+      "activation_trigger": "独立审批或实验编排消费者需要跨服务接收利润提案时"
+    },
+    {
+      "module": "profit_erp_sync.py",
+      "status": "polling_contract",
+      "delivery_contract": "profit_erp_item_syncs explicit dispatch and readback",
+      "rationale": "利润款先在同一 PostgreSQL 事务冻结 Item 草稿与幂等 outbox，再由显式 dispatch 调用最小权限 ERPNext Item create/read；失败与回读差异留在同步账，不触发采购、库存或付款。",
+      "activation_trigger": "改为独立 ERP sync worker 或事件推送时"
+    },
+    {
+      "module": "primary_source_intake.py",
+      "status": "internal_only",
+      "delivery_contract": "immutable_exact_scope_primary_source_evidence_and_normalization_ledger",
+      "rationale": "一手资料 Intake 只在同一事务保存脱敏 Evidence、exact-scope 原件清单、质量守恒和标准化候选；不晋升正式 Fact，不创建 FinanceEntry、Approval、Permit、Pilot、Outbox 事件或任何平台、供应商、客户外部动作。",
+      "activation_trigger": "Intake 完成需要推送独立事实晋级、CRM、销售编排或跨服务消费者前"
+    },
+    {
       "module": "read_only_claims.py",
       "status": "internal_only",
       "delivery_contract": "none",
       "rationale": "候选声明和复核当前在同一控制面内完成。",
       "activation_trigger": "外部事实晋级或分析消费者上线"
+    },
+    {
+      "module": "scope_grants.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_effective_time_audit_ledger",
+      "rationale": "主体授权与撤销事件在控制面事务内不可变保存并由 Truth/Governance 按 as_of 读取；它不触发平台、供应商、采购、付款或广告动作。",
+      "activation_trigger": "独立组织/RBAC provider 或跨服务授权消费者上线"
+    },
+    {
+      "module": "store_category_strategy.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_store_profile_and_operating_plan_snapshot_ledger",
+      "rationale": "店铺属性与经营计划只保存 Evidence 绑定的 exact-scope 内部事实和 proposal 快照；类目路由不自动跨店发布，也不创建广告、采购、Approval、Permit 或外部写。",
+      "activation_trigger": "经营计划获准交付独立 Listing、广告或采购编排消费者前"
+    },
+    {
+      "module": "strategic_benchmark.py",
+      "status": "internal_only",
+      "delivery_contract": "immutable_exact_scope_benchmark_snapshot_and_comparison_ledger",
+      "rationale": "战略 Benchmark 只在同一事务冻结脱敏 Evidence、可比组、观测哈希和保守 Leader 投影；不声称全局 Top1，不创建 Fact、FinanceEntry、Approval、Permit、Outbox 事件或任何外部动作。",
+      "activation_trigger": "Benchmark 结果获准推送 GapGraph、资本配置、销售编排或独立跨服务消费者前"
+    },
+    {
+      "module": "scoped_facts.py",
+      "status": "internal_only",
+      "delivery_contract": "transactional_scoped_fact_and_promotion_ledger",
+      "rationale": "原生晋升只在同一事务写入 tenant/entity/store 隔离的正式 Fact、PromotionRun 与 Evidence lineage；不创建 Approval、Permit、财务分录或任何外部平台动作。",
+      "activation_trigger": "原生 scoped Fact 获准进入独立会计或事件消费者前"
     },
     {
       "module": "security.py",
@@ -206,6 +374,13 @@
       "delivery_contract": "transactional_repository",
       "rationale": "该模块提供共享事务上下文和 Repository Outbox 写入。",
       "activation_trigger": "none"
+    },
+    {
+      "module": "warehouse_fulfillment.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_exact_scope_warehouse_execution_authority",
+      "rationale": "仓库 location/bin/lot/reservation/wave/pick/pack/parcel/scan/weight 与独立治理的正式 Readback 只追加为 exact-scope 内部权威；KJDS 没有库存调整、出库确认、面单购买或承运商交接执行路径，也不联系承运商或客户。",
+      "activation_trigger": "正式授权的仓库或承运商执行 Worker、一次性 Permit 消费者与跨服务通知合同上线前"
     }
   ]
 }

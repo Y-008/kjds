@@ -1,10 +1,10 @@
 {
-  "registry_version": "1.0",
-  "last_reviewed": "2026-07-16",
+  "registry_version": "1.1",
+  "last_reviewed": "2026-08-03",
   "default_policy": {
-    "current_mode": "official_docs_monitoring_only",
-    "read_api": "L2 after account, app review, sandbox and least-privilege token",
-    "write_api": "FROZEN until KJDS G6 and per-action L3 approval",
+    "current_mode": "official_api_plus_operator_selected_isolated_adapters",
+    "read_api": "full available authorized pages fields and time windows after account or dedicated profile binding",
+    "write_api": "campaign grant activates an action set, budget, validity window, stop conditions and readback without per-item approval",
     "funds_contracts_credentials": "L4 prohibited from autonomy",
     "secret_storage": "environment or approved secret provider; never Markdown, Git or chat"
   },
@@ -17,17 +17,17 @@
       "account":"missing",
       "app_review":"not_started",
       "read_scopes":["商品","订单","库存","物流","退款/售后"],
-      "write_scopes_frozen":["商品发布","价格","库存","订单处理","客户消息"]
+      "write_scopes_campaign_eligible":["商品发布","价格","库存","订单处理","客户消息"]
     },
     {
       "id":"douyin_ecommerce",
       "name":"抖音电商",
       "official_docs":"https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/list/",
-      "status":"docs_only",
+      "status":"official_docs_and_social_operations_preparation",
       "account":"missing",
       "app_review":"not_started",
       "read_scopes":["商品","订单","售后","物流","经营数据"],
-      "write_scopes_frozen":["商品","价格","库存","发货","广告","私信"]
+      "write_scopes_campaign_eligible":["商品","价格","库存","发货","广告","评论/回复","点赞/关注","私信","获授权媒体下载","账号操作"]
     },
     {
       "id":"jd",
@@ -37,7 +37,7 @@
       "account":"missing",
       "app_review":"not_started",
       "read_scopes":["商品","订单","库存","物流","结算"],
-      "write_scopes_frozen":["商品","价格","库存","订单履约","营销"]
+      "write_scopes_campaign_eligible":["商品","价格","库存","订单履约","营销"]
     },
     {
       "id":"pinduoduo",
@@ -47,7 +47,7 @@
       "account":"missing",
       "app_review":"not_started",
       "read_scopes":["商品","订单","物流","售后","经营数据"],
-      "write_scopes_frozen":["商品","价格","库存","发货","广告"]
+      "write_scopes_campaign_eligible":["商品","价格","库存","发货","广告"]
     },
     {
       "id":"kuaishou",
@@ -57,17 +57,19 @@
       "account":"missing",
       "app_review":"not_started",
       "read_scopes":["商品","订单","物流","经营数据"],
-      "write_scopes_frozen":["商品","价格","库存","订单履约","广告"]
+      "write_scopes_campaign_eligible":["商品","价格","库存","订单履约","广告"]
     },
     {
       "id":"xiaohongshu",
       "name":"小红书",
       "official_docs":"https://school.xiaohongshu.com/en/open/index.html",
-      "status":"watch_after_primary_four",
+      "status":"isolated_cli_installed_not_authenticated",
       "account":"missing",
       "app_review":"not_started",
-      "read_scopes":["商品","订单","库存","售后"],
-      "write_scopes_frozen":["商品上传","价格","库存","发货","内容发布","营销"]
+      "read_scopes":["商品","订单","库存","售后","搜索/笔记","全量评论/子评论","用户/用户笔记","热点/话题","通知/自有内容"],
+      "write_scopes_campaign_eligible":["商品上传","价格","库存","发货","内容发布/删除","评论/回复","点赞/收藏","关注","营销","私信","获授权媒体下载","账号操作"],
+      "selected_adapter":"jackwener/xiaohongshu-cli 0.6.4@4d63f3c0c85ccd9054fa8e96d7f761aaf2507449",
+      "additional_adapter_required":["私信","媒体下载","直播"]
     }
   ]
 }

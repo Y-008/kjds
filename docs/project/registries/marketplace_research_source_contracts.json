@@ -1,0 +1,187 @@
+{
+  "contract_id": "kjds-marketplace-research-source-contracts-v1",
+  "version": 1,
+  "as_of": "2026-08-08",
+  "official_sources": [
+    "https://open.sellersprite.com/mcp",
+    "https://open.sellersprite.com/mcp/40"
+  ],
+  "source_profiles": [
+    {
+      "source_id": "sellersprite",
+      "provider_name": "SellerSprite",
+      "source_contract_version": "fixture-v1",
+      "transport": "streamable_http",
+      "endpoint": "https://mcp.sellersprite.com/mcp",
+      "auth_header_name": "secret-key",
+      "server_identity_state": "unverified",
+      "server_identity_sha256": "341b4061fd0e25382daa52782df740a7f2f7b4c3f940f416035559e7ab0adfc8",
+      "allowed_ingestion_modes": [
+        "synthetic_fixture",
+        "manual_export"
+      ],
+      "selected_tool_ids": [
+        "product_research",
+        "market_research",
+        "asin_sales_trend",
+        "traffic_keyword",
+        "review",
+        "trademark_list"
+      ],
+      "official_tool_count_observed": 44,
+      "official_site_count_observed": 10,
+      "max_evidence_grade": "C",
+      "live_adapter_configured": false,
+      "production_admission": "not_admitted",
+      "license_state": "official_terms_not_independently_verified",
+      "revocation_state": "unknown",
+      "cost_state": "unknown",
+      "rate_limit_state": "unknown",
+      "external_write_allowed": false
+    }
+  ],
+  "tool_contracts": [
+    {
+      "source_id": "sellersprite",
+      "tool_id": "product_research",
+      "tool_version": "fixture-v1",
+      "semantic_role": "product",
+      "purpose": "product_demand_and_listing_observation",
+      "schema": {
+        "site": "site_code",
+        "asin": "asin",
+        "title": "string",
+        "currency": "currency",
+        "price": "decimal",
+        "monthly_sales": "integer",
+        "monthly_revenue": "decimal",
+        "review_count": "integer",
+        "rating_bps": "basis_points",
+        "seller_count": "integer"
+      }
+    },
+    {
+      "source_id": "sellersprite",
+      "tool_id": "market_research",
+      "tool_version": "fixture-v1",
+      "semantic_role": "market",
+      "purpose": "category_growth_and_concentration_observation",
+      "schema": {
+        "site": "site_code",
+        "asin": "asin",
+        "category": "string",
+        "market_growth_bps": "signed_basis_points",
+        "brand_concentration_bps": "basis_points"
+      }
+    },
+    {
+      "source_id": "sellersprite",
+      "tool_id": "asin_sales_trend",
+      "tool_version": "fixture-v1",
+      "semantic_role": "trend",
+      "purpose": "trend_and_volatility_observation",
+      "schema": {
+        "site": "site_code",
+        "asin": "asin",
+        "trend_90d_bps": "signed_basis_points",
+        "volatility_bps": "basis_points"
+      }
+    },
+    {
+      "source_id": "sellersprite",
+      "tool_id": "traffic_keyword",
+      "tool_version": "fixture-v1",
+      "semantic_role": "traffic",
+      "purpose": "traffic_mix_observation",
+      "schema": {
+        "site": "site_code",
+        "asin": "asin",
+        "keyword_count": "integer",
+        "organic_keyword_count": "integer",
+        "paid_keyword_count": "integer"
+      }
+    },
+    {
+      "source_id": "sellersprite",
+      "tool_id": "review",
+      "tool_version": "fixture-v1",
+      "semantic_role": "reviews",
+      "purpose": "review_pattern_observation",
+      "schema": {
+        "site": "site_code",
+        "asin": "asin",
+        "review_sample_size": "integer",
+        "pain_point_count": "integer",
+        "positive_ratio_bps": "basis_points"
+      }
+    },
+    {
+      "source_id": "sellersprite",
+      "tool_id": "trademark_list",
+      "tool_version": "fixture-v1",
+      "semantic_role": "trademark",
+      "purpose": "trademark_risk_blocker",
+      "schema": {
+        "site": "site_code",
+        "asin": "asin",
+        "trademark_state": "trademark_state"
+      }
+    }
+  ],
+  "site_codes": [
+    "US",
+    "JP",
+    "UK",
+    "DE",
+    "FR",
+    "IT",
+    "ES",
+    "CA",
+    "IN",
+    "MX"
+  ],
+  "normalization": {
+    "record_id_fields": [
+      "site",
+      "asin"
+    ],
+    "max_fixture_age_hours": 168,
+    "seller_presence_is_buyer_intent": false,
+    "contact_values_allowed": false,
+    "contact_reference_must_be_opaque": true,
+    "purpose_and_do_not_contact_required": true
+  },
+  "scoring_policy": {
+    "policy_id": "kjds-marketplace-opportunity-heuristic-v1",
+    "required_semantic_roles": [
+      "product",
+      "market",
+      "trend",
+      "traffic",
+      "reviews",
+      "trademark"
+    ],
+    "dimension_weights_bps": {
+      "demand_bps": 2000,
+      "growth_bps": 1500,
+      "competition_bps": 2000,
+      "traffic_health_bps": 1500,
+      "review_opportunity_bps": 1500,
+      "trend_stability_bps": 1500
+    },
+    "leader_allowed": false,
+    "global_top1_allowed": false,
+    "profit_claim_allowed": false
+  },
+  "control_envelope": {
+    "product_write": false,
+    "fact_write": false,
+    "finance_write": false,
+    "approval_write": false,
+    "permit_write": false,
+    "procurement_write": false,
+    "listing_write": false,
+    "outreach_write": false,
+    "external_write": false
+  }
+}

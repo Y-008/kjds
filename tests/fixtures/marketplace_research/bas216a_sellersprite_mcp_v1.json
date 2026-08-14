@@ -1,0 +1,352 @@
+{
+  "authority_checked_at": "2026-08-08T00:00:00+00:00",
+  "captured_at": "2026-08-07T23:30:00+00:00",
+  "cost_status": "unknown",
+  "data_as_of": "2026-08-07T23:00:00+00:00",
+  "declared_grade": "C",
+  "declared_observation_count": 12,
+  "declared_page_count": 6,
+  "declared_unique_record_count": 2,
+  "failed_pages": [],
+  "idempotency_key": "bas216a-synthetic-us-20260807-v1",
+  "license_status": "fixture_only",
+  "observations": [
+    {
+      "fields": {
+        "asin": "B0KJDS0001",
+        "currency": "USD",
+        "monthly_revenue": "59760.00",
+        "monthly_sales": 2400,
+        "price": "24.90",
+        "rating_bps": 4620,
+        "review_count": 860,
+        "seller_count": 7,
+        "site": "US",
+        "title": "Synthetic compact travel organizer"
+      },
+      "observation_id": "mro_18633e688176400eebde7c70e21e80b4",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0001",
+      "schema_sha256": "f74817eb364de3bc5ae76c546f74b883fedc0c5dcfda952449081918b9d2e30d",
+      "tool_id": "product_research",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0001",
+        "brand_concentration_bps": 3100,
+        "category": "Travel Accessories",
+        "market_growth_bps": 850,
+        "site": "US"
+      },
+      "observation_id": "mro_9cbd75d55342ead469bd4e02b3855695",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0001",
+      "schema_sha256": "c99f5f8fae9099af261c595d1d7d92368fe97373b340f9c67ed5ab75fc10433a",
+      "tool_id": "market_research",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0001",
+        "site": "US",
+        "trend_90d_bps": 720,
+        "volatility_bps": 1800
+      },
+      "observation_id": "mro_12868771e99fe99649c496f7cdd27a99",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0001",
+      "schema_sha256": "67e77564209ba4ceca20c1c1676a27c49426cc5aa009de515108fa6206016fcd",
+      "tool_id": "asin_sales_trend",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0001",
+        "keyword_count": 480,
+        "organic_keyword_count": 330,
+        "paid_keyword_count": 150,
+        "site": "US"
+      },
+      "observation_id": "mro_b1112879c775a6351a403f986db0def2",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0001",
+      "schema_sha256": "d9d029a66be4a74a41ca2570bc6c149e374b84353fe60f42d1e69cbbfc56eb2d",
+      "tool_id": "traffic_keyword",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0001",
+        "pain_point_count": 24,
+        "positive_ratio_bps": 8250,
+        "review_sample_size": 120,
+        "site": "US"
+      },
+      "observation_id": "mro_32852535d0ad9da44ad68ed99ad8f3d4",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0001",
+      "schema_sha256": "6c79db8478413a6db37257b26d60d5a74e8a894aff0b56f1de5bb28cbe06a83b",
+      "tool_id": "review",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0001",
+        "site": "US",
+        "trademark_state": "clear"
+      },
+      "observation_id": "mro_1d490fa41145559fb5b9f7cbdec6f069",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0001",
+      "schema_sha256": "af5f5f675eedac9b4e7484a2fce2fdec9936405d29bc097c7f6a408e9b852ff0",
+      "tool_id": "trademark_list",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0002",
+        "currency": "USD",
+        "monthly_revenue": "54575.00",
+        "monthly_sales": 1850,
+        "price": "29.50",
+        "rating_bps": 4470,
+        "review_count": 1240,
+        "seller_count": 11,
+        "site": "US",
+        "title": "Synthetic insulated lunch tote"
+      },
+      "observation_id": "mro_27a0caa3fe83f7fea0f08ec545b5f24f",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0002",
+      "schema_sha256": "f74817eb364de3bc5ae76c546f74b883fedc0c5dcfda952449081918b9d2e30d",
+      "tool_id": "product_research",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0002",
+        "brand_concentration_bps": 4300,
+        "category": "Lunch Bags",
+        "market_growth_bps": 420,
+        "site": "US"
+      },
+      "observation_id": "mro_9a0b5dc734e4dd98a24aac0c5b26c7b7",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0002",
+      "schema_sha256": "c99f5f8fae9099af261c595d1d7d92368fe97373b340f9c67ed5ab75fc10433a",
+      "tool_id": "market_research",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0002",
+        "site": "US",
+        "trend_90d_bps": 210,
+        "volatility_bps": 2600
+      },
+      "observation_id": "mro_f5e73902bbe3c216a14db0c99fe328ae",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0002",
+      "schema_sha256": "67e77564209ba4ceca20c1c1676a27c49426cc5aa009de515108fa6206016fcd",
+      "tool_id": "asin_sales_trend",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0002",
+        "keyword_count": 620,
+        "organic_keyword_count": 350,
+        "paid_keyword_count": 270,
+        "site": "US"
+      },
+      "observation_id": "mro_e1ffbd5622e5128197382607dc2d828d",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0002",
+      "schema_sha256": "d9d029a66be4a74a41ca2570bc6c149e374b84353fe60f42d1e69cbbfc56eb2d",
+      "tool_id": "traffic_keyword",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0002",
+        "pain_point_count": 45,
+        "positive_ratio_bps": 7740,
+        "review_sample_size": 150,
+        "site": "US"
+      },
+      "observation_id": "mro_9df1d94ddc9346a07db29f6b4441d8a1",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0002",
+      "schema_sha256": "6c79db8478413a6db37257b26d60d5a74e8a894aff0b56f1de5bb28cbe06a83b",
+      "tool_id": "review",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "fields": {
+        "asin": "B0KJDS0002",
+        "site": "US",
+        "trademark_state": "unknown"
+      },
+      "observation_id": "mro_86d52f27bfad11904136f84df09193eb",
+      "observed_at": "2026-08-07T23:00:00+00:00",
+      "record_id": "US:B0KJDS0002",
+      "schema_sha256": "af5f5f675eedac9b4e7484a2fce2fdec9936405d29bc097c7f6a408e9b852ff0",
+      "tool_id": "trademark_list",
+      "tool_version": "fixture-v1"
+    }
+  ],
+  "rate_limit_status": "unknown",
+  "receipt_content_sha256": "8e543c30d05f1e2a6b110fbde5c106b80f59559d21dad3e39f3c7399a16ed6bb",
+  "receipt_contract_id": "kjds-marketplace-research-source-receipt-v1",
+  "receipt_contract_version": 1,
+  "receipt_id": "mrsr_8e543c30d05f1e2a6b110fbde5c106b8",
+  "revocation_status": "not_applicable_fixture",
+  "scope": {
+    "entity_ref": "entity-fixture",
+    "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "store_ref": "store-fixture",
+    "tenant_ref": "tenant-fixture"
+  },
+  "server_identity_sha256": "341b4061fd0e25382daa52782df740a7f2f7b4c3f940f416035559e7ab0adfc8",
+  "source_contract_sha256": "d191fe0fd9e09eb858c53df991720f86b098f4b052553138470bd6152058ced1",
+  "source_id": "sellersprite",
+  "source_mode": "synthetic_fixture",
+  "terminal_checkpoint": {
+    "product_research": "sellersprite:product_research:page:1:terminal",
+    "market_research": "sellersprite:market_research:page:1:terminal",
+    "asin_sales_trend": "sellersprite:asin_sales_trend:page:1:terminal",
+    "traffic_keyword": "sellersprite:traffic_keyword:page:1:terminal",
+    "review": "sellersprite:review:page:1:terminal",
+    "trademark_list": "sellersprite:trademark_list:page:1:terminal"
+  },
+  "tool_receipts": [
+    {
+      "pages": [
+        {
+          "checkpoint_after": "sellersprite:product_research:page:1:terminal",
+          "checkpoint_before": null,
+          "observation_ids": [
+            "mro_18633e688176400eebde7c70e21e80b4",
+            "mro_27a0caa3fe83f7fea0f08ec545b5f24f"
+          ],
+          "page_index": 1,
+          "page_sha256": "22e0b7a04b17782636bffa266c9728c10702d09183fa426a1320157fb1716081",
+          "status": "complete",
+          "has_more": false,
+          "source_total_observations": 2,
+          "exported_observation_count": 2
+        }
+      ],
+      "schema_sha256": "f74817eb364de3bc5ae76c546f74b883fedc0c5dcfda952449081918b9d2e30d",
+      "tool_id": "product_research",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "pages": [
+        {
+          "checkpoint_after": "sellersprite:market_research:page:1:terminal",
+          "checkpoint_before": null,
+          "observation_ids": [
+            "mro_9cbd75d55342ead469bd4e02b3855695",
+            "mro_9a0b5dc734e4dd98a24aac0c5b26c7b7"
+          ],
+          "page_index": 1,
+          "page_sha256": "9d7e32c6817c7932baea7d38559e2f6b42dfa828da357215db10140ce4dbbc93",
+          "status": "complete",
+          "has_more": false,
+          "source_total_observations": 2,
+          "exported_observation_count": 2
+        }
+      ],
+      "schema_sha256": "c99f5f8fae9099af261c595d1d7d92368fe97373b340f9c67ed5ab75fc10433a",
+      "tool_id": "market_research",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "pages": [
+        {
+          "checkpoint_after": "sellersprite:asin_sales_trend:page:1:terminal",
+          "checkpoint_before": null,
+          "observation_ids": [
+            "mro_12868771e99fe99649c496f7cdd27a99",
+            "mro_f5e73902bbe3c216a14db0c99fe328ae"
+          ],
+          "page_index": 1,
+          "page_sha256": "e71a05ca571c1dda621b1d85ddd66bf07a0f431a459573ef5019955b7c1e2197",
+          "status": "complete",
+          "has_more": false,
+          "source_total_observations": 2,
+          "exported_observation_count": 2
+        }
+      ],
+      "schema_sha256": "67e77564209ba4ceca20c1c1676a27c49426cc5aa009de515108fa6206016fcd",
+      "tool_id": "asin_sales_trend",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "pages": [
+        {
+          "checkpoint_after": "sellersprite:traffic_keyword:page:1:terminal",
+          "checkpoint_before": null,
+          "observation_ids": [
+            "mro_b1112879c775a6351a403f986db0def2",
+            "mro_e1ffbd5622e5128197382607dc2d828d"
+          ],
+          "page_index": 1,
+          "page_sha256": "e9b4a0329de7528bd8692ee740ceb81c150264159a9ffd8dcbc626041b004262",
+          "status": "complete",
+          "has_more": false,
+          "source_total_observations": 2,
+          "exported_observation_count": 2
+        }
+      ],
+      "schema_sha256": "d9d029a66be4a74a41ca2570bc6c149e374b84353fe60f42d1e69cbbfc56eb2d",
+      "tool_id": "traffic_keyword",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "pages": [
+        {
+          "checkpoint_after": "sellersprite:review:page:1:terminal",
+          "checkpoint_before": null,
+          "observation_ids": [
+            "mro_32852535d0ad9da44ad68ed99ad8f3d4",
+            "mro_9df1d94ddc9346a07db29f6b4441d8a1"
+          ],
+          "page_index": 1,
+          "page_sha256": "e8c3bba28f4fb08debc37cdd813c055fe67806f3e9e004026d69b294e7ffbaf0",
+          "status": "complete",
+          "has_more": false,
+          "source_total_observations": 2,
+          "exported_observation_count": 2
+        }
+      ],
+      "schema_sha256": "6c79db8478413a6db37257b26d60d5a74e8a894aff0b56f1de5bb28cbe06a83b",
+      "tool_id": "review",
+      "tool_version": "fixture-v1"
+    },
+    {
+      "pages": [
+        {
+          "checkpoint_after": "sellersprite:trademark_list:page:1:terminal",
+          "checkpoint_before": null,
+          "observation_ids": [
+            "mro_1d490fa41145559fb5b9f7cbdec6f069",
+            "mro_86d52f27bfad11904136f84df09193eb"
+          ],
+          "page_index": 1,
+          "page_sha256": "9fc753c4964fbff8afddde8ceead90edd5c804e2782993b8fd0b038ffd0cbd8c",
+          "status": "complete",
+          "has_more": false,
+          "source_total_observations": 2,
+          "exported_observation_count": 2
+        }
+      ],
+      "schema_sha256": "af5f5f675eedac9b4e7484a2fce2fdec9936405d29bc097c7f6a408e9b852ff0",
+      "tool_id": "trademark_list",
+      "tool_version": "fixture-v1"
+    }
+  ],
+  "registry_sha256": "3fdf5fc13e5b042c49980f50c971c4c3eb297909db6670a9f42f3b95f6968e56"
+}

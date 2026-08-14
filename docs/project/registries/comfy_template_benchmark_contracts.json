@@ -1,0 +1,194 @@
+{
+  "schema_version": "kjds-comfy-template-benchmark-contracts-v1",
+  "contract_id": "kjds-governed-comfy-template-benchmark-v1",
+  "version": "1.0.0",
+  "slice": "contract_synthetic_only",
+  "production_truth": {
+    "template_catalog_ref": "apps.control_plane.media_workbench.TEMPLATE_CATALOG",
+    "workflow_compiler_ref": "apps.control_plane.image_execution.ComfyImageExecutionService._workflow",
+    "current_production_template_ref": "ozon-retouch-v1@1",
+    "benchmark_registry_is_production_truth": false,
+    "production_catalog_write_allowed": false
+  },
+  "qa_authority": {
+    "authority_ref": "apps.control_plane.content_growth.REQUIRED_QA+IMAGE_QA",
+    "required_rules": [
+      "brand",
+      "factual_grounding",
+      "ip_rights",
+      "localization",
+      "policy",
+      "product_fidelity",
+      "source_provenance",
+      "text_accuracy"
+    ],
+    "automatic_metrics_are_observations_only": true,
+    "independent_human_review_required": true
+  },
+  "template_contracts": [
+    {
+      "template_ref": "ozon-retouch-8gb-shadow-v1@0.1.0",
+      "template_id": "ozon-retouch-8gb-shadow-v1",
+      "version": "0.1.0",
+      "lifecycle": "shadow_candidate",
+      "production_admitted": false,
+      "champion_template_ref": "ozon-retouch-v1@1",
+      "workflow_contract": {
+        "contract_id": "kjds-comfy-shadow-workflow-contract-v1",
+        "nodes": [
+          {
+            "node_id": "1",
+            "class_type": "LoadImage",
+            "inputs": {
+              "image": "$input_image_ref"
+            }
+          },
+          {
+            "node_id": "2",
+            "class_type": "ImageScaleToTotalPixels",
+            "inputs": {
+              "image": [
+                "1",
+                0
+              ],
+              "upscale_method": "$upscale_method",
+              "megapixels": "$target_megapixels",
+              "resolution_steps": 1
+            }
+          },
+          {
+            "node_id": "3",
+            "class_type": "SaveImage",
+            "inputs": {
+              "images": [
+                "2",
+                0
+              ],
+              "filename_prefix": "synthetic/bas185/output"
+            }
+          }
+        ],
+        "caller_workflow_json_allowed": false,
+        "network_nodes_allowed": false,
+        "custom_nodes_allowed": false
+      },
+      "workflow_sha256": "f45858a512808d819000f315616b48a1af14f59619ad66a24caf1b6fc12984f1",
+      "node_allowlist": [
+        "LoadImage",
+        "ImageScaleToTotalPixels",
+        "SaveImage"
+      ],
+      "typed_parameters": {
+        "input_image_ref": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "target_megapixels": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 4.0
+        },
+        "upscale_method": {
+          "type": "enum",
+          "values": [
+            "lanczos"
+          ]
+        }
+      },
+      "model_policy": {
+        "artifact_id": "core-no-model-download",
+        "artifact_sha256": "e2d4214d0ed0e291e67fcdef425482e511cd249b422a6aafcd56efe738fd0d88",
+        "download_allowed": false
+      },
+      "node_bundle_policy": {
+        "bundle_id": "comfy-core-pinned-synthetic-v1",
+        "bundle_sha256": "d433fcd369723ce5c678e409ac979dfff54a1f08a3cb004f5c3b78603a21f6dc",
+        "custom_nodes_allowed": false
+      },
+      "license_policy": {
+        "model_license_id": "no-model-artifact",
+        "node_bundle_license_id": "GPL-3.0-only"
+      },
+      "sbom_sha256": "2d77fbf23aaa658175ec28a6c81d5857090313bb5e5ea7a277a1c2c373940650",
+      "qa_profile_ref": "apps.control_plane.content_growth.REQUIRED_QA+IMAGE_QA",
+      "workflow_download_allowed": false
+    }
+  ],
+  "runtime_receipt_contract": {
+    "contract_id": "kjds-comfy-8gb-runtime-receipt-v1",
+    "authority": "repository_owned_synthetic_fixture",
+    "required_gpu_bytes": 8589934592,
+    "real_hardware_claim_allowed": false,
+    "scope_binding_authority": "repository_owned_synthetic_fixture",
+    "current_scope_authority_connected": false,
+    "license_shape_authority": "repository_owned_synthetic_fixture",
+    "independent_license_authority_connected": false,
+    "current_runtime_authority_connected": false
+  },
+  "run_receipt_contract": {
+    "contract_id": "kjds-comfy-template-run-receipt-v1",
+    "sample_selection_policy": "all_measurements",
+    "automatic_retry_allowed": false,
+    "automatic_downgrade_allowed": false,
+    "authority": "repository_owned_synthetic_fixture",
+    "independent_run_authority_connected": false
+  },
+  "benchmark_policy": {
+    "fixed_workload": {
+      "resolution_width": 1024,
+      "resolution_height": 1024,
+      "batch_size": 1,
+      "seed": 424242,
+      "warmup_runs": 2,
+      "measurement_runs": 5,
+      "sample_selection_policy": "all_measurements"
+    },
+    "maximum_peak_reserved_vram_bytes": 8589934592,
+    "maximum_wall_latency_ms": 8000,
+    "automatic_metric_floors_bps": {
+      "structural_similarity_bps": 9000,
+      "product_fidelity_bps": 9000,
+      "text_preservation_bps": 9000
+    },
+    "real_sample_required_for_admission": true,
+    "rollback_exercise_required": true,
+    "independent_human_review_required": true
+  },
+  "hard_gate_ids": [
+    "registry_fixture_integrity",
+    "synthetic_scope_binding",
+    "current_scope_authority",
+    "typed_workflow_compiler",
+    "synthetic_runtime_receipt_shape",
+    "current_runtime_authority",
+    "synthetic_run_receipt_shape",
+    "independent_run_authority",
+    "synthetic_license_sbom_shape",
+    "independent_license_authority",
+    "media_qa_authority",
+    "real_8gb_sample",
+    "independent_human_review",
+    "rollback",
+    "production_catalog_expansion",
+    "production_admission_boundary",
+    "zero_authority"
+  ],
+  "zero_authority_flags": {
+    "content_asset_write": false,
+    "formal_fact": false,
+    "approval": false,
+    "permit": false,
+    "pilot": false,
+    "outbox": false,
+    "provider_call": false,
+    "network": false,
+    "external_write": false,
+    "self_promotion": false,
+    "production_template_admission": false
+  },
+  "content_sha256": "dd09d28bcc4f102f1b6b6cb7ed0441fdbd0517781939d496c2ed5d6c9d8848d2"
+}

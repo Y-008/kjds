@@ -6,6 +6,11 @@ __pycache__
 *.egg-info
 .pytest_cache
 .ruff_cache
+.runtime
+output
+node_modules
+web/.next
+web/node_modules
 *.docx
 *.png
 *.tmp
@@ -15,6 +20,9 @@ docs/project/*
 !docs/project/registries/
 docs/project/registries/*
 !docs/project/registries/*.json
+!docs/project/registries/seller_strategy_packs/
+docs/project/registries/seller_strategy_packs/*
+!docs/project/registries/seller_strategy_packs/*.json
 tests
 scripts
 ENVIRONMENT_*.md

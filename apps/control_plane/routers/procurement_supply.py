@@ -4,10 +4,19 @@ import hashlib
 import json
 import os
 from dataclasses import asdict
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 
 from ..api_contracts import (
     LogisticsCalculationInput,
@@ -22,6 +31,7 @@ from ..api_contracts import (
     SupplierRfqPackageInput,
     current_principal,
     ensure_role,
+    ensure_store_scope,
     run,
 )
 from ..evidence import EvidenceGrade
@@ -31,6 +41,92 @@ from ..security import Principal
 from ..sourcing import ProfitInputs, SupplierOffer, profit_template_contract
 
 router = APIRouter()
+
+
+def _cutoff(value: str | None) -> datetime:
+    if value is None:
+        return datetime.now(UTC)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="as_of must be an ISO-8601 timestamp",
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise HTTPException(
+            status_code=422,
+            detail="as_of must include a timezone",
+        )
+    parsed = parsed.astimezone(UTC)
+    if parsed > datetime.now(UTC):
+        raise HTTPException(
+            status_code=422,
+            detail="as_of cannot be in the future",
+        )
+    return parsed
+
+
+def _logistics_context(
+    principal: Principal,
+    *,
+    store_ref: str,
+    as_of: str | None = None,
+):
+    ensure_store_scope(principal, store_ref)
+    cutoff = _cutoff(as_of)
+    entity_scope = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=cutoff,
+    )
+    return runtime.logistics.context(
+        principal=principal,
+        entity_scope=entity_scope,
+        store_ref=store_ref,
+        as_of=cutoff,
+    )
+
+
+@router.get("/v1/procurement/workspace")
+def procurement_workspace(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+    query: str | None = None,
+    stage: str | None = None,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+    cursor: str | None = None,
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    ensure_store_scope(principal, store_ref)
+    cutoff = _cutoff(as_of)
+    entity_scope = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=cutoff,
+    )
+    return run(
+        lambda: runtime.scoped_procurement_receiving.project(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+            as_of=cutoff.isoformat(),
+            query=query,
+            stage=stage,
+            page_size=page_size,
+            cursor=cursor,
+        )
+    )
 
 
 @router.post("/v1/sourcing/offers", status_code=201)
@@ -63,8 +159,23 @@ def create_supplier_rfq_package(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "admin")
+    ensure_store_scope(principal, body.store_ref)
+    cutoff = datetime.now(UTC)
+    entity_scope = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=body.store_ref,
+        as_of=cutoff,
+    )
 
     def create():
+        runtime.scoped_marketplace_catalog.require_current_item(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=body.store_ref,
+            as_of=cutoff,
+            offer_id=body.offer_id,
+            expected_item_hash=body.expected_item_hash,
+        )
         result = runtime.supplier_rfq.create(
             **body.model_dump(),
             created_by=principal.actor_id,
@@ -388,6 +499,7 @@ async def finalize_supplier_comparison(
     logistics_rate_card_id: Annotated[str, Form()] = "",
     logistics_currency_to_cny_rate: Annotated[Decimal, Form()] = Decimal("1"),
     logistics_fx_evidence_id: Annotated[str, Form()] = "",
+    store_ref: Annotated[str, Form()] = "ozon-primary",
 ):
     ensure_role(principal, "operator", "reviewer", "admin")
     try:
@@ -416,6 +528,12 @@ async def finalize_supplier_comparison(
     validated_inputs.pop("offer_id")
     validated_inputs.pop("evidence")
     validated_inputs.pop("cost_evidence")
+    requested_store_ref = str(validated_inputs.pop("store_ref"))
+    if "store_ref" in raw_inputs and requested_store_ref != store_ref:
+        raise HTTPException(
+            status_code=422,
+            detail="Profit input store_ref does not match comparison store_ref",
+        )
     template_id = validated_inputs.pop("template_id")
     cost_states = validated_inputs.pop("cost_states")
     validated_inputs.pop("logistics_calculation_id")
@@ -444,6 +562,11 @@ async def finalize_supplier_comparison(
                 else None
             ),
             logistics_fx_evidence_id=logistics_fx_evidence_id.strip() or None,
+            logistics_context=(
+                _logistics_context(principal, store_ref=store_ref)
+                if logistics_rate_card_id.strip()
+                else None
+            ),
         )
     )
 
@@ -585,6 +708,7 @@ def calculate_sourcing_profit(body: ProfitScenarioInput, principal: Annotated[Pr
     ensure_role(principal, "operator", "reviewer", "admin")
     values = body.model_dump()
     offer_id = values.pop("offer_id")
+    store_ref = values.pop("store_ref")
     assumption_evidence = values.pop("evidence")
     cost_evidence = values.pop("cost_evidence")
     template_id = values.pop("template_id")
@@ -600,6 +724,11 @@ def calculate_sourcing_profit(body: ProfitScenarioInput, principal: Annotated[Pr
             cost_states,
             template_id,
             logistics_calculation_id,
+            (
+                _logistics_context(principal, store_ref=store_ref)
+                if logistics_calculation_id
+                else None
+            ),
         )
         for evidence_id in result.evidence:
             runtime.evidence.link(
@@ -631,16 +760,42 @@ def capture_logistics_rate_card(
 ):
     ensure_role(principal, "operator", "reviewer", "admin")
     values = body.model_dump()
+    store_ref = values.pop("store_ref")
     return run(
         lambda: runtime.logistics.capture_rate_card(
+            _logistics_context(principal, store_ref=store_ref),
             LogisticsRateCard(**values, captured_by=principal.actor_id)
         )
     )
 
 
 @router.get("/v1/logistics/rate-cards")
-def list_logistics_rate_cards(limit: int = 100):
-    return run(lambda: runtime.logistics_store.list_rate_cards(min(max(limit, 1), 500)))
+def list_logistics_rate_cards(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+    limit: int = 100,
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(
+        lambda: runtime.logistics.list_rate_cards(
+            _logistics_context(
+                principal,
+                store_ref=store_ref,
+                as_of=as_of,
+            ),
+            min(max(limit, 1), 500),
+        )
+    )
 
 
 @router.post("/v1/logistics/calculations", status_code=201)
@@ -649,21 +804,70 @@ def calculate_logistics_cost(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "admin")
+    values = body.model_dump()
+    store_ref = values.pop("store_ref")
     return run(
         lambda: runtime.logistics.calculate(
-            **body.model_dump(),
+            _logistics_context(principal, store_ref=store_ref),
+            **values,
             calculated_by=principal.actor_id,
         )
     )
 
 
 @router.get("/v1/logistics/calculations")
-def list_logistics_calculations(limit: int = 100):
+def list_logistics_calculations(
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+    limit: int = 100,
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
     return run(
-        lambda: runtime.logistics_store.list_calculations(min(max(limit, 1), 500))
+        lambda: runtime.logistics.list_calculations(
+            _logistics_context(
+                principal,
+                store_ref=store_ref,
+                as_of=as_of,
+            ),
+            min(max(limit, 1), 500),
+        )
     )
 
 
 @router.get("/v1/logistics/calculations/{calculation_id}/decision-support")
-def logistics_decision_support(calculation_id: str):
-    return run(lambda: runtime.logistics.decision_support(calculation_id))
+def logistics_decision_support(
+    calculation_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+):
+    ensure_role(
+        principal,
+        "operator",
+        "reviewer",
+        "compliance",
+        "approver",
+        "risk",
+        "monitor",
+        "admin",
+    )
+    return run(
+        lambda: runtime.logistics.decision_support(
+            _logistics_context(
+                principal,
+                store_ref=store_ref,
+                as_of=as_of,
+            ),
+            calculation_id,
+        )
+    )

@@ -1,0 +1,123 @@
+{
+  "schema_version": "kjds-enterprise-positioning-profiles-v2",
+  "contract_id": "kjds-enterprise-positioning-advisor-v2",
+  "version": "2.0.0",
+  "status": "active_contract",
+  "current_profile": {
+    "enterprise_ref": "kjds",
+    "business_model": "hybrid_operator_and_control_plane",
+    "stage": "validation",
+    "headcount_band": "solo_to_micro",
+    "markets": ["RU"],
+    "platforms": ["ozon"],
+    "risk_class": "elevated",
+    "primary_objective": "actual_cash_truth"
+  },
+  "allowed_values": {
+    "business_model": ["merchant_operator", "commerce_control_plane_provider", "hybrid_operator_and_control_plane"],
+    "stage": ["validation", "repeatable", "scale", "enterprise"],
+    "headcount_band": ["solo_to_micro", "small", "medium", "large"],
+    "risk_class": ["standard", "elevated", "regulated"],
+    "primary_objective": ["actual_cash_truth", "repeatable_growth", "multi_market_scale", "enterprise_ai_erp"]
+  },
+  "status_precedence": ["standby", "on_demand", "supporting_ai", "required_now"],
+  "stage_policies": {
+    "validation": {
+      "archetype_ref": "truth_loop_validation",
+      "positioning": "面向跨境电商经营者的、证据优先、真实现金导向、受控自动化的经营控制面",
+      "value_wedge": "用一个真实 SKU 把 Product、Supplier、Order、Settlement、Bank 与 Actual Cash CM3 对清，输出可审计差异、风险和唯一下一动作。",
+      "required_now_role_refs": ["program_director_chief_of_staff", "chief_architect", "market_category_lead", "sourcing_quality_lead", "logistics_customs_lead", "finance_controller", "data_ai_evidence_engineer"],
+      "supporting_ai_role_refs": ["global_market_intelligence", "product_category_portfolio", "marketplace_channel_operations", "sourcing_supplier_quality", "logistics_customs_fulfillment", "finance_treasury_profit", "legal_tax_compliance_ip", "data_evidence_ai", "architecture_engineering_security_release"],
+      "on_demand_role_refs": ["global_chief_commerce_officer", "product_lead", "backend_domain_engineer", "backend_integration_engineer", "devsecops_sre_engineer", "qa_release_lead"]
+    },
+    "repeatable": {
+      "archetype_ref": "repeatable_growth_company",
+      "positioning": "以真实利润、现金和受控增长为核心的 AI 原生跨境经营公司",
+      "value_wedge": "把已验证单 SKU 闭环复制为可复算、可回读、可停止的多 SKU 增长系统。",
+      "required_now_role_refs": ["global_chief_commerce_officer", "program_director_chief_of_staff", "delivery_pmo_lead", "product_lead", "chief_architect", "market_category_lead", "sourcing_quality_lead", "logistics_customs_lead", "finance_controller", "growth_sales_customer_success_lead", "backend_domain_engineer", "backend_integration_engineer", "data_ai_evidence_engineer", "qa_release_lead"],
+      "supporting_ai_role_refs": ["global_market_intelligence", "product_category_portfolio", "marketplace_channel_operations", "sourcing_supplier_quality", "logistics_customs_fulfillment", "finance_treasury_profit", "legal_tax_compliance_ip", "localization_content_customer_experience", "growth_ads_commercial", "product_management_customer_success", "data_evidence_ai", "architecture_engineering_security_release"],
+      "on_demand_role_refs": ["frontend_ux_engineer", "devsecops_sre_engineer"]
+    },
+    "scale": {
+      "archetype_ref": "multi_market_scale_company",
+      "positioning": "多市场、多平台、证据可审计的跨境电商经营与资本配置平台",
+      "value_wedge": "在统一事实、现金、风险和职责分离合同上扩展国家、平台和经营单元。",
+      "required_now_role_refs": ["global_chief_commerce_officer", "program_director_chief_of_staff", "delivery_pmo_lead", "product_lead", "chief_architect", "market_category_lead", "sourcing_quality_lead", "logistics_customs_lead", "finance_controller", "growth_sales_customer_success_lead", "backend_domain_engineer", "backend_integration_engineer", "frontend_ux_engineer", "data_ai_evidence_engineer", "devsecops_sre_engineer", "qa_release_lead"],
+      "supporting_ai_role_refs": ["global_market_intelligence", "product_category_portfolio", "marketplace_channel_operations", "sourcing_supplier_quality", "logistics_customs_fulfillment", "finance_treasury_profit", "legal_tax_compliance_ip", "localization_content_customer_experience", "growth_ads_commercial", "product_management_customer_success", "data_evidence_ai", "architecture_engineering_security_release"],
+      "on_demand_role_refs": []
+    },
+    "enterprise": {
+      "archetype_ref": "enterprise_ai_erp_company",
+      "positioning": "多主体、多市场、可审计、可回滚的企业 AI ERP 协调与经营控制平台",
+      "value_wedge": "连接既有 ERP、平台和证据权威，以受控 Agent 提升流程、决策和资本效率，而不制造第二事实库。",
+      "required_now_role_refs": ["global_chief_commerce_officer", "program_director_chief_of_staff", "delivery_pmo_lead", "russia_ozon_general_manager", "product_lead", "chief_architect", "market_category_lead", "ozon_channel_operations_lead", "sourcing_quality_lead", "logistics_customs_lead", "finance_controller", "growth_sales_customer_success_lead", "backend_domain_engineer", "backend_integration_engineer", "frontend_ux_engineer", "data_ai_evidence_engineer", "devsecops_sre_engineer", "qa_release_lead"],
+      "supporting_ai_role_refs": ["global_market_intelligence", "product_category_portfolio", "marketplace_channel_operations", "sourcing_supplier_quality", "logistics_customs_fulfillment", "finance_treasury_profit", "legal_tax_compliance_ip", "localization_content_customer_experience", "growth_ads_commercial", "product_management_customer_success", "data_evidence_ai", "architecture_engineering_security_release"],
+      "on_demand_role_refs": []
+    }
+  },
+  "business_model_policies": {
+    "merchant_operator": {
+      "emphasis": "自营商品、供应链、渠道、现金和经营结果",
+      "role_statuses": {"global_chief_commerce_officer": "required_now", "product_lead": "on_demand"},
+      "priority_role_refs": ["global_chief_commerce_officer", "market_category_lead", "finance_controller"]
+    },
+    "commerce_control_plane_provider": {
+      "emphasis": "产品、客户交付、集成、证据和企业控制能力",
+      "role_statuses": {"product_lead": "required_now", "backend_integration_engineer": "required_now", "growth_sales_customer_success_lead": "on_demand"},
+      "priority_role_refs": ["product_lead", "backend_integration_engineer", "growth_sales_customer_success_lead"]
+    },
+    "hybrid_operator_and_control_plane": {
+      "emphasis": "先用自营真实现金闭环验证，再沉淀固定范围服务与控制平面",
+      "role_statuses": {"global_chief_commerce_officer": "on_demand", "product_lead": "on_demand", "delivery_pmo_lead": "on_demand"},
+      "priority_role_refs": ["global_chief_commerce_officer", "product_lead", "delivery_pmo_lead"]
+    }
+  },
+  "headcount_policies": {
+    "solo_to_micro": {"max_human_seats": 4, "max_parallel_workstreams": 2, "max_active_work_per_human": 1, "role_bundle_mode": "four_seat_compressed"},
+    "small": {"max_human_seats": 4, "max_parallel_workstreams": 3, "max_active_work_per_human": 1, "role_bundle_mode": "four_accountability_seats"},
+    "medium": {"max_human_seats": 4, "max_parallel_workstreams": 6, "max_active_work_per_human": 2, "role_bundle_mode": "dedicated_role_bindings_preferred"},
+    "large": {"max_human_seats": 4, "max_parallel_workstreams": 12, "max_active_work_per_human": 3, "role_bundle_mode": "dedicated_role_bindings_required"}
+  },
+  "risk_policies": {
+    "standard": {"required_control_role_refs": ["human_business_owner", "independent_verifier"], "on_demand_control_role_refs": ["independent_approver", "risk_authority", "executor"], "automation_ceiling": "simulation_only"},
+    "elevated": {"required_control_role_refs": ["human_business_owner", "independent_verifier", "independent_approver", "risk_authority"], "on_demand_control_role_refs": ["executor"], "automation_ceiling": "read_only_recommendation_only"},
+    "regulated": {"required_control_role_refs": ["human_business_owner", "independent_verifier", "independent_approver", "risk_authority", "executor"], "on_demand_control_role_refs": [], "automation_ceiling": "zero_external_action_without_professional_gate"}
+  },
+  "objective_policies": {
+    "actual_cash_truth": {"priority_role_refs": ["finance_controller", "data_ai_evidence_engineer", "russia_ozon_general_manager", "qa_release_lead"], "activation_gate_by_role": {"russia_ozon_general_manager": "truth_sku_owner_and_evidence_manifest_bound", "qa_release_lead": "one_truth_sku_reconciliation_ready"}},
+    "repeatable_growth": {"priority_role_refs": ["growth_sales_customer_success_lead", "growth_ads_commercial", "delivery_pmo_lead"], "activation_gate_by_role": {"growth_sales_customer_success_lead": "one_truth_sku_cash_verified", "growth_ads_commercial": "commercial_c0_passed", "delivery_pmo_lead": "three_sku_replication_authorized"}},
+    "multi_market_scale": {"priority_role_refs": ["delivery_pmo_lead", "localization_content_customer_experience", "global_market_intelligence"], "activation_gate_by_role": {"delivery_pmo_lead": "three_sku_cash_loops_verified", "localization_content_customer_experience": "new_market_professional_gate_ready", "global_market_intelligence": "multi_market_scope_approved"}},
+    "enterprise_ai_erp": {"priority_role_refs": ["product_lead", "backend_integration_engineer", "product_management_customer_success"], "activation_gate_by_role": {"product_lead": "commercial_c0_passed", "backend_integration_engineer": "design_partner_data_contract_signed", "product_management_customer_success": "paid_design_partner_active"}}
+  },
+  "conditional_roles": [
+    {"role_ref": "russia_ozon_general_manager", "market": "RU", "recommendation_status": "on_demand", "reason_code": "supported_market_role_available"},
+    {"role_ref": "ozon_channel_operations_lead", "platform": "ozon", "recommendation_status": "required_now", "reason_code": "supported_platform_role_required"}
+  ],
+  "control_role_templates": [
+    {"role_ref": "human_business_owner", "title": "企业经营责任人", "mission": "对企业定位、P&L、预算、最大损失和继续/停止决定承担最终责任。"},
+    {"role_ref": "independent_verifier", "title": "独立验证人", "mission": "独立验证证据、结果和声明，不参与被验证产物的编写。"},
+    {"role_ref": "independent_approver", "title": "独立批准人", "mission": "在职责分离条件下批准受控高风险决定，但不执行该决定。"},
+    {"role_ref": "risk_authority", "title": "风险与合规权威", "mission": "维护风险红线、否决条件、专业签字和升级路径。"},
+    {"role_ref": "executor", "title": "受控执行人", "mission": "只执行已批准、限额、幂等且可回读的动作，不自批。"}
+  ],
+  "seat_templates": [
+    {"seat_ref": "business_accountability", "title": "经营席", "mission": "企业责任、商品、类目、产品与商业拍板。", "role_bundle_refs": ["human_business_owner", "global_chief_commerce_officer", "program_director_chief_of_staff", "product_lead", "market_category_lead", "growth_sales_customer_success_lead"]},
+    {"seat_ref": "operations_and_delivery", "title": "运营与交付席", "mission": "供应商、质量、物流、关务、渠道和受控技术交付。", "role_bundle_refs": ["russia_ozon_general_manager", "ozon_channel_operations_lead", "sourcing_quality_lead", "logistics_customs_lead", "chief_architect", "backend_domain_engineer", "backend_integration_engineer", "frontend_ux_engineer", "data_ai_evidence_engineer", "devsecops_sre_engineer", "delivery_pmo_lead", "executor"]},
+    {"seat_ref": "finance_control", "title": "财务席", "mission": "成本、结算、银行、现金和 Actual Cash CM3。", "role_bundle_refs": ["finance_controller"]},
+    {"seat_ref": "independent_control", "title": "独立控制席", "mission": "独立验证、批准、风险与职责冲突审查。", "role_bundle_refs": ["qa_release_lead", "independent_verifier", "independent_approver", "risk_authority"]}
+  ],
+  "supported_market_role_map": {"RU": "russia_ozon_general_manager"},
+  "supported_platform_role_map": {"ozon": "ozon_channel_operations_lead"},
+  "positioning_boundaries": {
+    "is_erp_replacement": false,
+    "is_unattended_autonomous_company": false,
+    "is_generic_ai_outsourcing": false,
+    "is_business_truth_authority": false,
+    "system_may_appoint_humans": false,
+    "system_may_grant_production_authority": false,
+    "role_templates_may_external_write": false,
+    "profile_scope_grants_authority": false
+  },
+  "target_positioning": "多主体、多市场、可审计、可回滚的企业 AI ERP 协调与经营控制平台",
+  "target_promotion_gates": ["one_truth_sku_cash_verified", "commercial_c0_passed", "human_accountability_bound", "sod_conflicts_cleared", "g1_pass_current"]
+}

@@ -1,0 +1,342 @@
+{
+  "contract_id": "kjds-retrieval-gold-set-v1",
+  "gold_set_id": "bas173-real-failure-contracts",
+  "version": "1.0.0",
+  "license_class": "repository_owned_synthetic_contract_fixture",
+  "contains_customer_data": false,
+  "documents": [
+    {
+      "document_id": "fx-current-scope",
+      "scope_binding": "exact",
+      "claim_code": "profit_requires_current_fx",
+      "search_text": "profit CNY RUB FX active scoped evidence requires currency conversion before margin decision",
+      "citation_ref": "contract://profit-truth/fx-current-scope",
+      "citation_sha256": "0886f55e68e0293da6403076fa56b885d235289e8a746de792e679cce662e9c0",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "variant-binding",
+      "scope_binding": "exact",
+      "claim_code": "variant_binding_required_before_cost_coverage",
+      "search_text": "variant SKU shipment profile quantity validity binding required before logistics cost coverage pilot",
+      "citation_ref": "contract://profit-truth/variant-binding",
+      "citation_sha256": "585d5c5d1a632e252f5d073d9b264edfcf1b710db74c7d41b5b4521c0ff2b5c8",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "cash-linkage",
+      "scope_binding": "exact",
+      "claim_code": "cash_profit_requires_settlement_and_receipt",
+      "search_text": "cash profit requires order settlement bank receipt linkage actual cash confirmation",
+      "citation_ref": "contract://profit-truth/cash-linkage",
+      "citation_sha256": "ad1c6131a1d7c0c9aedf294224dfcd71d229b5cad12aa3a367ce9be42f1e9c39",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "generated-edge-observation",
+      "scope_binding": "exact",
+      "claim_code": "generated_edge_observation_only",
+      "search_text": "generated inferred graph edge remains benchmark Observation and cannot satisfy formal gate",
+      "citation_ref": "contract://canonical-graph/generated-edge",
+      "citation_sha256": "f5d742bab6a0f81cfc33a30fd0c091254b10b6b344e05daa14e67d6d6a347996",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "unsigned-thresholds",
+      "scope_binding": "exact",
+      "claim_code": "UNKNOWN:operating_thresholds_unsigned",
+      "search_text": "downside CM3 refund CAC ACOS fulfillment cash thresholds unsigned UNKNOWN",
+      "citation_ref": "contract://profit-truth/unsigned-thresholds",
+      "citation_sha256": "507c57fb96fd6614cbaf732888f474a2108119c46fbda5dab80fd3d45c9a958b",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "agent-run-observation",
+      "scope_binding": "exact",
+      "claim_code": "agent_run_cannot_self_promote",
+      "search_text": "AgentRun Trace Eval success remains Observation not formal fact approval permit external write",
+      "citation_ref": "contract://agent-runtime/observation-boundary",
+      "citation_sha256": "714ddbdddacad763f191f1ca80e7d5db263bbf0187e1c97eea0698a109cea5cb",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "temporal-citation",
+      "scope_binding": "exact",
+      "claim_code": "temporal_projection_requires_recorded_and_effective_time",
+      "search_text": "canonical graph edge citation scope authority effective interval recorded time as of required",
+      "citation_ref": "contract://canonical-graph/temporal-read",
+      "citation_sha256": "480b3c68110680848f02c6f12c17b93bac28388f24f7bd0372eace051101ed08",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "fx-cross-tenant-decoy",
+      "scope_binding": "tenant_other",
+      "claim_code": "unsupported_cross_tenant_profit_claim",
+      "search_text": "profit CNY RUB FX active scoped evidence requires currency conversion before margin decision",
+      "citation_ref": "contract://decoy/cross-tenant-fx",
+      "citation_sha256": "2c476004cec4a7a74bbfdfa364b3fb1826a99de7fc13e1d6c054f887042cd940",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "cash-authority-decoy",
+      "scope_binding": "authority_other",
+      "claim_code": "unsupported_wrong_authority_cash_claim",
+      "search_text": "cash profit requires order settlement bank receipt linkage actual cash confirmation",
+      "citation_ref": "contract://decoy/wrong-authority-cash",
+      "citation_sha256": "1d3c968596736b8f9b926d910f7bf9bfd358f37a9fc4458547e05f8ead098b62",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "variant-stale-decoy",
+      "scope_binding": "exact",
+      "claim_code": "unsupported_stale_variant_claim",
+      "search_text": "variant SKU shipment profile quantity validity binding required before logistics cost coverage pilot",
+      "citation_ref": "contract://decoy/stale-variant",
+      "citation_sha256": "9208d091fa19302819dbe9a497afdd4856d78a764bdc65125dfbdfbbd6f6d5c7",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2026-06-01T00:00:00+00:00",
+      "recorded_at": "2026-05-01T00:00:00+00:00",
+      "evidence_state": "stale"
+    },
+    {
+      "document_id": "agent-future-recorded-decoy",
+      "scope_binding": "exact",
+      "claim_code": "unsupported_future_backfill_agent_claim",
+      "search_text": "AgentRun Trace Eval success remains Observation not formal fact approval permit external write",
+      "citation_ref": "contract://decoy/future-recorded-agent",
+      "citation_sha256": "673ad5d91ec85690e6f22da7271d66d1f6b15387cd413b33a4a496e692b172bb",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-09-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "temporal-future-effective-decoy",
+      "scope_binding": "exact",
+      "claim_code": "unsupported_future_temporal_claim",
+      "search_text": "canonical graph edge citation scope authority effective interval recorded time as of required",
+      "citation_ref": "contract://decoy/future-temporal",
+      "citation_sha256": "793e76e1c44ab3d20af084f702a9550456f5c9c571247cb1d17cdd6880e3fe06",
+      "effective_from": "2026-09-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "current"
+    },
+    {
+      "document_id": "graph-revoked-decoy",
+      "scope_binding": "exact",
+      "claim_code": "unsupported_revoked_graph_claim",
+      "search_text": "generated inferred graph edge remains benchmark Observation and cannot satisfy formal gate",
+      "citation_ref": "contract://decoy/revoked-graph",
+      "citation_sha256": "d14b5dc8123392777f11bfea905759842a4addbfa7eb0b94b154392700239dff",
+      "effective_from": "2026-01-01T00:00:00+00:00",
+      "effective_until": "2027-01-01T00:00:00+00:00",
+      "recorded_at": "2026-07-01T00:00:00+00:00",
+      "evidence_state": "revoked"
+    }
+  ],
+  "questions": [
+    {
+      "question_id": "profit-fx-current-scope",
+      "category": "money_fx",
+      "query": "profit CNY RUB FX",
+      "required_terms": [
+        "profit",
+        "CNY",
+        "RUB",
+        "FX"
+      ],
+      "graph_edge_types": [
+        "requires"
+      ],
+      "expected_outcome": "answer",
+      "expected_claim_codes": [
+        "profit_requires_current_fx"
+      ],
+      "expected_citation_refs": [
+        "contract://profit-truth/fx-current-scope"
+      ],
+      "question_sha256": "eeb6b964abaac1da6e8bcf17b83233d924b47c29e634d9d3514681faa5440615"
+    },
+    {
+      "question_id": "variant-before-cost-coverage",
+      "category": "variant_logistics",
+      "query": "variant SKU shipment profile binding",
+      "required_terms": [
+        "variant",
+        "SKU",
+        "shipment",
+        "binding"
+      ],
+      "graph_edge_types": [
+        "requires"
+      ],
+      "expected_outcome": "answer",
+      "expected_claim_codes": [
+        "variant_binding_required_before_cost_coverage"
+      ],
+      "expected_citation_refs": [
+        "contract://profit-truth/variant-binding"
+      ],
+      "question_sha256": "f4aa72481993e316457872131e40f3f0f6f2e250d3c373057c94d88e87740fdb"
+    },
+    {
+      "question_id": "cash-profit-linkage",
+      "category": "settlement_cash",
+      "query": "cash profit settlement bank receipt",
+      "required_terms": [
+        "cash",
+        "profit",
+        "settlement",
+        "receipt"
+      ],
+      "graph_edge_types": [
+        "requires"
+      ],
+      "expected_outcome": "answer",
+      "expected_claim_codes": [
+        "cash_profit_requires_settlement_and_receipt"
+      ],
+      "expected_citation_refs": [
+        "contract://profit-truth/cash-linkage"
+      ],
+      "question_sha256": "0a410786cc09f96233b675491433c63c23fbea3e6f42caa7c97d148627e1cf82"
+    },
+    {
+      "question_id": "generated-edge-boundary",
+      "category": "graph_governance",
+      "query": "generated inferred graph edge Observation",
+      "required_terms": [
+        "generated",
+        "inferred",
+        "graph",
+        "Observation"
+      ],
+      "graph_edge_types": [
+        "constrains"
+      ],
+      "expected_outcome": "answer",
+      "expected_claim_codes": [
+        "generated_edge_observation_only"
+      ],
+      "expected_citation_refs": [
+        "contract://canonical-graph/generated-edge"
+      ],
+      "question_sha256": "3c4c0760e3af1e538d8c587084e6f2b5d7785812904d481d4850acbbc86b119b"
+    },
+    {
+      "question_id": "unsigned-operating-thresholds",
+      "category": "financial_governance",
+      "query": "downside CM3 refund CAC ACOS thresholds",
+      "required_terms": [
+        "downside",
+        "CM3",
+        "refund",
+        "CAC",
+        "ACOS"
+      ],
+      "graph_edge_types": [
+        "unknown"
+      ],
+      "expected_outcome": "UNKNOWN",
+      "expected_claim_codes": [
+        "UNKNOWN:operating_thresholds_unsigned"
+      ],
+      "expected_citation_refs": [
+        "contract://profit-truth/unsigned-thresholds"
+      ],
+      "question_sha256": "4a0c81afb81938c1351869df4e2d47a35096a431e7016fa8f61c0cee8706b657"
+    },
+    {
+      "question_id": "agent-run-promotion-boundary",
+      "category": "agent_governance",
+      "query": "AgentRun Trace Eval Observation",
+      "required_terms": [
+        "AgentRun",
+        "Trace",
+        "Eval",
+        "Observation"
+      ],
+      "graph_edge_types": [
+        "prohibits"
+      ],
+      "expected_outcome": "answer",
+      "expected_claim_codes": [
+        "agent_run_cannot_self_promote"
+      ],
+      "expected_citation_refs": [
+        "contract://agent-runtime/observation-boundary"
+      ],
+      "question_sha256": "4771299f3c4781e242fa580f3e9854ae381bc91fc5d877f6fea8af21f8fba7b6"
+    },
+    {
+      "question_id": "temporal-recorded-effective",
+      "category": "temporal_provenance",
+      "query": "canonical graph effective recorded authority",
+      "required_terms": [
+        "canonical",
+        "graph",
+        "effective",
+        "recorded",
+        "authority"
+      ],
+      "graph_edge_types": [
+        "requires"
+      ],
+      "expected_outcome": "answer",
+      "expected_claim_codes": [
+        "temporal_projection_requires_recorded_and_effective_time"
+      ],
+      "expected_citation_refs": [
+        "contract://canonical-graph/temporal-read"
+      ],
+      "question_sha256": "d7f5a3215c78fae54d77eefb286a3326c21526ff49807b03b3f55f7f8508a660"
+    },
+    {
+      "question_id": "causal-uplift-not-observed",
+      "category": "causal_unknown",
+      "query": "causal attributable retention uplift counterfactual",
+      "required_terms": [
+        "causal",
+        "attributable",
+        "retention",
+        "uplift"
+      ],
+      "graph_edge_types": [
+        "causes"
+      ],
+      "expected_outcome": "no_data",
+      "expected_claim_codes": [],
+      "expected_citation_refs": [],
+      "question_sha256": "022c8af9ed08660907266058fce775d4aa61fec7121a6c42bd3d94e494b819e8"
+    }
+  ],
+  "content_sha256": "1c5527775c815aac0c2feb13aff6d5ad8421fb5eeb4a54ce410ce9107400138a"
+}

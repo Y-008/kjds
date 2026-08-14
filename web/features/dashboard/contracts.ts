@@ -5,6 +5,9 @@ export type WebSession = {
   email: string | null;
   actor_id: string;
   roles: string[];
+  tenant_ref: string;
+  store_refs: string[];
+  default_store_ref: string;
 };
 export type OzonImportResult = {
   id: string;
@@ -691,7 +694,10 @@ export type PolicyActivationHandoff = {
 export type LimitedExecutionCommandStatus = "queued" | "claimed" | "write_started" | "succeeded" | "failed" | "uncertain" | "expired" | "precondition_failed";
 export type GovernedExecutionPlan = {
   id: string;
-  source_kind: "causal_policy_handoff" | "approved_listing_draft";
+  source_kind:
+    | "causal_policy_handoff"
+    | "approved_listing_draft"
+    | "approved_customer_service_reply";
   source_id: string;
   source_approval_id: string;
   source_snapshot_hash: string;

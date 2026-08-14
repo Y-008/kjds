@@ -1,0 +1,243 @@
+{
+  "schema_version": "kjds-local-demo-contracts-v1",
+  "task_id": "BAS-190",
+  "owner_lane": "K",
+  "owner_thread_id": "019fc654-03dc-7c71-a520-8f85918f3e44",
+  "lease_commit": "10a07abb6575bf733110d49f0209b1172bfb4908",
+  "contract_version": "local-demo-gateway/1.0.0",
+  "decision_state": "contract_frozen",
+  "module_chain": [
+    "ScenarioPack",
+    "DemoSession",
+    "LocalDemoGateway"
+  ],
+  "domain_objects": {
+    "ScenarioPack": {
+      "immutable": true,
+      "required_fields": [
+        "scenario_ref",
+        "scenario_version",
+        "scenario_sha256",
+        "locale",
+        "deterministic_clock",
+        "synthetic_declaration",
+        "workspace_projections"
+      ],
+      "identity_prefix": "demo-",
+      "same_ref_version_hash_drift": {
+        "http_status": 409,
+        "error_code": "demo_scenario_hash_drift",
+        "state_changed": false
+      }
+    },
+    "DemoSession": {
+      "scope_key": "session_id",
+      "storage": "local_memory_only",
+      "default_ttl_minutes": 60,
+      "bound_for_lifetime": [
+        "scenario_ref",
+        "scenario_version",
+        "scenario_sha256"
+      ],
+      "mutable_fields": [
+        "sequence",
+        "state_sha256",
+        "transition_log"
+      ]
+    },
+    "LocalDemoGateway": {
+      "only_public_application_interface": true,
+      "methods": [
+        "open_session",
+        "query",
+        "apply",
+        "reset"
+      ],
+      "action_output_type": "DemoTransition",
+      "production_authority_output_types": []
+    }
+  },
+  "response_envelope": {
+    "applies_to": [
+      "success",
+      "error",
+      "not_found",
+      "conflict",
+      "idempotent_replay",
+      "export"
+    ],
+    "constant_top_level_fields": {
+      "demo": true,
+      "synthetic": true,
+      "non_billable": true,
+      "external_side_effect_allowed": false,
+      "real_principal_ref": null,
+      "real_entitlement_ref": null,
+      "real_quota_ledger_ref": null,
+      "real_approval_ref": null,
+      "real_permit_ref": null
+    },
+    "required_dynamic_fields": [
+      "contract_version",
+      "session_id",
+      "scenario_ref",
+      "scenario_version",
+      "scenario_sha256",
+      "sequence",
+      "state_sha256",
+      "generated_at",
+      "network_invoked",
+      "data",
+      "error"
+    ],
+    "caller_override_allowed": false
+  },
+  "scope_and_errors": {
+    "scope_source": "session_id_only",
+    "foreign_or_missing_session": {
+      "http_status": 404,
+      "error_code": "demo_session_not_found",
+      "same_envelope": true,
+      "foreign_identifiers_disclosed": false,
+      "foreign_counts_disclosed": false,
+      "foreign_data_disclosed": false
+    },
+    "forbidden_scope_override": {
+      "http_status": 400,
+      "error_code": "demo_scope_override_rejected",
+      "forbidden_inputs": [
+        "tenant_ref",
+        "entity_ref",
+        "store_ref",
+        "principal_ref",
+        "entitlement_ref",
+        "quota_ledger_ref",
+        "approval_ref",
+        "permit_ref",
+        "api_key",
+        "cookie",
+        "oauth_token"
+      ],
+      "state_changed": false
+    }
+  },
+  "idempotency": {
+    "method": "apply",
+    "required_input": "idempotency_key",
+    "fingerprint": "canonical_payload_sha256",
+    "same_key_same_fingerprint": {
+      "result": "original_response",
+      "sequence_changed": false,
+      "state_changed": false,
+      "network_invoked": false
+    },
+    "same_key_different_fingerprint": {
+      "http_status": 409,
+      "error_code": "demo_idempotency_payload_drift",
+      "sequence_changed": false,
+      "state_changed": false,
+      "network_invoked": false
+    }
+  },
+  "isolation": {
+    "production_import_allowed": false,
+    "database_allowed": false,
+    "production_api_allowed": false,
+    "backend_proxy_allowed": false,
+    "external_network_allowed": false,
+    "credential_read_allowed": false,
+    "provider_call_allowed": false,
+    "worker_allowed": false,
+    "outbox_allowed": false,
+    "external_write_allowed": false,
+    "analytics_sdk_allowed": false,
+    "remote_asset_allowed": false,
+    "update_check_allowed": false,
+    "environment_file_read_allowed": false,
+    "allowed_storage": "local_memory_only",
+    "forbidden_production_objects": [
+      "Principal",
+      "ScopeGrant",
+      "ChannelAuthorization",
+      "CommercialEntitlement",
+      "UsageLedger",
+      "Evidence",
+      "Fact",
+      "FinanceEntry",
+      "Approval",
+      "ExecutionPlan",
+      "Permit",
+      "Command",
+      "Receipt",
+      "CampaignGrant"
+    ],
+    "forbidden_import_prefixes": [
+      "apps.control_plane",
+      "web.app.backend"
+    ],
+    "forbidden_runtime_inputs": [
+      ".env",
+      "KJDS_API_KEY",
+      "SUPABASE_URL",
+      "SUPABASE_KEY",
+      "channel_credentials",
+      "browser_cookie_store"
+    ]
+  },
+  "ui_vocabulary": {
+    "package": "企业演示包 · DEMO",
+    "capacity": "演示容量",
+    "connected_account": "场景店铺已连接",
+    "completed_action": "本地模拟完成",
+    "high_risk_action": "模拟推进",
+    "listing_action": "生成预览",
+    "profit": "合成利润场景",
+    "persistent_markers": [
+      "LOCAL DEMO",
+      "合成数据",
+      "不计费"
+    ]
+  },
+  "recommended_defaults": {
+    "delivery": "standalone_local_pwa_portable_zip",
+    "bind_address": "127.0.0.1",
+    "port": 43190,
+    "locale": "zh-CN",
+    "scenario_ref": "enterprise-overview.zh-CN",
+    "scenario_version": "v1",
+    "scenario_stores": 3,
+    "scenario_skus": 48,
+    "scenario_orders": 36,
+    "demo_capacity": 500,
+    "persistent_state": false,
+    "cloud_model": false,
+    "local_model": false
+  },
+  "write_contract": {
+    "allowed_files": [
+      "docs/adr/ADR-0093-local-demo-client-boundary.md",
+      "docs/project/registries/local_demo_contracts.json",
+      "tests/test_local_demo_contracts.py"
+    ],
+    "forbidden_paths": [
+      "docs/project/MASTER_SPEC.md",
+      "docs/project/03_REMAINING_WORK_AND_PARALLEL_PLAN.md",
+      "docs/project/registries/active_workstream_assignments.json",
+      "clients/local-demo",
+      "apps/control_plane",
+      "web",
+      "migrations",
+      "docs/project/contracts/openapi-v1.json"
+    ],
+    "shared_leases_required": []
+  },
+  "control_boundary": {
+    "registry_grants_real_principal": false,
+    "registry_grants_entitlement": false,
+    "registry_grants_quota": false,
+    "registry_grants_approval_or_permit": false,
+    "registry_grants_external_write": false,
+    "registry_grants_billing": false,
+    "registry_is_implementation": false
+  }
+}

@@ -75,10 +75,13 @@ function Get-ScheduledTaskInfo {{
 }}
 function Get-WinEvent {{
     param($FilterHashtable, [int]$MaxEvents, $ErrorAction)
+    if ($FilterHashtable.Id -ne 201) {{
+        throw 'Expected native action-completed event 201'
+    }}
     1..3 | ForEach-Object {{
         $event = [pscustomobject]@{{
             TimeCreated = (Get-Date).AddMinutes(-$_)
-            XmlText = '<Event><EventData><Data Name="TaskName">\\{task_name}</Data><Data Name="ResultCode">0</Data></EventData></Event>'
+            XmlText = '<Event><EventData><Data Name="TaskName">\\{task_name}</Data><Data Name="TaskInstanceId">{{00000000-0000-0000-0000-00000000000' + $_ + '}}</Data><Data Name="ResultCode">0</Data></EventData></Event>'
         }}
         $event | Add-Member -MemberType ScriptMethod -Name ToXml -Value {{ $this.XmlText }}
         $event
@@ -127,6 +130,10 @@ def test_plan_is_default_secret_free_and_has_no_mutation():
     audit, audit_payload = run_manager("-Mode", "Audit", "-TaskName", task_name)
     assert audit.returncode == 2
     assert audit_payload["audit"]["task_found"] is False
+    assert (
+        audit_payload["audit"]["error"]
+        == "Scheduled task was not found or could not be read"
+    )
     assert audit_payload["status"] == "not_accepted"
 
 

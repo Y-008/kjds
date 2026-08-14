@@ -1,0 +1,327 @@
+{
+  "contract_id": "kjds-comfy-template-benchmark-fixture-v1",
+  "fixture_ref": "bas185-synthetic-8gb-v1",
+  "version": "1.0.0",
+  "registry_content_sha256": "dd09d28bcc4f102f1b6b6cb7ed0441fdbd0517781939d496c2ed5d6c9d8848d2",
+  "license_class": "repository_owned_synthetic_contract_fixture",
+  "data_classification": "synthetic_public",
+  "contains_customer_data": false,
+  "contains_secrets": false,
+  "template_ref": "ozon-retouch-8gb-shadow-v1@0.1.0",
+  "scope": {
+    "tenant_ref": "tenant-synthetic",
+    "entity_ref": "entity-synthetic",
+    "store_ref": "store-synthetic",
+    "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "data_as_of": "2026-08-04T16:20:00+00:00",
+  "parameter_set": {
+    "input_image_ref": "evd-synthetic-input-v1",
+    "seed": 424242,
+    "target_megapixels": 4.0,
+    "upscale_method": "lanczos"
+  },
+  "compiled_workflow_sha256": "9abbf198ac63abfd77db4be770439ee043c5a0cd009c06c18352034d076b6d99",
+  "runtime_receipt": {
+    "contract_id": "kjds-comfy-8gb-runtime-receipt-v1",
+    "receipt_id": "runtime-bas185-synthetic-8gb-v1",
+    "schema_version": "1",
+    "scope": {
+      "tenant_ref": "tenant-synthetic",
+      "entity_ref": "entity-synthetic",
+      "store_ref": "store-synthetic",
+      "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "recorded_at": "2026-08-04T16:00:00+00:00",
+    "effective_at": "2026-08-04T00:00:00+00:00",
+    "effective_until": "2026-08-06T00:00:00+00:00",
+    "environment": {
+      "gpu_descriptor": "synthetic-8gb-profile",
+      "total_vram_bytes": 8589934592,
+      "driver_version": "synthetic-driver-1",
+      "cuda_version": "synthetic-cuda-1",
+      "comfyui_version": "synthetic-comfy-1",
+      "python_version": "3.12.11",
+      "os_profile": "synthetic-linux-amd64",
+      "model_artifact_id": "core-no-model-download",
+      "model_sha256": "e2d4214d0ed0e291e67fcdef425482e511cd249b422a6aafcd56efe738fd0d88",
+      "node_bundle_id": "comfy-core-pinned-synthetic-v1",
+      "node_bundle_sha256": "d433fcd369723ce5c678e409ac979dfff54a1f08a3cb004f5c3b78603a21f6dc",
+      "node_registry_sha256": "ab2c3e7cfc6a4be89a6e8aee135e8b41e7c7426acaf83b2b5efe18555ab3f281",
+      "environment_sha256": "cb5519e7a47204cf573546072f16beb1fbebc4c770bc4d89487cbc0c2f57b9ea"
+    },
+    "workload": {
+      "resolution_width": 1024,
+      "resolution_height": 1024,
+      "batch_size": 1,
+      "seed": 424242,
+      "warmup_runs": 2,
+      "measurement_runs": 5,
+      "sample_selection_policy": "all_measurements"
+    },
+    "license_attestation": {
+      "model_license_id": "no-model-artifact",
+      "node_bundle_license_id": "GPL-3.0-only",
+      "commercial_use_allowed": true,
+      "redistribution_reviewed": true,
+      "attestation_sha256": "d37095c561024288f4d06dd56db025f1951817913c72590e638dbcb9177b18c2"
+    },
+    "sbom_sha256": "2d77fbf23aaa658175ec28a6c81d5857090313bb5e5ea7a277a1c2c373940650",
+    "receipt_sha256": "5c5e7791dddaa6166862330da2af543f6f29a53b41729c9ff5ab7071988a0c3b"
+  },
+  "run_receipts": [
+    {
+      "contract_id": "kjds-comfy-template-run-receipt-v1",
+      "run_id": "bas185-warmup-0",
+      "scope": {
+        "tenant_ref": "tenant-synthetic",
+        "entity_ref": "entity-synthetic",
+        "store_ref": "store-synthetic",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "template_ref": "ozon-retouch-8gb-shadow-v1@0.1.0",
+      "runtime_receipt_sha256": "5c5e7791dddaa6166862330da2af543f6f29a53b41729c9ff5ab7071988a0c3b",
+      "environment_sha256": "cb5519e7a47204cf573546072f16beb1fbebc4c770bc4d89487cbc0c2f57b9ea",
+      "parameter_set_sha256": "ded4ee653c2e84055f583f91386a39bd9feba8f90d0bfaa597aefa94300a6c70",
+      "compiled_workflow_sha256": "9abbf198ac63abfd77db4be770439ee043c5a0cd009c06c18352034d076b6d99",
+      "phase": "warmup",
+      "run_index": 0,
+      "started_at": "2026-08-04T16:10:00+00:00",
+      "completed_at": "2026-08-04T16:10:02+00:00",
+      "peak_allocated_vram_bytes": 5500000000,
+      "peak_reserved_vram_bytes": 6000000000,
+      "wall_latency_ms": 1800,
+      "oom": false,
+      "partial_failure": false,
+      "retry_count": 0,
+      "automatic_downgrade": false,
+      "included_in_aggregate": false,
+      "output_sha256": "1be670d37776ca614a4b1a044ee3f1411c728ebfcd61c3466c088d3e7bb6431f",
+      "automatic_metrics": {
+        "structural_similarity_bps": 9500,
+        "product_fidelity_bps": 9520,
+        "text_preservation_bps": 9540
+      },
+      "receipt_sha256": "1069f8f74e448f7b5f4ad534e1d0d5f4480536220fd9d42140ce1de1ded63d21"
+    },
+    {
+      "contract_id": "kjds-comfy-template-run-receipt-v1",
+      "run_id": "bas185-warmup-1",
+      "scope": {
+        "tenant_ref": "tenant-synthetic",
+        "entity_ref": "entity-synthetic",
+        "store_ref": "store-synthetic",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "template_ref": "ozon-retouch-8gb-shadow-v1@0.1.0",
+      "runtime_receipt_sha256": "5c5e7791dddaa6166862330da2af543f6f29a53b41729c9ff5ab7071988a0c3b",
+      "environment_sha256": "cb5519e7a47204cf573546072f16beb1fbebc4c770bc4d89487cbc0c2f57b9ea",
+      "parameter_set_sha256": "ded4ee653c2e84055f583f91386a39bd9feba8f90d0bfaa597aefa94300a6c70",
+      "compiled_workflow_sha256": "9abbf198ac63abfd77db4be770439ee043c5a0cd009c06c18352034d076b6d99",
+      "phase": "warmup",
+      "run_index": 1,
+      "started_at": "2026-08-04T16:11:00+00:00",
+      "completed_at": "2026-08-04T16:11:02+00:00",
+      "peak_allocated_vram_bytes": 5510000000,
+      "peak_reserved_vram_bytes": 6010000000,
+      "wall_latency_ms": 1825,
+      "oom": false,
+      "partial_failure": false,
+      "retry_count": 0,
+      "automatic_downgrade": false,
+      "included_in_aggregate": false,
+      "output_sha256": "3828cb570ca5353ca6dac0c95620d199d8f25b6a48432f7f77256b5fe6b6d82c",
+      "automatic_metrics": {
+        "structural_similarity_bps": 9495,
+        "product_fidelity_bps": 9515,
+        "text_preservation_bps": 9535
+      },
+      "receipt_sha256": "d2050c1bba195c66e74de03a5ed12d777d491d010dc78c5f7b15411c988a6f79"
+    },
+    {
+      "contract_id": "kjds-comfy-template-run-receipt-v1",
+      "run_id": "bas185-measurement-0",
+      "scope": {
+        "tenant_ref": "tenant-synthetic",
+        "entity_ref": "entity-synthetic",
+        "store_ref": "store-synthetic",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "template_ref": "ozon-retouch-8gb-shadow-v1@0.1.0",
+      "runtime_receipt_sha256": "5c5e7791dddaa6166862330da2af543f6f29a53b41729c9ff5ab7071988a0c3b",
+      "environment_sha256": "cb5519e7a47204cf573546072f16beb1fbebc4c770bc4d89487cbc0c2f57b9ea",
+      "parameter_set_sha256": "ded4ee653c2e84055f583f91386a39bd9feba8f90d0bfaa597aefa94300a6c70",
+      "compiled_workflow_sha256": "9abbf198ac63abfd77db4be770439ee043c5a0cd009c06c18352034d076b6d99",
+      "phase": "measurement",
+      "run_index": 0,
+      "started_at": "2026-08-04T16:12:00+00:00",
+      "completed_at": "2026-08-04T16:12:02+00:00",
+      "peak_allocated_vram_bytes": 5520000000,
+      "peak_reserved_vram_bytes": 6020000000,
+      "wall_latency_ms": 1850,
+      "oom": false,
+      "partial_failure": false,
+      "retry_count": 0,
+      "automatic_downgrade": false,
+      "included_in_aggregate": true,
+      "output_sha256": "3a36b0fa35231ec0a8eedbe2d067684dd349eabe37d6c132f679c6a9b77f6b3b",
+      "automatic_metrics": {
+        "structural_similarity_bps": 9500,
+        "product_fidelity_bps": 9520,
+        "text_preservation_bps": 9540
+      },
+      "receipt_sha256": "bfdff073cb099dfac1fdcc61f09c16c56df678d2f00e2e7b04d65e8e7c41c34b"
+    },
+    {
+      "contract_id": "kjds-comfy-template-run-receipt-v1",
+      "run_id": "bas185-measurement-1",
+      "scope": {
+        "tenant_ref": "tenant-synthetic",
+        "entity_ref": "entity-synthetic",
+        "store_ref": "store-synthetic",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "template_ref": "ozon-retouch-8gb-shadow-v1@0.1.0",
+      "runtime_receipt_sha256": "5c5e7791dddaa6166862330da2af543f6f29a53b41729c9ff5ab7071988a0c3b",
+      "environment_sha256": "cb5519e7a47204cf573546072f16beb1fbebc4c770bc4d89487cbc0c2f57b9ea",
+      "parameter_set_sha256": "ded4ee653c2e84055f583f91386a39bd9feba8f90d0bfaa597aefa94300a6c70",
+      "compiled_workflow_sha256": "9abbf198ac63abfd77db4be770439ee043c5a0cd009c06c18352034d076b6d99",
+      "phase": "measurement",
+      "run_index": 1,
+      "started_at": "2026-08-04T16:13:00+00:00",
+      "completed_at": "2026-08-04T16:13:02+00:00",
+      "peak_allocated_vram_bytes": 5530000000,
+      "peak_reserved_vram_bytes": 6030000000,
+      "wall_latency_ms": 1875,
+      "oom": false,
+      "partial_failure": false,
+      "retry_count": 0,
+      "automatic_downgrade": false,
+      "included_in_aggregate": true,
+      "output_sha256": "f84306e5e8f000bd0de5911fc9cfbf713f939a2b8452ecf804a9d02e3872d414",
+      "automatic_metrics": {
+        "structural_similarity_bps": 9495,
+        "product_fidelity_bps": 9515,
+        "text_preservation_bps": 9535
+      },
+      "receipt_sha256": "09abac5169568b2f7bb2805769fa632de0c1ac637c2e3cafe5d95e2b0acd9cb2"
+    },
+    {
+      "contract_id": "kjds-comfy-template-run-receipt-v1",
+      "run_id": "bas185-measurement-2",
+      "scope": {
+        "tenant_ref": "tenant-synthetic",
+        "entity_ref": "entity-synthetic",
+        "store_ref": "store-synthetic",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "template_ref": "ozon-retouch-8gb-shadow-v1@0.1.0",
+      "runtime_receipt_sha256": "5c5e7791dddaa6166862330da2af543f6f29a53b41729c9ff5ab7071988a0c3b",
+      "environment_sha256": "cb5519e7a47204cf573546072f16beb1fbebc4c770bc4d89487cbc0c2f57b9ea",
+      "parameter_set_sha256": "ded4ee653c2e84055f583f91386a39bd9feba8f90d0bfaa597aefa94300a6c70",
+      "compiled_workflow_sha256": "9abbf198ac63abfd77db4be770439ee043c5a0cd009c06c18352034d076b6d99",
+      "phase": "measurement",
+      "run_index": 2,
+      "started_at": "2026-08-04T16:14:00+00:00",
+      "completed_at": "2026-08-04T16:14:02+00:00",
+      "peak_allocated_vram_bytes": 5540000000,
+      "peak_reserved_vram_bytes": 6040000000,
+      "wall_latency_ms": 1900,
+      "oom": false,
+      "partial_failure": false,
+      "retry_count": 0,
+      "automatic_downgrade": false,
+      "included_in_aggregate": true,
+      "output_sha256": "b30f9fb233d62acf84a00b6a93160f6abd79c7626fde76a4b5e9b6ad0a9ac0d0",
+      "automatic_metrics": {
+        "structural_similarity_bps": 9490,
+        "product_fidelity_bps": 9510,
+        "text_preservation_bps": 9530
+      },
+      "receipt_sha256": "b9c5dabd937a187ba49184fd897f4b9fd917b4c3c4a0848bd7eb7c3153379ee6"
+    },
+    {
+      "contract_id": "kjds-comfy-template-run-receipt-v1",
+      "run_id": "bas185-measurement-3",
+      "scope": {
+        "tenant_ref": "tenant-synthetic",
+        "entity_ref": "entity-synthetic",
+        "store_ref": "store-synthetic",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "template_ref": "ozon-retouch-8gb-shadow-v1@0.1.0",
+      "runtime_receipt_sha256": "5c5e7791dddaa6166862330da2af543f6f29a53b41729c9ff5ab7071988a0c3b",
+      "environment_sha256": "cb5519e7a47204cf573546072f16beb1fbebc4c770bc4d89487cbc0c2f57b9ea",
+      "parameter_set_sha256": "ded4ee653c2e84055f583f91386a39bd9feba8f90d0bfaa597aefa94300a6c70",
+      "compiled_workflow_sha256": "9abbf198ac63abfd77db4be770439ee043c5a0cd009c06c18352034d076b6d99",
+      "phase": "measurement",
+      "run_index": 3,
+      "started_at": "2026-08-04T16:15:00+00:00",
+      "completed_at": "2026-08-04T16:15:02+00:00",
+      "peak_allocated_vram_bytes": 5550000000,
+      "peak_reserved_vram_bytes": 6050000000,
+      "wall_latency_ms": 1925,
+      "oom": false,
+      "partial_failure": false,
+      "retry_count": 0,
+      "automatic_downgrade": false,
+      "included_in_aggregate": true,
+      "output_sha256": "a582f324a38834c9cda9009f0fe5a9c7833f4a712422588851b4c46ffec760fe",
+      "automatic_metrics": {
+        "structural_similarity_bps": 9485,
+        "product_fidelity_bps": 9505,
+        "text_preservation_bps": 9525
+      },
+      "receipt_sha256": "48405cff2a3cf2d0e780b8facbed39edf77fc41fed49d9969fca93f4f62ae738"
+    },
+    {
+      "contract_id": "kjds-comfy-template-run-receipt-v1",
+      "run_id": "bas185-measurement-4",
+      "scope": {
+        "tenant_ref": "tenant-synthetic",
+        "entity_ref": "entity-synthetic",
+        "store_ref": "store-synthetic",
+        "scope_grant_authority_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "template_ref": "ozon-retouch-8gb-shadow-v1@0.1.0",
+      "runtime_receipt_sha256": "5c5e7791dddaa6166862330da2af543f6f29a53b41729c9ff5ab7071988a0c3b",
+      "environment_sha256": "cb5519e7a47204cf573546072f16beb1fbebc4c770bc4d89487cbc0c2f57b9ea",
+      "parameter_set_sha256": "ded4ee653c2e84055f583f91386a39bd9feba8f90d0bfaa597aefa94300a6c70",
+      "compiled_workflow_sha256": "9abbf198ac63abfd77db4be770439ee043c5a0cd009c06c18352034d076b6d99",
+      "phase": "measurement",
+      "run_index": 4,
+      "started_at": "2026-08-04T16:16:00+00:00",
+      "completed_at": "2026-08-04T16:16:02+00:00",
+      "peak_allocated_vram_bytes": 5560000000,
+      "peak_reserved_vram_bytes": 6060000000,
+      "wall_latency_ms": 1950,
+      "oom": false,
+      "partial_failure": false,
+      "retry_count": 0,
+      "automatic_downgrade": false,
+      "included_in_aggregate": true,
+      "output_sha256": "080da64e50bd245bfcbc7c20b513176ee0fa958ff8db0baa6017d9f585994bfe",
+      "automatic_metrics": {
+        "structural_similarity_bps": 9480,
+        "product_fidelity_bps": 9500,
+        "text_preservation_bps": 9520
+      },
+      "receipt_sha256": "d5e67a252c21a4d78c5a16fe0211630642ab3b3907dddf16cd620db4f38af416"
+    }
+  ],
+  "admission_inputs": {
+    "real_8gb_sample_admitted": false,
+    "independent_human_review_completed": false,
+    "rollback_exercised": false,
+    "production_catalog_expansion_approved": false,
+    "quality_score_used_as_human_review": false,
+    "workflow_download_permitted": false
+  },
+  "expected": {
+    "synthetic_contract_verified": true,
+    "candidate_state": "not_admitted",
+    "real_8gb_status": "UNKNOWN",
+    "production_admitted": false
+  },
+  "content_sha256": "f723aef981a65a4165792b76a8888d29d87c4a9beb1b3537c47024326fdecf1a"
+}

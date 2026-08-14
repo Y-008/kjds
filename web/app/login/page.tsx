@@ -15,6 +15,9 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { error } = await searchParams;
+  const errorMessage = error === "origin"
+    ? "该登录请求不是从 KJDS 登录页发起，已被安全门拒绝。请在本页重新登录。"
+    : "登录未通过，请核对账号或联系管理员检查身份绑定。";
   return (
     <main className="login-shell">
       <section className="login-story">
@@ -51,7 +54,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <p className="login-intro">使用分配给你的运营或审批账号。角色由服务端身份绑定决定，页面不提供角色切换。</p>
           {error ? (
             <div className="login-error" role="alert">
-              登录未通过，请核对账号或联系管理员检查身份绑定。
+              {errorMessage}
             </div>
           ) : null}
           <form action="/auth/login" method="post">

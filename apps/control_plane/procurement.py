@@ -1,20 +1,79 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import defaultdict
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, select
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    select,
+)
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .domain import ApprovalStatus, new_id
 from .evidence import parse_timestamp
 from .sql_repository import Base
 
+SCOPE_COMPLETE_SQL = (
+    "("
+    "tenant_ref IS NULL AND entity_ref IS NULL AND store_ref IS NULL "
+    "AND scope_grant_authority_sha256 IS NULL "
+    "AND source_evidence_sha256 IS NULL AND scope_as_of IS NULL"
+    ") OR ("
+    "tenant_ref IS NOT NULL AND length(tenant_ref) > 0 "
+    "AND entity_ref IS NOT NULL AND length(entity_ref) > 0 "
+    "AND store_ref IS NOT NULL AND length(store_ref) > 0 "
+    "AND scope_grant_authority_sha256 IS NOT NULL "
+    "AND length(scope_grant_authority_sha256) = 64 "
+    "AND source_evidence_sha256 IS NOT NULL "
+    "AND length(source_evidence_sha256) = 64 "
+    "AND scope_as_of IS NOT NULL"
+    ")"
+)
+
 
 class SamplePurchaseOrderRow(Base):
     __tablename__ = "sample_purchase_orders"
+    __table_args__ = (
+        CheckConstraint(
+            (
+                f"({SCOPE_COMPLETE_SQL}) AND ("
+                "(tenant_ref IS NULL AND authority_evidence_id IS NULL) "
+                "OR (tenant_ref IS NOT NULL "
+                "AND authority_evidence_id IS NOT NULL))"
+            ),
+            name="ck_sample_purchase_orders_scope_complete",
+        ),
+        Index(
+            "ix_sample_order_scope_created",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "created_at",
+            "id",
+        ),
+        Index(
+            "ix_sample_order_scope_product",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "product_id",
+            "created_at",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     approval_id: Mapped[str] = mapped_column(ForeignKey("approvals.id"), unique=True, nullable=False)
@@ -27,6 +86,25 @@ class SamplePurchaseOrderRow(Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(38, 12), nullable=False)
     requested_by: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    authority_evidence_id: Mapped[str | None] = mapped_column(
+        ForeignKey("evidence_records.id"),
+        nullable=True,
+    )
+    tenant_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    entity_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    store_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    scope_grant_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    source_evidence_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    scope_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 class SampleProcurementEventRow(Base):
@@ -35,6 +113,20 @@ class SampleProcurementEventRow(Base):
         UniqueConstraint("purchase_order_id", "sequence", name="uq_sample_event_sequence"),
         UniqueConstraint(
             "purchase_order_id", "event_type", "evidence_id", name="uq_sample_event_evidence"
+        ),
+        CheckConstraint(
+            SCOPE_COMPLETE_SQL,
+            name="ck_sample_procurement_events_scope_complete",
+        ),
+        Index(
+            "ix_sample_event_scope_timeline",
+            "tenant_ref",
+            "entity_ref",
+            "store_ref",
+            "scope_grant_authority_sha256",
+            "purchase_order_id",
+            "sequence",
+            "effective_at",
         ),
     )
 
@@ -49,6 +141,21 @@ class SampleProcurementEventRow(Base):
     facts_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_by: Mapped[str] = mapped_column(String, nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    tenant_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    entity_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    store_ref: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    scope_grant_authority_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    source_evidence_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+    scope_as_of: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 EVENT_STATE = {
@@ -247,6 +354,161 @@ class ProcurementService:
                 raise KeyError(f"Unknown sample purchase order: {order_id}")
             return self._view(session, row)
 
+    def read_scoped_sources(
+        self,
+        *,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        scope_grant_authority_sha256: str,
+        as_of: str,
+        max_orders: int = 5000,
+        max_events: int = 20_000,
+    ) -> dict[str, Any]:
+        scope = self._scope_context(
+            tenant_ref=tenant_ref,
+            entity_ref=entity_ref,
+            store_ref=store_ref,
+            scope_grant_authority_sha256=(
+                scope_grant_authority_sha256
+            ),
+            as_of=as_of,
+        )
+        for name, value, ceiling in (
+            ("max_orders", max_orders, 50_000),
+            ("max_events", max_events, 100_000),
+        ):
+            if value < 1 or value > ceiling:
+                raise ValueError(
+                    f"{name} must be between 1 and {ceiling}"
+                )
+        cutoff = scope["scope_as_of"]
+        with Session(self.engine) as session:
+            orders = list(
+                session.scalars(
+                    select(SamplePurchaseOrderRow)
+                    .where(
+                        SamplePurchaseOrderRow.tenant_ref
+                        == scope["tenant_ref"],
+                        SamplePurchaseOrderRow.entity_ref
+                        == scope["entity_ref"],
+                        SamplePurchaseOrderRow.store_ref
+                        == scope["store_ref"],
+                        SamplePurchaseOrderRow.scope_grant_authority_sha256
+                        == scope["scope_grant_authority_sha256"],
+                        SamplePurchaseOrderRow.scope_as_of <= cutoff,
+                        SamplePurchaseOrderRow.created_at <= cutoff,
+                    )
+                    .order_by(
+                        SamplePurchaseOrderRow.created_at,
+                        SamplePurchaseOrderRow.id,
+                    )
+                    .limit(max_orders + 1)
+                ).all()
+            )
+            order_ids = [row.id for row in orders[:max_orders]]
+            events = (
+                list(
+                    session.scalars(
+                        select(SampleProcurementEventRow)
+                        .where(
+                            SampleProcurementEventRow.tenant_ref
+                            == scope["tenant_ref"],
+                            SampleProcurementEventRow.entity_ref
+                            == scope["entity_ref"],
+                            SampleProcurementEventRow.store_ref
+                            == scope["store_ref"],
+                            SampleProcurementEventRow.scope_grant_authority_sha256
+                            == scope["scope_grant_authority_sha256"],
+                            SampleProcurementEventRow.scope_as_of <= cutoff,
+                            SampleProcurementEventRow.effective_at <= cutoff,
+                            SampleProcurementEventRow.recorded_at <= cutoff,
+                            SampleProcurementEventRow.purchase_order_id.in_(
+                                order_ids
+                            ),
+                        )
+                        .order_by(
+                            SampleProcurementEventRow.purchase_order_id,
+                            SampleProcurementEventRow.sequence,
+                            SampleProcurementEventRow.effective_at,
+                            SampleProcurementEventRow.id,
+                        )
+                        .limit(max_events + 1)
+                    ).all()
+                )
+                if order_ids
+                else []
+            )
+        payload = {
+            "contract_id": "kjds-scoped-procurement-read-source-v1",
+            "as_of": cutoff.isoformat(),
+            "scope": {
+                "tenant_ref": scope["tenant_ref"],
+                "entity_ref": scope["entity_ref"],
+                "store_ref": scope["store_ref"],
+                "scope_grant_authority_sha256": (
+                    scope["scope_grant_authority_sha256"]
+                ),
+                "as_of": cutoff.isoformat(),
+                "authority": "native",
+            },
+            "orders": [
+                {
+                    "id": row.id,
+                    "approval_id": row.approval_id,
+                    "product_id": row.product_id,
+                    "offer_id": row.offer_id,
+                    "scenario_id": row.scenario_id,
+                    "supplier_ref": row.supplier_ref,
+                    "quantity": row.quantity,
+                    "currency": row.currency,
+                    "unit_price": str(row.unit_price),
+                    "requested_by": row.requested_by,
+                    "created_at": self._aware(
+                        row.created_at
+                    ).isoformat(),
+                    "authority_evidence_id": row.authority_evidence_id,
+                    "source_evidence_sha256": (
+                        row.source_evidence_sha256
+                    ),
+                    "scope_as_of": self._aware(
+                        row.scope_as_of
+                    ).isoformat(),
+                }
+                for row in orders[:max_orders]
+            ],
+            "events": [
+                {
+                    "id": row.id,
+                    "purchase_order_id": row.purchase_order_id,
+                    "sequence": row.sequence,
+                    "event_type": row.event_type,
+                    "effective_at": self._aware(
+                        row.effective_at
+                    ).isoformat(),
+                    "evidence_id": row.evidence_id,
+                    "facts": row.facts_json,
+                    "created_by": row.created_by,
+                    "recorded_at": self._aware(
+                        row.recorded_at
+                    ).isoformat(),
+                    "source_evidence_sha256": (
+                        row.source_evidence_sha256
+                    ),
+                    "scope_as_of": self._aware(
+                        row.scope_as_of
+                    ).isoformat(),
+                }
+                for row in events[:max_events]
+            ],
+            "truncated": {
+                "orders": len(orders) > max_orders,
+                "events": len(events) > max_events,
+            },
+        }
+        payload["snapshot_sha256"] = self._hash(payload)
+        return payload
+
     def supplier_performance(self) -> list[dict]:
         orders = self.list_orders(limit=500)
         grouped = defaultdict(list)
@@ -359,6 +621,59 @@ class ProcurementService:
         if not values:
             return None
         return (sum(values) / len(values)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _aware(value: datetime | None) -> datetime:
+        if value is None:
+            raise ValueError("Native procurement timestamp is missing")
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+    @classmethod
+    def _scope_context(
+        cls,
+        *,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        scope_grant_authority_sha256: str,
+        as_of: str,
+    ) -> dict[str, Any]:
+        scope = {
+            "tenant_ref": str(tenant_ref or "").strip(),
+            "entity_ref": str(entity_ref or "").strip(),
+            "store_ref": str(store_ref or "").strip(),
+            "scope_grant_authority_sha256": str(
+                scope_grant_authority_sha256 or ""
+            ).strip().lower(),
+        }
+        if any(not item for item in scope.values()):
+            raise ValueError("Native procurement read scope is incomplete")
+        for field in ("tenant_ref", "entity_ref", "store_ref"):
+            if len(scope[field]) > 160:
+                raise ValueError(f"{field} must be at most 160 characters")
+        authority = scope["scope_grant_authority_sha256"]
+        if len(authority) != 64 or any(
+            character not in "0123456789abcdef" for character in authority
+        ):
+            raise ValueError(
+                "scope_grant_authority_sha256 must be SHA-256"
+            )
+        return {
+            **scope,
+            "scope_as_of": parse_timestamp(as_of, "as_of"),
+        }
+
+    @staticmethod
+    def _hash(value: Any) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
 
     @staticmethod
     def _event(row: SampleProcurementEventRow) -> dict:

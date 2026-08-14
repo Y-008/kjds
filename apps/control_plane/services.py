@@ -33,6 +33,9 @@ HIGH_RISK_ACTIONS = {
     "advertising.increase_budget_large",
     "refund.issue_high_value",
     "settlement.change_bank_account",
+    "channel_account.change",
+    "channel_authorization_grant",
+    "channel_authorization_compensate",
 }
 
 AGENT_POLICIES: dict[str, set[AgentMode]] = {
@@ -51,10 +54,53 @@ class CommerceService:
         self.repo = repository
         self.evidence_validator = evidence_validator
 
-    def create_product(self, *, sku: str, name: str) -> Product:
+    def create_product(
+        self,
+        *,
+        sku: str,
+        name: str,
+        tenant_ref: str | None = None,
+        entity_ref: str | None = None,
+        store_ref: str | None = None,
+        scope_grant_authority_sha256: str | None = None,
+        scope_as_of: str | None = None,
+        created_by: str | None = None,
+    ) -> Product:
+        scope_values = (
+            tenant_ref,
+            entity_ref,
+            store_ref,
+            scope_grant_authority_sha256,
+            scope_as_of,
+            created_by,
+        )
+        if any(scope_values) and not all(scope_values):
+            raise ValueError("Product operating scope must be complete or empty")
         with self.repo.transaction():
-            product = self.repo.add_product(Product(sku=sku.strip(), name=name.strip()))
-            self.repo.append_event("product.created", product.id, {"sku": product.sku})
+            product = self.repo.add_product(
+                Product(
+                    sku=sku.strip(),
+                    name=name.strip(),
+                    tenant_ref=tenant_ref,
+                    entity_ref=entity_ref,
+                    store_ref=store_ref,
+                    scope_grant_authority_sha256=(
+                        scope_grant_authority_sha256
+                    ),
+                    scope_as_of=scope_as_of,
+                    created_by=created_by,
+                )
+            )
+            self.repo.append_event(
+                "product.created",
+                product.id,
+                {
+                    "sku": product.sku,
+                    "tenant_ref": product.tenant_ref,
+                    "entity_ref": product.entity_ref,
+                    "store_ref": product.store_ref,
+                },
+            )
         return product
 
     def add_passport(

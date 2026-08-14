@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -57,6 +58,73 @@ class OllamaProvider(JsonHttpProvider):
         if schema is not None:
             payload["format"] = schema
         return self._request("POST", "/api/chat", json=payload)
+
+
+class OpenAICompatibleProvider(JsonHttpProvider):
+    """Minimal OpenAI-compatible chat adapter with a fail-closed URL boundary."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        timeout: float = 120.0,
+    ) -> None:
+        base_url = base_url.strip().rstrip("/")
+        api_key = api_key.strip()
+        parsed = urlparse(base_url)
+        loopback = (parsed.hostname or "").lower() in {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("OpenAI-compatible base URL must be absolute HTTP(S)")
+        if not loopback and parsed.scheme != "https":
+            raise ValueError("Non-loopback OpenAI-compatible base URL must use HTTPS")
+        if not api_key:
+            raise ValueError("OpenAI-compatible API key is required")
+        super().__init__("openai-compatible", base_url, timeout=timeout)
+        self._api_key = api_key
+
+    def chat(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, Any]],
+        schema: dict[str, Any] | None = None,
+        max_output_tokens: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        if not model.strip():
+            raise ValueError("OpenAI-compatible model is required")
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key[:255]
+        payload: dict[str, Any] = {
+            "model": model.strip(),
+            "messages": messages,
+        }
+        if max_output_tokens is not None:
+            payload["max_tokens"] = max_output_tokens
+        if schema is not None:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "kjds_agent_artifact",
+                    "strict": True,
+                    "schema": schema,
+                },
+            }
+        return self._request(
+            "POST",
+            "/chat/completions",
+            headers=headers,
+            json=payload,
+        )
 
 
 class ComfyUIProvider(JsonHttpProvider):

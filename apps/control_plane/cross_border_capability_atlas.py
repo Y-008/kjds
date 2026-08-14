@@ -18,6 +18,7 @@ OPERATING_WORKSPACE_IDS = {
     "products",
     "sourcing",
     "growth",
+    "batch",
     "finance",
     "science",
     "governance",

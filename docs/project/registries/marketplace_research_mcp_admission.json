@@ -1,0 +1,92 @@
+{
+  "contract_id": "kjds-sellersprite-mcp-admission-v1",
+  "version": 1,
+  "as_of": "2026-08-08",
+  "official_sources": [
+    "https://open.sellersprite.com/mcp",
+    "https://open.sellersprite.com/mcp/16",
+    "https://open.sellersprite.com/pricing/mcp",
+    "https://modelcontextprotocol.io/specification/2025-11-25/basic/transports"
+  ],
+  "official_observations": {
+    "documented_tool_count": 44,
+    "documented_site_count": 10,
+    "pricing_state": "observed_not_admission_authority"
+  },
+  "canonicalization": {
+    "contract_id": "kjds-mcp-tool-inventory-c14n-v1",
+    "encoding": "utf-8-json-no-nan",
+    "object_keys": "lexicographic",
+    "tool_order": "name_ascending",
+    "hash_algorithm": "sha256"
+  },
+  "source": {
+    "source_id": "sellersprite",
+    "transport": "streamable_http",
+    "endpoint": "https://mcp.sellersprite.com/mcp",
+    "credential_env": "KJDS_SELLERSPRITE_MCP_SECRET_KEY",
+    "credential_header": "secret-key",
+    "tls_verify": true,
+    "follow_redirects": false,
+    "trust_env": false,
+    "terminate_on_close": false,
+    "allowed_operations": [
+      "initialize",
+      "notifications/initialized",
+      "tools/list"
+    ],
+    "allowed_protocol_versions": [
+      "2025-11-25"
+    ]
+  },
+  "budgets": {
+    "timeout_seconds": 15,
+    "max_inventory_pages": 16,
+    "max_inventory_tools": 128,
+    "max_inventory_bytes": 1048576,
+    "max_descriptor_bytes": 131072,
+    "max_json_depth": 32
+  },
+  "admission": {
+    "live_admission": "not_admitted",
+    "approved_inventory_sha256": null,
+    "approved_server_identity_sha256": null,
+    "license_state": "pending_independent_verification",
+    "cost_state": "pending_independent_verification",
+    "rate_limit_state": "pending_independent_verification",
+    "revocation_state": "pending_independent_verification",
+    "allowed_tools": []
+  },
+  "public_projection": {
+    "tool_fields": [
+      "name",
+      "descriptor_sha256",
+      "input_schema_sha256",
+      "output_schema_sha256",
+      "annotations_sha256"
+    ],
+    "raw_description": false,
+    "raw_schema": false,
+    "raw_server_instructions": false,
+    "raw_server_info": false
+  },
+  "schema_policy": {
+    "draft": "2020-12",
+    "schema_uri": "https://json-schema.org/draft/2020-12/schema",
+    "input_root_type": "object",
+    "output_root_type": "object",
+    "local_refs_allowed": false,
+    "remote_refs_allowed": false
+  },
+  "control_envelope": {
+    "product_write": false,
+    "fact_write": false,
+    "finance_write": false,
+    "approval_write": false,
+    "permit_write": false,
+    "procurement_write": false,
+    "listing_write": false,
+    "outreach_write": false,
+    "external_write": false
+  }
+}

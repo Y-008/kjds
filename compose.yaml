@@ -19,15 +19,28 @@ services:
     build:
       context: .
       target: api
+      args:
+        KJDS_BUILD_COMMIT: ${KJDS_BUILD_COMMIT:-UNKNOWN}
+        KJDS_MIGRATION_HEAD: ${KJDS_MIGRATION_HEAD:-UNKNOWN}
     ports:
       - "8000:8000"
     environment:
-      KJDS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hermes}:${POSTGRES_PASSWORD:-hermes_dev}@postgres:5432/${POSTGRES_DB:-hermes}
+      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:-}
+      KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL: ${KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL:-}
+      KJDS_CLOSED_LOOP_ISSUER_DATABASE_URL: ${KJDS_CLOSED_LOOP_ISSUER_DATABASE_URL:-}
+      KJDS_CLOSED_LOOP_EXPERIMENT_AUTHORITY_DATABASE_URL: ${KJDS_CLOSED_LOOP_EXPERIMENT_AUTHORITY_DATABASE_URL:-}
+      KJDS_CLOSED_LOOP_COST_AUTHORITY_DATABASE_URL: ${KJDS_CLOSED_LOOP_COST_AUTHORITY_DATABASE_URL:-}
+      KJDS_CLOSED_LOOP_OUTCOME_AUTHORITY_DATABASE_URL: ${KJDS_CLOSED_LOOP_OUTCOME_AUTHORITY_DATABASE_URL:-}
+      KJDS_CLOSED_LOOP_REVIEW_AUTHORITY_DATABASE_URL: ${KJDS_CLOSED_LOOP_REVIEW_AUTHORITY_DATABASE_URL:-}
       KJDS_ENVIRONMENT: development
       KJDS_API_KEY: ${KJDS_API_KEY:-}
       KJDS_API_KEYS_JSON: ${KJDS_API_KEYS_JSON:-}
       KJDS_API_ACTOR: ${KJDS_API_ACTOR:-container-operator}
       KJDS_API_ROLES: ${KJDS_API_ROLES:-operator}
+      KJDS_STRATEGIC_BENCHMARK_SEALING_KEY: ${KJDS_STRATEGIC_BENCHMARK_SEALING_KEY:-}
+      KJDS_CHANNEL_LEASE_SIGNING_KEY: ${KJDS_CHANNEL_LEASE_SIGNING_KEY:-}
+      KJDS_CHANNEL_LEASE_ISSUER: ${KJDS_CHANNEL_LEASE_ISSUER:-kjds-managed-store}
+      KJDS_CHANNEL_LEASE_KEY_ID: ${KJDS_CHANNEL_LEASE_KEY_ID:-lease-kid-1}
       KJDS_PILOT_RUN_LEASE_SECONDS: ${KJDS_PILOT_RUN_LEASE_SECONDS:-900}
       KJDS_COMFYUI_URL: ${KJDS_COMFYUI_URL:-http://host.docker.internal:8189}
       KJDS_OLLAMA_URL: ${KJDS_OLLAMA_URL:-}
@@ -56,6 +69,7 @@ services:
     environment:
       KJDS_ENVIRONMENT: development
       KJDS_WEB_AUTH_MODE: ${KJDS_WEB_AUTH_MODE:-legacy}
+      KJDS_WEB_PUBLIC_ORIGIN: ${KJDS_WEB_PUBLIC_ORIGIN:-}
       KJDS_API_URL: http://api:8000
       KJDS_API_KEY: ${KJDS_API_KEY:-}
       KJDS_API_KEYS_JSON: ${KJDS_API_KEYS_JSON:-}
@@ -72,7 +86,7 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:3000/auth/session').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        - "fetch('http://127.0.0.1:3000/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
       interval: 3s
       timeout: 3s
       retries: 20
@@ -88,8 +102,9 @@ services:
       - --worker-id
       - media-worker-compose
     environment:
-      KJDS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hermes}:${POSTGRES_PASSWORD:-hermes_dev}@postgres:5432/${POSTGRES_DB:-hermes}
+      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:-}
       KJDS_ENVIRONMENT: development
+      KJDS_STRATEGIC_BENCHMARK_SEALING_KEY: ${KJDS_STRATEGIC_BENCHMARK_SEALING_KEY:-}
       KJDS_COMFYUI_URL: ${KJDS_COMFYUI_URL:-http://host.docker.internal:8189}
     depends_on:
       api:
@@ -115,12 +130,12 @@ services:
       - --offer-id
       - ${KJDS_EXECUTION_OFFER_ID:-missing}
     environment:
+      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:-}
       KJDS_EXECUTION_EVIDENCE_IDS: ${KJDS_EXECUTION_EVIDENCE_IDS:-}
       KJDS_CONTROL_PLANE_URL: http://api:8000
       KJDS_EXECUTOR_API_KEY: ${KJDS_EXECUTOR_API_KEY:-}
       KJDS_OZON_EXECUTION_IDENTITY_REF: ${KJDS_OZON_EXECUTION_IDENTITY_REF:-ozon-worker}
-      OZON_CLIENT_ID: ${OZON_WRITE_CLIENT_ID:-}
-      OZON_API_KEY: ${OZON_WRITE_API_KEY:-}
+      KJDS_STRATEGIC_BENCHMARK_SEALING_KEY: ${KJDS_STRATEGIC_BENCHMARK_SEALING_KEY:-}
       OZON_API_URL: https://api-seller.ozon.ru
     depends_on:
       api:
@@ -141,14 +156,14 @@ services:
       - --idempotency-key
       - ${KJDS_READ_ONLY_IDEMPOTENCY_KEY:-missing}
     environment:
+      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:-}
       KJDS_CONTROL_PLANE_URL: http://api:8000
       KJDS_PILOT_READER_API_KEY: ${KJDS_PILOT_READER_API_KEY:-}
       KJDS_READ_ONLY_OFFER_ID: ${KJDS_READ_ONLY_OFFER_ID:-}
       KJDS_READ_ONLY_OFFER_IDS: ${KJDS_READ_ONLY_OFFER_IDS:-}
       KJDS_READ_ONLY_CURSOR: ${KJDS_READ_ONLY_CURSOR:-}
       KJDS_READ_ONLY_PAGE_SIZE: ${KJDS_READ_ONLY_PAGE_SIZE:-10}
-      OZON_CLIENT_ID: ${OZON_CLIENT_ID:-}
-      OZON_API_KEY: ${OZON_API_KEY:-}
+      KJDS_STRATEGIC_BENCHMARK_SEALING_KEY: ${KJDS_STRATEGIC_BENCHMARK_SEALING_KEY:-}
       OZON_API_URL: https://api-seller.ozon.ru
       OZON_PRODUCT_ATTRIBUTES_PATH: ${OZON_PRODUCT_ATTRIBUTES_PATH:-/v4/product/info/attributes}
     depends_on:

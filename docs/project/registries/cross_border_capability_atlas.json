@@ -1,8 +1,8 @@
 {
   "contract_id": "kjds-cross-border-capability-atlas-v1",
-  "registry_version": "0.58.0",
+  "registry_version": "0.59.0",
   "status": "active",
-  "last_reviewed": "2026-07-26",
+  "last_reviewed": "2026-07-27",
   "primary_market": "RU",
   "primary_platform": "ozon",
   "source_policy": {
@@ -8359,7 +8359,7 @@
         "value_stream_ids": [
           "signal_to_experiment"
         ],
-        "workspace_id": "research",
+        "workspace_id": "batch",
         "workspace": "/operations/points/competitor_signal_watch"
       },
       {
@@ -8423,7 +8423,7 @@
         "value_stream_ids": [
           "opportunity_to_supplier"
         ],
-        "workspace_id": "sourcing",
+        "workspace_id": "batch",
         "workspace": "/operations/points/supplier_discovery"
       },
       {
@@ -8996,7 +8996,7 @@
         "value_stream_ids": [
           "supplier_to_unit_economics"
         ],
-        "workspace_id": "finance",
+        "workspace_id": "batch",
         "workspace": "/operations/points/price_corridor"
       },
       {

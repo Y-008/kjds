@@ -1,0 +1,144 @@
+{
+  "schema_version": "kjds-opencli-social-read-allowlist-v1",
+  "as_of": "2026-08-04",
+  "purpose": "Run a fail-closed first-party creator analytics intake for the operator's own Douyin and Xiaohongshu creator accounts.",
+  "runtime": {
+    "package": "@jackwener/opencli",
+    "cli_version": "1.8.6",
+    "release_url": "https://github.com/jackwener/OpenCLI/releases/tag/v1.8.6",
+    "extension_version": "1.0.22",
+    "extension_asset": "opencli-extension-v1.0.22.zip",
+    "extension_sha256": "9d2e3d053948beab5d97124aa79b1532d2122e33e461eca56cac113afd33207a"
+  },
+  "browser_isolation": {
+    "dedicated_profile_required": true,
+    "preferred_browser": "edge",
+    "profile_path": ".runtime/opencli-edge-profile",
+    "extension_path": ".runtime/opencli-extension-v1.0.22",
+    "cookie_import_allowed": false,
+    "personal_browser_profile_reuse_allowed": false
+  },
+  "capture_contract": {
+    "format": "json",
+    "site_session": "persistent",
+    "keep_tab": false,
+    "raw_output_root": ".runtime/social-intelligence/opencli",
+    "sha256_required": true,
+    "literal_stdout_and_stderr_required": true,
+    "exit_status_required": true,
+    "external_write": false,
+    "business_fact_promotion": false
+  },
+  "platforms": {
+    "douyin": {
+      "domain": "creator.douyin.com",
+      "login_url": "https://creator.douyin.com/",
+      "commands": [
+        {
+          "name": "whoami",
+          "baseline": true,
+          "arguments": [],
+          "required_input": null
+        },
+        {
+          "name": "profile",
+          "baseline": true,
+          "arguments": [],
+          "required_input": null
+        },
+        {
+          "name": "videos",
+          "baseline": true,
+          "arguments": ["--limit", "20", "--page", "1", "--status", "all"],
+          "required_input": null
+        },
+        {
+          "name": "stats",
+          "baseline": false,
+          "arguments": [],
+          "required_input": "AwemeId"
+        }
+      ]
+    },
+    "xiaohongshu": {
+      "domain": "creator.xiaohongshu.com",
+      "login_url": "https://creator.xiaohongshu.com/",
+      "commands": [
+        {
+          "name": "whoami",
+          "baseline": true,
+          "arguments": [],
+          "required_input": null
+        },
+        {
+          "name": "creator-profile",
+          "baseline": true,
+          "arguments": [],
+          "required_input": null
+        },
+        {
+          "name": "creator-notes",
+          "baseline": true,
+          "arguments": ["--limit", "20"],
+          "required_input": null
+        },
+        {
+          "name": "creator-notes-summary",
+          "baseline": true,
+          "arguments": ["--limit", "3", "--timeout", "180"],
+          "required_input": null
+        },
+        {
+          "name": "creator-stats",
+          "baseline": true,
+          "arguments": ["--period", "seven"],
+          "required_input": null
+        },
+        {
+          "name": "creator-note-detail",
+          "baseline": false,
+          "arguments": [],
+          "required_input": "XhsNoteId"
+        }
+      ]
+    }
+  },
+  "deny_by_default": true,
+  "blocked_command_names": {
+    "douyin": [
+      "activities",
+      "collections",
+      "delete",
+      "draft",
+      "drafts",
+      "hashtag",
+      "location",
+      "login",
+      "publish",
+      "search",
+      "update",
+      "user-videos"
+    ],
+    "xiaohongshu": [
+      "ask",
+      "comments",
+      "delete-note",
+      "download",
+      "draft-clear",
+      "draft-delete",
+      "draft-open",
+      "drafts",
+      "feed",
+      "follow",
+      "liked",
+      "login",
+      "note",
+      "notifications",
+      "publish",
+      "saved",
+      "search",
+      "unfollow",
+      "user"
+    ]
+  }
+}

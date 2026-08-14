@@ -88,13 +88,22 @@ class ReadOnlyPilotRunRow(Base):
 
 
 class PilotRunService:
-    def __init__(self, *, engine, pilots, evidence, lease_seconds: int = 900) -> None:
+    def __init__(
+        self,
+        *,
+        engine,
+        pilots,
+        evidence,
+        lease_seconds: int = 900,
+        credential_grant_issuer=None,
+    ) -> None:
         if lease_seconds < 30 or lease_seconds > 86_400:
             raise ValueError("Read-only pilot lease must be between 30 and 86400 seconds")
         self.engine = engine
         self.pilots = pilots
         self.evidence = evidence
         self.lease_seconds = lease_seconds
+        self.credential_grant_issuer = credential_grant_issuer
 
     def capture_response(
         self,
@@ -280,6 +289,7 @@ class PilotRunService:
             }
         )
         execution_granted = False
+        credential_grant = None
         with Session(self.engine) as session, session.begin():
             existing = session.scalar(
                 select(ReadOnlyPilotRunRow).where(
@@ -350,9 +360,20 @@ class PilotRunService:
                 session.flush()
                 run_id = row.id
                 execution_granted = True
+                if self.credential_grant_issuer is not None:
+                    credential_grant = self.credential_grant_issuer.issue_for_pilot_run(
+                        session=session,
+                        pilot=pilot_row,
+                        run_id=run_id,
+                        operation=operation,
+                        worker_id=worker_id,
+                        as_of=now,
+                    )
         result = self.get(run_id)
         result["execution_granted"] = execution_granted
         result["idempotency_replay"] = not execution_granted
+        result["credential_grant"] = credential_grant
+        result["credential_grant_bound"] = credential_grant is not None
         return result
 
     def complete(
@@ -485,23 +506,47 @@ class PilotRunService:
         as_of: str | None = None,
         limit: int = 100,
         actor_id: str = "pilot-run-reaper",
+        pilot_ids: set[str] | None = None,
     ) -> dict[str, Any]:
         """Recover captured responses, then close only truly abandoned started runs."""
         if limit < 1 or limit > 1000:
             raise ValueError("Reaper limit must be between 1 and 1000")
         actor_id = self._required(actor_id, "Reaper identity")
         now = self._datetime(as_of, "as_of") if as_of else datetime.now(UTC)
+        if pilot_ids is not None and not pilot_ids:
+            return {
+                "reaped": 0,
+                "run_ids": [],
+                "evidence_ids": {},
+                "recovered": 0,
+                "recovered_run_ids": [],
+                "recovery_blocked": 0,
+                "recovery_blocked_run_ids": [],
+                "recovery_blockers": {},
+                "as_of": now.isoformat(),
+            }
+        captured_query = (
+            select(
+                ReadOnlyPilotRunRow.id,
+                ReadOnlyPilotRunRow.worker_id,
+            )
+            .where(
+                ReadOnlyPilotRunRow.status == "response_captured",
+                ReadOnlyPilotRunRow.lease_expires_at <= now,
+            )
+            .order_by(
+                ReadOnlyPilotRunRow.lease_expires_at,
+                ReadOnlyPilotRunRow.id,
+            )
+            .limit(limit)
+        )
+        if pilot_ids is not None:
+            captured_query = captured_query.where(
+                ReadOnlyPilotRunRow.pilot_id.in_(pilot_ids)
+            )
         with Session(self.engine) as session:
             captured = list(
-                session.execute(
-                    select(ReadOnlyPilotRunRow.id, ReadOnlyPilotRunRow.worker_id)
-                    .where(
-                        ReadOnlyPilotRunRow.status == "response_captured",
-                        ReadOnlyPilotRunRow.lease_expires_at <= now,
-                    )
-                    .order_by(ReadOnlyPilotRunRow.lease_expires_at, ReadOnlyPilotRunRow.id)
-                    .limit(limit)
-                ).all()
+                session.execute(captured_query).all()
             )
         recovered_ids = []
         recovery_blocked_ids: list[str] = []
@@ -522,18 +567,26 @@ class PilotRunService:
             else:
                 recovered_ids.append(run_id)
         remaining_limit = max(limit - len(captured), 0)
+        started_query = (
+            select(ReadOnlyPilotRunRow)
+            .where(
+                ReadOnlyPilotRunRow.status == "started",
+                ReadOnlyPilotRunRow.lease_expires_at <= now,
+            )
+            .order_by(
+                ReadOnlyPilotRunRow.lease_expires_at,
+                ReadOnlyPilotRunRow.id,
+            )
+            .limit(remaining_limit)
+            .with_for_update()
+        )
+        if pilot_ids is not None:
+            started_query = started_query.where(
+                ReadOnlyPilotRunRow.pilot_id.in_(pilot_ids)
+            )
         with Session(self.engine) as session, session.begin():
             rows = list(
-                session.scalars(
-                    select(ReadOnlyPilotRunRow)
-                    .where(
-                        ReadOnlyPilotRunRow.status == "started",
-                        ReadOnlyPilotRunRow.lease_expires_at <= now,
-                    )
-                    .order_by(ReadOnlyPilotRunRow.lease_expires_at, ReadOnlyPilotRunRow.id)
-                    .limit(remaining_limit)
-                    .with_for_update()
-                )
+                session.scalars(started_query)
             ) if remaining_limit else []
             run_ids = [row.id for row in rows]
             for row in rows:
