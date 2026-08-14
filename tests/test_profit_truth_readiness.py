@@ -16,7 +16,7 @@ from apps.control_plane.profit_truth_readiness import (
     ProfitTruthReadinessWorkspace,
 )
 from scripts.extract_ru002_logistics_evidence import EvidenceHit, structured_records
-from scripts.package_market_recon_bundle import package_bundle
+from scripts.package_market_recon_bundle import SOURCE_ROOT, package_bundle
 from tests.test_finance import capture_evidence, make_services
 from tests.test_profit_command import (
     AS_OF,
@@ -24,6 +24,20 @@ from tests.test_profit_command import (
     entity_scope,
     principal,
     workspace_with_bundle,
+)
+
+pytestmark = pytest.mark.skipif(
+    not all(
+        (SOURCE_ROOT / name).is_file()
+        for name in (
+            "full_catalog.json",
+            "full_product_info.json",
+            "analytics_by_window.json",
+            "finance_by_month.json",
+            "supply_1688/supply_crawl.json",
+        )
+    ),
+    reason="market-recon business fixtures are not committed",
 )
 
 
