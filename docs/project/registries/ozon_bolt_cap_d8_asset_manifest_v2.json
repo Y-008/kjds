@@ -60,6 +60,16 @@
       "role": "faq",
       "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/08_faq_ru.png",
       "sha256": "331905869905942bcf9c2fdac061ef81cfd472b233ba3d35f122a625fbb1eb7e"
+    },
+    {
+      "sequence": 9,
+      "role": "video_cover",
+      "path": "docs/project/assets/ozon/bolt_caps_d8_black/derived_ru_v2/09_video_cover_ru.mp4",
+      "sha256": "6fb1ad2198851b991002123ab03a8ace72a50fa63c5069e2feafc3ff8d31c830",
+      "codec": "h264",
+      "width": 1080,
+      "height": 1080,
+      "duration_seconds": 10
     }
   ],
   "excluded_claims": [
