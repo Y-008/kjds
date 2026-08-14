@@ -590,7 +590,7 @@ def test_bas223_release_frees_lane_c_and_shared_leases_and_records_feature_commi
     ):
         assert f"`{path}`" in row
     assert "c64ca2d233bca146aa886f3f23f1e62861041954" in row
-    assert "release-head G-1 尚未重跑" in row
+    assert "release-head G-1 已重跑 PASS" in row
     assert row.endswith("| DONE_ENGINEERING |")
 
 
