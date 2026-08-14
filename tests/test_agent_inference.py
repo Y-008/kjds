@@ -122,5 +122,6 @@ def test_ollama_provider_chat_embeds_images_and_format() -> None:
     payload = provider.sent["json"]
     assert payload["model"] == "llava"
     assert payload["format"] == {"type": "object"}
+    assert payload["options"] == {"temperature": 0}
     assert payload["images"] == ["QUJD"]
     assert payload["stream"] is False
