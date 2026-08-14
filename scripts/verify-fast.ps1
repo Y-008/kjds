@@ -12,6 +12,32 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+function Get-RunningVerificationProcesses {
+    if ($IsWindows) {
+        return Get-CimInstance Win32_Process | Where-Object {
+            $_.ProcessId -ne $PID -and ($_.CommandLine -like '*verify-g1.ps1*' -or $_.CommandLine -like '*python -m pytest*')
+        }
+    }
+    $rows = & ps -eo pid=,args=
+    foreach ($row in $rows) {
+        if ($row -match '^\s*(\d+)\s+(.*)$') {
+            $pidValue = [int]$Matches[1]
+            $cmdline = $Matches[2]
+            if ($pidValue -ne $PID -and ($cmdline -match 'verify-g1\.ps1|python -m pytest')) {
+                [pscustomobject]@{ ProcessId = $pidValue; CommandLine = $cmdline }
+            }
+        }
+    }
+}
+
+$busy = @(Get-RunningVerificationProcesses)
+if ($busy) {
+    Write-Warning "Another verification process is already running:"
+    $busy | Select-Object ProcessId, CommandLine | Format-List
+    Write-Output "verify-fast BLOCKED"
+    exit 1
+}
+
 if ($Sync) {
     Write-Host "== uv sync =="
     uv sync --extra dev --locked
