@@ -654,6 +654,7 @@ class CandidateResearchSubmissionInput(CandidateResearchInput):
 
 class CandidateSourcingHandoffInput(CandidateResearchInput):
     sku: str = Field(min_length=1, max_length=80)
+    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     confirmed: Literal[True]
 
 

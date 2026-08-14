@@ -546,6 +546,11 @@ class MarketIntelligenceService:
         as_of: str,
         demand_report_evidence_id: str,
         sku: str,
+        tenant_ref: str,
+        entity_ref: str,
+        store_ref: str,
+        scope_grant_authority_sha256: str,
+        scope_as_of: str,
         confirmed: bool,
         confirmed_by: str,
         max_age_days: int = 90,
@@ -559,6 +564,32 @@ class MarketIntelligenceService:
             raise ValueError("Candidate sourcing handoff requires sku and confirmed_by")
         if market.strip().upper() != "RU":
             raise ValueError("Candidate sourcing handoff currently supports the Ozon RU vertical slice only")
+        scope = {
+            "tenant_ref": tenant_ref.strip(),
+            "entity_ref": entity_ref.strip(),
+            "store_ref": store_ref.strip(),
+            "scope_grant_authority_sha256": (
+                scope_grant_authority_sha256.strip().lower()
+            ),
+            "scope_as_of": self._parse_time(
+                "scope_as_of", scope_as_of
+            ).isoformat(),
+        }
+        if not all(scope.values()):
+            raise ValueError(
+                "Candidate sourcing handoff requires complete operating scope"
+            )
+        authority_sha256 = scope["scope_grant_authority_sha256"]
+        if (
+            len(authority_sha256) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in authority_sha256
+            )
+        ):
+            raise ValueError(
+                "Candidate sourcing handoff scope authority hash is invalid"
+            )
 
         approval_payload = {
             "candidate_ref": candidate_ref,
@@ -569,6 +600,7 @@ class MarketIntelligenceService:
             "demand_report_evidence_id": demand_report_evidence_id,
             "sku": sku,
             "max_age_days": max_age_days,
+            "operating_scope": scope,
         }
         require_action_authorization(
             self.action_authorization,
@@ -635,6 +667,11 @@ class MarketIntelligenceService:
                 or existing.name != assessment["candidate_name"]
                 or existing.market != "RU"
                 or existing.channel != "OZON"
+                or not existing.scope_complete
+                or any(
+                    getattr(existing, field) != value
+                    for field, value in scope.items()
+                )
             ):
                 raise ValueError(f"SKU already belongs to a different product: {sku}")
             product = existing
@@ -646,6 +683,14 @@ class MarketIntelligenceService:
                 name=assessment["candidate_name"],
                 market="RU",
                 channel="OZON",
+                tenant_ref=scope["tenant_ref"],
+                entity_ref=scope["entity_ref"],
+                store_ref=scope["store_ref"],
+                scope_grant_authority_sha256=scope[
+                    "scope_grant_authority_sha256"
+                ],
+                scope_as_of=scope["scope_as_of"],
+                created_by=confirmed_by,
             )
             with self.repo.transaction():
                 self.repo.add_product(product)
@@ -657,6 +702,13 @@ class MarketIntelligenceService:
                         "candidate_ref": assessment["candidate_ref"],
                         "category": assessment["category"],
                         "confirmed_by": confirmed_by,
+                        "tenant_ref": scope["tenant_ref"],
+                        "entity_ref": scope["entity_ref"],
+                        "store_ref": scope["store_ref"],
+                        "scope_grant_authority_sha256": scope[
+                            "scope_grant_authority_sha256"
+                        ],
+                        "scope_as_of": scope["scope_as_of"],
                     },
                     source_evidence_id=assessment["demand_report_evidence_id"],
                 )
@@ -668,7 +720,9 @@ class MarketIntelligenceService:
             "candidate_ref": assessment["candidate_ref"],
             "demand_report_evidence_id": assessment["demand_report_evidence_id"],
             "evidence_ids": assessment["evidence_ids"],
-            "next_gate": "sourcing_comparison_intake",
+            "operating_scope": scope,
+            "next_gate": "prelisting_supplier_rfq",
+            "next_api_path": "/v1/sourcing/candidate-rfq-packages",
             "automatic_procurement": False,
             "automatic_listing": False,
         }

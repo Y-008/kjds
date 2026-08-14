@@ -1799,6 +1799,30 @@ def test_openapi_exposes_immutable_supplier_rfq_and_reply_lineage() -> None:
     assert "rfq_package_evidence_id" in multipart_schema["properties"]
 
 
+def test_candidate_sourcing_handoff_derives_scope_server_side() -> None:
+    schema = app.openapi()
+    operation = schema["paths"][
+        "/v1/market/candidates/sourcing-handoff"
+    ]["post"]
+    request_ref = operation["requestBody"]["content"][
+        "application/json"
+    ]["schema"]["$ref"]
+    request_schema = schema["components"]["schemas"][
+        request_ref.rsplit("/", 1)[-1]
+    ]
+
+    assert operation["security"] == [{"KjdsApiKey": []}]
+    assert request_schema["properties"]["store_ref"]["default"] == (
+        "ozon-primary"
+    )
+    assert not {
+        "tenant_ref",
+        "entity_ref",
+        "scope_grant_authority_sha256",
+        "scope_as_of",
+    }.intersection(request_schema["properties"])
+
+
 def test_openapi_exposes_supplier_rfq_dispatch_proof_and_review() -> None:
     schema = app.openapi()
     collection = schema["paths"]["/v1/sourcing/rfq-dispatches"]
