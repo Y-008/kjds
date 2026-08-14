@@ -114,6 +114,38 @@ runtime pointing at unavailable PostgreSQL `127.0.0.1:55432`, not accepted
 product assertions. This diagnostic is not a green Gate and is not counted as
 final G-1.
 
-The final full Python regression, isolated PostgreSQL G-1 receipt, candidate
-hashes, and independent completion review remain required before BAS-223 may
-leave `IN_PROGRESS`.
+The isolated PostgreSQL G-1 receipt and the release-head rerun are recorded in
+the Test-pass definition below. BAS-223 is `DONE_ENGINEERING`; real-person seat
+binding and independent completion review are deferred to enterprise personnel
+configuration, not to this automated gate.
+
+## Test-pass definition (测试跑通)
+
+`测试跑通` is the automated, machine-checkable gate only. It does not include
+real-person seat binding or human completion review, which the enterprise
+configures separately after this engineering slice.
+
+Required automated gates:
+
+- focused Python regression (`tests/test_active_workstream_assignments.py`,
+  `tests/test_enterprise_positioning.py`,
+  `tests/test_enterprise_positioning_api.py`) all pass on a clean basetemp;
+- Web contract suite and Next production build pass;
+- `ruff`, `py_compile`, JSON parse, secret scan, and `git diff --check` pass;
+- isolated PostgreSQL G-1 receipt reports `status=PASS` via
+  `verify-g1.ps1 -UseExistingPostgres -PostgresPort 55433` against a clean
+  `postgres:17-alpine` slot, with `backup_restore=false` and no
+  production/push/external-write claim.
+
+Current receipt on release HEAD `ec37cf4`:
+
+- focused Python regression: `52 passed`;
+- `ruff`, `py_compile`, JSON parse, `git diff --check`: PASS;
+- G-1 receipt `D:\KJDS\kjds\.runtime\G1_VERIFICATION.json`: `status=PASS`,
+  `git_commit=e2d6ca35b6c7c16487b5d2f7ba4ca2bde306f80b`,
+  `migration=20260809_0098`, `database_control_mode=existing-postgres`,
+  `backup_restore=false`, `error=null`.
+
+Out of scope for `测试跑通`: real-person seat bindings and independent
+completion review. They are deferred to the enterprise personnel configuration
+step and do not block this automated gate.
