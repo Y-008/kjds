@@ -1,7 +1,22 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.build_market_recon_report import OUT, build_report, build_rows
+
+pytestmark = pytest.mark.skipif(
+    not all(
+        (OUT / name).is_file()
+        for name in (
+            "full_product_info.json",
+            "supply_1688/supply_crawl.json",
+            "analytics_by_window.json",
+            "finance_by_month.json",
+        )
+    ),
+    reason="market-recon report fixtures are not committed",
+)
 
 
 def _load(name: str):  # type: ignore[no-untyped-def]

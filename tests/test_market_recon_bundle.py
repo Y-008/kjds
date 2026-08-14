@@ -22,12 +22,30 @@ from apps.control_plane.market_recon_bundle import (
 from apps.control_plane.security import Principal
 from apps.control_plane.sql_repository import Base
 from scripts.extract_ru002_logistics_evidence import EvidenceHit, structured_records
-from scripts.package_market_recon_bundle import DEFAULT_OUTPUT, package_bundle
+from scripts.package_market_recon_bundle import (
+    DEFAULT_OUTPUT,
+    SOURCE_ROOT,
+    package_bundle,
+)
 
 AS_OF = datetime(2026, 8, 2, 7, tzinfo=UTC)
 CORE_SOURCE_TOTAL = 372
 CORE_ACCEPTED_TOTAL = 47
 CORE_QUARANTINED_TOTAL = 325
+
+pytestmark = pytest.mark.skipif(
+    not all(
+        (SOURCE_ROOT / name).is_file()
+        for name in (
+            "full_catalog.json",
+            "full_product_info.json",
+            "analytics_by_window.json",
+            "finance_by_month.json",
+            "supply_1688/supply_crawl.json",
+        )
+    ),
+    reason="market-recon business fixtures are not committed",
+)
 
 
 def logistics_record() -> dict[str, object]:
