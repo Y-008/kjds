@@ -5,7 +5,10 @@ param(
         "tests/test_g1_harness_contract.py",
         "tests/test_automated_commerce.py",
         "tests/test_browser_capture_inbox.py",
-        "tests/test_candidate_sourcing_handoff_api.py"
+        "tests/test_candidate_sourcing_handoff_api.py",
+        "tests/test_supplier_rfq.py",
+        "tests/test_supplier_rfq_api.py",
+        "tests/test_supplier_rfq_dispatch.py"
     )
 )
 

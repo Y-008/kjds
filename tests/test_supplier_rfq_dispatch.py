@@ -18,20 +18,26 @@ RFQ_MESSAGE = "冻结询价正文：500kg / 7.6m / 三控 / 220V。"
 
 
 class RfqPackages:
-    def __init__(self, evidence):
+    def __init__(
+        self,
+        evidence,
+        *,
+        offer_id="offer-1",
+        product_id=PRODUCT_ID,
+    ):
         package = {
             "contract_version": "supplier-rfq-package-v1",
             "package_hash": "a" * 64,
             "product": {
-                "id": PRODUCT_ID,
+                "id": product_id,
                 "sku": "ozon:ozon-primary:offer-1",
                 "name": "Portable hoist",
             },
             "listing": {
                 "marketplace": "ozon",
                 "store_ref": "ozon-primary",
-                "offer_id": "offer-1",
-                "marketplace_sku": "321",
+                "offer_id": offer_id,
+                "marketplace_sku": "321" if offer_id else None,
             },
             "buyer_requirement": {
                 "response_due_at": "2026-07-30T10:00:00+00:00",
@@ -43,12 +49,12 @@ class RfqPackages:
             filename="rfq.json",
             content_type="application/json",
             source="supplier_rfq_package",
-            source_ref=f"supplier-rfq://{PRODUCT_ID}/rfq-1",
+            source_ref=f"supplier-rfq://{product_id}/rfq-1",
             grade=EvidenceGrade.C,
             effective_at="2026-07-26T08:00:00+00:00",
             effective_until=None,
             created_by="operator-1",
-            metadata={"product_id": PRODUCT_ID},
+            metadata={"product_id": product_id},
         )
         self.package = package
 
@@ -145,6 +151,22 @@ def test_dispatch_freezes_platform_proof_without_claiming_reply_or_quote():
         target_id=PRODUCT_ID,
         relationship="supplier_outreach_for",
     ) == [first["evidence"].id]
+
+
+def test_dispatch_accepts_prelisting_rfq_without_inventing_ozon_offer():
+    workspace, _, _ = make_workspace()
+    rfqs = RfqPackages(
+        workspace.evidence,
+        offer_id=None,
+        product_id="prd-prelisting",
+    )
+    workspace.rfq_packages = rfqs
+
+    result = workspace.capture(**capture_values(rfqs))
+
+    assert result["dispatch"]["rfq"]["offer_id"] is None
+    assert result["counts_as_supplier_quote"] is False
+    assert result["automatic_supplier_contact"] is False
 
 
 def test_dispatch_idempotency_rejects_changed_fact_or_proof():

@@ -11,6 +11,7 @@ from apps.control_plane.supplier_rfq import (
     RFQ_CONTRACT_VERSION,
     RFQ_SOURCE,
     SupplierRfqWorkspace,
+    candidate_product_snapshot_sha256,
 )
 
 
@@ -239,3 +240,136 @@ def test_rfq_package_product_handoff_is_strict():
             result["evidence"].id,
             product_id="prd-other",
         )
+
+
+def candidate_product() -> Product:
+    return Product(
+        id="prd-d10-q200",
+        sku="KJDS-OZ-RU-RCAP-D10-BLK-Q200-R01",
+        name="Защитные колпачки 10×20 мм, черные, 200 шт.",
+        status=ProductStatus.CANDIDATE,
+        tenant_ref="tenant-a",
+        entity_ref="entity-a",
+        store_ref="store-main",
+        scope_grant_authority_sha256="f" * 64,
+        scope_as_of="2026-07-25T00:00:00+00:00",
+        created_by="operator-1",
+    )
+
+
+def candidate_request(product: Product, source_evidence_id: str) -> dict:
+    payload = request_payload()
+    for key in ("offer_id", "expected_item_hash"):
+        payload.pop(key)
+    payload.update(
+        product=product,
+        expected_product_snapshot_sha256=(
+            candidate_product_snapshot_sha256(product)
+        ),
+        source_evidence_ids=[source_evidence_id],
+        source_scope_authority={
+            "contract_id": "kjds-scoped-evidence-authority-v1",
+            "status": "ready",
+            "target_evidence_ids": [source_evidence_id],
+            "projected_evidence_ids": [source_evidence_id],
+            "snapshot_sha256": "a" * 64,
+            "binding_authority_sha256": "b" * 64,
+            "tenant_ref": product.tenant_ref,
+            "entity_ref": product.entity_ref,
+            "store_ref": product.store_ref,
+            "as_of": "2026-07-25T00:00:00+00:00",
+        },
+        idempotency_key="d10-q200-prelisting-rfq-v1",
+    )
+    return payload
+
+
+def test_candidate_rfq_uses_canonical_product_without_fake_ozon_listing():
+    workspace, evidence, source, _ = make_workspace()
+    product = candidate_product()
+
+    result = workspace.create_for_candidate_product(
+        **candidate_request(product, source.id)
+    )
+
+    package = result["package"]
+    assert package["product"]["id"] == product.id
+    assert package["listing"] == {
+        "marketplace": "ozon",
+        "store_ref": "store-main",
+        "offer_id": None,
+        "marketplace_sku": None,
+    }
+    assert package["catalog_observation"]["context_kind"] == (
+        "canonical_candidate_product"
+    )
+    assert package["catalog_observation"]["product_snapshot_sha256"] == (
+        candidate_product_snapshot_sha256(product)
+    )
+    assert package["catalog_observation"]["source_scope_authority"] == {
+        "contract_id": "kjds-scoped-evidence-authority-v1",
+        "status": "ready",
+        "target_evidence_ids": [source.id],
+        "projected_evidence_ids": [source.id],
+        "snapshot_sha256": "a" * 64,
+        "binding_authority_sha256": "b" * 64,
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-main",
+        "as_of": "2026-07-25T00:00:00+00:00",
+    }
+    assert package["authority"]["automatic_supplier_contact"] is False
+    assert package["authority"]["automatic_procurement"] is False
+    assert package["authority"]["automatic_payment"] is False
+    assert package["authority"]["automatic_listing"] is False
+    assert evidence.target_evidence_ids(
+        target_type="evidence",
+        target_id=result["evidence"].id,
+        relationship="candidate_context_for",
+    ) == [source.id]
+    assert evidence.target_evidence_ids(
+        target_type="product",
+        target_id=product.id,
+        relationship="rfq_package_for",
+    ) == [result["evidence"].id]
+
+
+def test_candidate_rfq_fails_closed_on_product_or_evidence_drift():
+    workspace, _, source, _ = make_workspace()
+    product = candidate_product()
+    request = candidate_request(product, source.id)
+
+    request["expected_product_snapshot_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="Product changed"):
+        workspace.create_for_candidate_product(**request)
+
+    request = candidate_request(product, "evd-missing")
+    with pytest.raises((KeyError, RuntimeError, ValueError)):
+        workspace.create_for_candidate_product(**request)
+
+    unscoped = candidate_product()
+    unscoped.store_ref = None
+    request = candidate_request(unscoped, source.id)
+    with pytest.raises(ValueError, match="complete matching store scope"):
+        workspace.create_for_candidate_product(**request)
+
+    active = candidate_product()
+    active.status = ProductStatus.ACTIVE
+    request = candidate_request(active, source.id)
+    with pytest.raises(ValueError, match="candidate Product"):
+        workspace.create_for_candidate_product(**request)
+
+    request = candidate_request(product, source.id)
+    request["source_scope_authority"]["store_ref"] = "store-other"
+    with pytest.raises(ValueError, match="does not match Product scope"):
+        workspace.create_for_candidate_product(**request)
+
+    request = candidate_request(product, source.id)
+    request["source_scope_authority"]["target_evidence_ids"] = ["evd-other"]
+    with pytest.raises(ValueError, match="does not match targets"):
+        workspace.create_for_candidate_product(**request)
+
+    request = candidate_request(product, source.id)
+    request["source_scope_authority"]["status"] = "partial"
+    with pytest.raises(ValueError, match="not ready"):
+        workspace.create_for_candidate_product(**request)
