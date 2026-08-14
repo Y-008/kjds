@@ -98,6 +98,18 @@ jobs:
           uv run pytest -q -p no:cacheprovider
           --basetemp=.runtime/pytest-media-connectors-postgres
           tests/test_media_connectors_postgres.py
+      - name: Verify PostgreSQL API contract suites
+        run: >-
+          uv run pytest -q -p no:cacheprovider
+          --basetemp=.runtime/pytest-api-contracts-postgres
+          tests/test_api_contract.py
+          tests/test_catalog_read_run_handoff.py
+          tests/test_channel_accounts_api.py
+          tests/test_intelligence_ingestion.py
+          tests/test_native_parity_acceptance_api.py
+          tests/test_scoped_batch_opportunity.py
+          tests/test_scoped_marketplace_catalog.py
+          tests/test_scoped_read_only_pilots.py
       - name: Verify API readiness
         shell: bash
         run: |
