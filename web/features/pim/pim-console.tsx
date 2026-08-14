@@ -8,6 +8,15 @@ import styles from "./pim.module.css";
 type Status = "ready" | "partial" | "blocked" | "no_data";
 type Group = {
   product: { id: string; sku: string; name: string; status: string };
+  source_lineage: {
+    status: "observed" | "no_data";
+    competitive_market_url: string | null;
+    primary_supplier_url: string | null;
+    backup_supplier_urls: string[];
+    source_evidence_id: string | null;
+    links_are_observations_not_orders: true;
+    external_sync_performed: false;
+  };
   passports: { kind: string; status: string }[];
   content_assets: { id: string; content_type: string; status: string; qa_check_count: number }[];
   listings: { offer_id: string; marketplace_sku: string | null; listing_status: string | null }[];
@@ -127,6 +136,15 @@ export function PimConsole() {
                   <p>阶段 · {group.readiness.pre_listing_stage}</p>
                   <p>Listing · {group.listings.length}　Passport · {group.passports.map((item) => `${item.kind}:${item.status}`).join(" / ") || "none"}</p>
                   <p>媒体资产 · {group.content_assets.length}　Owner · {group.owner}</p>
+                  <section className={styles.lineage} aria-label={`${group.product.sku} 来源链`}>
+                    <strong>竞标与货源映射</strong>
+                    {group.source_lineage.competitive_market_url ? <a href={group.source_lineage.competitive_market_url} target="_blank" rel="noreferrer">竞标商品</a> : <span>竞标商品 no_data</span>}
+                    {group.source_lineage.primary_supplier_url ? <a href={group.source_lineage.primary_supplier_url} target="_blank" rel="noreferrer">主货源候选</a> : <span>主货源 no_data</span>}
+                    {group.source_lineage.backup_supplier_urls.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer">备选货源 {index + 1}</a>)}
+                    <small>事件账本证据快照 · 未询价/下单 · 未同步第三方 ERP</small>
+                  </section>
+                  <Link href={`/sourcing-intelligence?query=${encodeURIComponent(group.product.sku)}`}>查看三家 RFQ、回复与报价状态 →</Link>
+                  <Link href={`/profit-command?query=${encodeURIComponent(group.product.sku)}`}>进入该 SKU 十五项成本与利润补证 →</Link>
                   <p>SLA · {group.sla}</p><p>Next · {group.next}</p>
                   <code>{group.group_snapshot_sha256}</code>
                 </div>

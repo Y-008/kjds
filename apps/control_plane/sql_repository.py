@@ -778,6 +778,43 @@ class SqlAlchemyRepository:
             for row in rows
         ]
 
+    def latest_product_source_lineage(
+        self, product_id: str, *, as_of: datetime
+    ) -> dict[str, Any] | None:
+        if as_of.tzinfo is None:
+            raise ValueError("as_of must include a timezone")
+        cutoff = as_of.astimezone(UTC)
+        with self._session() as session:
+            row = session.scalar(
+                select(EventRow)
+                .where(
+                    EventRow.event_type
+                    == "product.created_from_batch_opportunity",
+                    EventRow.aggregate_id == product_id,
+                    EventRow.occurred_at <= cutoff,
+                    EventRow.recorded_at <= cutoff,
+                )
+                .order_by(
+                    EventRow.occurred_at.desc(),
+                    EventRow.recorded_at.desc(),
+                    EventRow.sequence.desc(),
+                )
+            )
+        if row is None:
+            return None
+        return {
+            "sequence": row.sequence,
+            "event_id": row.event_id,
+            "type": row.event_type,
+            "aggregate_id": row.aggregate_id,
+            "payload": row.payload_json,
+            "payload_hash": row.payload_hash,
+            "occurred_at": _iso(row.occurred_at),
+            "recorded_at": _iso(row.recorded_at),
+            "actor_id": row.actor_id,
+            "source_evidence_id": row.source_evidence_id,
+        }
+
     def add_observation(self, observation: MarketObservation) -> MarketObservation:
         with self._session(write=True) as session:
             session.add(

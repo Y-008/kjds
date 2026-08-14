@@ -64,6 +64,9 @@ test("profit command consumes all read projections without client profit math", 
   assert.match(contracts, /unbound_cost_evidence/);
   assert.match(contracts, /sku_cost_coverage_incremented: false/);
   assert.match(component, /synthetic=false/);
+  assert.match(component, /window\.location\.search/);
+  assert.match(component, /\.get\("query"\)/);
+  assert.match(component, /!selectedStore \|\| !queryInitialized/);
   assert.doesNotMatch(component, /Math\.random/);
   assert.doesNotMatch(component, /amount\s*[-+*/]|downside_cm3\s*[-+*/]|expected_cm3\s*[-+*/]/);
   assert.doesNotMatch(component, /\/commands|\/write-attempt|\/receipt/);

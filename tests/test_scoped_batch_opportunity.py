@@ -163,6 +163,7 @@ class Batch:
         self.finance = finance or Finance()
         self.prepare_calls: list[dict] = []
         self.latest_calls: list[dict] = []
+        self.item_master_calls: list[dict] = []
 
     def prepare(self, **values):
         self.prepare_calls.append(values)
@@ -181,6 +182,14 @@ class Batch:
     def latest_scoped(self, **values):
         self.latest_calls.append(values)
         return None
+
+    def create_kjds_item_master_candidates(self, **values):
+        self.item_master_calls.append(values)
+        return {
+            "contract_version": "kjds-item-master-batch/1.0.0",
+            "created": 1,
+            "authority": {"third_party_erp_called": False},
+        }
 
 
 def authority(
@@ -249,6 +258,36 @@ def test_missing_entity_returns_no_data_without_reading_any_child():
     assert result["scope"]["entity_ref"] is None
     assert result["candidates"] == []
     assert result["control_envelope"]["external_write_allowed"] is False
+
+
+def test_item_master_handoff_uses_exact_scope_and_kjds_batch_authority():
+    batch = Batch()
+    service = authority(batch=batch)
+
+    result = service.create_kjds_item_master_candidates(
+        principal=principal(),
+        entity_scope=entity_scope(),
+        store_ref="store-a",
+        run_id="bor-a",
+        idempotency_key="item-master-a",
+        actor_id="operator-a",
+        as_of=AS_OF,
+    )
+
+    assert result["created"] == 1
+    assert result["authority"]["third_party_erp_called"] is False
+    assert batch.item_master_calls == [
+        {
+            "run_id": "bor-a",
+            "store_ref": "store-a",
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "scope_grant_authority_sha256": "a" * 64,
+            "idempotency_key": "item-master-a",
+            "actor_id": "operator-a",
+            "as_of": AS_OF,
+        }
+    ]
 
 
 def test_cross_store_is_rejected_before_reading_children():

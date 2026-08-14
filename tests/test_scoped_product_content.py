@@ -592,6 +592,51 @@ def test_native_product_scope_excludes_other_tenant_and_store():
     assert catalog.calls == 1
 
 
+def test_batch_candidate_source_lineage_survives_in_pim_projection():
+    repo = SqlAlchemyRepository(database())
+    product = repo.add_product(native_product(sku="source-lineage"))
+    repo.append_event(
+        "product.created_from_batch_opportunity",
+        product.id,
+        {
+            "references": {
+                "competitive_market_url": "https://www.ozon.ru/product/1/",
+                "primary_supplier_url": (
+                    "https://detail.1688.com/offer/1.html"
+                ),
+                "backup_supplier_urls": [
+                    "https://www.yiwugo.com/product/detail/1.html"
+                ],
+            }
+        },
+        actor_id="operator-a",
+        source_evidence_id="evd-batch-source",
+    )
+    _, scoped = authority(repo)
+
+    result = scoped.project(
+        principal=principal(),
+        entity_scope=entity_scope(),
+        store_ref="store-a",
+        as_of=datetime(2030, 1, 1, tzinfo=UTC),
+        product_id=product.id,
+    )
+
+    lineage = result["products"][0]["source_lineage"]
+    assert lineage == {
+        "status": "observed",
+        "competitive_market_url": "https://www.ozon.ru/product/1/",
+        "primary_supplier_url": "https://detail.1688.com/offer/1.html",
+        "backup_supplier_urls": [
+            "https://www.yiwugo.com/product/detail/1.html"
+        ],
+        "source_evidence_id": "evd-batch-source",
+        "authority": "product_event_ledger",
+        "links_are_observations_not_orders": True,
+        "external_sync_performed": False,
+    }
+
+
 def test_legacy_product_requires_scoped_catalog_canonical_binding():
     repo = SqlAlchemyRepository(database())
     legacy = repo.add_product(

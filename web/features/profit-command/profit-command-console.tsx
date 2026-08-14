@@ -157,6 +157,18 @@ export function ProfitCommandConsole({
   const [refreshToken, setRefreshToken] = useState(0);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("正在读取授权经营作用域…");
+  const [queryInitialized, setQueryInitialized] = useState(false);
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search)
+      .get("query")
+      ?.trim();
+    if (requested) {
+      setQueryDraft(requested);
+      setQuery(requested);
+    }
+    setQueryInitialized(true);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -182,7 +194,7 @@ export function ProfitCommandConsole({
   }, []);
 
   useEffect(() => {
-    if (!selectedStore) return;
+    if (!selectedStore || !queryInitialized) return;
     let active = true;
     const load = async () => {
       setLoading(true);
@@ -274,7 +286,7 @@ export function ProfitCommandConsole({
     };
     void load();
     return () => { active = false; };
-  }, [candidateId, decisionClass, query, refreshToken, remediationOffset, selectedStore]);
+  }, [candidateId, decisionClass, query, queryInitialized, refreshToken, remediationOffset, selectedStore]);
 
   const submitFilter = (event: FormEvent) => {
     event.preventDefault();

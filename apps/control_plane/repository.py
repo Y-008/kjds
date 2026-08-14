@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from copy import deepcopy
+from datetime import datetime
 from typing import Protocol
 
 from .domain import (
@@ -17,6 +18,7 @@ from .domain import (
     Passport,
     PassportType,
     Product,
+    utc_now,
 )
 
 
@@ -48,6 +50,9 @@ class Repository(Protocol):
     ) -> None: ...
     def event_count(self) -> int: ...
     def events_after(self, sequence: int) -> list[dict]: ...
+    def latest_product_source_lineage(
+        self, product_id: str, *, as_of: datetime
+    ) -> dict | None: ...
     def add_observation(self, observation: MarketObservation) -> MarketObservation: ...
     def observations_for(self, market: str, category: str, metric: str | None = None) -> list[MarketObservation]: ...
     def add_opportunity(self, opportunity: OpportunityInsight) -> OpportunityInsight: ...
@@ -169,6 +174,7 @@ class InMemoryRepository:
         actor_id: str = "system",
         source_evidence_id: str | None = None,
     ) -> None:
+        occurred_at = utc_now()
         self.events.append(
             {
                 "sequence": len(self.events) + 1,
@@ -177,6 +183,7 @@ class InMemoryRepository:
                 "payload": payload,
                 "actor_id": actor_id,
                 "source_evidence_id": source_evidence_id,
+                "occurred_at": occurred_at,
             }
         )
 
@@ -185,6 +192,19 @@ class InMemoryRepository:
 
     def events_after(self, sequence: int) -> list[dict]:
         return [event for event in self.events if event["sequence"] > sequence]
+
+    def latest_product_source_lineage(
+        self, product_id: str, *, as_of: datetime
+    ) -> dict | None:
+        cutoff = as_of.isoformat()
+        matches = [
+            event
+            for event in self.events
+            if event["type"] == "product.created_from_batch_opportunity"
+            and event["aggregate_id"] == product_id
+            and event["occurred_at"] <= cutoff
+        ]
+        return deepcopy(matches[-1]) if matches else None
 
     def add_observation(self, observation: MarketObservation) -> MarketObservation:
         self.market_observations[observation.id] = observation

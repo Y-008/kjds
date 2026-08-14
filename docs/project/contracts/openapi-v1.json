@@ -451,6 +451,42 @@
         "title": "AssetReviewInput",
         "type": "object"
       },
+      "BatchOpportunityItemMasterInput": {
+        "additionalProperties": false,
+        "description": "Authorize one internal, evidence-bound KJDS PIM draft action.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "idempotency_key": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "BatchOpportunityItemMasterInput",
+        "type": "object"
+      },
       "BatchOpportunityPrepareInput": {
         "additionalProperties": false,
         "properties": {
@@ -588,6 +624,9 @@
             "title": "Scan Shard Index",
             "type": "integer"
           },
+          "screening": {
+            "$ref": "#/components/schemas/BatchOpportunityScreeningInput"
+          },
           "store_ref": {
             "default": "ozon-primary",
             "maxLength": 160,
@@ -607,6 +646,174 @@
           "idempotency_key"
         ],
         "title": "BatchOpportunityPrepareInput",
+        "type": "object"
+      },
+      "BatchOpportunityScreeningInput": {
+        "additionalProperties": false,
+        "description": "Versioned server-side filters for a KJDS-owned candidate batch.",
+        "properties": {
+          "excluded_category_flags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 30,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Category Flags"
+          },
+          "max_moq": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Moq"
+          },
+          "min_competitor_count": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Competitor Count"
+          },
+          "min_demand_proxy": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Demand Proxy"
+          },
+          "min_downside_cm3_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Downside Cm3 Rate"
+          },
+          "min_score": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Score"
+          },
+          "min_supplier_density": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Supplier Density"
+          },
+          "profile_id": {
+            "default": "evidence_first_v1",
+            "enum": [
+              "evidence_first_v1",
+              "lightweight_fast_mover_v1",
+              "competition_gap_v1",
+              "custom_v1"
+            ],
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "require_checkout_cost": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Require Checkout Cost"
+          },
+          "require_content_ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Require Content Ready"
+          },
+          "require_stockout_opportunity": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Require Stockout Opportunity"
+          },
+          "selection_target": {
+            "default": 50,
+            "enum": [
+              50,
+              100,
+              200,
+              500,
+              1000
+            ],
+            "title": "Selection Target",
+            "type": "integer"
+          }
+        },
+        "title": "BatchOpportunityScreeningInput",
         "type": "object"
       },
       "BestSolutionAssessmentInput": {
@@ -18670,6 +18877,58 @@
           }
         ],
         "summary": "Latest Batch Opportunities"
+      }
+    },
+    "/v1/batch-opportunities/{run_id}/kjds-item-master": {
+      "post": {
+        "operationId": "create_batch_kjds_item_master_candidates_v1_batch_opportunities__run_id__kjds_item_master_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchOpportunityItemMasterInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Create Batch Kjds Item Master Candidates"
       }
     },
     "/v1/browser-capture-inbox/preflight": {

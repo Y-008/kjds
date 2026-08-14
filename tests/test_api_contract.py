@@ -670,6 +670,10 @@ def test_marketplace_observation_and_portfolio_pilot_contracts_are_protected(
         ("/v1/portfolio-pilot/prepare", {"post"}),
         ("/v1/batch-market-scans", {"post"}),
         ("/v1/batch-opportunities/latest", {"get"}),
+        (
+            "/v1/batch-opportunities/{run_id}/kjds-item-master",
+            {"post"},
+        ),
         ("/v1/ozon-global-rules", {"get"}),
         ("/v1/ozon-global-rules/evaluate", {"post"}),
         ("/v1/seller-os/strategy-packs", {"get"}),
@@ -718,6 +722,12 @@ def test_marketplace_observation_and_portfolio_pilot_contracts_are_protected(
     ]
     pilot = schema["components"]["schemas"]["PortfolioPilotPrepareInput"]
     batch = schema["components"]["schemas"]["BatchOpportunityPrepareInput"]
+    screening = schema["components"]["schemas"][
+        "BatchOpportunityScreeningInput"
+    ]
+    item_master = schema["components"]["schemas"][
+        "BatchOpportunityItemMasterInput"
+    ]
     ozon_rules = schema["components"]["schemas"][
         "OzonGlobalRuleEvaluationInput"
     ]
@@ -728,6 +738,8 @@ def test_marketplace_observation_and_portfolio_pilot_contracts_are_protected(
     assert item["additionalProperties"] is False
     assert pilot["additionalProperties"] is False
     assert batch["additionalProperties"] is False
+    assert screening["additionalProperties"] is False
+    assert item_master["additionalProperties"] is False
     assert ozon_rules["additionalProperties"] is False
     assert seller_os["additionalProperties"] is False
     assert "observed_checkout_price" in item["properties"]["price_kind"][
@@ -737,6 +749,12 @@ def test_marketplace_observation_and_portfolio_pilot_contracts_are_protected(
         "source_profile"
     ]["enum"]
     assert set(batch["required"]) == {"idempotency_key"}
+    assert set(item_master["required"]) == {"idempotency_key"}
+    target_schema = screening["properties"]["selection_target"]
+    target_values = target_schema.get("enum") or target_schema.get(
+        "anyOf", [{}]
+    )[0].get("enum")
+    assert target_values == [50, 100, 200, 500, 1000]
     assert "confirmed" in capture["required"]
     assert "displayed_price" in item["required"]
     assert "target_specification" in pilot["required"]
@@ -760,6 +778,13 @@ def test_marketplace_observation_and_portfolio_pilot_contracts_are_protected(
         client.post(
             "/v1/batch-market-scans",
             json={"idempotency_key": "anonymous-batch"},
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/v1/batch-opportunities/bor-a/kjds-item-master",
+            json={"idempotency_key": "anonymous-item-master"},
         ).status_code
         == 401
     )
