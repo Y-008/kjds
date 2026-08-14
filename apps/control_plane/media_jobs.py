@@ -128,7 +128,7 @@ RESULT_RECEIPT_TERMINAL_STATES = frozenset(
 RESULT_RECEIPT_ADMITTED_STATES = frozenset({"SUCCEEDED"})
 RESULT_KIND_BY_STATE = {
     "SUCCEEDED": frozenset(
-        {"editing_blueprint_evidence", "video_artifact_evidence"}
+        {"editing_blueprint_evidence", "video_artifact_evidence", "tutorial_graph_and_media_evidence"}
     ),
     "FAILED": frozenset({"provider_failure"}),
     "UNKNOWN_OUTCOME": frozenset({"unknown_outcome_readback"}),
@@ -2850,7 +2850,7 @@ class GovernedMediaJobWorkspace:
             raise PermissionError(
                 "media_job_non_success_result_authority_not_admitted"
             )
-        if job.tool_name not in {"media.video_blueprint", "media.video_render"}:
+        if job.tool_name not in {"media.video_blueprint", "media.video_render", "tutorial.build"}:
             raise ValueError("media_job_result_tool_not_admitted")
         if receipt["provider"] != job.provider or receipt["connector_ref"] != job.connector_ref:
             raise ValueError("media_job_result_connector_drifted")
@@ -2867,6 +2867,10 @@ class GovernedMediaJobWorkspace:
             or (
                 job.tool_name == "media.video_render"
                 and result_kind != "video_artifact_evidence"
+            )
+            or (
+                job.tool_name == "tutorial.build"
+                and result_kind != "tutorial_graph_and_media_evidence"
             )
         ):
             raise ValueError("media_job_result_kind_invalid")
@@ -2907,6 +2911,12 @@ class GovernedMediaJobWorkspace:
             len(normalized_refs) != 1 or content_asset_ref is not None
         ):
             raise ValueError("media_job_result_blueprint_evidence_invalid")
+        if (
+            event.state == "SUCCEEDED"
+            and result_kind == "tutorial_graph_and_media_evidence"
+            and (len(normalized_refs) != 1 or content_asset_ref is not None)
+        ):
+            raise ValueError("media_job_result_tutorial_evidence_invalid")
         content = {
             "contract_id": RESULT_RECEIPT_CONTRACT,
             "provider": job.provider,

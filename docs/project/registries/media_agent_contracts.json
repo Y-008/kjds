@@ -165,16 +165,16 @@
         "version": "1.0.0",
         "owner_task": "BAS-187",
         "purpose": "Compile software feature nodes into a TutorialGraph and governed capture Job.",
-        "required_capabilities": ["tutorial_graph", "windows_capture"],
+        "required_capabilities": ["tutorial_graph", "structured_output"],
         "additional_allowed_inputs": ["application_ref", "feature_nodes", "capture_policy", "narration_profile"],
-        "accepted_providers": ["windows_agent"],
+        "accepted_providers": ["kjds_internal_tutorial_compiler"],
         "result_kind": "tutorial_graph_and_media_evidence",
-        "external_side_effect": "approved_local_application_control_only",
+        "external_side_effect": "internal_deterministic_compile_only",
         "state": "job_intake_only",
         "cost_upper_bound": {
-          "amount_minor": 1500,
+          "amount_minor": 0,
           "currency": "USD",
-          "basis": "engineering_dispatch_ceiling_not_invoice"
+          "basis": "internal_deterministic_compiler_no_provider_charge"
         }
       }
     ]
@@ -266,7 +266,7 @@
     "contract_id": "kjds-media-connector-descriptor-v1",
     "owner_task": "BAS-181",
     "deployment_modes": ["customer_local", "hosted_isolated"],
-    "providers": ["codex_oauth", "comfyui", "ffmpeg", "kjds_internal_blueprint_compiler", "remotion", "windows_agent"],
+    "providers": ["codex_oauth", "comfyui", "ffmpeg", "kjds_internal_blueprint_compiler", "kjds_internal_tutorial_compiler", "remotion", "windows_agent"],
     "health_states": ["ENROLLING", "READY", "BUSY", "LOGIN_REQUIRED", "LIMITED", "OFFLINE", "ERROR", "REVOKED"],
     "allowed_record_fields": [
       "connector_ref",
@@ -303,6 +303,24 @@
         "binding_sha256": "9efaed15669de37606902e0473e798323f3b2018655bf3a7d51058c15fa1a4c8",
         "protocol_version": "kjds-internal-blueprint-compiler/1",
         "capabilities": ["vision", "structured_output"],
+        "deterministic": true,
+        "external_call": false,
+        "credential_required": false,
+        "cost_upper_bound": {
+          "amount_minor": 0,
+          "currency": "USD",
+          "basis": "internal_deterministic_compiler_no_provider_charge"
+        },
+        "enrollment_allowed": false,
+        "automatic_retry": false,
+        "automatic_failover": false
+      },
+      "kjds_internal_tutorial_compiler": {
+        "provider": "kjds_internal_tutorial_compiler",
+        "connector_ref": "internal://tutorial-graph-compiler-v1",
+        "binding_sha256": "d0a0eb549be5a81cadb249bac37efce7a71768d49898c0c690dd7fd745f01a79",
+        "protocol_version": "kjds-internal-tutorial-compiler/1",
+        "capabilities": ["tutorial_graph", "structured_output"],
         "deterministic": true,
         "external_call": false,
         "credential_required": false,

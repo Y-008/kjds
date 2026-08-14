@@ -1,0 +1,42 @@
+{
+  "schema_version": "kjds-tutorial-graph-contracts-v1",
+  "as_of": "2026-08-14",
+  "status": "contract_and_deterministic_compile_only_not_production_admitted",
+  "owner_task": "BAS-187",
+  "module_interface": "GovernedTutorialGraphWorkspace.compile(application_ref, feature_nodes, capture_policy, narration_profile, idempotency_key)",
+  "job_truth_owner": "GovernedMediaJobWorkspace",
+  "artifact_truth_owner": "ContentAsset/Evidence",
+  "graph_contract": {
+    "contract_id": "kjds-tutorial-graph-v1",
+    "version": "1.0.0",
+    "allowed_operations": ["click", "type", "navigate", "observe", "screenshot", "scroll"],
+    "sensitive_region_labels": ["credential_input", "browser_profile", "local_storage", "payment_input"],
+    "raw_credential_or_blob_allowed": false,
+    "fact_finance_approval_permit_allowed": false,
+    "external_write_allowed": false,
+    "listing_eligible": false
+  },
+  "capture_contract": {
+    "contract_id": "kjds-tutorial-capture-manifest-v1",
+    "version": "1.0.0",
+    "provider": "windows_agent",
+    "windows_capture_admitted": false,
+    "mask_by_default": true,
+    "real_desktop_capture": "not_admitted",
+    "screenshot_placeholder_only": true,
+    "automatic_retry": false,
+    "automatic_failover": false
+  },
+  "execution_admission": {
+    "internal_deterministic_compiler": true,
+    "single_job_truth": "GovernedMediaJobWorkspace",
+    "production_admitted": false,
+    "representative_live_capture_verified": false,
+    "external_write_allowed": false
+  },
+  "result_readback": {
+    "unknown_outcome": "not_admitted",
+    "non_success_terminal_authority": "not_admitted",
+    "listing_eligible_before_existing_media_qa": false
+  }
+}

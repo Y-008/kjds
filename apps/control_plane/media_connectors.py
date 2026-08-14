@@ -41,14 +41,16 @@ REGISTERABLE_CONNECTOR_PROVIDERS = frozenset(
 )
 INTERNAL_BLUEPRINT_PROVIDER = "kjds_internal_blueprint_compiler"
 RUNTIME_FFMPEG_PROVIDER = "ffmpeg"
+INTERNAL_TUTORIAL_PROVIDER = "kjds_internal_tutorial_compiler"
 CONTRACT_PROVIDERS = REGISTERABLE_CONNECTOR_PROVIDERS | frozenset(
-    {INTERNAL_BLUEPRINT_PROVIDER}
+    {INTERNAL_BLUEPRINT_PROVIDER, INTERNAL_TUTORIAL_PROVIDER}
 )
 CONTRACT_PROVIDER_SEQUENCE = (
     "codex_oauth",
     "comfyui",
     "ffmpeg",
     INTERNAL_BLUEPRINT_PROVIDER,
+    INTERNAL_TUTORIAL_PROVIDER,
     "remotion",
     "windows_agent",
 )
@@ -359,6 +361,7 @@ class MediaConnectorContract:
         descriptors = connector.get("runtime_owned_provider_descriptors")
         if not isinstance(descriptors, Mapping) or set(descriptors) != {
             INTERNAL_BLUEPRINT_PROVIDER,
+            INTERNAL_TUTORIAL_PROVIDER,
             RUNTIME_FFMPEG_PROVIDER,
         }:
             raise RuntimeError("Runtime-owned media provider inventory drifted")
@@ -384,6 +387,15 @@ class MediaConnectorContract:
                 ).hexdigest(),
                 "protocol_version": "kjds-internal-blueprint-compiler/1",
                 "capabilities": ["vision", "structured_output"],
+                "cost_basis": "internal_deterministic_compiler_no_provider_charge",
+            },
+            INTERNAL_TUTORIAL_PROVIDER: {
+                "connector_ref": "internal://tutorial-graph-compiler-v1",
+                "binding_sha256": hashlib.sha256(
+                    b"kjds-internal-tutorial-graph-compiler-v1"
+                ).hexdigest(),
+                "protocol_version": "kjds-internal-tutorial-compiler/1",
+                "capabilities": ["tutorial_graph", "structured_output"],
                 "cost_basis": "internal_deterministic_compiler_no_provider_charge",
             },
             RUNTIME_FFMPEG_PROVIDER: {
@@ -466,7 +478,7 @@ class MediaConnectorContract:
             ):
                 raise RuntimeError("Media provider tool contract drifted")
             accepted.update(providers)
-            if tool.get("name") in {"media.video_blueprint", "media.video_render"}:
+            if tool.get("name") in {"media.video_blueprint", "media.video_render", "tutorial.build"}:
                 runtime_tools[tool["name"]] = tool
         if not accepted.issubset(CONTRACT_PROVIDERS):
             raise RuntimeError("Media provider coverage drifted")
@@ -474,6 +486,11 @@ class MediaConnectorContract:
             "media.video_blueprint": (
                 INTERNAL_BLUEPRINT_PROVIDER,
                 ["vision", "structured_output"],
+                "internal_deterministic_compile_only",
+            ),
+            "tutorial.build": (
+                INTERNAL_TUTORIAL_PROVIDER,
+                ["tutorial_graph", "structured_output"],
                 "internal_deterministic_compile_only",
             ),
             "media.video_render": (

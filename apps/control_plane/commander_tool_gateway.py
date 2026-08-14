@@ -13,6 +13,7 @@ from typing import Any
 from .agent_harness import AgentHarnessService
 from .media_connectors import (
     INTERNAL_BLUEPRINT_PROVIDER,
+    INTERNAL_TUTORIAL_PROVIDER,
     RUNTIME_FFMPEG_PROVIDER,
     MediaConnectorContract,
 )
@@ -28,7 +29,7 @@ from .media_jobs import (
 from .security import Principal
 
 MEDIA_AGENT_REGISTRY_CONTENT_SHA256 = (
-    "a14e57cc61ba2840aa94a1747cff6da82b2b9b6421c0c5a2bb4bf12bbdffe075"
+    "4173ee333f6f75d3fab1043b49c95d8a869fd83ac0bc7305fdb245410c48d342"
 )
 GATEWAY_CONTRACT_ID = "kjds-commander-tool-gateway-v1"
 GATEWAY_CONTRACT_VERSION = "1.0.0"
@@ -252,6 +253,11 @@ class CommanderToolGateway:
         self.ffmpeg_provider = self.media_connector_contract.internal_runtime_provider(
             RUNTIME_FFMPEG_PROVIDER
         )
+        self.tutorial_provider = (
+            self.media_connector_contract.internal_runtime_provider(
+                INTERNAL_TUTORIAL_PROVIDER
+            )
+        )
 
     def _registry(self) -> dict[str, Any]:
         try:
@@ -358,6 +364,7 @@ class CommanderToolGateway:
             runtime_owned = {
                 "media.video_blueprint": self.blueprint_provider,
                 "media.video_render": self.ffmpeg_provider,
+                "tutorial.build": self.tutorial_provider,
             }.get(item["name"])
             runtime_owned_admitted = (
                 runtime_owned is not None

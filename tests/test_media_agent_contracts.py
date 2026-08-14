@@ -182,6 +182,15 @@ def test_runtime_owned_tool_and_provider_descriptors_have_exact_parity() -> None
             "protocol_version": "kjds-internal-blueprint-compiler/1",
             "external_side_effect": "internal_deterministic_compile_only",
         },
+        "kjds_internal_tutorial_compiler": {
+            "tool": "tutorial.build",
+            "connector_ref": "internal://tutorial-graph-compiler-v1",
+            "binding_sha256": (
+                "d0a0eb549be5a81cadb249bac37efce7a71768d49898c0c690dd7fd745f01a79"
+            ),
+            "protocol_version": "kjds-internal-tutorial-compiler/1",
+            "external_side_effect": "internal_deterministic_compile_only",
+        },
         "ffmpeg": {
             "tool": "media.video_render",
             "connector_ref": "internal://local-ffmpeg-renderer-v1",

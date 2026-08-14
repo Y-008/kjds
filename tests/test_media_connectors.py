@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 from apps.control_plane.media_connectors import (
     CONTRACT_ID,
     INTERNAL_BLUEPRINT_PROVIDER,
+    INTERNAL_TUTORIAL_PROVIDER,
     REGISTERABLE_CONNECTOR_PROVIDERS,
     ZERO_SHA256,
     MediaConnectorConflictError,
@@ -125,6 +126,33 @@ def test_internal_blueprint_provider_descriptor_is_deterministic_zero_external_z
     assert descriptor.enrollment_allowed is False
     assert descriptor.automatic_retry is False
     assert descriptor.automatic_failover is False
+
+
+def test_internal_tutorial_provider_descriptor_is_deterministic_zero_external_zero_cost():
+    contract = MediaConnectorContract()
+    descriptor = contract.internal_runtime_provider(INTERNAL_TUTORIAL_PROVIDER)
+
+    assert descriptor.provider == INTERNAL_TUTORIAL_PROVIDER
+    assert descriptor.connector_ref == "internal://tutorial-graph-compiler-v1"
+    assert descriptor.binding_sha256 == hashlib.sha256(
+        b"kjds-internal-tutorial-graph-compiler-v1"
+    ).hexdigest()
+    assert descriptor.protocol_version == "kjds-internal-tutorial-compiler/1"
+    assert descriptor.capabilities == frozenset(
+        {"tutorial_graph", "structured_output"}
+    )
+    assert descriptor.deterministic is True
+    assert descriptor.external_call is False
+    assert descriptor.credential_required is False
+    assert descriptor.cost_amount_minor == 0
+    assert descriptor.cost_currency == "USD"
+    assert descriptor.cost_basis == (
+        "internal_deterministic_compiler_no_provider_charge"
+    )
+    assert descriptor.enrollment_allowed is False
+    assert descriptor.automatic_retry is False
+    assert descriptor.automatic_failover is False
+    assert INTERNAL_TUTORIAL_PROVIDER not in REGISTERABLE_CONNECTOR_PROVIDERS
 
 
 def test_runtime_ffmpeg_descriptor_is_fixed_local_zero_external_zero_cost():
