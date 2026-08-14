@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, integration/pony-full-20260807]
   push:
-    branches: [main]
+    branches: [main, integration/pony-full-20260807]
 
 permissions:
   contents: read
@@ -12,6 +12,10 @@ permissions:
 jobs:
   backend-quality:
     runs-on: ubuntu-latest
+    env:
+      KJDS_REPOSITORY: memory
+      KJDS_STRATEGIC_BENCHMARK_SEALING_KEY: "0123456789abcdef0123456789abcdef"
+      KJDS_API_KEY: "ci-test-key"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,12 +61,6 @@ jobs:
           --health-interval 3s
           --health-timeout 3s
           --health-retries 20
-    env:
-      KJDS_DATABASE_URL: postgresql+psycopg://hermes:hermes_dev@127.0.0.1:5432/hermes
-      KJDS_DATABASE_PROVIDER: local-postgres
-      KJDS_REPOSITORY: postgres
-      KJDS_SHADOW_MODE: "true"
-      KJDS_LIMITED_EXECUTION_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -72,12 +70,29 @@ jobs:
       - run: uv sync --extra dev --locked
       - name: Verify one migration head
         run: test "$(uv run python -m alembic heads | grep -c '(head)')" -eq 1
+      - name: Bootstrap disposable G-1 PostgreSQL resources
+        run: bash scripts/ci-postgres-bootstrap.sh
       - run: uv run python -m alembic upgrade head
+      - run: uv run python scripts/manage_g1_database.py grant-runtime
       - name: Verify media connector PostgreSQL contracts
         run: >-
           uv run pytest -q -p no:cacheprovider
           --basetemp=.runtime/pytest-media-connectors-postgres
           tests/test_media_connectors_postgres.py
+      - name: Prepare PostgreSQL API contract basetemp
+        run: mkdir -p .runtime/pytest-api-contracts-postgres
+      - name: Verify PostgreSQL API contract suites
+        run: >-
+          uv run pytest -q -p no:cacheprovider
+          --basetemp=.runtime/pytest-api-contracts-postgres
+          tests/test_api_contract.py
+          tests/test_catalog_read_run_handoff.py
+          tests/test_channel_accounts_api.py
+          tests/test_intelligence_ingestion.py
+          tests/test_native_parity_acceptance_api.py
+          tests/test_scoped_batch_opportunity.py
+          tests/test_scoped_marketplace_catalog.py
+          tests/test_scoped_read_only_pilots.py
       - name: Verify API readiness
         shell: bash
         run: |
