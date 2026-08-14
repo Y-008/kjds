@@ -63,7 +63,8 @@
           "enterprise_positioning_contract",
           "control_plane_api",
           "team_control_web",
-          "board_operating_documents"
+          "board_operating_documents",
+          "bas222_absorbed_evidence_currentness"
         ],
         "blocked_on": []
       },

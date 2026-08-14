@@ -21,6 +21,7 @@ BAS223_TASK = {
         "control_plane_api",
         "team_control_web",
         "board_operating_documents",
+        "bas222_absorbed_evidence_currentness",
     ],
     "blocked_on": [],
 }
@@ -550,7 +551,7 @@ def test_bas220_release_records_exact_currentness_scope_and_gates():
     assert row.endswith("| DONE_ENGINEERING |")
 
 
-def test_bas223_owner_correct_claim_survives_bas220_release():
+def test_bas223_exact19_expansion_absorbs_obsolete_bas222_contract():
     registry = _registry()
     lanes = {lane["id"]: lane for lane in registry["lanes"]}
 
@@ -568,8 +569,33 @@ def test_bas223_owner_correct_claim_survives_bas220_release():
     for lease in ("api_aggregation_root", "master_spec", "openapi_snapshot"):
         assert f"`{lease}`" in row
     assert "不占 migration" in row
-    assert "不改变 BAS-220 当前任务" in row
-    assert "不新增或宣称 BAS-221/BAS-222 状态" in row
+    assert "BAS-222 旧 v1 不独立提交" in row
+    assert "BR-149 覆盖 BR-148" in row
+    assert "`role-template://`" in row
+    assert "`unsupported_gap`" in row
+    assert "不改 DB/migration" in row
+    for path in (
+        "apps/control_plane/enterprise_positioning.py",
+        "docs/project/registries/enterprise_positioning_profiles.json",
+        "tests/test_enterprise_positioning.py",
+        "docs/project/evidence/20260814_BAS_222_ENTERPRISE_POSITIONING_TEST_ROLES.md",
+        "apps/control_plane/api.py",
+        "apps/control_plane/api_contracts.py",
+        "apps/control_plane/routers/system.py",
+        "apps/control_plane/runtime.py",
+        "tests/test_enterprise_positioning_api.py",
+        "docs/project/contracts/openapi-v1.json",
+        "web/features/team-control-tower/contracts.ts",
+        "web/features/team-control-tower/team-control-tower.module.css",
+        "web/features/team-control-tower/team-control-tower.tsx",
+        "web/lib/team-control-tower-contract.test.ts",
+        "docs/project/MASTER_SPEC.md",
+        "docs/adr/ADR-0098-board-reset-and-enterprise-role-composition-v2.md",
+        "docs/project/22_BOARD_STRATEGY_AND_90_DAY_OPERATING_PLAN.md",
+        "docs/project/README.md",
+        "docs/project/evidence/20260814_BAS_223_BOARD_RESET_ENTERPRISE_POSITIONING_V2.md",
+    ):
+        assert f"`{path}`" in row
     assert row.endswith("| IN_PROGRESS |")
 
 
