@@ -5,16 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchJson } from "../../lib/fetch-json";
 import styles from "./browser-capture-inbox.module.css";
 
-type PriceTier = {
-  minimum_quantity: number;
-  price: string;
-};
-
 type Envelope = {
-  contract_version:
-    | "kjds-browser-capture-envelope/1.0"
-    | "kjds-browser-capture-envelope/1.1"
-    | "kjds-browser-capture-envelope/1.2";
+  contract_version: "kjds-browser-capture-envelope/1.0";
   source_profile: "browser_observation";
   marketplace: "1688" | "ozon";
   store_ref: string;
@@ -25,28 +17,9 @@ type Envelope = {
     title: string;
     canonical_url: string | null;
     language: string | null;
-    extractor_version:
-      | "kjds-visible-dom/1.0"
-      | "kjds-visible-dom/1.1"
-      | "kjds-visible-dom/1.2";
+    extractor_version: "kjds-visible-dom/1.0";
     capture_mode: "active_tab_visible_dom";
-    capture_kind?:
-      | "product_detail_variant_matrix"
-      | "search_result_candidates"
-      | "store_catalog_candidates"
-      | "generic_product";
-    provider_id?: string | null;
-    provider_version?: string | null;
-    structured_data_source?: string | null;
-    search_query?: string | null;
-    capture_coverage?: Record<string, unknown>;
   };
-  merchant?: {
-    supplier_ref: string;
-    company_name: string | null;
-    login_id: string | null;
-    public_signals: Record<string, unknown>;
-  } | null;
   items: Array<{
     external_item_id: string;
     supplier_ref: string;
@@ -60,163 +33,16 @@ type Envelope = {
     availability: string;
     specifications: Record<string, string>;
     product_identity: Record<string, string>;
-    comparison_dimensions?: Record<string, string>;
-    comparison_key_sha256?: string | null;
     observed_quantity?: number | null;
     checkout_verified?: boolean;
     tax_included?: boolean | null;
     domestic_freight_included?: boolean | null;
     purchase_available?: boolean;
     confidence?: string;
-    market_signals?: Record<string, unknown>;
     supply_signals?: Record<string, unknown>;
-    price_tiers?: PriceTier[];
     media_rights_status: "unverified_external_reference";
   }>;
   confirmed: true;
-};
-
-type VariantSummary = {
-  external_item_id: string;
-  currency: string;
-  variant_count: number;
-  minimum_unit_price: string;
-  maximum_unit_price: string;
-  minimum_variants: Array<{
-    sku_id: string | null;
-    spec_id: string | null;
-    variant_key: string;
-    unit_price: string;
-  }>;
-  comparison_groups: Array<{
-    status: "comparable" | "requires_dimension_alignment";
-    comparison_dimensions: Record<string, string>;
-    item_count: number;
-    minimum_unit_price: string;
-    maximum_unit_price: string;
-  }>;
-};
-
-type ErpStaging = {
-  contract_id: string;
-  status: string;
-  row_count: number;
-  exact_variant_count: number;
-  rows: Array<{
-    staging_key: string;
-    mapping_status: "exact_variant_staged" | "requires_detail_enrichment";
-    marketplace: string;
-    supplier_ref: string;
-    supplier_public_profile: Envelope["merchant"];
-    offer_id: string;
-    sku_id: string | null;
-    spec_id: string | null;
-    variant_key: string;
-    title: string;
-    product_identity: Record<string, string>;
-    displayed_price: string;
-    price_scope: "unit_price" | "checkout_total";
-    unit_price: string;
-    currency: string;
-    price_kind: string;
-    price_contract: string;
-    price_tiers: PriceTier[];
-    min_order_quantity: number | null;
-    availability: string;
-    specifications: Record<string, string>;
-    comparison_dimensions: Record<string, string>;
-    comparison_key_sha256: string | null;
-    observed_quantity: number | null;
-    checkout_verified: boolean;
-    tax_included: boolean | null;
-    domestic_freight_included: boolean | null;
-    purchase_available: boolean;
-    confidence: string;
-    market_signals: Record<string, unknown>;
-    supply_signals: Record<string, unknown>;
-    experiment_readbacks: Record<string, unknown>;
-    target_product_id: string | null;
-    target_offer_id: string | null;
-    media_rights_status: "unverified_external_reference";
-    image_references: string[];
-    source_gaps: string[];
-    source_observed_at: string;
-    source_capture: {
-      capture_kind: string;
-      provider_id: string | null;
-      provider_version: string | null;
-      structured_data_source: string | null;
-      capture_coverage: Record<string, unknown>;
-    };
-    source_url: string;
-    item_sha256: string;
-    source_observation: Envelope["items"][number];
-  }>;
-  formal_product_write: false;
-  supplier_offer_write: false;
-  external_write: false;
-};
-
-type SourcingComparison = {
-  contract_id:
-    | "kjds-sourcing-comparison/1.0"
-    | "kjds-sourcing-comparison/1.1";
-  status: "comparable" | "requires_more_exact_offers" | "no_data";
-  reference_quantity: number;
-  latest_exact_offer_count: number;
-  candidate_capture_count: number;
-  candidate_row_count: number;
-  excluded_capture_count: number;
-  supplier_drift_offer_count: number;
-  unresolved_exact_row_count: number;
-  groups: Array<{
-    comparison_group_sha256: string;
-    marketplace: string;
-    currency: string;
-    price_basis: string;
-    comparison_dimensions: Record<string, string>;
-    status: "comparable" | "insufficient_exact_offers";
-    exact_offer_count: number;
-    exact_row_count: number;
-    eligible_offer_count: number;
-    eligible_row_count: number;
-    minimum_eligible_unit_price: string | null;
-    lowest_rows: SourcingComparisonRow[];
-    rows: SourcingComparisonRow[];
-  }>;
-  formal_cost_created: false;
-  freight_included: false;
-  tax_included: false;
-  external_write: false;
-};
-
-type SourcingComparisonRow = {
-  capture_id: string;
-  supplier_ref: string;
-  offer_id: string;
-  sku_id: string;
-  spec_id: string;
-  variant_key: string;
-  unit_price: string;
-  effective_unit_price: string | null;
-  effective_price_source:
-    | "captured_public_unit_price"
-    | "public_price_tier"
-    | "no_public_price_tier_for_quantity";
-  applied_price_tier_minimum_quantity: number | null;
-  price_tiers: PriceTier[];
-  currency: string;
-  min_order_quantity: number | null;
-  availability: string;
-  eligibility:
-    | "eligible_public_display_price"
-    | "reference_quantity_below_moq"
-    | "quantity_price_unverified"
-    | "moq_unverified"
-    | "out_of_stock"
-    | "availability_unverified"
-    | "price_basis_not_public_unit";
-  source_url: string;
 };
 
 type Blocker = {
@@ -246,8 +72,6 @@ type Preflight = {
       semantic_authority: string;
       source_grade: string;
     };
-    variant_summary: VariantSummary[];
-    erp_staging: ErpStaging;
   };
   promotion_readiness: {
     status: "no_data" | "blocked";
@@ -290,10 +114,6 @@ type Submission = {
   };
   item_count: number;
   items: Envelope["items"];
-  page?: Envelope["page"];
-  merchant?: Envelope["merchant"];
-  variant_summary?: VariantSummary[];
-  erp_staging?: ErpStaging;
   promotion_readiness: {
     status: "ready" | "blocked" | "no_data";
     source_gaps: string[];
@@ -306,7 +126,6 @@ type Submission = {
 type Inbox = {
   status: "ready" | "partial" | "no_data";
   items: Submission[];
-  sourcing_comparison: SourcingComparison;
   counts: {
     total: number;
     quarantined: number;
@@ -390,8 +209,6 @@ export function BrowserCaptureInboxConsole() {
     "loading" | "idle" | "preflighting" | "saving" | "saved" | "error"
   >("loading");
   const [detail, setDetail] = useState<string | null>(null);
-  const [referenceQuantity, setReferenceQuantity] = useState(1);
-  const [referenceQuantityDraft, setReferenceQuantityDraft] = useState("1");
   const [extensionId, setExtensionId] = useState<string | null | undefined>(
     undefined,
   );
@@ -403,11 +220,11 @@ export function BrowserCaptureInboxConsole() {
 
   const loadInbox = useCallback(async () => {
     const response = await fetchJson<Inbox>(
-      `/backend/v1/browser-capture-inbox/submissions?store_ref=${encodeURIComponent(STORE_REF)}&reference_quantity=${referenceQuantity}`,
+      `/backend/v1/browser-capture-inbox/submissions?store_ref=${encodeURIComponent(STORE_REF)}`,
       { cache: "no-store" },
     );
     setInbox(await responsePayload<Inbox>(response));
-  }, [referenceQuantity]);
+  }, []);
 
   useEffect(() => {
     if (extensionId === undefined) return;
@@ -500,11 +317,6 @@ export function BrowserCaptureInboxConsole() {
   };
 
   const item = preflight?.normalized.items[0] ?? envelope?.items[0] ?? null;
-  const previewItems = preflight?.normalized.items ?? envelope?.items ?? [];
-  const summary = preflight?.normalized.variant_summary?.[0] ?? null;
-  const erpStaging = preflight?.normalized.erp_staging ?? null;
-  const coverage = preflight?.normalized.page.capture_coverage
-    ?? envelope?.page.capture_coverage ?? {};
 
   return (
     <main className={styles.page}>
@@ -577,8 +389,6 @@ export function BrowserCaptureInboxConsole() {
                 <div><dt>观察价格</dt><dd>{item.displayed_price} {item.currency}</dd></div>
                 <div><dt>价义</dt><dd>{item.price_kind} / {item.price_scope}</dd></div>
                 <div><dt>MOQ / 数量</dt><dd>{item.min_order_quantity ?? "unknown"} / {item.observed_quantity ?? "not observed"}</dd></div>
-                <div><dt>采集类型</dt><dd>{preflight?.normalized.page.capture_kind ?? envelope?.page.capture_kind ?? "generic_product"}</dd></div>
-                <div><dt>覆盖</dt><dd>{String(coverage.captured_count ?? previewItems.length)} / {String(coverage.discovered_count ?? previewItems.length)}{coverage.truncated ? " · truncated" : ""}</dd></div>
               </dl>
             </article>
           ) : (
@@ -586,69 +396,12 @@ export function BrowserCaptureInboxConsole() {
               在允许的 1688/Ozon 商品页点击 KJDS 浏览器助手；也可粘贴一个受控 envelope 做本地验收。
             </div>
           )}
-          {previewItems.length ? (
-            <section className={styles.variantMatrix} aria-label="SKU 与价格一一对应矩阵">
-              <div>
-                <strong>SKU / SPEC / PRICE MATRIX</strong>
-                <span>{previewItems.length} 行 · 不跨规格补值</span>
-              </div>
-              <div className={styles.tableScroll}>
-                <table>
-                  <thead><tr><th>Offer</th><th>SKU / Spec</th><th>规格</th><th>价格</th><th>库存 / 销量信号</th><th>ERP 映射</th></tr></thead>
-                  <tbody>
-                    {previewItems.map((row) => {
-                      const mapping = erpStaging?.rows.find(
-                        (entry) => entry.offer_id === row.external_item_id
-                          && entry.sku_id === (row.product_identity.sku_id ?? null)
-                          && entry.spec_id === (row.product_identity.spec_id ?? null),
-                      );
-                      return (
-                        <tr key={`${row.external_item_id}:${row.product_identity.sku_id ?? row.variant_key}`}>
-                          <td><code>{row.external_item_id}</code></td>
-                          <td><code>{row.product_identity.sku_id ?? "unknown"}</code><small>{row.product_identity.spec_id ?? "unknown"}</small></td>
-                          <td>{row.variant_key}<small>{Object.entries(row.comparison_dimensions ?? {}).map(([key, value]) => `${key}=${value}`).join(" · ") || "comparison dimensions missing"}</small></td>
-                          <td>
-                            <strong>{row.displayed_price} {row.currency}</strong>
-                            <small>{row.price_kind}</small>
-                            <small>
-                              {(row.price_tiers ?? []).map((tier) => `${tier.minimum_quantity}+=${tier.price}`).join(" · ") || "no explicit tiers"}
-                            </small>
-                          </td>
-                          <td><span>{String(row.supply_signals?.stock_count ?? "unknown")} / {String(row.market_signals?.sku_sale_count_signal ?? "unknown")}</span></td>
-                          <td data-state={mapping?.mapping_status ?? "pending_preflight"}>
-                            {mapping?.mapping_status ?? "pending_preflight"}
-                            {mapping ? (
-                              <small>
-                                ERP: MOQ={mapping.min_order_quantity ?? "unknown"}
-                                {` · ${mapping.availability}`}
-                                {` · stock=${String(mapping.supply_signals.stock_count ?? "unknown")}`}
-                                {` · sales=${String(mapping.market_signals.sku_sale_count_signal ?? "unknown")}`}
-                                {` · tiers=${mapping.price_tiers.map((tier) => `${tier.minimum_quantity}+=${tier.price}`).join("/") || "not observed"}`}
-                              </small>
-                            ) : null}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {summary ? (
-                <div className={styles.summaryStrip}>
-                  <span>服务端最低价 <strong>{summary.minimum_unit_price} {summary.currency}</strong></span>
-                  <span>对应 SKU <strong>{summary.minimum_variants.map((entry) => entry.sku_id ?? "unknown").join(", ")}</strong></span>
-                  <span>可比组 <strong>{summary.comparison_groups.length}</strong></span>
-                  <span>ERP 暂存 <strong>{erpStaging?.exact_variant_count ?? 0}/{erpStaging?.row_count ?? previewItems.length}</strong></span>
-                </div>
-              ) : null}
-            </section>
-          ) : null}
           <label className={styles.raw}>
             <span>受控 envelope JSON</span>
             <textarea
               value={rawEnvelope}
               onChange={(event) => setRawEnvelope(event.target.value)}
-              placeholder="等待浏览器助手，或粘贴 kjds-browser-capture-envelope/1.2"
+              placeholder="等待浏览器助手，或粘贴 kjds-browser-capture-envelope/1.0"
             />
           </label>
           <div className={styles.actions}>
@@ -713,95 +466,6 @@ export function BrowserCaptureInboxConsole() {
           <div><span>可申请晋级</span><strong>{inbox?.counts.ready_for_promotion ?? 0}</strong></div>
           <div><span>已晋级</span><strong>0</strong></div>
         </div>
-        {inbox?.sourcing_comparison ? (
-          <section className={styles.comparisonWorkspace} aria-label="跨供应商同维度比价">
-            <div className={styles.sectionHeading}>
-              <div>
-                <p>SOURCING COMPARISON · QTY {inbox.sourcing_comparison.reference_quantity}</p>
-                <h2>跨供应商同维度比价</h2>
-              </div>
-              <div className={styles.comparisonActions}>
-                <form onSubmit={(event) => {
-                  event.preventDefault();
-                  const parsed = Number(referenceQuantityDraft);
-                  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1_000_000) {
-                    setDetail("采购比价数量必须是 1–1000000 的整数");
-                    setState("error");
-                    return;
-                  }
-                  setDetail(null);
-                  if (parsed === referenceQuantity) {
-                    loadInbox().catch((error: unknown) => {
-                      setDetail(error instanceof Error ? error.message : "比价刷新失败");
-                      setState("error");
-                    });
-                    return;
-                  }
-                  setReferenceQuantity(parsed);
-                }}>
-                  <label htmlFor="sourcing-reference-quantity">采购数量</label>
-                  <input
-                    id="sourcing-reference-quantity"
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    max={1_000_000}
-                    step={1}
-                    value={referenceQuantityDraft}
-                    onChange={(event) => setReferenceQuantityDraft(event.target.value)}
-                  />
-                  <button type="submit">按数量比价</button>
-                </form>
-                <strong data-state={inbox.sourcing_comparison.status}>
-                  {inbox.sourcing_comparison.status}
-                </strong>
-              </div>
-            </div>
-            <div className={styles.comparisonMetrics}>
-              <span>最新详情 offer <strong>{inbox.sourcing_comparison.latest_exact_offer_count}</strong></span>
-              <span>待展开候选 <strong>{inbox.sourcing_comparison.candidate_row_count}</strong></span>
-              <span>缺关键维度 SKU <strong>{inbox.sourcing_comparison.unresolved_exact_row_count}</strong></span>
-              <span>供应商漂移 offer <strong>{inbox.sourcing_comparison.supplier_drift_offer_count}</strong></span>
-              <span>运费 / 税 <strong>未计入 / 未计入</strong></span>
-            </div>
-            {!inbox.sourcing_comparison.groups.length ? (
-              <div className={styles.empty}>先采集候选详情的完整 SKU 矩阵；搜索卡价格不进入最低价排行。</div>
-            ) : (
-              <div className={styles.comparisonGroups}>
-                {inbox.sourcing_comparison.groups.map((group) => (
-                  <details key={group.comparison_group_sha256} open={group.status === "comparable"}>
-                    <summary>
-                      <span>{Object.entries(group.comparison_dimensions).map(([key, value]) => `${key}=${value}`).join(" · ")}</span>
-                      <strong>{group.minimum_eligible_unit_price ?? "no eligible price"} {group.currency}</strong>
-                      <b>{group.eligible_offer_count}/{group.exact_offer_count} offer 可参与</b>
-                    </summary>
-                    <div className={styles.tableScroll}>
-                      <table>
-                        <thead><tr><th>供应商 / Offer</th><th>SKU / Spec</th><th>规格</th><th>采集价 / 数量价</th><th>完整阶梯价</th><th>MOQ / 库存</th><th>资格</th></tr></thead>
-                        <tbody>
-                          {group.rows.map((row) => (
-                            <tr key={`${row.capture_id}:${row.sku_id}:${row.spec_id}`}>
-                              <td>{row.supplier_ref}<small>{row.offer_id}</small></td>
-                              <td><code>{row.sku_id}</code><small>{row.spec_id}</small></td>
-                              <td>{row.variant_key}</td>
-                              <td>
-                                <strong>{row.unit_price} / {row.effective_unit_price ?? "unverified"} {row.currency}</strong>
-                                <small>{row.effective_price_source}{row.applied_price_tier_minimum_quantity ? ` · tier ${row.applied_price_tier_minimum_quantity}+` : ""}</small>
-                              </td>
-                              <td>{row.price_tiers.map((tier) => `${tier.minimum_quantity}+=${tier.price}`).join(" · ") || "not observed"}</td>
-                              <td>{row.min_order_quantity ?? "unknown"} / {row.availability}</td>
-                              <td data-state={row.eligibility}>{row.eligibility}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </details>
-                ))}
-              </div>
-            )}
-          </section>
-        ) : null}
         {!inbox?.items.length ? (
           <div className={styles.empty}>no_data · 尚无当前 tenant/store 的浏览器采集 Evidence。</div>
         ) : (

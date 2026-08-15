@@ -155,7 +155,7 @@ function money(value: string | null, currency = "CNY") {
 
 export function PortfolioPilotPanel() {
   const searchParams = useSearchParams();
-  const storeRef = searchParams?.get("store_ref")?.trim() || "ozon-primary";
+  const storeRef = searchParams.get("store_ref")?.trim() || "ozon-primary";
   const [observations, setObservations] = useState<Observation[]>([]);
   const [candidateScoringAllowed, setCandidateScoringAllowed] = useState(false);
   const [pilot, setPilot] = useState<PilotView | null>(null);

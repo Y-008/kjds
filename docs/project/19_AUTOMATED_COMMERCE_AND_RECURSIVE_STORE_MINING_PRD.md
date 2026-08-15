@@ -7,7 +7,7 @@
 | product owner | 经营负责人 |
 | first market | Russia / Ozon |
 | source channels | 1688 first；Pinduoduo、闲鱼等经独立 Provider 准入 |
-| architecture | Ponytail full；KJDS 原生 Product/PIM/Commerce OS 是真源，外部 ERP 仅为可选出口 |
+| architecture | Ponytail full；复用现有 Product/Evidence/Profit/Listing/ERP |
 
 ## 1. 产品结果
 
@@ -69,17 +69,6 @@ KJDS 的 Evidence/Fact/Finance 权威，不把演示数据或内容笔记当成�
 | 实际结果 | Order/Return/Settlement/Bank/Actual Cash CM3 | 反哺评分，不能由 AI 伪造 |
 
 ## 4. 用户工作台
-
-### 批量竞品商品筛选与 KJDS 主档
-
-批量工作台支持 50、100、200、500、1000 五个目标档位。目标是“最多进入多少个
-KJDS 商品主档复核”，不是要求补造足量候选。每次运行冻结筛选 Profile、最低评分、
-悲观 CM3 率、供应商密度、MOQ、需求代理、排除类目和逐候选入选/淘汰原因；扫描上限
-与输出目标分开。经营者确认后，系统才把入围项幂等创建为 KJDS 原生 PIM 的
-`candidate` Product，使用候选 fingerprint 派生稳定内部 SKU，并把 Product 事件回链到
-batch run、candidate 与 Evidence。该内部建档不调用云端 ERP、毛子 ERP、ERPNext
-或其他第三方 ERP，也不创建正式报价、库存、采购、Listing、广告或 Ozon 写入；
-第三方产品只用于竞品功能对标和经准入的数据出口。
 
 ### 4.1 利润候选池
 

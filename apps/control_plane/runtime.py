@@ -269,7 +269,6 @@ class RuntimeServices:
     demand_reports: Any
     engine: Any
     evidence: Any
-    scoped_evidence: Any
     global_data_coverage_evidence_authority_factory: Any
     closed_loop_evidence_authority_factory: Any
     closed_loop_evolution: Any
@@ -1370,7 +1369,6 @@ def build_runtime() -> RuntimeServices:
         demand_reports=demand_reports,
         engine=engine,
         evidence=evidence,
-        scoped_evidence=scoped_evidence,
         global_data_coverage_evidence_authority_factory=(
             coverage_intake_authority_factory
         ),

@@ -22,22 +22,6 @@ test("capture inbox keeps promotion decisions on the authenticated server", () =
   assert.match(consoleSource, /Approval \/ Permit · false \/ false/);
   assert.match(consoleSource, /external write · false/);
   assert.match(consoleSource, /entity_ref \?\? "null · authority missing"/);
-  assert.match(consoleSource, /SKU \/ SPEC \/ PRICE MATRIX/);
-  assert.match(consoleSource, /exact_variant_staged/);
-  assert.match(consoleSource, /requires_detail_enrichment/);
-  assert.match(consoleSource, /source_observation/);
-  assert.match(consoleSource, /ERP: MOQ=/);
-  assert.match(consoleSource, /mapping\.supply_signals\.stock_count/);
-  assert.match(consoleSource, /mapping\.market_signals\.sku_sale_count_signal/);
-  assert.match(consoleSource, /mapping\.price_tiers/);
-  assert.match(consoleSource, /comparison_dimensions/);
-  assert.match(consoleSource, /跨供应商同维度比价/);
-  assert.match(consoleSource, /reference_quantity=\$\{referenceQuantity\}/);
-  assert.match(consoleSource, /按数量比价/);
-  assert.match(consoleSource, /reference_quantity_below_moq/);
-  assert.match(consoleSource, /quantity_price_unverified/);
-  assert.match(consoleSource, /effective_unit_price/);
-  assert.match(consoleSource, /搜索卡价格不进入最低价排行/);
   assert.doesNotMatch(
     consoleSource,
     /Math\.random|displayed_price\s*[-+*/]|\/commands|\/write-attempt|\/receipt/,
@@ -53,7 +37,6 @@ test("browser helper uses explicit active-tab capture and a bounded handshake", 
   );
   const background = read("../../extensions/kjds-browser-capture/background.js");
   const popup = read("../../extensions/kjds-browser-capture/popup.js");
-  const extractor = read("../../extensions/kjds-browser-capture/extract-page.js");
 
   assert.equal(manifest.manifest_version, 3);
   assert.deepEqual(
@@ -70,18 +53,12 @@ test("browser helper uses explicit active-tab capture and a bounded handshake", 
   assert.match(background, /pending\.idempotency_key !== message\.idempotency_key/);
   assert.match(popup, /chrome\.tabs\.query\(\{ active: true, currentWindow: true \}\)/);
   assert.match(popup, /chrome\.scripting\.executeScript/);
-  assert.match(popup, /files: \["extract-page\.js"\]/);
   assert.match(popup, /chrome\.storage\.session/);
-  assert.match(extractor, /active_tab_visible_dom/);
-  assert.match(extractor, /unverified_external_reference/);
-  assert.match(extractor, /没有生成猜测价格|未退化为猜价/);
-  assert.match(extractor, /skuMapOriginal/);
-  assert.match(extractor, /offerLoginId/);
-  assert.match(extractor, /product_detail_variant_matrix/);
-  assert.match(extractor, /search_result_candidates/);
-  assert.match(extractor, /candidate_requires_detail_enrichment/);
+  assert.match(popup, /active_tab_visible_dom/);
+  assert.match(popup, /unverified_external_reference/);
+  assert.match(popup, /没有生成猜测价格/);
   assert.doesNotMatch(
-    `${JSON.stringify(manifest)}${background}${popup}${extractor}`,
-    /<all_urls>|chrome\.cookies|localStorage|XMLHttpRequest|webRequest|fetch\(/,
+    `${JSON.stringify(manifest)}${background}${popup}`,
+    /<all_urls>|chrome\.cookies|localStorage|XMLHttpRequest|webRequest/,
   );
 });

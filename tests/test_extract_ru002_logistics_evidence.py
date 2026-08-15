@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from scripts.extract_ru002_logistics_evidence import (
     EvidenceHit,
     extract_image_hits,
@@ -18,10 +16,6 @@ from scripts.extract_ru002_logistics_evidence import (
 WULIU = Path(__file__).resolve().parents[1] / "wuliu"
 
 
-@pytest.mark.skipif(
-    not (WULIU / "【2025.11.26】Yandex产品测费表(1).xlsx").exists(),
-    reason="RU-002 logistics fixture is not committed",
-)
 def test_xlsx_scan_finds_yandex_fees_and_rub_currency():
     path = WULIU / "【2025.11.26】Yandex产品测费表(1).xlsx"
     hits = extract_xlsx_hits(path, row_limit=12, col_limit=14)
@@ -33,10 +27,6 @@ def test_xlsx_scan_finds_yandex_fees_and_rub_currency():
     assert any(hit.location.startswith("Sheet1!") for hit in hits)
 
 
-@pytest.mark.skipif(
-    not (WULIU / "1600858dfc1b43297c8c1fb7526b4a28.jpg").exists(),
-    reason="RU-002 logistics image fixture is not committed",
-)
 def test_image_ocr_sanitizes_contacts_and_keeps_service_fees():
     path = WULIU / "1600858dfc1b43297c8c1fb7526b4a28.jpg"
     hits = extract_image_hits(path)
@@ -48,10 +38,6 @@ def test_image_ocr_sanitizes_contacts_and_keeps_service_fees():
     assert "19130533163" not in sanitize_text("19130533163")
 
 
-@pytest.mark.skipif(
-    not (WULIU / "oms-对接yandex market店铺授权指南---202412(1)(1).doc").exists(),
-    reason="RU-002 logistics document fixture is not committed",
-)
 def test_legacy_doc_is_reported_as_unsupported_without_crashing():
     path = WULIU / "oms-对接yandex market店铺授权指南---202412(1)(1).doc"
     hits = extract_legacy_doc(path)

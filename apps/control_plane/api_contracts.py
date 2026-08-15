@@ -19,7 +19,6 @@ from .decision_lifecycle import DecisionDisposition, ReviewVerdict
 from .domain import AgentMode, ChargeType, ContentType, PassportType
 from .evidence import EvidenceGrade
 from .finance import CashPlanStatus, FeeSignRule, FinanceEntryKind
-from .marketplace_sources import ObservationMarketplace
 from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
@@ -146,7 +145,6 @@ class MarketplaceObservationItemInput(BaseModel):
     target_offer_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_url: str | None = Field(default=None, min_length=8, max_length=2000)
     product_identity: dict[str, str] = Field(default_factory=dict, max_length=40)
-    comparison_dimensions: dict[str, str] = Field(default_factory=dict, max_length=40)
     observed_quantity: int | None = Field(default=None, ge=1)
     checkout_verified: bool = False
     tax_included: bool | None = None
@@ -164,6 +162,7 @@ class MarketplaceObservationItemInput(BaseModel):
     image_references: list[str] = Field(default_factory=list, max_length=20)
     experiment_readbacks: dict[str, Any] = Field(default_factory=dict, max_length=20)
 
+
 class MarketplaceObservationCaptureInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_profile: Literal[
@@ -172,7 +171,7 @@ class MarketplaceObservationCaptureInput(BaseModel):
         "manual_verified_public_page",
         "public_search_index_observation",
     ]
-    marketplace: ObservationMarketplace
+    marketplace: Literal["1688", "ozon"]
     store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     source_url: str = Field(min_length=8, max_length=2000)
     observed_at: str
@@ -191,25 +190,8 @@ class BrowserCapturePageInput(BaseModel):
     title: str = Field(min_length=1, max_length=2000)
     canonical_url: str | None = Field(default=None, min_length=8, max_length=2000)
     language: str | None = Field(default=None, min_length=2, max_length=40)
-    extractor_version: Literal[
-        "kjds-visible-dom/1.0",
-        "kjds-visible-dom/1.1",
-        "kjds-visible-dom/1.2",
-    ]
+    extractor_version: Literal["kjds-visible-dom/1.0", "kjds-visible-dom/1.1"]
     capture_mode: Literal["active_tab_visible_dom"]
-    capture_kind: Literal[
-        "product_detail_variant_matrix",
-        "search_result_candidates",
-        "store_catalog_candidates",
-        "generic_product",
-    ] = "generic_product"
-    provider_id: str | None = Field(default=None, min_length=1, max_length=160)
-    provider_version: str | None = Field(default=None, min_length=1, max_length=80)
-    structured_data_source: str | None = Field(
-        default=None, min_length=1, max_length=160
-    )
-    search_query: str | None = Field(default=None, min_length=1, max_length=500)
-    capture_coverage: dict[str, Any] | None = Field(default=None, max_length=20)
 
 
 class BrowserCaptureEnvelopeInput(BaseModel):
@@ -217,10 +199,9 @@ class BrowserCaptureEnvelopeInput(BaseModel):
     contract_version: Literal[
         "kjds-browser-capture-envelope/1.0",
         "kjds-browser-capture-envelope/1.1",
-        "kjds-browser-capture-envelope/1.2",
     ]
     source_profile: Literal["browser_observation"]
-    marketplace: ObservationMarketplace
+    marketplace: Literal["1688", "ozon"]
     store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
     source_url: str = Field(min_length=8, max_length=2000)
     observed_at: str
@@ -230,9 +211,9 @@ class BrowserCaptureEnvelopeInput(BaseModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
     )
     page: BrowserCapturePageInput
-    merchant: dict[str, Any] | None = Field(default=None, max_length=80)
-    items: list[MarketplaceObservationItemInput] = Field(min_length=1, max_length=500)
+    items: list[MarketplaceObservationItemInput] = Field(min_length=1, max_length=50)
     confirmed: Literal[True]
+
 
 class AiListingRunPreflightInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -301,29 +282,6 @@ class PortfolioPilotPrepareInput(BaseModel):
     as_of: str | None = None
 
 
-class BatchOpportunityScreeningInput(BaseModel):
-    """Versioned server-side filters for a KJDS-owned candidate batch."""
-
-    model_config = ConfigDict(extra="forbid")
-    profile_id: Literal[
-        "evidence_first_v1",
-        "lightweight_fast_mover_v1",
-        "competition_gap_v1",
-        "custom_v1",
-    ] = "evidence_first_v1"
-    selection_target: Literal[50, 100, 200, 500, 1000] = 50
-    min_score: Decimal | None = Field(default=None, ge=0, le=100)
-    min_downside_cm3_rate: Decimal | None = Field(default=None, ge=0, le=1)
-    min_competitor_count: int | None = Field(default=None, ge=0, le=100000)
-    min_supplier_density: int | None = Field(default=None, ge=1, le=10000)
-    max_moq: int | None = Field(default=None, ge=1, le=100000)
-    min_demand_proxy: Decimal | None = Field(default=None, ge=0)
-    require_checkout_cost: bool | None = None
-    require_stockout_opportunity: bool | None = None
-    require_content_ready: bool | None = None
-    excluded_category_flags: list[str] | None = Field(default=None, max_length=30)
-
-
 class BatchOpportunityPrepareInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
@@ -355,22 +313,6 @@ class BatchOpportunityPrepareInput(BaseModel):
     max_inventory_cash_cny: Decimal = Field(default=Decimal("3000"), gt=0)
     max_batch_inventory_cash_cny: Decimal | None = Field(default=None, gt=0)
     cm3_floor_cny: Decimal = Field(default=Decimal("0"))
-    screening: BatchOpportunityScreeningInput = Field(
-        default_factory=BatchOpportunityScreeningInput
-    )
-    as_of: str | None = None
-
-
-class BatchOpportunityItemMasterInput(BaseModel):
-    """Authorize one internal, evidence-bound KJDS PIM draft action."""
-
-    model_config = ConfigDict(extra="forbid")
-    store_ref: str = Field(default="ozon-primary", min_length=1, max_length=160)
-    idempotency_key: str = Field(
-        min_length=1,
-        max_length=160,
-        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
-    )
     as_of: str | None = None
 
 

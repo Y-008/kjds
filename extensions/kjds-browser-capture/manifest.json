@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "KJDS Browser Capture",
-  "description": "User-initiated SKU, public metric and candidate Evidence staging for KJDS.",
-  "version": "0.2.0",
+  "description": "User-initiated visible-page Evidence staging for KJDS.",
+  "version": "0.1.0",
   "permissions": [
     "activeTab",
     "scripting",

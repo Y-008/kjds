@@ -6,7 +6,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 
 from ..api_contracts import (
-    BatchOpportunityItemMasterInput,
     BatchOpportunityPrepareInput,
     BrowserCaptureEnvelopeInput,
     MarketplaceObservationCaptureInput,
@@ -226,7 +225,6 @@ def list_browser_captures(
     store_ref: str = "ozon-primary",
     as_of: str | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    reference_quantity: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
 ):
     ensure_role(
         principal,
@@ -247,7 +245,6 @@ def list_browser_captures(
             store_ref=store_ref,
             as_of=cutoff,
             limit=limit,
-            reference_quantity=reference_quantity,
         )
     )
 
@@ -498,39 +495,6 @@ def latest_batch_opportunities(
             principal=principal,
             entity_scope=entity_scope,
             store_ref=store_ref,
-            as_of=cutoff,
-        )
-    )
-
-
-@router.post(
-    "/v1/batch-opportunities/{run_id}/kjds-item-master",
-    status_code=201,
-)
-def create_batch_kjds_item_master_candidates(
-    run_id: str,
-    body: BatchOpportunityItemMasterInput,
-    principal: Annotated[Principal, Depends(current_principal)],
-):
-    ensure_role(principal, "operator", "admin")
-    cutoff, entity_scope = _scope_context(
-        principal,
-        store_ref=body.store_ref,
-        as_of=body.as_of,
-    )
-    if entity_scope.get("status") != "ready":
-        raise HTTPException(
-            status_code=409,
-            detail="KJDS item master requires one current entity scope grant.",
-        )
-    return run(
-        lambda: runtime.scoped_batch_opportunity.create_kjds_item_master_candidates(
-            principal=principal,
-            entity_scope=entity_scope,
-            store_ref=body.store_ref,
-            run_id=run_id,
-            idempotency_key=body.idempotency_key,
-            actor_id=principal.actor_id,
             as_of=cutoff,
         )
     )

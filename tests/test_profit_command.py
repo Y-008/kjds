@@ -21,27 +21,9 @@ from apps.control_plane.profit_data_remediation import ProfitDataRemediationWork
 from apps.control_plane.security import Principal
 from apps.control_plane.sql_repository import Base
 from apps.control_plane.store_profile_intake import StoreProfileIntake
-from scripts.package_market_recon_bundle import (
-    DEFAULT_OUTPUT,
-    SOURCE_ROOT,
-    package_bundle,
-)
+from scripts.package_market_recon_bundle import DEFAULT_OUTPUT, package_bundle
 
 AS_OF = datetime(2026, 8, 2, 7, tzinfo=UTC)
-
-pytestmark = pytest.mark.skipif(
-    not all(
-        (SOURCE_ROOT / name).is_file()
-        for name in (
-            "full_catalog.json",
-            "full_product_info.json",
-            "analytics_by_window.json",
-            "finance_by_month.json",
-            "supply_1688/supply_crawl.json",
-        )
-    ),
-    reason="market-recon business fixtures are not committed",
-)
 
 
 def database():

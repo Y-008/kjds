@@ -79,16 +79,6 @@ class Content:
                         "name": "Canonical one",
                         "status": "active",
                     },
-                    "source_lineage": {
-                        "status": "observed",
-                        "competitive_market_url": "https://www.ozon.ru/product/1/",
-                        "primary_supplier_url": "https://detail.1688.com/offer/1.html",
-                        "backup_supplier_urls": [],
-                        "source_evidence_id": "evidence-source",
-                        "authority": "product_event_ledger",
-                        "links_are_observations_not_orders": True,
-                        "external_sync_performed": False,
-                    },
                     "passports": [{"kind": "quality", "status": "approved"}],
                     "content_assets": [],
                     "evidence_ids": ["evidence-1"],
@@ -161,9 +151,6 @@ def test_projects_canonical_group_unbound_listing_and_agent_limits():
         "blocked": 0,
     }
     assert result["product_groups"][0]["product"]["id"] == "product-1"
-    assert result["product_groups"][0]["source_lineage"][
-        "primary_supplier_url"
-    ] == "https://detail.1688.com/offer/1.html"
     assert result["unbound_listings"][0]["binding_issue"]
     assert result["control_envelope"]["client_recalculation_allowed"] is False
     assert result["agent_artifact"]["permit_issue_allowed"] is False

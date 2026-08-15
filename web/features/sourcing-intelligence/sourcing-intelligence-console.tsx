@@ -104,15 +104,6 @@ export function SourcingIntelligenceConsole() {
   const [query, setQuery] = useState("");
   const [readiness, setReadiness] = useState("");
   const [cursor, setCursor] = useState<string | null>(null);
-  const [queryInitialized, setQueryInitialized] = useState(false);
-
-  useEffect(() => {
-    const requested = new URLSearchParams(window.location.search)
-      .get("query")
-      ?.trim();
-    if (requested) setQuery(requested);
-    setQueryInitialized(true);
-  }, []);
 
   const load = useCallback(async (requestedCursor: string | null = cursor) => {
     setLoading(true);
@@ -140,9 +131,8 @@ export function SourcingIntelligenceConsole() {
   }, [cursor, query, readiness]);
 
   useEffect(() => {
-    if (!queryInitialized) return;
     void load();
-  }, [load, queryInitialized]);
+  }, [load]);
 
   return (
     <main className={styles.page}>

@@ -4,5 +4,5 @@
 Dockerfile text eol=lf
 *.ps1 text eol=crlf
 tests/fixtures/external_contracts/** text eol=lf
-docs/project/registries/seller_strategy_packs/** -text
+docs/project/registries/seller_strategy_packs/** text eol=lf
 docs/project/contracts/** text eol=lf

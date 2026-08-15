@@ -18,9 +18,6 @@ test("sourcing intelligence consumes one server projection and preserves authori
   assert.match(source, /purchase_order_created: false/);
   assert.match(source, /permit_issue_allowed: false/);
   assert.match(source, /external_write_allowed: false/);
-  assert.match(source, /window\.location\.search/);
-  assert.match(source, /\.get\("query"\)/);
-  assert.match(source, /if \(!queryInitialized\) return/);
 });
 
 test("sourcing intelligence uses opaque server pagination and retry", () => {

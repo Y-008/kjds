@@ -1214,7 +1214,7 @@ class MarketplaceObservationWorkspace:
         entity_ref: str | None = None,
         as_of: str | datetime | None = None,
     ) -> dict[str, Any]:
-        if marketplace not in READ_MARKETPLACES:
+        if marketplace not in MARKETPLACES:
             raise ValueError("Unsupported marketplace observation marketplace")
         if not 1 <= page_size <= 1000:
             raise ValueError("Observation page_size must be 1 to 1000")

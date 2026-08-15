@@ -7,56 +7,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .marketplace_observation import exact_candidate_key
-from .marketplace_sources import SUPPLIER_MARKETPLACES, is_supplier_marketplace
 from .security import Principal
-
-
-def _merge_supplier_projections(
-    projections: list[dict[str, Any]],
-) -> dict[str, Any]:
-    items = [
-        item
-        for projection in projections
-        for item in projection.get("items", [])
-    ]
-    blockers = [
-        blocker
-        for projection in projections
-        for blocker in projection.get("blockers", [])
-    ]
-    source_gaps = sorted(
-        {
-            gap
-            for projection in projections
-            for gap in projection.get("source_gaps", [])
-        }
-    )
-    statuses = {projection.get("status") for projection in projections}
-    snapshots = {
-        marketplace: projection.get("snapshot_sha256")
-        for marketplace, projection in zip(
-            sorted(SUPPLIER_MARKETPLACES), projections, strict=True
-        )
-    }
-    return {
-        "status": (
-            "ready"
-            if items
-            else "blocked" if "blocked" in statuses else "no_data"
-        ),
-        "items": items,
-        "source_gaps": source_gaps,
-        "blockers": blockers,
-        "pagination": {
-            "truncated": any(
-                projection.get("pagination", {}).get("truncated", False)
-                for projection in projections
-            )
-        },
-        "snapshot_sha256": hashlib.sha256(
-            json.dumps(snapshots, sort_keys=True).encode("utf-8")
-        ).hexdigest(),
-    }
 
 
 class ScopedBatchOpportunityAuthority:
@@ -168,38 +119,6 @@ class ScopedBatchOpportunityAuthority:
             context=context,
             inputs=inputs,
             run=run,
-        )
-
-    def create_kjds_item_master_candidates(
-        self,
-        *,
-        principal: Principal,
-        entity_scope: dict[str, Any],
-        store_ref: str,
-        run_id: str,
-        idempotency_key: str,
-        actor_id: str,
-        as_of: datetime,
-    ) -> dict[str, Any]:
-        context = self._context(
-            principal=principal,
-            entity_scope=entity_scope,
-            store_ref=store_ref,
-            as_of=as_of,
-        )
-        if context["status"] != "ready":
-            raise ValueError("KJDS item master requires current exact scope")
-        return self.batch.create_kjds_item_master_candidates(
-            run_id=run_id,
-            store_ref=store_ref,
-            tenant_ref=context["scope"]["tenant_ref"],
-            entity_ref=context["scope"]["entity_ref"],
-            scope_grant_authority_sha256=context["scope"][
-                "scope_grant_authority_sha256"
-            ],
-            idempotency_key=idempotency_key,
-            actor_id=actor_id,
-            as_of=context["cutoff"],
         )
 
     def latest(
@@ -322,19 +241,14 @@ class ScopedBatchOpportunityAuthority:
             page_size=query["page_size"],
             max_rows=query["max_rows"],
         )
-        suppliers = _merge_supplier_projections(
-            [
-                self.scoped_observations.collect(
-                    principal=principal,
-                    entity_scope=entity_scope,
-                    store_ref=store_ref,
-                    as_of=context["cutoff"],
-                    marketplace=marketplace,
-                    page_size=query["page_size"],
-                    max_rows=query["max_rows"],
-                )
-                for marketplace in sorted(SUPPLIER_MARKETPLACES)
-            ]
+        suppliers = self.scoped_observations.collect(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store_ref,
+            as_of=context["cutoff"],
+            marketplace="1688",
+            page_size=query["page_size"],
+            max_rows=query["max_rows"],
         )
         catalog = self.scoped_catalog.latest(
             principal=principal,
@@ -483,7 +397,7 @@ class ScopedBatchOpportunityAuthority:
             ]
             supplier_rows = [
                 item for item in ordered
-                if is_supplier_marketplace(item["marketplace"])
+                if item["marketplace"] == "1688"
             ]
             comparable_supplier_rows = [
                 item
@@ -610,7 +524,7 @@ class ScopedBatchOpportunityAuthority:
                 {
                     item["supplier_ref"]
                     for item in eligible
-                    if is_supplier_marketplace(item["marketplace"])
+                    if item["marketplace"] == "1688"
                     and item.get("supplier_ref")
                 }
             ),
@@ -854,19 +768,14 @@ class ScopedBatchOpportunityAuthority:
             page_size=scan_page_size,
             max_rows=max_rows,
         )
-        suppliers = _merge_supplier_projections(
-            [
-                self.scoped_observations.collect(
-                    principal=context["principal"],
-                    entity_scope=context["entity_scope"],
-                    store_ref=context["scope"]["store_ref"],
-                    as_of=context["cutoff"],
-                    marketplace=marketplace,
-                    page_size=scan_page_size,
-                    max_rows=max_rows,
-                )
-                for marketplace in sorted(SUPPLIER_MARKETPLACES)
-            ]
+        suppliers = self.scoped_observations.collect(
+            principal=context["principal"],
+            entity_scope=context["entity_scope"],
+            store_ref=context["scope"]["store_ref"],
+            as_of=context["cutoff"],
+            marketplace="1688",
+            page_size=scan_page_size,
+            max_rows=max_rows,
         )
         catalog = self.scoped_catalog.latest(
             principal=context["principal"],
@@ -922,7 +831,7 @@ class ScopedBatchOpportunityAuthority:
         if not ozon["items"]:
             source_gaps.append("scoped_ozon_observation_missing")
         if not suppliers["items"]:
-            source_gaps.append("scoped_supplier_observation_missing")
+            source_gaps.append("scoped_1688_observation_missing")
         if not observations:
             return {
                 "status": (

@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from apps.control_plane.api import app
 from apps.control_plane.batch_opportunity import BatchOpportunityWorkspace
 from apps.control_plane.marketplace_observation import exact_candidate_key
-from apps.control_plane.marketplace_sources import SUPPLIER_MARKETPLACES
 from apps.control_plane.runtime import runtime
 from apps.control_plane.scoped_batch_opportunity import (
     ScopedBatchOpportunityAuthority,
@@ -113,11 +112,7 @@ def observation(
 
 class ObservationAuthority:
     def __init__(self, *, ozon: list[dict], suppliers: list[dict]):
-        supplier_rows = {
-            marketplace: (suppliers if marketplace == "1688" else [])
-            for marketplace in SUPPLIER_MARKETPLACES
-        }
-        self.rows = {"ozon": ozon, **supplier_rows}
+        self.rows = {"ozon": ozon, "1688": suppliers}
         self.calls: list[str] = []
 
     def collect(self, *, marketplace: str, **_values) -> dict:
