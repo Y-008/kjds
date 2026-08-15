@@ -27,17 +27,7 @@ jobs:
       - run: uv sync --extra dev --locked
       - run: uv run python scripts/verify_secrets.py
       - run: uv run python scripts/validate_write_paths.py
-      - run: uv run ruff check .
-      - name: Run backend unit tests
-        run: >-
-          uv run pytest
-          "--ignore-glob=tests/*_postgres.py"
-          --ignore=tests/test_extract_ru002_logistics_evidence.py
-          --ignore=tests/test_market_recon_bundle.py
-          --ignore=tests/test_market_recon_report.py
-          --ignore=tests/test_profit_command.py
-          --ignore=tests/test_profit_truth_readiness.py
-      - run: git diff --check
+      - run: pwsh -File ./scripts/verify-fast.ps1
 
   web-quality:
     runs-on: ubuntu-latest
@@ -89,6 +79,20 @@ jobs:
           uv run pytest -q -p no:cacheprovider
           --basetemp=.runtime/pytest-media-connectors-postgres
           tests/test_media_connectors_postgres.py
+      - name: Prepare PostgreSQL API contract basetemp
+        run: mkdir -p .runtime/pytest-api-contracts-postgres
+      - name: Verify PostgreSQL API contract suites
+        run: >-
+          uv run pytest -q -p no:cacheprovider
+          --basetemp=.runtime/pytest-api-contracts-postgres
+          tests/test_api_contract.py
+          tests/test_catalog_read_run_handoff.py
+          tests/test_channel_accounts_api.py
+          tests/test_intelligence_ingestion.py
+          tests/test_native_parity_acceptance_api.py
+          tests/test_scoped_batch_opportunity.py
+          tests/test_scoped_marketplace_catalog.py
+          tests/test_scoped_read_only_pilots.py
       - name: Verify API readiness
         shell: bash
         run: |
