@@ -2271,7 +2271,9 @@ def test_all_ledger_tables_and_reserved_evidence_are_append_only(service, engine
             trigger_count = connection.scalar(
                 text(
                     "SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid "
-                    "WHERE c.relname=:table AND t.tgname=:trigger AND NOT t.tgisinternal"
+                    "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                    "WHERE c.relname=:table AND n.nspname=current_schema() "
+                    "AND t.tgname=:trigger AND NOT t.tgisinternal"
                 ),
                 {"table": table_name, "trigger": f"trg_{table_name}_immutable"},
             )
@@ -2391,7 +2393,9 @@ def test_downgrade_uses_writer_compatible_lock_order_and_preserves_objects(engin
         assert connection.scalar(
             text(
                 "SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid "
+                "JOIN pg_namespace n ON n.oid=c.relnamespace "
                 "WHERE c.relname='global_data_coverage_snapshots' "
+                "AND n.nspname=current_schema() "
                 "AND t.tgname='trg_global_data_coverage_snapshots_immutable' "
                 "AND NOT t.tgisinternal"
             )
