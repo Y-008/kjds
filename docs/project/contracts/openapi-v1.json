@@ -8808,7 +8808,12 @@
             "type": "array"
           },
           "marketplace": {
-            "$ref": "#/components/schemas/ObservationMarketplace"
+            "enum": [
+              "1688",
+              "ozon"
+            ],
+            "title": "Marketplace",
+            "type": "string"
           },
           "observed_at": {
             "title": "Observed At",
@@ -14221,6 +14226,133 @@
           "observation_sha256"
         ],
         "title": "StrategicCapitalDashboardResponse",
+        "type": "object"
+      },
+      "SupplierCandidateRfqPackageInput": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "destination": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Destination",
+            "type": "string"
+          },
+          "expected_product_snapshot_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Product Snapshot Sha256",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "operator_notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Notes"
+          },
+          "packaging_requirements": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Packaging Requirements",
+            "type": "array"
+          },
+          "product_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "quantity_breaks": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Quantity Breaks",
+            "type": "array"
+          },
+          "required_documents": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Required Documents",
+            "type": "array"
+          },
+          "required_specifications": {
+            "items": {
+              "$ref": "#/components/schemas/SupplierRfqSpecificationInput"
+            },
+            "maxItems": 40,
+            "minItems": 1,
+            "title": "Required Specifications",
+            "type": "array"
+          },
+          "response_due_at": {
+            "title": "Response Due At",
+            "type": "string"
+          },
+          "sample_required": {
+            "title": "Sample Required",
+            "type": "boolean"
+          },
+          "source_evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Source Evidence Ids",
+            "type": "array"
+          },
+          "store_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          },
+          "tax_invoice_required": {
+            "title": "Tax Invoice Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "store_ref",
+          "product_id",
+          "expected_product_snapshot_sha256",
+          "source_evidence_ids",
+          "idempotency_key",
+          "quantity_breaks",
+          "required_specifications",
+          "destination",
+          "response_due_at",
+          "sample_required",
+          "tax_invoice_required",
+          "required_documents",
+          "packaging_requirements",
+          "confirmed"
+        ],
+        "title": "SupplierCandidateRfqPackageInput",
         "type": "object"
       },
       "SupplierInvoiceAuthorityReviewInput": {
@@ -36585,6 +36717,48 @@
           }
         ],
         "summary": "Sourcing Intelligence Workspace"
+      }
+    },
+    "/v1/sourcing/candidate-rfq-packages": {
+      "post": {
+        "description": "Freeze an RFQ for a scoped canonical Product before Ozon listing exists.",
+        "operationId": "create_supplier_candidate_rfq_package_v1_sourcing_candidate_rfq_packages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierCandidateRfqPackageInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Create Supplier Candidate Rfq Package"
       }
     },
     "/v1/sourcing/comparison-finalize": {

@@ -19,7 +19,6 @@ from .decision_lifecycle import DecisionDisposition, ReviewVerdict
 from .domain import AgentMode, ChargeType, ContentType, PassportType
 from .evidence import EvidenceGrade
 from .finance import CashPlanStatus, FeeSignRule, FinanceEntryKind
-from .marketplace_sources import ObservationMarketplace
 from .ozon_finance_review import AccrualAccountingClass, AccrualExpectedSign
 from .security import Principal, require_any_role
 from .sourcing import PROFIT_TEMPLATE_ID, SourcePlatform
