@@ -890,9 +890,38 @@ def handoff_candidate_to_sourcing(
     body: CandidateSourcingHandoffInput, principal: Annotated[Principal, Depends(current_principal)]
 ):
     ensure_role(principal, "operator", "admin")
+    store = _store_ref(principal, body.store_ref)
+    cutoff, entity_scope = _catalog_scope_context(
+        principal,
+        store_ref=store,
+        as_of=None,
+    )
+    if (
+        entity_scope.get("status") != "ready"
+        or not entity_scope.get("entity_ref")
+        or not entity_scope.get("authority_sha256")
+        or not entity_scope.get("grant_effective_at")
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=entity_scope.get(
+                "reason",
+                "entity_scope_authority_missing",
+            ),
+        )
 
     def handoff():
-        result = runtime.market.handoff_candidate_to_sourcing(**body.model_dump(), confirmed_by=principal.actor_id)
+        result = runtime.market.handoff_candidate_to_sourcing(
+            **body.model_dump(exclude={"store_ref"}),
+            tenant_ref=principal.tenant_ref,
+            entity_ref=str(entity_scope["entity_ref"]),
+            store_ref=store,
+            scope_grant_authority_sha256=str(
+                entity_scope["authority_sha256"]
+            ),
+            scope_as_of=str(entity_scope["grant_effective_at"]),
+            confirmed_by=principal.actor_id,
+        )
         for evidence_id in result["evidence_ids"]:
             runtime.evidence.link(
                 evidence_id=evidence_id,

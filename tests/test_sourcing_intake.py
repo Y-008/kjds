@@ -164,6 +164,33 @@ def offers():
     return result
 
 
+def tiered_offers(*, selected_quantity: int = 300):
+    payloads = offers()
+    schedules = (
+        ((100, "35"), (300, "32"), (500, "30")),
+        ((100, "38"), (300, "35"), (500, "33")),
+        ((100, "42"), (300, "39"), (500, "37")),
+    )
+    for payload, schedule in zip(payloads, schedules, strict=True):
+        applicable = [
+            Decimal(price)
+            for quantity, price in schedule
+            if quantity <= selected_quantity
+        ]
+        payload.offer_data["unit_price"] = applicable[-1]
+        payload.offer_data["attributes"] = {
+            "selected_quantity": selected_quantity,
+            "price_tiers": [
+                {
+                    "minimum_quantity": quantity,
+                    "unit_price": Decimal(price),
+                }
+                for quantity, price in reversed(schedule)
+            ],
+        }
+    return payloads
+
+
 def accepted_quote_ids(product, intake, payloads=None):
     quote_ids = []
     for payload in payloads or offers():
@@ -257,6 +284,167 @@ def test_public_display_price_is_research_only_and_cannot_be_accepted():
             reviewed_by="reviewer-1",
         )
     assert store.offers == {}
+
+
+def test_tiered_confirmed_quotes_preserve_all_tiers_and_exact_comparison_quantity():
+    product, store, intake = make_intake()
+    quote_ids = accepted_quote_ids(product, intake, tiered_offers())
+
+    first_source = intake.quote_authority.offer_data(
+        intake.evidence.get(quote_ids[0])
+    )
+    assert first_source["attributes"] == {
+        "selected_quantity": 300,
+        "price_tiers": [
+            {"minimum_quantity": 100, "unit_price": "35"},
+            {"minimum_quantity": 300, "unit_price": "32"},
+            {"minimum_quantity": 500, "unit_price": "30"},
+        ],
+    }
+
+    result = intake.finalize(
+        product_id=product.id,
+        effective_at="2026-07-16T00:00:00+08:00",
+        quote_evidence_ids=quote_ids,
+        profit_inputs=profit_inputs(),
+        assumption_content=b"approved tiered quote assumptions",
+        assumption_filename="tiered-assumptions.txt",
+        assumption_content_type="text/plain",
+        created_by="operator-1",
+    )
+
+    assert result["comparison"]["comparison_quantity"] == 300
+    assert [offer.unit_price for offer in result["offers"]] == [
+        Decimal("32"),
+        Decimal("35"),
+        Decimal("39"),
+    ]
+    assert all(
+        len(offer.attributes["price_tiers"]) == 3
+        and offer.attributes["selected_quantity"] == 300
+        for offer in result["offers"]
+    )
+    assert len(store.offers) == 3
+
+
+def test_tiered_quote_rejects_selected_unit_price_drift_before_evidence_capture():
+    product, _, intake = make_intake()
+    payload = tiered_offers()[0]
+    payload.offer_data["unit_price"] = Decimal("31.99")
+
+    with pytest.raises(ValueError, match="applicable selected quantity tier"):
+        intake.capture_quote_source(
+            product_id=product.id,
+            document_kind="supplier_confirmed_quote",
+            offer_data=payload.offer_data,
+            content=payload.content,
+            filename=payload.filename,
+            content_type=payload.content_type,
+            effective_at="2026-07-16T00:00:00+08:00",
+            effective_until="2027-07-16T00:00:00+08:00",
+            created_by="operator-1",
+        )
+
+    assert intake.evidence.list_by_source("supplier_quote_source") == []
+
+
+@pytest.mark.parametrize(
+    ("attributes", "min_order_quantity", "message"),
+    [
+        (
+            {
+                "selected_quantity": 300,
+                "price_tiers": [
+                    {"minimum_quantity": 100, "unit_price": "35"},
+                    {"minimum_quantity": 100, "unit_price": "32"},
+                ],
+            },
+            100,
+            "minimum quantities must be unique",
+        ),
+        (
+            {
+                "selected_quantity": 300,
+                "price_tiers": [
+                    {"minimum_quantity": 100, "unit_price": "0"},
+                ],
+            },
+            100,
+            "positive finite Decimal",
+        ),
+        (
+            {
+                "selected_quantity": 50,
+                "price_tiers": [
+                    {"minimum_quantity": 100, "unit_price": "35"},
+                ],
+            },
+            1,
+            "no applicable offer price tier",
+        ),
+        (
+            {
+                "price_tiers": [
+                    {"minimum_quantity": 100, "unit_price": "35"},
+                ],
+            },
+            100,
+            "require price_tiers and selected_quantity",
+        ),
+    ],
+)
+def test_invalid_tier_schedules_fail_before_evidence_capture(
+    attributes,
+    min_order_quantity,
+    message,
+):
+    product, _, intake = make_intake()
+    payload = offers()[0]
+    payload.offer_data["attributes"] = attributes
+    payload.offer_data["min_order_quantity"] = min_order_quantity
+
+    with pytest.raises(ValueError, match=message):
+        intake.capture_quote_source(
+            product_id=product.id,
+            document_kind="supplier_confirmed_quote",
+            offer_data=payload.offer_data,
+            content=payload.content,
+            filename=payload.filename,
+            content_type=payload.content_type,
+            effective_at="2026-07-16T00:00:00+08:00",
+            effective_until="2027-07-16T00:00:00+08:00",
+            created_by="operator-1",
+        )
+
+    assert intake.evidence.list_by_source("supplier_quote_source") == []
+
+
+def test_tiered_comparison_rejects_different_quantities_before_assumption_capture():
+    product, store, intake = make_intake()
+    payloads = tiered_offers()
+    second_schedule = payloads[1].offer_data["attributes"]["price_tiers"]
+    payloads[1].offer_data["attributes"]["selected_quantity"] = 500
+    payloads[1].offer_data["unit_price"] = next(
+        item["unit_price"]
+        for item in second_schedule
+        if item["minimum_quantity"] == 500
+    )
+    quote_ids = accepted_quote_ids(product, intake, payloads)
+
+    with pytest.raises(ValueError, match="same selected quantity"):
+        intake.finalize(
+            product_id=product.id,
+            effective_at="2026-07-16T00:00:00+08:00",
+            quote_evidence_ids=quote_ids,
+            profit_inputs=profit_inputs(),
+            assumption_content=b"must not be captured",
+            assumption_filename="invalid-tier-comparison.txt",
+            assumption_content_type="text/plain",
+            created_by="operator-1",
+        )
+
+    assert store.offers == {}
+    assert intake.evidence.list_by_source("supplier_comparison_assumptions") == []
 
 
 def test_supplier_quote_requires_independent_reviewer():

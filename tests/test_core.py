@@ -497,9 +497,22 @@ class CoreFlowTest(TestCase):
             "demand_report_evidence_id": self.demand_report_id,
             "sku": "RU-QUOTE-001",
             "confirmed_by": "operator@example.com",
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "scope_grant_authority_sha256": "a" * 64,
+            "scope_as_of": "2026-07-19T00:00:00+00:00",
         }
         with self.assertRaisesRegex(ValueError, "explicit human confirmation"):
             self.market.handoff_candidate_to_sourcing(**arguments, confirmed=False)
+
+        invalid_scope = dict(arguments)
+        invalid_scope["scope_grant_authority_sha256"] = "not-a-hash"
+        with self.assertRaisesRegex(ValueError, "scope authority hash is invalid"):
+            self.market.handoff_candidate_to_sourcing(
+                **invalid_scope,
+                confirmed=True,
+            )
 
         with self.assertRaisesRegex(ValueError, "Action authorization denied"):
             self.market.handoff_candidate_to_sourcing(**arguments, confirmed=True)
@@ -519,6 +532,13 @@ class CoreFlowTest(TestCase):
                 "demand_report_evidence_id": arguments["demand_report_evidence_id"],
                 "sku": arguments["sku"],
                 "max_age_days": 90,
+                "operating_scope": {
+                    "tenant_ref": "tenant-a",
+                    "entity_ref": "entity-a",
+                    "store_ref": "store-a",
+                    "scope_grant_authority_sha256": "a" * 64,
+                    "scope_as_of": "2026-07-19T00:00:00+00:00",
+                },
             },
         )
         self.commerce.decide_approval(
@@ -527,6 +547,13 @@ class CoreFlowTest(TestCase):
             decided_by="reviewer@example.com",
             reason="Independent candidate promotion review passed",
         )
+        other_scope = dict(arguments)
+        other_scope["store_ref"] = "store-b"
+        with self.assertRaisesRegex(ValueError, "Action authorization denied"):
+            self.market.handoff_candidate_to_sourcing(
+                **other_scope,
+                confirmed=True,
+            )
         first = self.market.handoff_candidate_to_sourcing(**arguments, confirmed=True)
         second = self.market.handoff_candidate_to_sourcing(**arguments, confirmed=True)
 
@@ -534,8 +561,17 @@ class CoreFlowTest(TestCase):
         self.assertFalse(second["created"])
         self.assertEqual(first["product"].id, second["product"].id)
         self.assertEqual(first["product"].status, ProductStatus.CANDIDATE)
+        self.assertTrue(first["product"].scope_complete)
+        self.assertEqual(first["product"].tenant_ref, "tenant-a")
+        self.assertEqual(first["product"].entity_ref, "entity-a")
+        self.assertEqual(first["product"].store_ref, "store-a")
+        self.assertEqual(first["operating_scope"]["store_ref"], "store-a")
         self.assertEqual(first["demand_report_evidence_id"], self.demand_report_id)
-        self.assertEqual(first["next_gate"], "sourcing_comparison_intake")
+        self.assertEqual(first["next_gate"], "prelisting_supplier_rfq")
+        self.assertEqual(
+            first["next_api_path"],
+            "/v1/sourcing/candidate-rfq-packages",
+        )
         self.assertFalse(first["automatic_procurement"])
         self.assertFalse(first["automatic_listing"])
         self.assertEqual(len([item for item in self.repo.list_products() if item.sku == "RU-QUOTE-001"]), 1)

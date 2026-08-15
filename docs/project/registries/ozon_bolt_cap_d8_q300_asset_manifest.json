@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "asset_set_id": "KJDS-OZ-RU-RCAP-D08-BLK-Q300-R01",
+  "created_at": "2026-08-11T09:45:00Z",
+  "use_case": "ozon_ru_gallery_and_video_cover",
+  "variant": {
+    "inner_diameter_mm": 8,
+    "length_mm": 15,
+    "color": "black",
+    "set_quantity": 300
+  },
+  "design": {
+    "locale": "ru-RU",
+    "palette": "blue_white_high_contrast",
+    "quantity_specific_images": [
+      "01_main_ru.png",
+      "05_quantity_ru.png",
+      "06_parameters_ru.png",
+      "08_faq_ru.png"
+    ],
+    "quantity_neutral_images": [
+      "02_size_guide_ru.png",
+      "03_installation_ru.png",
+      "04_before_after_ru.png",
+      "07_compatibility_ru.png"
+    ],
+    "generation_mode": "built_in_image_edit_plus_ffmpeg",
+    "material_or_performance_claims_added": false
+  },
+  "assets": [
+    {
+      "name": "01_main_ru.png",
+      "sha256": "a7a9e32dd4618191e7520bcf03242ae35d22938710041458ffc322c3bbc2c896",
+      "bytes": 1301772
+    },
+    {
+      "name": "02_size_guide_ru.png",
+      "sha256": "546e0d64d1828ba3015c2b3719a6b5327d424c3cb9fa3b5e26efe65efe121297",
+      "bytes": 1098856
+    },
+    {
+      "name": "03_installation_ru.png",
+      "sha256": "be9a0c0170fb3d54fbe0bba0c00ed5a790245c066ae5e0993971f9a577e474d8",
+      "bytes": 1226582
+    },
+    {
+      "name": "04_before_after_ru.png",
+      "sha256": "f86bf7496146a388d533b791bb7c048f3e7a3ce9e2bacd06681dd395641b72d2",
+      "bytes": 2117266
+    },
+    {
+      "name": "05_quantity_ru.png",
+      "sha256": "01e2accc730cabc30b89715d67991b71ed9b5586a1446c2b4ee69ecb0763ad97",
+      "bytes": 1872604
+    },
+    {
+      "name": "06_parameters_ru.png",
+      "sha256": "b3e34b6b9c1738fc630dfceb7027667da9644cb67107627ce2b37da17a1e60ee",
+      "bytes": 1306763
+    },
+    {
+      "name": "07_compatibility_ru.png",
+      "sha256": "df1f15f6bdd5909d78910f03b2affad3b719d891bb800bf67eb41b2148827334",
+      "bytes": 1169042
+    },
+    {
+      "name": "08_faq_ru.png",
+      "sha256": "35e4f61320404c3b995c2fce463e3194b502b5714b81e02aba01f9ae90ded260",
+      "bytes": 1039509
+    },
+    {
+      "name": "09_video_cover_ru.mp4",
+      "sha256": "d6c4aa359e1bb8d71add68501fd11802f42d1df1dcfb8cee59ff9472f5f39bd3",
+      "bytes": 396741,
+      "codec": "h264",
+      "width": 1080,
+      "height": 1080,
+      "duration_seconds": 10
+    }
+  ],
+  "prompt_summary": "Edit only quantity-specific Russian text from 50 to 300 while preserving the established product appearance, 8x15 mm dimensions, blue-white layout, and all non-quantity claims.",
+  "automatic_purchase_performed": false,
+  "automatic_payment_performed": false
+}

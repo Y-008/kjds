@@ -20,7 +20,13 @@ $env:KJDS_READ_ONLY_IDEMPOTENCY_KEY = $IdempotencyKey
 # credentials. --no-deps keeps the offline preflight from starting the API or any
 # other service. The Python preflight returns before constructing HTTP clients.
 docker compose --profile read-only-pilot run --rm --no-deps ozon-read-worker `
-    python -m apps.control_plane.ozon_read_worker --preflight
+    python -m apps.control_plane.ozon_read_worker --preflight `
+    --pilot-id $PilotId `
+    --idempotency-key $IdempotencyKey `
+    --page-size $PageSize `
+    $(if ($OfferId) { "--offer-id=$OfferId" }) `
+    $(foreach ($targetOfferId in $OfferIds) { "--offer-id=$targetOfferId" }) `
+    $(if ($Cursor) { "--cursor=$Cursor" })
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

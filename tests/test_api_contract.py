@@ -1735,9 +1735,13 @@ def test_openapi_exposes_verified_marketplace_catalog_and_existing_binding() -> 
 def test_openapi_exposes_immutable_supplier_rfq_and_reply_lineage() -> None:
     schema = app.openapi()
     collection = schema["paths"]["/v1/sourcing/rfq-packages"]
+    candidate_collection = schema["paths"][
+        "/v1/sourcing/candidate-rfq-packages"
+    ]
     item = schema["paths"]["/v1/sourcing/rfq-packages/{evidence_id}"]
 
     assert set(collection) == {"get", "post"}
+    assert set(candidate_collection) == {"post"}
     assert set(item) == {"get"}
     request_schema = schema["components"]["schemas"]["SupplierRfqPackageInput"]
     assert request_schema["additionalProperties"] is False
@@ -1757,9 +1761,31 @@ def test_openapi_exposes_immutable_supplier_rfq_and_reply_lineage() -> None:
         "confirmed",
     }
     assert request_schema["properties"]["confirmed"]["const"] is True
+    candidate_schema = schema["components"]["schemas"][
+        "SupplierCandidateRfqPackageInput"
+    ]
+    assert candidate_schema["additionalProperties"] is False
+    assert {
+        "store_ref",
+        "product_id",
+        "expected_product_snapshot_sha256",
+        "source_evidence_ids",
+        "idempotency_key",
+        "quantity_breaks",
+        "required_specifications",
+        "destination",
+        "response_due_at",
+        "sample_required",
+        "tax_invoice_required",
+        "required_documents",
+        "packaging_requirements",
+        "confirmed",
+    } == set(candidate_schema["required"])
+    assert candidate_schema["properties"]["confirmed"]["const"] is True
     for path, method in (
         ("/v1/sourcing/rfq-packages", "get"),
         ("/v1/sourcing/rfq-packages", "post"),
+        ("/v1/sourcing/candidate-rfq-packages", "post"),
         ("/v1/sourcing/rfq-packages/{evidence_id}", "get"),
     ):
         assert schema["paths"][path][method]["security"] == [{"KjdsApiKey": []}]
@@ -1772,6 +1798,30 @@ def test_openapi_exposes_immutable_supplier_rfq_and_reply_lineage() -> None:
         multipart_ref.rsplit("/", 1)[-1]
     ]
     assert "rfq_package_evidence_id" in multipart_schema["properties"]
+
+
+def test_candidate_sourcing_handoff_derives_scope_server_side() -> None:
+    schema = app.openapi()
+    operation = schema["paths"][
+        "/v1/market/candidates/sourcing-handoff"
+    ]["post"]
+    request_ref = operation["requestBody"]["content"][
+        "application/json"
+    ]["schema"]["$ref"]
+    request_schema = schema["components"]["schemas"][
+        request_ref.rsplit("/", 1)[-1]
+    ]
+
+    assert operation["security"] == [{"KjdsApiKey": []}]
+    assert request_schema["properties"]["store_ref"]["default"] == (
+        "ozon-primary"
+    )
+    assert not {
+        "tenant_ref",
+        "entity_ref",
+        "scope_grant_authority_sha256",
+        "scope_as_of",
+    }.intersection(request_schema["properties"])
 
 
 def test_openapi_exposes_supplier_rfq_dispatch_proof_and_review() -> None:

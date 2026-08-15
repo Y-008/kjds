@@ -51,7 +51,19 @@ uv run python -m alembic upgrade head
 
 ## 质量门
 
-基础检查：
+日常快速门禁：
+
+```powershell
+.\scripts\verify-fast.ps1
+```
+
+清理或降本审计：
+
+```powershell
+.\scripts\audit-cleanup.ps1 -IncludeCommands
+```
+
+基础检查（快速门禁会执行其中核心步骤）：
 
 ```powershell
 uv run python scripts/verify_secrets.py
@@ -69,10 +81,11 @@ npm test
 npm run build
 ```
 
-数据库、API、Worker、迁移或运行边界变更还必须运行完整 G-1：
+数据库、API、Worker、迁移或运行边界变更还必须运行完整 G-1。运行前先做冲突检查：
 
 ```powershell
-.\scripts\verify-g1.ps1
+.\scripts\preflight-g1.ps1
+.\scripts\verify-g1.ps1 -UseExistingPostgres
 ```
 
 远程交付固定经过真实 Pull Request，并等待 `backend-quality`、`web-quality`、`postgres-smoke` 三项检查通过。公开仓库 `Y-008/kjds` 已对 `main` 启用 GitHub 分支保护，禁止强推和删除，并要求解决 Review 会话。

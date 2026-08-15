@@ -362,6 +362,10 @@ def test_operator_script_defaults_to_no_deps_preflight_before_explicit_execute()
 
     assert "[switch]$Execute" in script
     assert "--rm --no-deps ozon-read-worker" in script
+    assert "--pilot-id $PilotId" in script
+    assert "--idempotency-key $IdempotencyKey" in script
+    assert '"--offer-id=$OfferId"' in script
+    assert '"--offer-id=$targetOfferId"' in script
     assert preflight < execution_gate < live_run
 
 

@@ -2149,6 +2149,13 @@
             "minLength": 1,
             "title": "Sku",
             "type": "string"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
           }
         },
         "required": [
@@ -8801,12 +8808,7 @@
             "type": "array"
           },
           "marketplace": {
-            "enum": [
-              "1688",
-              "ozon"
-            ],
-            "title": "Marketplace",
-            "type": "string"
+            "$ref": "#/components/schemas/ObservationMarketplace"
           },
           "observed_at": {
             "title": "Observed At",

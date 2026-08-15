@@ -89,3 +89,57 @@ uv run pytest -q -p no:cacheprovider --basetemp=.runtime/pytest-supplier-authori
 - 尚未确认 500 kg / 7.6 m / 三控 / 220V 的精确 SKU、包装、认证和交付条款；
 - 当前商品在访问地区不可配送，必须先核验配送覆盖；
 - Ozon 标题必须先由俄语母语/合规复核，广告投放仍受真实转化率、评价、内容和全成本门阻断。
+
+## BAS-095A：正式报价数量阶梯无损补强（2026-08-10）
+
+首个真实 SKU 的冻结 RFQ 要求样品、100、300、500 件报价。复核发现原有 Evidence 可以保存任意
+`offer_data`，但正式 `SupplierOffer` 与 `supplier-quotes.csv` 只显式投影单个 `unit_price + MOQ`；
+若直接截取其中一档，会丢失原始阶梯并可能把不同采购量当作可比成本。
+
+本次继续复用 ADR-0021 的单一报价真源：
+
+- 完整阶梯保存在同一不可变 `offer_data.attributes.price_tiers`，正式投影继续落入既有
+  `source_offers.attributes_json`，没有新增报价表或迁移；
+- 每档只允许 `minimum_quantity + unit_price`，数量唯一、规范化严格升序，数量和金额必须为正，
+  金额使用有限 Decimal；
+- 同一原件冻结 `selected_quantity`，`SupplierOffer.unit_price` 必须等于该数量适用的最高起订档，
+  且所选数量不得低于报价 MOQ；
+- 同组三报价只要任一份带阶梯，三份都必须声明同一 `selected_quantity`；检查发生在利润假设
+  Evidence 与 SupplierOffer 创建之前，失败不留下部分正式对象；
+- 完整阶梯和比较数量进入既有不可变复核 payload、Source Offer 幂等比较和三报价响应，公开价、
+  上传者自审、采购、付款、平台写入与 `actual` 权限没有变化。
+
+被否决方案包括：为每档复制一个 SupplierOffer（会把一家伪装为多份报价）、只留被选档（丢失
+权威条款），以及新增报价行事实表（与当前 Evidence + immutable `source_offers` 形成第二真源）。
+当签名供应商 API 或大量区间查询证明 JSONB 无法满足索引/审计 SLO 时，才按 ADR 失效条件重新评估
+规范化子表。
+
+`frontier_review=not_required`：本切片没有新增依赖、Provider、运行时、模型或外部接口，只加强既有
+内部 Decimal/Evidence 合同。
+
+### 2026-08-10 验收
+
+```text
+uv run pytest -q tests/test_sourcing_intake.py tests/test_sourcing.py tests/test_api_contract.py \
+  -p no:cacheprovider --basetemp=D:\KJDS\.tmp\quote-tiers-contract
+59 passed
+
+uv run python scripts/verify_secrets.py
+Secret scan passed: 555 non-ignored worktree files and 1465 historical paths checked
+
+uv run ruff check .
+All checks passed!
+
+uv run alembic heads
+20260726_0052 (head)
+
+uv run pytest -q -p no:cacheprovider --basetemp=D:\KJDS\.tmp\quote-tiers-full
+542 passed, 1 non-blocking upstream StarletteDeprecationWarning
+
+git diff --check
+passed
+```
+
+独立完成复核结论：没有发现 P0/P1/P2 未解决项。旧单价报价不含 `price_tiers` 时保持原行为；阶梯
+输入的重复数量、零价、无适用档、缺比较数量、单价漂移和三家数量不一致均有确定性负向测试。
+本工程验收不证明已收到任何真实供应商报价；真实报价数仍为 0。
