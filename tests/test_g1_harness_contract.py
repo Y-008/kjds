@@ -164,6 +164,153 @@ def test_g1_cleanup_failures_cannot_skip_report_serialization(tmp_path):
     ]
 
 
+def test_g1_source_guard_blocks_source_changes_but_ignores_disposable_paths(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell 7 is required for the G-1 source guard contract")
+    source = HARNESS.read_text(encoding="utf-8")
+    helper_start = source.index("function Invoke-CleanupStep")
+    harness_start = source.index("$startedAt =")
+    helpers = source[helper_start:harness_start]
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    subprocess.run(["git", "-C", str(repository), "init", "-q"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.name", "G-1 test"],
+        check=True,
+    )
+    tracked = repository / "source.py"
+    tracked.write_text("v1", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "add", "source.py"], check=True)
+    subprocess.run(["git", "-C", str(repository), "commit", "-qm", "init"], check=True)
+    tracked.write_text("v2", encoding="utf-8")
+    invocation = f"""
+$ErrorActionPreference = "Stop"
+{helpers}
+    try {{
+        Assert-SourceWorktreeClean -RepositoryRoot {powershell_quote(str(repository))}
+        exit 11
+    }} catch {{
+        if (-not $_.Exception.Message.Contains("unregistered changes")) {{ exit 12 }}
+    }}
+exit 0
+"""
+    blocked = subprocess.run(
+        [PWSH, "-NoProfile", "-Command", invocation],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert blocked.returncode == 0, f"rc={blocked.returncode}; stdout={blocked.stdout!r}; stderr={blocked.stderr!r}"
+
+    tracked.write_text("v1", encoding="utf-8")
+    (repository / "wuliu").mkdir()
+    (repository / "wuliu" / "temporary.txt").write_text("temp", encoding="utf-8")
+    (repository / "web").mkdir()
+    (repository / "web" / "tsconfig.tsbuildinfo").write_text("temp", encoding="utf-8")
+    (repository / "深入理解AI Agent(1).pdf").write_bytes(b"temp")
+    disposable_invocation = f"""
+$ErrorActionPreference = "Stop"
+{helpers}
+Assert-SourceWorktreeClean -RepositoryRoot {powershell_quote(str(repository))}
+"""
+    disposable = subprocess.run(
+        [PWSH, "-NoProfile", "-Command", disposable_invocation],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert disposable.returncode == 0, disposable.stderr
+
+
+def test_g1_evidence_archive_copy_is_atomic_and_outside_repository(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell 7 is required for the G-1 evidence archive contract")
+    source = HARNESS.read_text(encoding="utf-8")
+    helper_start = source.index("function Invoke-CleanupStep")
+    harness_start = source.index("$startedAt =")
+    helpers = source[helper_start:harness_start]
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    report = repository / "G1_VERIFICATION.json"
+    report.write_text('{"status":"PASS"}', encoding="utf-8")
+    archive = tmp_path / "archive" / "G1_VERIFICATION.json"
+    invocation = f"""
+$ErrorActionPreference = "Stop"
+{helpers}
+$published = Publish-G1EvidenceCopy `
+    -SourcePath {powershell_quote(str(report))} `
+    -DestinationPath {powershell_quote(str(archive))} `
+    -RepositoryRoot {powershell_quote(str(repository))}
+if ($published -ne {powershell_quote(str(archive))}) {{ exit 21 }}
+if ((Get-FileHash -LiteralPath {powershell_quote(str(report))} -Algorithm SHA256).Hash -ne
+    (Get-FileHash -LiteralPath {powershell_quote(str(archive))} -Algorithm SHA256).Hash) {{ exit 22 }}
+$runtime_root = {powershell_quote(str(repository / ".runtime"))}
+$runtime_evidence = Join-Path $runtime_root "team-agent-gate"
+New-Item -ItemType Directory -Path $runtime_evidence -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $runtime_evidence "receipt.json"), "evidence")
+$directory_archive = {powershell_quote(str(archive.parent / "runtime"))}
+Publish-G1EvidenceDirectory `
+    -SourceDirectory $runtime_evidence `
+    -DestinationDirectory $directory_archive `
+    -RepositoryRoot {powershell_quote(str(repository))} `
+    -RuntimeRoot $runtime_root
+if (-not (Test-Path -LiteralPath (Join-Path $directory_archive "receipt.json"))) {{ exit 24 }}
+$result = [ordered]@{{
+    gate = "G-1"
+    status = "PASS"
+    started_at = "2026-09-03T00:00:00Z"
+    finished_at = $null
+    git_commit = "test-commit"
+    cleanup_processes = $true
+    cleanup_database = $true
+    cleanup_files = $true
+    cleanup_file_errors = @()
+    cleanup_error = $null
+    error = $null
+    report_error = $null
+}}
+$steps = @(@{{ Name = "noop"; Action = {{}} }})
+$completion = Complete-G1Verification `
+    -Result $result `
+    -CleanupSteps $steps `
+    -ReportPath {powershell_quote(str(report))} `
+    -EvidenceArchivePath {powershell_quote(str(archive))} `
+    -RepositoryRoot {powershell_quote(str(repository))}
+if ($completion.failed -or -not (Test-Path -LiteralPath {powershell_quote(str(archive))})) {{ exit 25 }}
+try {{
+    Publish-G1EvidenceCopy `
+        -SourcePath {powershell_quote(str(report))} `
+        -DestinationPath {powershell_quote(str(repository / "forbidden.json"))} `
+        -RepositoryRoot {powershell_quote(str(repository))} | Out-Null
+    exit 23
+}} catch {{ exit 0 }}
+exit 0
+"""
+    completed = subprocess.run(
+        [PWSH, "-NoProfile", "-Command", invocation],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, f"rc={completed.returncode}; stdout={completed.stdout!r}; stderr={completed.stderr!r}"
+
+
+def test_g1_checks_source_worktree_before_cleanup_and_persists_evidence():
+    source = HARNESS.read_text(encoding="utf-8")
+
+    assert "KJDS_G1_EVIDENCE_ARCHIVE" in source
+    assert "Publish-G1EvidenceCopy" in source
+    assert source.index("Checking source worktree before cleanup") < source.index(
+        "$completion = Complete-G1Verification"
+    )
+    assert "evidence_archive_report = $ArchivedReportPath" in source
+    assert "evidence_archive_mutex_release_receipt = $ArchivedMutexReleaseReceipt" in source
+
+
 def test_g1_report_write_failure_exits_nonzero_and_preserves_prior_report(tmp_path):
     report_directory = tmp_path / "G1_VERIFICATION.json"
     report_directory.mkdir()

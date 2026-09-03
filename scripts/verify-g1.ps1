@@ -47,6 +47,20 @@ $ContractDatabaseName = "kjds_g1_contract_" + $RunTokenSha256.Substring(0, 24)
 $PerRunReportPath = Join-Path $Runtime ("G1_VERIFICATION-" + $RunTokenSha256 + ".json")
 $AuthoritativeReportPath = Join-Path $Runtime "G1_VERIFICATION.json"
 $G1ControlMutexReleaseReceipt = Join-Path $Runtime ("G1_MUTEX_RELEASE-" + $RunTokenSha256 + ".json")
+$EvidenceArchiveRoot = if ($env:KJDS_G1_EVIDENCE_ARCHIVE) {
+    $configuredArchiveRoot = $env:KJDS_G1_EVIDENCE_ARCHIVE
+    if ([IO.Path]::IsPathRooted($configuredArchiveRoot)) {
+        [IO.Path]::GetFullPath($configuredArchiveRoot)
+    } else {
+        [IO.Path]::GetFullPath((Join-Path $Root $configuredArchiveRoot))
+    }
+} else {
+    Join-Path (Split-Path -Parent $Root) "g1-evidence"
+}
+$EvidenceArchiveDirectory = Join-Path $EvidenceArchiveRoot ("g1-" + $RunTokenSha256)
+$ArchivedReportPath = Join-Path $EvidenceArchiveDirectory "G1_VERIFICATION.json"
+$ArchivedMutexReleaseReceipt = Join-Path $EvidenceArchiveDirectory "G1_MUTEX_RELEASE.json"
+$ArchivedRuntimeEvidenceDirectory = Join-Path $EvidenceArchiveDirectory "runtime-evidence"
 $StrategicBenchmarkSealingKey = [Convert]::ToBase64String(
     [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 )
@@ -296,6 +310,128 @@ function Remove-OwnedPath {
     }
 }
 
+function Test-DisposableStatusPath {
+    param([Parameter(Mandatory = $true)][string]$StatusLine)
+
+    if ($StatusLine.Length -lt 4) { return $false }
+    $path = $StatusLine.Substring(3).Trim()
+    if ($path.StartsWith('"') -and $path.EndsWith('"') -and $path.Length -ge 2) {
+        $path = $path.Substring(1, $path.Length - 2)
+    }
+    if ($path.Contains(" -> ")) {
+        $path = ($path -split " -> ")[-1].Trim('"')
+    }
+    $rootPdfPath = $path -match "^[^/]+\.pdf$"
+    $path = $path.Replace("\", "/")
+
+    if (
+        $path -match "^(?:\.runtime|\.pytest_cache|\.ruff_cache|\.mypy_cache)/" -or
+        $path -match "^(?:\.pytest-tmp-|\.pytest_tmp_)" -or
+        $path -match "(^|/)(?:node_modules|\.next)(/|$)" -or
+        $path -eq "web/tsconfig.tsbuildinfo" -or
+        $path -match "^wuliu(?:/|$)" -or
+        $path -eq "{console.error(e)" -or
+        $path -eq "深入理解AI Agent(1).pdf" -or
+        $rootPdfPath -or
+        $path -match "\.pyc$"
+    ) {
+        return $true
+    }
+    return $false
+}
+
+function Get-SourceWorktreeStatus {
+    param([Parameter(Mandatory = $true)][string]$RepositoryRoot)
+
+    $statusLines = @(& git -C $RepositoryRoot status --porcelain=v1 --untracked-files=all 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to inspect Git worktree status: $($statusLines -join ' ')"
+    }
+    $sourceChanges = [System.Collections.Generic.List[string]]::new()
+    foreach ($statusLine in $statusLines) {
+        $line = [string]$statusLine
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        if (-not (Test-DisposableStatusPath -StatusLine $line)) {
+            [void]$sourceChanges.Add($line)
+        }
+    }
+    return @($sourceChanges)
+}
+
+function Assert-SourceWorktreeClean {
+    param([Parameter(Mandatory = $true)][string]$RepositoryRoot)
+
+    $sourceChanges = @(Get-SourceWorktreeStatus -RepositoryRoot $RepositoryRoot)
+    if ($sourceChanges.Count -gt 0) {
+        $preview = ($sourceChanges | Select-Object -First 20) -join "; "
+        if ($sourceChanges.Count -gt 20) { $preview += "; ..." }
+        throw "Source worktree has unregistered changes; refusing cleanup: $preview"
+    }
+}
+
+function Publish-G1EvidenceCopy {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationPath,
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+        throw "G-1 evidence source does not exist: $SourcePath"
+    }
+    $resolvedRepository = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd("\", "/") + [IO.Path]::DirectorySeparatorChar
+    $resolvedDestination = [IO.Path]::GetFullPath($DestinationPath)
+    if ($resolvedDestination.StartsWith($resolvedRepository, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refused to archive G-1 evidence inside the source repository: $resolvedDestination"
+    }
+
+    $destinationDirectory = Split-Path -Parent $resolvedDestination
+    New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+    $sourceHash = (Get-FileHash -LiteralPath $SourcePath -Algorithm SHA256).Hash
+    if (Test-Path -LiteralPath $resolvedDestination -PathType Leaf) {
+        $destinationHash = (Get-FileHash -LiteralPath $resolvedDestination -Algorithm SHA256).Hash
+        if ($sourceHash -ieq $destinationHash) { return $resolvedDestination }
+    }
+
+    $temporaryDestination = "$resolvedDestination.tmp-$([guid]::NewGuid().ToString('N'))"
+    try {
+        Copy-Item -LiteralPath $SourcePath -Destination $temporaryDestination -Force
+        Move-Item -LiteralPath $temporaryDestination -Destination $resolvedDestination -Force
+    } finally {
+        Remove-Item -LiteralPath $temporaryDestination -Force -ErrorAction SilentlyContinue
+    }
+    $publishedHash = (Get-FileHash -LiteralPath $resolvedDestination -Algorithm SHA256).Hash
+    if ($sourceHash -ine $publishedHash) {
+        throw "G-1 evidence archive hash mismatch: $resolvedDestination"
+    }
+    return $resolvedDestination
+}
+
+function Publish-G1EvidenceDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceDirectory,
+        [Parameter(Mandatory = $true)][string]$DestinationDirectory,
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][string]$RuntimeRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $SourceDirectory -PathType Container)) { return }
+    $resolvedRuntime = [IO.Path]::GetFullPath($RuntimeRoot).TrimEnd("\", "/") + [IO.Path]::DirectorySeparatorChar
+    $resolvedSource = [IO.Path]::GetFullPath($SourceDirectory)
+    if (-not $resolvedSource.StartsWith($resolvedRuntime, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refused to archive evidence outside the runtime directory: $resolvedSource"
+    }
+    foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Recurse -Force -File) {
+        if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+        $relativePath = [IO.Path]::GetRelativePath($resolvedSource, $file.FullName)
+        $destinationPath = Join-Path $DestinationDirectory $relativePath
+        Publish-G1EvidenceCopy `
+            -SourcePath $file.FullName `
+            -DestinationPath $destinationPath `
+            -RepositoryRoot $RepositoryRoot | Out-Null
+    }
+}
+
 function Write-G1Report {
     param(
         [Parameter(Mandatory = $true)]$Result,
@@ -355,7 +491,9 @@ function Complete-G1Verification {
     param(
         [Parameter(Mandatory = $true)]$Result,
         [Parameter(Mandatory = $true)][object[]]$CleanupSteps,
-        [Parameter(Mandatory = $true)][string]$ReportPath
+        [Parameter(Mandatory = $true)][string]$ReportPath,
+        [AllowNull()][string]$EvidenceArchivePath,
+        [AllowNull()][string]$RepositoryRoot
     )
 
     foreach ($step in $CleanupSteps) {
@@ -379,6 +517,21 @@ function Complete-G1Verification {
 
     $Result.finished_at = (Get-Date).ToUniversalTime().ToString("o")
     $reportWritten = Write-G1Report -Result $Result -Path $ReportPath
+    if ($reportWritten -and $EvidenceArchivePath) {
+        try {
+            Publish-G1EvidenceCopy `
+                -SourcePath $ReportPath `
+                -DestinationPath $EvidenceArchivePath `
+                -RepositoryRoot $(if ($RepositoryRoot) { $RepositoryRoot } else { $Root }) | Out-Null
+        } catch {
+            $Result.status = "FAIL"
+            $Result.report_error =
+                "Unable to archive G-1 report: $($_.Exception.Message)"
+            $Result.finished_at = (Get-Date).ToUniversalTime().ToString("o")
+            [void](Write-G1Report -Result $Result -Path $ReportPath)
+            $reportWritten = $false
+        }
+    }
     return [ordered]@{
         failed = $Result.status -ne "PASS" -or -not $reportWritten
         report_written = [bool]$reportWritten
@@ -483,6 +636,10 @@ $result = [ordered]@{
     error = $null
     report_error = $null
     report = $PerRunReportPath
+    evidence_archive_root = $EvidenceArchiveRoot
+    evidence_archive_report = $ArchivedReportPath
+    evidence_archive_mutex_release_receipt = $ArchivedMutexReleaseReceipt
+    evidence_archive_runtime = $ArchivedRuntimeEvidenceDirectory
 }
 
 try {
@@ -494,6 +651,9 @@ try {
     $result.g1_control_mutex_acquired = $true
     $result.g1_control_mutex_release_receipt = $G1ControlMutexReleaseReceipt
     $result.report = $AuthoritativeReportPath
+
+    Write-Output "[G-1] Checking source worktree before any disposable resources are created"
+    Assert-SourceWorktreeClean -RepositoryRoot $Root
 
     Write-Output "[G-1] Checking required commands and Git revision"
     if ($PSVersionTable.PSVersion.Major -lt 7) {
@@ -1125,6 +1285,21 @@ try {
     $nodeModulesJunction = Join-Path $WebSmoke "node_modules"
     $cleanupSteps = @(
         @{
+            Name = "persistent G-1 runtime evidence archive"
+            Action = {
+                Publish-G1EvidenceDirectory `
+                    -SourceDirectory $TeamAgentGateDirectory `
+                    -DestinationDirectory (Join-Path $ArchivedRuntimeEvidenceDirectory "team-agent-gate") `
+                    -RepositoryRoot $Root `
+                    -RuntimeRoot $Runtime
+                Publish-G1EvidenceDirectory `
+                    -SourceDirectory $ReleaseEvidenceDirectory `
+                    -DestinationDirectory (Join-Path $ArchivedRuntimeEvidenceDirectory "release") `
+                    -RepositoryRoot $Root `
+                    -RuntimeRoot $Runtime
+            }
+        },
+        @{
             Name = "web container removal"
             Action = {
                 if ($WebContainer) {
@@ -1359,19 +1534,26 @@ try {
         $PerRunReportPath
     }
     try {
+        Write-Output "[G-1] Checking source worktree before cleanup"
+        Assert-SourceWorktreeClean -RepositoryRoot $Root
         $completion = Complete-G1Verification `
             -Result $result `
             -CleanupSteps $cleanupSteps `
-            -ReportPath $completionReportPath
+            -ReportPath $completionReportPath `
+            -EvidenceArchivePath $(if ($G1ControlMutexAcquired) { $ArchivedReportPath } else { $null }) `
+            -RepositoryRoot $Root
         $publishedReportSha256 = if (Test-Path -LiteralPath $completionReportPath) {
             (Get-FileHash -LiteralPath $completionReportPath -Algorithm SHA256).Hash.ToLowerInvariant()
         } else {
             $null
         }
+        if ($result.report_error -like "Unable to archive G-1 report:*") {
+            $mutexReleaseError = $result.report_error
+        }
     } finally {
         if ($G1ControlMutex) {
             try {
-                if ($G1ControlMutexAcquired) {
+                if ($G1ControlMutexAcquired -and -not $mutexReleaseError) {
                     $releaseReceipt = [ordered]@{
                         gate = "G-1-control-mutex-release"
                         state = "release_prepared"
@@ -1390,6 +1572,10 @@ try {
                         -LiteralPath $releaseReceiptTemporaryPath `
                         -Destination $G1ControlMutexReleaseReceipt `
                         -Force
+                    Publish-G1EvidenceCopy `
+                        -SourcePath $G1ControlMutexReleaseReceipt `
+                        -DestinationPath $ArchivedMutexReleaseReceipt `
+                        -RepositoryRoot $Root | Out-Null
                 }
             } catch {
                 $mutexReleaseError = "G-1 control mutex finalization receipt publication failed"
