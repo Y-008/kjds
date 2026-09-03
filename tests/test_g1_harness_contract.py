@@ -285,6 +285,17 @@ def test_g1_evidence_archive_copy_is_atomic_and_outside_repository(tmp_path):
     repository.mkdir()
     report = repository / "G1_VERIFICATION.json"
     report.write_text('{"status":"PASS"}', encoding="utf-8")
+    subprocess.run(["git", "-C", str(repository), "init", "-q"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.name", "G-1 test"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repository), "add", "G1_VERIFICATION.json"], check=True)
+    subprocess.run(["git", "-C", str(repository), "commit", "-qm", "init"], check=True)
     archive = tmp_path / "archive" / "G1_VERIFICATION.json"
     invocation = f"""
 $ErrorActionPreference = "Stop"

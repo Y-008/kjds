@@ -498,6 +498,9 @@ function Complete-G1Verification {
         [AllowNull()][string]$RepositoryRoot
     )
 
+    if ($RepositoryRoot) {
+        Assert-SourceWorktreeClean -RepositoryRoot $RepositoryRoot
+    }
     foreach ($step in $CleanupSteps) {
         $cleanupError = Invoke-CleanupStep -Name $step.Name -Action $step.Action
         $Result.cleanup_file_errors += @($cleanupError)
