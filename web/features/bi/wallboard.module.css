@@ -1,0 +1,28 @@
+.sceneControls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.sceneControls button { min-height: 36px; border: 1px solid #6f9da2; border-radius: 8px; padding: 7px 10px; color: #d7e8e7; background: #14343c; font: inherit; font-size: 11px; cursor: pointer; }
+.sceneControls button[aria-pressed="true"] { border-color: #75c8ad; color: #eafff7; background: #17604e; }
+.sceneControls button:disabled { cursor: not-allowed; opacity: .68; }
+.sceneLive { margin-bottom: 16px; color: #b3c9ca; font-size: 11px; }
+.scopeSummary { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 12px; color: #c0d4d4; font-size: 11px; }
+.scopeSummary strong { color: #f0faf7; }
+.wallboardAlert { margin-bottom: 12px; border: 1px solid #a66d52; border-radius: 10px; padding: 10px 12px; color: #ffe2d5; background: #432d2a; font-size: 12px; }
+.flowGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+.flowCard { display: grid; gap: 12px; min-height: 150px; border: 1px solid #2a5159; border-radius: 12px; padding: 16px; background: #163740; }
+.flowCard > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #a5c1c3; font-size: 12px; }
+.flowCard strong { color: #effaf7; font-size: clamp(1.7rem, 3vw, 2.4rem); }
+.flowCard small { color: #91b1b3; font-size: 11px; line-height: 1.4; }
+.exceptionList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.exceptionList article { border: 1px solid #5d4e3d; border-radius: 12px; padding: 14px; background: #263a3b; }
+.exceptionList article > div { display: flex; align-items: flex-start; gap: 8px; }
+.exceptionList h3 { margin: 1px 0 0; color: #f1fbf7; font-size: 13px; line-height: 1.35; }
+.exceptionList p { margin: 12px 0 7px; color: #c0d0cf; font-size: 11px; line-height: 1.5; }
+.exceptionList small { color: #8da9ac; font-size: 10px; overflow-wrap: anywhere; }
+.evidenceAction { min-height: 30px; border: 1px solid #6f9da2; border-radius: 7px; padding: 4px 8px; color: #d7e8e7; background: #14343c; font: inherit; font-size: 10px; cursor: pointer; }
+.wallboardNoData { display: grid; place-items: center; min-height: 180px; grid-column: 1 / -1; border: 1px dashed #3c6067; border-radius: 12px; color: #8da9ac; font-size: 12px; }
+.visuallyHidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; clip-path: inset(50%); }
+
+@media (max-width: 960px) { .flowGrid, .exceptionList { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) {
+  .flowGrid, .exceptionList { grid-template-columns: 1fr; }
+  .sceneControls button, .evidenceAction { min-height: 44px; }
+}

@@ -19,8 +19,16 @@ from sqlalchemy import (
     or_,
     select,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from .agent_team_orchestration import (
+    TEAM_AGENT_HARNESS_SOURCE,
+    TEAM_AGENT_HARNESS_VERIFIER_AUTHORITY,
+    TEAM_AGENT_HARNESS_VERIFIER_ID,
+    TEAM_AGENT_HARNESS_VERIFIER_SOURCE_TYPE,
+    TEAM_AGENT_HARNESS_VERIFIER_VERSION,
+)
 from .security import Principal
 from .sql_repository import Base
 
@@ -626,6 +634,52 @@ class AgentHarnessService:
             )
             if not verifier or not verifier.enabled:
                 raise ValueError("registered verifier required")
+            if payload.get("source") == TEAM_AGENT_HARNESS_SOURCE:
+                scope = payload.get("scope")
+                expected_scope_fields = {
+                    "tenant_ref",
+                    "entity_ref",
+                    "store_ref",
+                    "authority_sha256",
+                    "session_ref",
+                    "task_ref",
+                    "observation_only",
+                    "gate_eligible",
+                }
+                authority_sha256 = (
+                    scope.get("authority_sha256")
+                    if isinstance(scope, Mapping)
+                    else None
+                )
+                if (
+                    verifier.id != TEAM_AGENT_HARNESS_VERIFIER_ID
+                    or verifier.version != TEAM_AGENT_HARNESS_VERIFIER_VERSION
+                    or verifier.source_type != TEAM_AGENT_HARNESS_VERIFIER_SOURCE_TYPE
+                    or verifier.authority != TEAM_AGENT_HARNESS_VERIFIER_AUTHORITY
+                    or not isinstance(scope, Mapping)
+                    or set(scope) != expected_scope_fields
+                    or not isinstance(authority_sha256, str)
+                    or len(authority_sha256) != 64
+                    or any(
+                        character not in "0123456789abcdef"
+                        for character in authority_sha256
+                    )
+                    or not isinstance(scope.get("session_ref"), str)
+                    or not scope.get("session_ref")
+                    or not isinstance(scope.get("task_ref"), str)
+                    or not scope.get("task_ref")
+                    or scope.get("observation_only") is not True
+                    or scope.get("gate_eligible") is not False
+                    or scope.get("tenant_ref") != project.tenant_ref
+                    or project.entity_ref is None
+                    or scope.get("entity_ref") != project.entity_ref
+                    or project.store_ref is None
+                    or scope.get("store_ref") != project.store_ref
+                    or payload.get("store_ref") != scope.get("store_ref")
+                ):
+                    raise ValueError(
+                        "TeamAgent observation verifier contract mismatch"
+                    )
             task = session.get(GoalTaskRow, payload.get("task_id")) if payload.get("task_id") else None
             if task and (
                 task.project_id != project.id
@@ -633,16 +687,70 @@ class AgentHarnessService:
                 or task.verifier_version != verifier.version
             ):
                 raise ValueError("task verifier binding mismatch")
-            result_sha = _sha(
-                {
-                    "state": state,
-                    "summary": payload["summary"],
-                    "artifact_ref": payload["artifact_ref"],
-                    "evidence_ref": payload.get("evidence_ref"),
+            result_identity = {
+                "state": state,
+                "summary": payload["summary"],
+                "artifact_ref": payload["artifact_ref"],
+                "evidence_ref": payload.get("evidence_ref"),
+            }
+            principal_identity = {
+                "actor_id": principal.actor_id,
+                "tenant_ref": principal.tenant_ref,
+                "roles": sorted(principal.roles),
+                "store_refs": sorted(principal.store_refs),
+            }
+            if payload.get("source") == TEAM_AGENT_HARNESS_SOURCE:
+                # The table's replay constraint includes result_sha256. Bind
+                # the TeamAgent result digest to the exact authorization
+                # domain so a prior row cannot win a replay from another
+                # restored scope or principal.
+                result_identity["idempotency_scope"] = payload["scope"]
+                result_identity["idempotency_principal"] = principal_identity
+            result_sha = _sha(result_identity)
+            observation_identity: Any
+            if payload.get("source") == TEAM_AGENT_HARNESS_SOURCE:
+                observation_identity = {
+                    "project_id": project.id,
+                    "verifier_id": verifier.id,
+                    "verifier_version": verifier.version,
+                    "input_sha256": payload["input_sha256"],
+                    "result_sha256": result_sha,
+                    "source": payload["source"],
+                    "scope": payload["scope"],
+                    "principal": principal_identity,
                 }
-            )
-            obs_id = f"obs_{_sha([project.id, verifier.id, verifier.version, payload['input_sha256'], result_sha])[:32]}"
+            else:
+                observation_identity = [
+                    project.id,
+                    verifier.id,
+                    verifier.version,
+                    payload["input_sha256"],
+                    result_sha,
+                ]
+            obs_id = f"obs_{_sha(observation_identity)[:32]}"
+
+            def observation_matches(candidate: HarnessObservationRow) -> bool:
+                return not (
+                    candidate.project_id != project.id
+                    or candidate.task_id != (task.id if task else None)
+                    or candidate.verifier_id != verifier.id
+                    or candidate.verifier_version != verifier.version
+                    or candidate.source != payload["source"]
+                    or candidate.scope_json != payload["scope"]
+                    or candidate.state != state
+                    or candidate.summary != payload["summary"]
+                    or candidate.input_sha256 != payload["input_sha256"]
+                    or candidate.result_sha256 != result_sha
+                    or candidate.authority != verifier.authority
+                    or candidate.artifact_ref != payload["artifact_ref"]
+                    or candidate.evidence_ref != payload.get("evidence_ref")
+                    or _utc(candidate.observed_at) != observed_at.astimezone(UTC)
+                    or candidate.recorded_by != principal.actor_id
+                )
+
             row = session.get(HarnessObservationRow, obs_id)
+            if row is not None and not observation_matches(row):
+                raise ValueError("observation idempotency payload conflict")
             if not row:
                 row = HarnessObservationRow(
                     id=obs_id,
@@ -665,7 +773,22 @@ class AgentHarnessService:
                     recorded_by=principal.actor_id,
                     recorded_at=datetime.now(UTC),
                 )
-                session.add(row)
+                try:
+                    # A deterministic observation id and the replay unique
+                    # constraint make publication durable across processes.
+                    # The savepoint turns a concurrent winner into the same
+                    # idempotent response instead of aborting the request.
+                    with session.begin_nested():
+                        session.add(row)
+                        session.flush()
+                except IntegrityError as exc:
+                    winner = session.get(HarnessObservationRow, obs_id)
+                    if winner is None:
+                        raise
+                    if not observation_matches(winner):
+                        raise ValueError(
+                            "observation idempotency payload conflict"
+                        ) from exc
         return {"id": obs_id, "state": state, "result_sha256": result_sha}
 
     def bind_node_status(

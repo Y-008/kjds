@@ -65,6 +65,10 @@ KILL_SWITCH_CONTROL_PATHS = {
 }
 READ_ONLY_POST_PATHS = {
     "/v1/enterprise-positioning/recommend",
+    # EvidenceOps compiles a read-only, human-review plan.  It does not
+    # mutate facts, approvals, permits, or external systems, so the global
+    # write kill-switch must not turn this projection into a blocked write.
+    "/v1/evidenceops/plan",
 }
 
 

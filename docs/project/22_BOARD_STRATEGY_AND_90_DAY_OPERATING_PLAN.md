@@ -60,7 +60,7 @@ KJDS 当前定位为：
 | Truth/Cash | 80% | 1 条 | Truth SKU、原件、现金对账、异常场景、1→3 SKU、商业 C0 |
 | 角色系统工程 | 20% | 1 条 | 画像驱动角色 v2、只读 API 和现有老板页区域；零身份/任务/权限/外写 |
 
-90 天内冻结 World Model、Venture Federation、Synthetic Economy、新国家、新平台、多租户 SaaS、长期 Agent 扩编、第二任务/审批/事实系统，以及不能在两周内提高当前 Gate 通过率的产品能力。
+90 天内冻结 World Model、Venture Federation、Synthetic Economy、新国家、新平台、多租户 SaaS、第二任务/审批/事实系统，以及不能在两周内提高当前 Gate 通过率的产品能力。2026-08-15 修订：长期 Agent 扩编与新 Agent 平台解冻，可经 L3 拍板引入，永不授予付款/调价/改库存权限。
 
 ### 2.3 分阶段小额预算
 

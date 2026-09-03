@@ -746,10 +746,19 @@ export type OperationsQueueItem = {
   priority: string; owner_id: string | null; due_at: string; overdue: boolean;
   overdue_minutes: number; escalation_level: number; next_action: string;
 };
+export type ScopedReadModelStatus = "ready" | "partial" | "blocked" | "no_data";
+export type OperatingReadScope = {
+  tenant_ref: string;
+  entity_ref: string | null;
+  store_ref: string;
+  scope_authority_sha256: string | null;
+};
 export type OperatingWorkbenchBriefing = {
   contract_id: "kjds-operating-workbench-briefing-v1";
-  mode: "shadow_advisory";
-  status: "ready_for_review" | "needs_input";
+  mode: "shadow_advisory" | "scoped_shadow_advisory";
+  status: "ready_for_review" | "needs_input" | ScopedReadModelStatus;
+  scope?: OperatingReadScope;
+  as_of?: string;
   snapshot_sha256: string;
   summary: {
     gate_blockers: number; runtime_items: number; recommendations: number; visible_items: number;
@@ -768,7 +777,16 @@ export type OperatingWorkbenchBriefing = {
     overdue: boolean | null; escalation_level: number | null;
     expected_cm3_delta?: string | null; automatic_execution: false; platform_write_allowed: false;
   }>;
-  candidate_portfolio: GateReadiness["candidate_portfolio"];
+  candidate_portfolio: GateReadiness["candidate_portfolio"] | {
+    status: "no_data";
+    candidate_count: 0;
+    selection_ready_count: 0;
+    rows: [];
+    source_gap: string;
+    advisory_only: true;
+  };
+  source_gaps?: string[];
+  excluded_sources?: string[];
   guardrails: {
     advisory_only: true; automatic_execution: false; automatic_product_selection: false;
     automatic_procurement: false; automatic_pricing: false; automatic_listing: false;
@@ -778,7 +796,8 @@ export type OperatingWorkbenchBriefing = {
 export type OperatingAnalyticsSnapshot = {
   contract_id: "kjds-operating-flow-analytics-v1";
   store_ref: string;
-  status: "ready_for_review" | "needs_input";
+  scope?: OperatingReadScope & { status: ScopedReadModelStatus };
+  status: "ready_for_review" | "needs_input" | ScopedReadModelStatus;
   source_as_of: string | null;
   snapshot_sha256: string;
   summary: {
@@ -795,7 +814,12 @@ export type OperatingAnalyticsSnapshot = {
     ready_execution_plans: number;
   };
   recommended_playbook: {
-    id: "existing_listing_refinement" | "catalog_governance" | "guided_foundation";
+    id:
+      | "existing_listing_refinement"
+      | "catalog_governance"
+      | "guided_foundation"
+      | "scoped_catalog_refinement"
+      | "scoped_authority_foundation";
     label: string;
     reasons: string[];
     advisory_only: true;
@@ -866,6 +890,8 @@ export type OperatingAnalyticsSnapshot = {
   }>;
   priority_items: OperatingWorkbenchBriefing["work_items"];
   data_gaps: string[];
+  source_gaps?: string[];
+  excluded_sources?: string[];
   guardrails: {
     advisory_only: true;
     browser_gate_recalculation: false;

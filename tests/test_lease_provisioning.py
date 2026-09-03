@@ -58,6 +58,12 @@ def readback_dir(tmp_path: Path) -> Path:
                     "body_base64": base64.b64encode(body).decode(),
                 }
             ],
+            "request_context": {
+                "operation": "ozon.finance.read",
+                "query_window_sha256": "d" * 64,
+                "page": 1,
+                "page_size": 100,
+            },
         },
         sort_keys=True,
         separators=(",", ":"),

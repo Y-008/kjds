@@ -1,0 +1,311 @@
+.pageControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  border: 1px solid var(--kjds-border-default);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--kjds-surface-elevated);
+}
+
+.pageTabs,
+.pageActions,
+.evidenceActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pageTabs button,
+.pageActions button,
+.evidenceActions button {
+  min-height: 44px;
+  border: 1px solid var(--kjds-border-default);
+  border-radius: 9px;
+  padding: 8px 11px;
+  color: var(--kjds-text-secondary);
+  background: var(--kjds-surface-elevated);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pageTabs button[aria-current="page"] {
+  border-color: var(--kjds-color-accent-600);
+  color: var(--kjds-color-accent-700);
+  background: var(--kjds-color-accent-100);
+}
+
+.pageActions button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.pagePosition {
+  color: var(--kjds-text-muted);
+  font-size: 11px;
+}
+
+.errorBanner,
+.boundaryNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  border: 1px solid #f1c7c2;
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: var(--kjds-color-danger-700);
+  background: var(--kjds-color-danger-100);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.briefingPage {
+  min-height: 620px;
+}
+
+.leadGrid,
+.governanceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.leadCard,
+.governanceCard,
+.exceptionCard,
+.emptyState {
+  min-width: 0;
+  border: 1px solid var(--kjds-border-default);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--kjds-surface-muted);
+}
+
+.leadCard h3,
+.governanceCard h3,
+.exceptionCard h3 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.leadCard p,
+.governanceCard p,
+.exceptionCard p,
+.emptyState p {
+  margin: 9px 0 0;
+  color: var(--kjds-text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.scopeFacts,
+.authorityFacts {
+  display: grid;
+  gap: 9px;
+  margin: 14px 0 0;
+}
+
+.scopeFacts div,
+.authorityFacts div {
+  display: grid;
+  grid-template-columns: minmax(90px, .55fr) minmax(0, 1.45fr);
+  gap: 12px;
+  border-top: 1px solid var(--kjds-border-default);
+  padding-top: 9px;
+  font-size: 12px;
+}
+
+.scopeFacts dt,
+.authorityFacts dt {
+  color: var(--kjds-text-muted);
+}
+
+.scopeFacts dd,
+.authorityFacts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--kjds-text-primary);
+  text-align: right;
+}
+
+.metricLayout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.exceptionList {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.sectionLead {
+  margin: 12px 0 0;
+  color: var(--kjds-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.exceptionCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(160px, .45fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.exceptionIndex {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: var(--kjds-color-accent-700);
+  background: var(--kjds-color-accent-100);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.exceptionMeta {
+  display: grid;
+  gap: 7px;
+  color: var(--kjds-text-secondary);
+  font-size: 11px;
+}
+
+.exceptionMeta b {
+  color: var(--kjds-text-primary);
+}
+
+.gapList {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gapList li {
+  border: 1px solid #efd8ae;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--kjds-color-warning-700);
+  background: rgb(255 255 255 / 60%);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.emptyState {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  border-style: dashed;
+  text-align: center;
+}
+
+.emptyState strong {
+  color: var(--kjds-text-primary);
+}
+
+.printScope {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .metricLayout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .exceptionCard {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .exceptionMeta {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 680px) {
+  .pageControls,
+  .leadGrid,
+  .governanceGrid,
+  .metricLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .pageControls {
+    align-items: stretch;
+  }
+
+  .pageTabs,
+  .pageActions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pageTabs button,
+  .pageActions button {
+    width: 100%;
+  }
+
+  .scopeFacts div,
+  .authorityFacts div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .scopeFacts dd,
+  .authorityFacts dd {
+    text-align: left;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  .pageControls,
+  .pageActions,
+  .evidenceActions {
+    display: none !important;
+  }
+
+  .printScope {
+    display: block;
+    margin: 0 0 8mm;
+    color: #333;
+    font-size: 9pt;
+  }
+
+  .briefingPage {
+    min-height: 0;
+    break-after: page;
+    box-shadow: none;
+  }
+
+  .briefingPage[hidden] {
+    display: block !important;
+  }
+
+  .briefingPage:last-of-type {
+    break-after: auto;
+  }
+
+  .leadCard,
+  .governanceCard,
+  .exceptionCard {
+    break-inside: avoid;
+  }
+}

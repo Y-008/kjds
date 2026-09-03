@@ -10,6 +10,10 @@ from typing import Any
 from .channel_account_runtime_identity import (
     SignedManagedCredentialLeaseResolver,
 )
+from .ozon_live_contracts import (
+    FINANCE_TRANSACTION_PATH,
+    validate_finance_transactions_payload,
+)
 
 PROVIDER_READBACK_VERIFIER_VERSION = "1.0"
 PROVIDER_READBACK_CONTRACT_ID = "kjds-provider-readback-verifier-v1"
@@ -18,7 +22,7 @@ READBACK_BUNDLE_SCHEMA_VERSION = "ozon-response-bundle-v2"
 READBACK_FINANCE_CONTRACT_VERSION = "ozon-finance-transactions-v1"
 READBACK_PRODUCT_CONTRACT_VERSION = "ozon-product-read-v1"
 READBACK_OFFICIAL_ORIGIN = "https://api-seller.ozon.ru"
-READBACK_FINANCE_PATH = "/v3/finance/transaction/list"
+READBACK_FINANCE_PATH = FINANCE_TRANSACTION_PATH
 READBACK_PRODUCT_INFO_PATH = "/v3/product/info/list"
 READBACK_PRODUCT_ATTRIBUTE_PATHS = {
     "/v4/product/info/attributes",
@@ -135,13 +139,28 @@ class ProviderReadbackVerifier:
                 "READBACK_BUNDLE_HASH_DRIFT",
             )
             check(
+                "bundle_size",
+                summary.get("response_byte_size") == len(bundle_bytes),
+                "READBACK_BUNDLE_SIZE_DRIFT",
+            )
+            bundle_contract_valid = self._bundle_contract_valid(
+                bundle_bytes,
+                str(summary.get("contract_version") or ""),
+            )
+            check(
                 "bundle_contract",
-                self._bundle_contract_valid(
-                    bundle_bytes,
-                    str(summary.get("contract_version") or ""),
-                ),
+                bundle_contract_valid,
                 "READBACK_BUNDLE_CONTRACT_INVALID",
             )
+            if (
+                summary.get("contract_version") == READBACK_FINANCE_CONTRACT_VERSION
+                and bundle_contract_valid
+            ):
+                check(
+                    "finance_summary_alignment",
+                    self._finance_summary_matches_bundle(summary, bundle_bytes),
+                    "READBACK_SUMMARY_BUNDLE_MISMATCH",
+                )
             check(
                 "freshness",
                 self._fresh(
@@ -196,18 +215,48 @@ class ProviderReadbackVerifier:
         bundle_bytes: bytes,
         expected_contract: str,
     ) -> bool:
-        if not bundle_bytes or len(bundle_bytes) > READBACK_MAX_BUNDLE_BYTES:
+        parsed = cls._parse_bundle(bundle_bytes, expected_contract)
+        return parsed is not None
+
+    @classmethod
+    def _finance_summary_matches_bundle(
+        cls,
+        summary: dict[str, Any],
+        bundle_bytes: bytes,
+    ) -> bool:
+        parsed = cls._parse_bundle(bundle_bytes, READBACK_FINANCE_CONTRACT_VERSION)
+        if parsed is None:
             return False
+        return (
+            summary.get("operation_count") == parsed["operation_count"]
+            and summary.get("page_count") == parsed.get("page_count")
+            and summary.get("operation") == parsed.get("operation")
+            and summary.get("query_window_sha256")
+            == parsed.get("query_window_sha256")
+            and summary.get("page") == parsed.get("page")
+            and summary.get("page_size") == parsed.get("page_size")
+        )
+
+    @classmethod
+    def _parse_bundle(
+        cls,
+        bundle_bytes: bytes,
+        expected_contract: str,
+    ) -> dict[str, Any] | None:
+        if not bundle_bytes or len(bundle_bytes) > READBACK_MAX_BUNDLE_BYTES:
+            return None
         try:
             bundle = json.loads(bundle_bytes)
+            if not isinstance(bundle, dict):
+                return None
             if (
                 bundle.get("schema_version") != READBACK_BUNDLE_SCHEMA_VERSION
                 or bundle.get("contract_version") != expected_contract
             ):
-                return False
+                return None
             responses = bundle["responses"]
             if not isinstance(responses, list):
-                return False
+                return None
             parsed_bodies: list[dict[str, Any]] = []
             for item in responses:
                 if (
@@ -217,21 +266,52 @@ class ProviderReadbackVerifier:
                     or not 200 <= item["status_code"] < 300
                     or not isinstance(item.get("headers"), dict)
                 ):
-                    return False
+                    return None
                 body = base64.b64decode(item["body_base64"], validate=True)
                 if len(body) > READBACK_MAX_BUNDLE_BYTES:
-                    return False
+                    return None
                 if not hmac.compare_digest(
                     str(item.get("body_sha256") or ""),
                     hashlib.sha256(body).hexdigest(),
                 ):
-                    return False
-                parsed_bodies.append(json.loads(body))
+                    return None
+                parsed_body = json.loads(body)
+                if not isinstance(parsed_body, dict):
+                    return None
+                parsed_bodies.append(parsed_body)
             if expected_contract == READBACK_FINANCE_CONTRACT_VERSION:
                 if len(parsed_bodies) != 1 or responses[0]["path"] != READBACK_FINANCE_PATH:
-                    return False
-                parsed = parsed_bodies[0]
-                return isinstance(parsed.get("result", {}).get("operations"), list)
+                    return None
+                request_context = bundle.get("request_context")
+                if not isinstance(request_context, dict):
+                    return None
+                if set(request_context) != {
+                    "operation",
+                    "query_window_sha256",
+                    "page",
+                    "page_size",
+                }:
+                    return None
+                if (
+                    request_context.get("operation") != "ozon.finance.read"
+                    or not isinstance(request_context.get("query_window_sha256"), str)
+                    or len(request_context["query_window_sha256"]) != 64
+                    or any(
+                        character not in "0123456789abcdef"
+                        for character in request_context["query_window_sha256"]
+                    )
+                    or isinstance(request_context.get("page"), bool)
+                    or not isinstance(request_context.get("page"), int)
+                    or request_context["page"] < 1
+                    or isinstance(request_context.get("page_size"), bool)
+                    or not isinstance(request_context.get("page_size"), int)
+                    or not 1 <= request_context["page_size"] <= 1000
+                ):
+                    return None
+                return {
+                    **validate_finance_transactions_payload(parsed_bodies[0]),
+                    **request_context,
+                }
             if expected_contract == READBACK_PRODUCT_CONTRACT_VERSION:
                 paths = [item["path"] for item in responses]
                 if (
@@ -239,11 +319,13 @@ class ProviderReadbackVerifier:
                     or READBACK_PRODUCT_INFO_PATH not in paths
                     or len(set(paths) & READBACK_PRODUCT_ATTRIBUTE_PATHS) != 1
                 ):
-                    return False
-                return all(isinstance(body, dict) for body in parsed_bodies)
-            return False
+                    return None
+                if not all(isinstance(body, dict) for body in parsed_bodies):
+                    return None
+                return {"response_count": len(parsed_bodies)}
+            return None
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-            return False
+            return None
 
     @staticmethod
     def _fresh(

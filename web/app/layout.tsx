@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AgentStatusRail } from "../features/agent-control/agent-status-rail";
 import "./globals.css";
+import "../features/ui2/tokens.css";
 
 export const metadata: Metadata = {
   title: "KJDS · Ozon 统一经营平台",

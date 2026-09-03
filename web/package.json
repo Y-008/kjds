@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test lib/*.test.ts"
+    "test": "node --test lib/*.test.ts",
+    "test:browser": "npm run build && node tests/browser/bi-ui2.test.cjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
@@ -31,9 +32,11 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "playwright": "^1.58.2",
     "typescript": "^5.9.0"
   },
   "overrides": {

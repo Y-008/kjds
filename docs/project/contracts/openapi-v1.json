@@ -15346,6 +15346,22 @@
         "title": "TeamControlCapacityRisk",
         "type": "object"
       },
+      "TeamControlInput": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "TeamControlInput",
+        "type": "object"
+      },
       "TeamControlIntegrationItem": {
         "additionalProperties": false,
         "properties": {
@@ -16421,6 +16437,592 @@
           "projection_sha256"
         ],
         "title": "TeamControlUnavailableSquadReadiness",
+        "type": "object"
+      },
+      "TeamHandoffInput": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance_contract": {
+            "additionalProperties": true,
+            "title": "Acceptance Contract",
+            "type": "object"
+          },
+          "input_evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Input Evidence Refs",
+            "type": "array"
+          },
+          "source_task_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Task Ref",
+            "type": "string"
+          },
+          "source_thread_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Source Thread Ref",
+            "type": "string"
+          },
+          "target_role": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Target Role",
+            "type": "string"
+          },
+          "target_thread_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Target Thread Ref",
+            "type": "string"
+          },
+          "trace_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_task_ref",
+          "source_thread_ref",
+          "target_thread_ref",
+          "target_role",
+          "input_evidence_refs",
+          "acceptance_contract",
+          "trace_id"
+        ],
+        "title": "TeamHandoffInput",
+        "type": "object"
+      },
+      "TeamPublishInput": {
+        "additionalProperties": false,
+        "properties": {
+          "project_id": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "verifier_id": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Verifier Id",
+            "type": "string"
+          },
+          "verifier_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Verifier Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "verifier_id",
+          "verifier_version"
+        ],
+        "title": "TeamPublishInput",
+        "type": "object"
+      },
+      "TeamSessionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "cost_budget_units": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Budget Units"
+          },
+          "entity_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Entity Ref",
+            "type": "string"
+          },
+          "max_active_per_agent": {
+            "anyOf": [
+              {
+                "maximum": 32.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Active Per Agent"
+          },
+          "max_parallel": {
+            "default": 3,
+            "maximum": 32.0,
+            "minimum": 1.0,
+            "title": "Max Parallel",
+            "type": "integer"
+          },
+          "objective": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Objective",
+            "type": "string"
+          },
+          "provider_buckets": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "minimum": 1.0,
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Buckets"
+          },
+          "session_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Session Ref",
+            "type": "string"
+          },
+          "time_budget_seconds": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Budget Seconds"
+          }
+        },
+        "required": [
+          "session_ref",
+          "entity_ref",
+          "objective"
+        ],
+        "title": "TeamSessionInput",
+        "type": "object"
+      },
+      "TeamTaskClaimInput": {
+        "additionalProperties": false,
+        "properties": {
+          "lease_ref": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Ref"
+          },
+          "lease_seconds": {
+            "default": 120,
+            "maximum": 3600.0,
+            "minimum": 1.0,
+            "title": "Lease Seconds",
+            "type": "integer"
+          },
+          "worker_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id"
+        ],
+        "title": "TeamTaskClaimInput",
+        "type": "object"
+      },
+      "TeamTaskCompleteInput": {
+        "additionalProperties": false,
+        "properties": {
+          "cost_units": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Cost Units",
+            "type": "integer"
+          },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "lease_ref": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Lease Ref",
+            "type": "string"
+          },
+          "result": {
+            "additionalProperties": true,
+            "title": "Result",
+            "type": "object"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "worker_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "lease_ref",
+          "result"
+        ],
+        "title": "TeamTaskCompleteInput",
+        "type": "object"
+      },
+      "TeamTaskFailInput": {
+        "additionalProperties": false,
+        "properties": {
+          "failure_code": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Failure Code",
+            "type": "string"
+          },
+          "lease_ref": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Lease Ref",
+            "type": "string"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry After Seconds"
+          },
+          "status_code": {
+            "anyOf": [
+              {
+                "maximum": 599.0,
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Code"
+          },
+          "timeout": {
+            "default": false,
+            "title": "Timeout",
+            "type": "boolean"
+          },
+          "worker_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "lease_ref",
+          "failure_code"
+        ],
+        "title": "TeamTaskFailInput",
+        "type": "object"
+      },
+      "TeamTaskHeartbeatInput": {
+        "additionalProperties": false,
+        "properties": {
+          "lease_ref": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Lease Ref",
+            "type": "string"
+          },
+          "lease_seconds": {
+            "default": 120,
+            "maximum": 3600.0,
+            "minimum": 1.0,
+            "title": "Lease Seconds",
+            "type": "integer"
+          },
+          "worker_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "lease_ref"
+        ],
+        "title": "TeamTaskHeartbeatInput",
+        "type": "object"
+      },
+      "TeamTaskInput": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance_contract": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptance Contract"
+          },
+          "agent_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "cost_budget_units": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Budget Units"
+          },
+          "dependencies": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "evidence_required": {
+            "default": false,
+            "title": "Evidence Required",
+            "type": "boolean"
+          },
+          "idempotency_key": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "max_attempts": {
+            "default": 3,
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "objective": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Objective",
+            "type": "string"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "reviewer_agent_id": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Agent Id"
+          },
+          "reviewer_role": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Role"
+          },
+          "role": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "task_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Task Ref",
+            "type": "string"
+          },
+          "thread_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Thread Ref",
+            "type": "string"
+          },
+          "time_budget_seconds": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Budget Seconds"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "task_ref",
+          "thread_ref",
+          "agent_id",
+          "role",
+          "objective",
+          "idempotency_key"
+        ],
+        "title": "TeamTaskInput",
+        "type": "object"
+      },
+      "TeamTaskReleaseInput": {
+        "additionalProperties": false,
+        "properties": {
+          "lease_ref": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Lease Ref",
+            "type": "string"
+          },
+          "worker_id": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "lease_ref"
+        ],
+        "title": "TeamTaskReleaseInput",
+        "type": "object"
+      },
+      "TeamThreadInput": {
+        "additionalProperties": false,
+        "properties": {
+          "parent_thread_ref": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Thread Ref"
+          },
+          "thread_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Thread Ref",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_ref",
+          "title"
+        ],
+        "title": "TeamThreadInput",
         "type": "object"
       },
       "UnavailableDashboardSectionResponse": {
@@ -17852,6 +18454,962 @@
           }
         ],
         "summary": "Governed Agent Runtime Descriptor"
+      }
+    },
+    "/v1/agent-control/team/sessions": {
+      "post": {
+        "operationId": "create_team_agent_session_v1_agent_control_team_sessions_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamSessionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Create Team Agent Session"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}": {
+      "get": {
+        "operationId": "team_agent_session_snapshot_v1_agent_control_team_sessions__session_ref__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Team Agent Session Snapshot"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/handoffs": {
+      "post": {
+        "operationId": "create_team_agent_handoff_v1_agent_control_team_sessions__session_ref__handoffs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamHandoffInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Create Team Agent Handoff"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/kill-switch": {
+      "post": {
+        "operationId": "engage_team_agent_kill_switch_v1_agent_control_team_sessions__session_ref__kill_switch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamControlInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Engage Team Agent Kill Switch"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/kill-switch/release": {
+      "post": {
+        "operationId": "release_team_agent_kill_switch_v1_agent_control_team_sessions__session_ref__kill_switch_release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamControlInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Release Team Agent Kill Switch"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/pause": {
+      "post": {
+        "operationId": "pause_team_agent_session_v1_agent_control_team_sessions__session_ref__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamControlInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Pause Team Agent Session"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/publish": {
+      "post": {
+        "operationId": "publish_team_agent_observations_v1_agent_control_team_sessions__session_ref__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamPublishInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Publish Team Agent Observations"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/resume": {
+      "post": {
+        "operationId": "resume_team_agent_session_v1_agent_control_team_sessions__session_ref__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamControlInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Resume Team Agent Session"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/tasks": {
+      "post": {
+        "operationId": "submit_team_agent_task_v1_agent_control_team_sessions__session_ref__tasks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamTaskInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Submit Team Agent Task"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/tasks/{task_ref}/claim": {
+      "post": {
+        "operationId": "claim_team_agent_task_v1_agent_control_team_sessions__session_ref__tasks__task_ref__claim_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_ref",
+            "required": true,
+            "schema": {
+              "title": "Task Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamTaskClaimInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Claim Team Agent Task"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/tasks/{task_ref}/complete": {
+      "post": {
+        "operationId": "complete_team_agent_task_v1_agent_control_team_sessions__session_ref__tasks__task_ref__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_ref",
+            "required": true,
+            "schema": {
+              "title": "Task Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamTaskCompleteInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Complete Team Agent Task"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/tasks/{task_ref}/fail": {
+      "post": {
+        "operationId": "fail_team_agent_task_v1_agent_control_team_sessions__session_ref__tasks__task_ref__fail_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_ref",
+            "required": true,
+            "schema": {
+              "title": "Task Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamTaskFailInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Fail Team Agent Task"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/tasks/{task_ref}/heartbeat": {
+      "post": {
+        "operationId": "heartbeat_team_agent_task_v1_agent_control_team_sessions__session_ref__tasks__task_ref__heartbeat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_ref",
+            "required": true,
+            "schema": {
+              "title": "Task Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamTaskHeartbeatInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Heartbeat Team Agent Task"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/tasks/{task_ref}/release": {
+      "post": {
+        "operationId": "release_team_agent_task_v1_agent_control_team_sessions__session_ref__tasks__task_ref__release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "task_ref",
+            "required": true,
+            "schema": {
+              "title": "Task Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamTaskReleaseInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Release Team Agent Task"
+      }
+    },
+    "/v1/agent-control/team/sessions/{session_ref}/threads": {
+      "post": {
+        "operationId": "create_team_agent_thread_v1_agent_control_team_sessions__session_ref__threads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_ref",
+            "required": true,
+            "schema": {
+              "title": "Session Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamThreadInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Create Team Agent Thread"
       }
     },
     "/v1/agent-tasks": {

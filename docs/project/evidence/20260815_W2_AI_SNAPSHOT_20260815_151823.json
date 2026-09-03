@@ -1,0 +1,419 @@
+{
+  "captured_at": "2026-08-15T07:18:50.148Z",
+  "source": "w2-ozon-cdp-readonly",
+  "companies": [
+    {
+      "id": 2735620,
+      "name": "BEIJIXINGYOUXUAN",
+      "balance": {
+        "start_of_month": "2026-08-01",
+        "balance": {
+          "start_amount": {
+            "amount": 8568.15,
+            "currency": "Rub"
+          },
+          "end_amount": {
+            "amount": 8568.15,
+            "currency": "Rub"
+          },
+          "accrued": {
+            "amount": 0,
+            "currency": "Rub"
+          },
+          "paid": [
+            {
+              "amount": 0,
+              "currency": "Rub"
+            }
+          ]
+        }
+      },
+      "orders": {
+        "result": [
+          {
+            "status_alias": "delivering",
+            "count": 0
+          },
+          {
+            "status_alias": "delivered",
+            "count": 301
+          },
+          {
+            "status_alias": "cancelled",
+            "count": 74
+          },
+          {
+            "status_alias": "awaiting_packaging",
+            "count": 0
+          },
+          {
+            "status_alias": "awaiting_deliver",
+            "count": 0
+          }
+        ]
+      },
+      "warehouse_summary": {
+        "total": 2,
+        "by_status": {
+          "blocked": 2
+        },
+        "blocked": 2
+      },
+      "warehouses": [
+        {
+          "warehouse_id": 1020002639386000,
+          "warehouse_name": "uni",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002725730000,
+          "warehouse_name": "入库仓",
+          "status": "blocked",
+          "posting_count": 0
+        }
+      ],
+      "product_summary": {
+        "in_sale": 17,
+        "to_supply": 0
+      },
+      "premium": {
+        "is_premium": false,
+        "grace_period_available": true,
+        "premium_available": true
+      }
+    },
+    {
+      "id": 2706897,
+      "name": "LINYAN888",
+      "balance": {
+        "start_of_month": "2026-08-01",
+        "balance": {
+          "start_amount": {
+            "amount": 8375.94,
+            "currency": "Rub"
+          },
+          "end_amount": {
+            "amount": 8375.94,
+            "currency": "Rub"
+          },
+          "accrued": {
+            "amount": 0,
+            "currency": "Rub"
+          },
+          "paid": [
+            {
+              "amount": 0,
+              "currency": "Rub"
+            }
+          ]
+        }
+      },
+      "orders": {
+        "result": [
+          {
+            "status_alias": "awaiting_packaging",
+            "count": 0
+          },
+          {
+            "status_alias": "awaiting_deliver",
+            "count": 0
+          },
+          {
+            "status_alias": "delivering",
+            "count": 0
+          },
+          {
+            "status_alias": "delivered",
+            "count": 570
+          },
+          {
+            "status_alias": "cancelled",
+            "count": 143
+          }
+        ]
+      },
+      "warehouse_summary": {
+        "total": 20,
+        "by_status": {
+          "blocked": 20
+        },
+        "blocked": 20
+      },
+      "warehouses": [
+        {
+          "warehouse_id": 1020002608554000,
+          "warehouse_name": "cel",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002609285000,
+          "warehouse_name": "特快超级轻小件/到点TK. 0.5kg;1700;<=90;60",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002609327000,
+          "warehouse_name": "标准超级轻小件 / 陆空到点/LKBZ. 0.5kg;1700;<=90;60",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610468000,
+          "warehouse_name": "特快低客单轻小件 TK. 0.5-25kg;1700;<=150;60",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610507000,
+          "warehouse_name": "标准低客单轻小件/ BZ. 0.5-25kg;1700;<=150;60",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610554000,
+          "warehouse_name": "经济低客单轻小件/JJ. 0.5-25kg;1700;<=150;60",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610577000,
+          "warehouse_name": "特快轻小件  TK. 2kg;1501-7700;<=150;60",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610590000,
+          "warehouse_name": "标准轻小件 BZ. 2kg;1501-7700;<=150;60",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610616000,
+          "warehouse_name": "经济轻小件  JJ. 2kg;1501-7700;<=150;60",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610637000,
+          "warehouse_name": "特快大件 TK. 2-25kg;1501-7700;<=250;150",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610651000,
+          "warehouse_name": "标准大件 BZ. 2-25kg;1501-7700;<=250;150",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610685000,
+          "warehouse_name": "经济大件 JJ. 2-25kg;1501-7700;<=250;150",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610712000,
+          "warehouse_name": "特快高客单轻小件 TK. 5kg;7001-25000;<=250;150",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610812000,
+          "warehouse_name": "标准高客单轻小件 / BZ. 5kg;7001-25000;<=250;150",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610835000,
+          "warehouse_name": "经济高客单轻小件 JJ. 5kg;7001-25000;<=250;150",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610853000,
+          "warehouse_name": "特快高客单大件  TK. 5-25kg;7001-25000;<=310;150",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610874000,
+          "warehouse_name": "标准高客单大件 BZ. 5-25kg;7001-25000;<=310;150",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002610943000,
+          "warehouse_name": "经济高客单大件 JJ. 5-25kg;7001-25000;<=310;150",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002614415000,
+          "warehouse_name": "uni",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002725798000,
+          "warehouse_name": "入库",
+          "status": "blocked",
+          "posting_count": 0
+        }
+      ],
+      "product_summary": {
+        "in_sale": 35,
+        "to_supply": 0
+      },
+      "premium": {
+        "is_premium": false,
+        "grace_period_available": false,
+        "premium_available": false
+      }
+    },
+    {
+      "id": 2315091,
+      "name": "Treasures of the road",
+      "balance": {
+        "start_of_month": "2026-08-01",
+        "balance": {
+          "start_amount": {
+            "amount": 12621.01,
+            "currency": "Rub"
+          },
+          "end_amount": {
+            "amount": 12621.01,
+            "currency": "Rub"
+          },
+          "accrued": {
+            "amount": 0,
+            "currency": "Rub"
+          },
+          "paid": [
+            {
+              "amount": 0,
+              "currency": "Rub"
+            }
+          ]
+        }
+      },
+      "orders": {
+        "result": [
+          {
+            "status_alias": "delivered",
+            "count": 0
+          },
+          {
+            "status_alias": "cancelled",
+            "count": 29
+          },
+          {
+            "status_alias": "awaiting_packaging",
+            "count": 0
+          },
+          {
+            "status_alias": "awaiting_deliver",
+            "count": 0
+          },
+          {
+            "status_alias": "delivering",
+            "count": 0
+          }
+        ]
+      },
+      "warehouse_summary": {
+        "total": 12,
+        "by_status": {
+          "created": 1,
+          "disabled": 3,
+          "blocked": 8
+        },
+        "blocked": 8
+      },
+      "warehouses": [
+        {
+          "warehouse_id": 1020002258136000,
+          "warehouse_name": "GUOO Heihe 1 Bonded",
+          "status": "created",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002290896000,
+          "warehouse_name": "Treasures",
+          "status": "disabled",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002294804000,
+          "warehouse_name": "guoo空运(不接受产品：刀具、液体、粉末、各种打火机、蜡烛、易燃液体气体(香水 树脂 膏体 密封气体罐等)、易燃易爆等物品，以及无人机、对讲机、防弹背心、急救包等疑似军用物品)",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002294830000,
+          "warehouse_name": "guoo 陆空联运",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002294848000,
+          "warehouse_name": "guoo 陆运",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002294970000,
+          "warehouse_name": "cel",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002302198000,
+          "warehouse_name": "e邮宝",
+          "status": "disabled",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002302214000,
+          "warehouse_name": "中亚",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002397072000,
+          "warehouse_name": "UNI",
+          "status": "disabled",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002397467000,
+          "warehouse_name": "cel空运-",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002397903000,
+          "warehouse_name": "ce陆空标准",
+          "status": "blocked",
+          "posting_count": 0
+        },
+        {
+          "warehouse_id": 1020002400238000,
+          "warehouse_name": "cel陆运88",
+          "status": "blocked",
+          "posting_count": 0
+        }
+      ],
+      "product_summary": {
+        "in_sale": 65,
+        "to_supply": 0
+      },
+      "premium": {
+        "is_premium": false,
+        "grace_period_available": true,
+        "premium_available": true
+      }
+    }
+  ]
+}

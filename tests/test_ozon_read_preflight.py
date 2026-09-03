@@ -365,8 +365,26 @@ def test_operator_script_defaults_to_no_deps_preflight_before_explicit_execute()
     assert preflight < execution_gate < live_run
 
 
+def test_operator_script_exposes_finance_read_without_requiring_offer_id():
+    script = Path("scripts/run-ozon-read-worker.ps1").read_text(encoding="utf-8")
+
+    assert '[ValidateSet("ozon.product.read", "ozon.finance.read")]' in script
+    assert '[string]$Operation = "ozon.product.read"' in script
+    assert "[Parameter(Mandatory = $false)][string]$OfferId" in script
+    assert "$env:KJDS_READ_ONLY_OPERATION = $Operation" in script
+    assert "$env:KJDS_FINANCE_DATE_FROM = $DateFrom" in script
+    assert "$env:KJDS_FINANCE_DATE_TO = $DateTo" in script
+    assert "$env:KJDS_FINANCE_PAGE = [string]$FinancePage" in script
+    assert "$env:KJDS_FINANCE_PAGE_SIZE = [string]$FinancePageSize" in script
+
+
 def test_compose_worker_command_carries_explicit_execution_intent():
     compose = Path("compose.yaml").read_text(encoding="utf-8")
     read_worker = compose.split("  ozon-read-worker:", maxsplit=1)[1]
 
     assert "      - --execute" in read_worker
+    assert "KJDS_READ_ONLY_OPERATION: ${KJDS_READ_ONLY_OPERATION:-ozon.product.read}" in read_worker
+    assert "KJDS_FINANCE_DATE_FROM: ${KJDS_FINANCE_DATE_FROM:-}" in read_worker
+    assert "KJDS_FINANCE_DATE_TO: ${KJDS_FINANCE_DATE_TO:-}" in read_worker
+    assert "KJDS_FINANCE_PAGE: ${KJDS_FINANCE_PAGE:-1}" in read_worker
+    assert "KJDS_FINANCE_PAGE_SIZE: ${KJDS_FINANCE_PAGE_SIZE:-1000}" in read_worker

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchJson } from "../../lib/fetch-json";
 
@@ -12,10 +13,13 @@ type RailTask = {
 };
 
 export function AgentStatusRail() {
+  const pathname = usePathname();
+  const hiddenForScopedBi = pathname.startsWith("/bi/");
   const [items, setItems] = useState<RailTask[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
+    if (hiddenForScopedBi) return;
     let active = true;
     fetchJson<{ status_rail: RailTask[] }>(
       "/backend/v1/agent-control/projects/kjds-059-bas123?store_ref=ozon-primary",
@@ -34,9 +38,10 @@ export function AgentStatusRail() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [hiddenForScopedBi]);
 
   const critical = items[0];
+  if (hiddenForScopedBi) return null;
   return (
     <aside className={`agent-status-rail ${state}`} aria-label="Agent 外部观测状态">
       <span className="agent-status-dot" />

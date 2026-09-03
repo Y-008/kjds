@@ -213,7 +213,12 @@ class OllamaInferenceAdapter:
                     "Configured local model cannot receive governed image inputs",
                 )
             images = [self._ollama_image(ref) for ref in image_inputs]
-        messages = _messages(prompt, model_input)
+        schema_guided_prompt = (
+            f"{prompt}\n\nReturn a single valid JSON object that conforms exactly to "
+            f"this JSON Schema. Do not wrap it in markdown fences or add commentary.\n"
+            f"{json.dumps(output_schema, ensure_ascii=False, sort_keys=True)}"
+        )
+        messages = _messages(schema_guided_prompt, model_input)
         try:
             payload = self.provider.chat(
                 model=model,
@@ -285,7 +290,12 @@ class OpenAICompatibleInferenceAdapter:
         model = self.vision_model if image_inputs else self.text_model
         if not model:
             raise InferenceAttemptError("model_not_configured", "Required cloud model is not configured")
-        messages = _messages(prompt, model_input, image_inputs=image_inputs)
+        schema_guided_prompt = (
+            f"{prompt}\n\nReturn a single valid JSON object that conforms exactly to "
+            f"this JSON Schema. Do not wrap it in markdown fences or add commentary.\n"
+            f"{json.dumps(output_schema, ensure_ascii=False, sort_keys=True)}"
+        )
+        messages = _messages(schema_guided_prompt, model_input, image_inputs=image_inputs)
         try:
             payload = self.provider.chat(
                 model=model,
@@ -545,6 +555,7 @@ class AgentInferenceService:
         cloud_adapter: ModelInferencePort | None,
         enabled: bool,
         lease_seconds: int = 180,
+        preferred_provider: str = "local",
     ) -> None:
         self.engine = engine
         self.evidence = evidence
@@ -553,6 +564,10 @@ class AgentInferenceService:
         self.cloud_adapter = cloud_adapter
         self.enabled = enabled
         self.lease_seconds = min(max(lease_seconds, 30), 900)
+        preferred_provider = preferred_provider.strip().lower()
+        if preferred_provider not in {"local", "cloud"}:
+            raise ValueError("preferred_provider must be local or cloud")
+        self.preferred_provider = preferred_provider
 
     def preflight(
         self,
@@ -816,20 +831,24 @@ class AgentInferenceService:
 
     def _route(self, contract: dict[str, Any], task: AgentTaskSpec) -> list[ModelInferencePort]:
         required = set(task.required_capabilities)
+        ordered: list[ModelInferencePort | None]
+        if self.preferred_provider == "cloud":
+            ordered = [self.cloud_adapter, self.local_adapter]
+        else:
+            ordered = [self.local_adapter, self.cloud_adapter]
         adapters: list[ModelInferencePort] = []
-        if self.local_adapter and required.issubset(self.local_adapter.capabilities):
-            adapters.append(self.local_adapter)
-        if (
-            self.cloud_adapter
-            and contract.get("cloud_fallback_allowed") is True
-            and required.issubset(self.cloud_adapter.capabilities)
-            and len(adapters) < task.max_attempts
-        ):
-            adapters.append(self.cloud_adapter)
+        for adapter in ordered:
+            if adapter is None:
+                continue
+            if adapter is self.cloud_adapter and contract.get("cloud_fallback_allowed") is not True:
+                continue
+            if required.issubset(adapter.capabilities):
+                adapters.append(adapter)
+            if len(adapters) >= task.max_attempts:
+                break
         if not adapters:
             raise InferencePolicyError("model_capability_unavailable", "No admitted Provider has the required capability")
         return adapters[: task.max_attempts]
-
     def _begin_attempt(
         self,
         *,
@@ -889,7 +908,7 @@ class AgentInferenceService:
                     idempotency_key=f"{task.idempotency_key}:attempt:{attempt}:started",
                 )
         except IntegrityError as exc:
-            with Session(self.engine) as session:
+            with Session(self.engine, expire_on_commit=False) as session:
                 existing = session.scalar(
                     select(AgentRunRow).where(
                         AgentRunRow.ai_listing_run_id == task.ai_listing_run_id,
@@ -909,6 +928,31 @@ class AgentInferenceService:
                             "artifact_already_completed",
                             artifact.id,
                         ) from exc
+                if existing and existing.status == "failed":
+                    # A known terminal failure with no artifact is safe to replay:
+                    # reset the same row back to `calling` instead of inserting a
+                    # new attempt slot (the immutable ledger forbids deleting the
+                    # original row or its events).
+                    current = session.get(AgentRunRow, existing.id, with_for_update=True)
+                    if current is not None:
+                        current.status = "calling"
+                        current.error_code = None
+                        current.error_detail = None
+                        current.raw_response_evidence_id = None
+                        current.provider_request_id = None
+                        current.latency_ms = None
+                        current.input_tokens = 0
+                        current.output_tokens = 0
+                        current.cost_usd = Decimal("0")
+                        current.fallback_reason = fallback_reason
+                        current.lease_owner = task.requested_by
+                        current.lease_until = now + timedelta(seconds=self.lease_seconds)
+                        current.started_at = now
+                        current.finished_at = None
+                        current.provider = adapter.name
+                        current.model = adapter.model_for(task.image_inputs)
+                    session.commit()
+                    return current
             raise InferencePolicyError(
                 "provider_attempt_already_exists",
                 "Provider attempt already exists; unknown outcomes are not replayed",
@@ -1054,17 +1098,25 @@ class AgentInferenceService:
             current.lease_owner = None
             current.lease_until = None
             current.finished_at = now
-            self._event(
-                session,
-                ai_listing_run_id=task.ai_listing_run_id,
-                agent_run_id=current.id,
-                event_type="agent.run.failed",
-                state="failed",
-                reason=error.code,
-                actor_id=task.requested_by,
-                idempotency_key=f"{task.idempotency_key}:attempt:{current.attempt}:failed",
-                source_evidence_id=evidence_id,
+            failed_key = f"{task.idempotency_key}:attempt:{current.attempt}:failed"
+            already_failed = session.scalar(
+                select(AgentRunEventRow).where(
+                    AgentRunEventRow.ai_listing_run_id == task.ai_listing_run_id,
+                    AgentRunEventRow.idempotency_key == failed_key,
+                )
             )
+            if already_failed is None:
+                self._event(
+                    session,
+                    ai_listing_run_id=task.ai_listing_run_id,
+                    agent_run_id=current.id,
+                    event_type="agent.run.failed",
+                    state="failed",
+                    reason=error.code,
+                    actor_id=task.requested_by,
+                    idempotency_key=failed_key,
+                    source_evidence_id=evidence_id,
+                )
 
     def _existing_artifact(self, task: AgentTaskSpec) -> AgentArtifact | None:
         with Session(self.engine) as session:
@@ -1084,7 +1136,7 @@ class AgentInferenceService:
     @staticmethod
     def _parse_and_validate(content: str, schema: dict[str, Any]) -> dict[str, Any]:
         try:
-            parsed = json.loads(content)
+            parsed = json.loads(_extract_json_object(content))
         except json.JSONDecodeError as exc:
             raise InferenceAttemptError(
                 "structured_output_invalid",
@@ -1400,6 +1452,24 @@ def _default_fake_response(request: dict[str, Any]) -> dict[str, Any]:
         "unknowns": ["fake adapter requires an explicit test responder"],
         "warnings": [],
     }
+
+
+def _extract_json_object(content: str) -> str:
+    """Recover the outermost JSON object from a model reply.
+
+    Local models occasionally wrap structured output in markdown fences or a
+    short preamble. Strip the fence and trim to the first ``{`` / last ``}`` so
+    the governed schema validator still receives a parseable object.
+    """
+    text = (content or "").strip()
+    fenced = re.match(r"^```(?:json)?\s*\n?(.*?)\n?```\s*$", text, flags=re.DOTALL)
+    if fenced:
+        text = fenced.group(1).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        text = text[start : end + 1]
+    return text
 
 
 def _canonical(value: Any) -> bytes:

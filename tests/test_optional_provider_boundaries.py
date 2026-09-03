@@ -9,7 +9,15 @@ from apps.control_plane.security import KillSwitchState, Principal
 
 def test_optional_providers_exist_only_when_configured(monkeypatch):
     monkeypatch.setenv("KJDS_REPOSITORY", "memory")
-    for name in ("KJDS_OLLAMA_URL", "KJDS_N8N_URL", "FIRECRAWL_API_URL"):
+    for name in (
+        "KJDS_OLLAMA_URL",
+        "KJDS_N8N_URL",
+        "FIRECRAWL_API_URL",
+        "KJDS_OPENAI_COMPAT_BASE_URL",
+        "KJDS_OPENAI_COMPAT_API_KEY",
+        "KJDS_OPENAI_COMPAT_TEXT_MODEL",
+        "KJDS_OPENAI_COMPAT_VISION_MODEL",
+    ):
         monkeypatch.delenv(name, raising=False)
 
     assert set(build_runtime().providers) == {"comfyui"}
@@ -18,6 +26,18 @@ def test_optional_providers_exist_only_when_configured(monkeypatch):
     monkeypatch.setenv("KJDS_N8N_URL", "http://n8n.test")
     monkeypatch.setenv("FIRECRAWL_API_URL", "http://firecrawl.test")
     assert set(build_runtime().providers) == {"comfyui", "ollama", "n8n", "firecrawl"}
+
+    monkeypatch.setenv("KJDS_OPENAI_COMPAT_BASE_URL", "https://compat.test")
+    monkeypatch.setenv("KJDS_OPENAI_COMPAT_API_KEY", "test-key")
+    monkeypatch.setenv("KJDS_OPENAI_COMPAT_TEXT_MODEL", "text-model")
+    monkeypatch.setenv("KJDS_OPENAI_COMPAT_VISION_MODEL", "vision-model")
+    assert set(build_runtime().providers) == {
+        "comfyui",
+        "ollama",
+        "n8n",
+        "firecrawl",
+        "openai_compatible",
+    }
 
 
 def test_model_discovery_fails_cleanly_without_ollama(monkeypatch):

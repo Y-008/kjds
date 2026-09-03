@@ -25,6 +25,10 @@ from .channel_account_runtime_identity import (
 )
 from .channel_worker_runtime import build_channel_worker_runtime
 from .correlation import correlation_id
+from .ozon_live_contracts import (
+    FINANCE_TRANSACTION_PATH,
+    validate_finance_transactions_payload,
+)
 from .pilot_readiness import (
     OZON_CATEGORY_READ_CONTRACT_VERSION,
     OZON_FINANCE_READ_CONTRACT_VERSION,
@@ -553,17 +557,13 @@ class OzonSellerClient:
             page_size=page_size,
         )
         response, capture = self._read_with_capture(
-            "/v3/finance/transaction/list",
+            FINANCE_TRANSACTION_PATH,
             body,
         )
-        result = response.get("result")
-        if not isinstance(result, dict) or not isinstance(result.get("operations"), list):
-            raise self._schema_error("Ozon finance response is missing result.operations")
-        page_count = result.get("page_count")
-        if page_count is not None and (
-            isinstance(page_count, bool) or not isinstance(page_count, int) or page_count < 0
-        ):
-            raise self._schema_error("Ozon finance response contains an invalid page_count")
+        try:
+            contract = validate_finance_transactions_payload(response)
+        except ValueError as exc:
+            raise self._schema_error(str(exc)) from exc
         query_window_sha256 = hashlib.sha256(
             json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
@@ -572,11 +572,17 @@ class OzonSellerClient:
             "query_window_sha256": query_window_sha256,
             "page": page,
             "page_size": page_size,
-            "page_count": page_count,
-            "operation_count": len(result["operations"]),
+            "page_count": contract["page_count"],
+            "operation_count": contract["operation_count"],
             "response_evidence_bytes": self._response_bundle(
                 [capture],
                 contract_version=self.FINANCE_READ_CONTRACT_VERSION,
+                request_context={
+                    "operation": "ozon.finance.read",
+                    "query_window_sha256": query_window_sha256,
+                    "page": page,
+                    "page_size": page_size,
+                },
             ),
         }
 

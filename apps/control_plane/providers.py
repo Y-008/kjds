@@ -40,7 +40,7 @@ class JsonHttpProvider:
 
 class OllamaProvider(JsonHttpProvider):
     def __init__(self, base_url: str = "http://127.0.0.1:11434") -> None:
-        super().__init__("ollama", base_url, timeout=120.0)
+        super().__init__("ollama", base_url, timeout=300.0)
 
     def healthcheck(self) -> ProviderHealth:
         try:
@@ -63,10 +63,11 @@ class OllamaProvider(JsonHttpProvider):
     ) -> dict:
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
         if schema is not None:
-            # Use Ollama structured output (constrained decoding against the
-            # registered schema) plus deterministic sampling. The governed layer
-            # still validates the parsed object server-side.
-            payload["format"] = schema
+            # Deterministic sampling for governed structured tasks. We do NOT use
+            # Ollama's grammar-constrained `format=schema` here: large local models
+            # crash during GBNF grammar compilation (OOM) and others silently ignore
+            # it, while the governed adapter already injects the JSON Schema into the
+            # system prompt and the server-side validator still enforces the schema.
             payload["options"] = {"temperature": 0}
         if images:
             payload["images"] = images
@@ -124,14 +125,11 @@ class OpenAICompatibleProvider(JsonHttpProvider):
         if max_output_tokens is not None:
             payload["max_tokens"] = max_output_tokens
         if schema is not None:
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "kjds_agent_artifact",
-                    "strict": True,
-                    "schema": schema,
-                },
-            }
+            # DeepSeek and many OpenAI-compatible gateways only support the
+            # common `json_object` mode, not OpenAI's strict `json_schema`.
+            # The governed adapter injects the JSON Schema into the prompt and
+            # the server-side validator still enforces it strictly.
+            payload["response_format"] = {"type": "json_object"}
         return self._request(
             "POST",
             "/chat/completions",

@@ -727,7 +727,16 @@ def test_finance_transactions_use_bounded_official_contract_and_capture_raw_evid
             200,
             json={
                 "result": {
-                    "operations": [{"operation_id": 123, "amount": 42.5, "posting": "private-order"}],
+                    "operations": [
+                        {
+                            "operation_id": 123,
+                            "amount": 42.5,
+                            "posting": {
+                                "posting_number": "private-order",
+                                "items": [{"sku": "sku-1"}],
+                            },
+                        }
+                    ],
                     "page_count": 4,
                 }
             },
@@ -771,6 +780,12 @@ def test_finance_transactions_use_bounded_official_contract_and_capture_raw_evid
     assert len(result["query_window_sha256"]) == 64
     bundle = json.loads(result["response_evidence_bytes"])
     assert bundle["contract_version"] == "ozon-finance-transactions-v1"
+    assert bundle["request_context"] == {
+        "operation": "ozon.finance.read",
+        "query_window_sha256": result["query_window_sha256"],
+        "page": 2,
+        "page_size": 500,
+    }
     assert b"private-order" in base64.b64decode(bundle["responses"][0]["body_base64"])
 
 
@@ -809,6 +824,29 @@ def test_finance_transactions_fail_closed_on_schema_drift():
     client = OzonSellerClient(
         OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"result": {"transactions": []}})),
+    )
+    try:
+        with pytest.raises(OzonApiError) as caught:
+            client.finance_transactions(
+                date_from="2026-07-01T00:00:00Z",
+                date_to="2026-07-02T00:00:00Z",
+            )
+    finally:
+        client.close()
+    assert caught.value.code == "OZON_SCHEMA_DRIFT"
+
+
+@pytest.mark.parametrize(
+    "response_json",
+    [
+        {"result": {"operations": ["not-an-object"]}},
+        {"result": {"operations": [], "page_count": -1}},
+    ],
+)
+def test_finance_transactions_fail_closed_on_envelope_drift(response_json):
+    client = OzonSellerClient(
+        OzonCredentials.for_test_fixture(client_id="client-1", api_key="secret-key"),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=response_json)),
     )
     try:
         with pytest.raises(OzonApiError) as caught:

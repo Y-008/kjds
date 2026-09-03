@@ -20,9 +20,26 @@ from apps.control_plane.provider_readback_verifier import (
 NOW = datetime(2026, 8, 1, 10, tzinfo=UTC)
 
 
-def finance_bundle(operations=("op-1",)):
+def finance_bundle(
+    operations=("op-1",),
+    page_count=1,
+    *,
+    normalize_operations=True,
+    operation="ozon.finance.read",
+    query_window_sha256="d" * 64,
+    page=1,
+    page_size=100,
+):
+    normalized = (
+        [
+            item if isinstance(item, dict) else {"operation_id": item, "amount": "42.50"}
+            for item in operations
+        ]
+        if normalize_operations
+        else list(operations)
+    )
     encoded = json.dumps(
-        {"result": {"operations": [{"operation_id": item} for item in operations], "page_count": 1}},
+        {"result": {"operations": normalized, "page_count": page_count}},
         separators=(",", ":"),
     ).encode()
     return json.dumps(
@@ -38,6 +55,12 @@ def finance_bundle(operations=("op-1",)):
                     "body_base64": base64.b64encode(encoded).decode(),
                 }
             ],
+            "request_context": {
+                "operation": operation,
+                "query_window_sha256": query_window_sha256,
+                "page": page,
+                "page_size": page_size,
+            },
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -239,6 +262,81 @@ def test_missing_summary_fields_fail_closed():
     observation = verify(summary=partial)
     assert observation["verdict"] == "failed"
     assert any("READBACK_SUMMARY_MISSING_FIELDS" in item for item in observation["blockers"])
+
+
+def test_finance_bundle_envelope_drift_fails_contract():
+    bundle = finance_bundle(
+        operations=("not-an-object",),
+        normalize_operations=False,
+    )
+    observation = verify(
+        bundle_bytes=bundle,
+        summary=summary(
+            response_bundle_sha256=hashlib.sha256(bundle).hexdigest(),
+            response_byte_size=len(bundle),
+        ),
+    )
+    assert observation["verdict"] == "failed"
+    assert "READBACK_BUNDLE_CONTRACT_INVALID" in observation["blockers"]
+
+
+def test_finance_summary_mismatch_fails_closed():
+    bundle = finance_bundle(operations=("op-1", "op-2"), page_count=2)
+    observation = verify(
+        bundle_bytes=bundle,
+        summary=summary(
+            response_bundle_sha256=hashlib.sha256(bundle).hexdigest(),
+            response_byte_size=len(bundle),
+            operation_count=1,
+            page_count=1,
+        ),
+    )
+    assert observation["verdict"] == "failed"
+    assert "READBACK_SUMMARY_BUNDLE_MISMATCH" in observation["blockers"]
+
+
+@pytest.mark.parametrize(
+    ("summary_changes", "bundle_changes"),
+    [
+        ({"page": 2}, {}),
+        ({"page_size": 50}, {}),
+        ({"query_window_sha256": "e" * 64}, {}),
+        ({"operation": "ozon.product.read"}, {}),
+        ({}, {"page": 2}),
+    ],
+)
+def test_finance_request_context_mismatch_fails_closed(summary_changes, bundle_changes):
+    bundle = finance_bundle(**bundle_changes)
+    observation = verify(
+        bundle_bytes=bundle,
+        summary=summary(
+            response_bundle_sha256=hashlib.sha256(bundle).hexdigest(),
+            response_byte_size=len(bundle),
+            **summary_changes,
+        ),
+    )
+    assert observation["verdict"] == "failed"
+    assert "READBACK_SUMMARY_BUNDLE_MISMATCH" in observation["blockers"]
+
+
+def test_bundle_size_mismatch_and_non_object_bundle_fail_closed():
+    bundle = finance_bundle()
+    size_drift = verify(
+        bundle_bytes=bundle,
+        summary=summary(response_byte_size=len(bundle) + 1),
+    )
+    assert "READBACK_BUNDLE_SIZE_DRIFT" in size_drift["blockers"]
+
+    malformed = b"[]"
+    observation = verify(
+        bundle_bytes=malformed,
+        summary=summary(
+            response_bundle_sha256=hashlib.sha256(malformed).hexdigest(),
+            response_byte_size=len(malformed),
+        ),
+    )
+    assert observation["verdict"] == "failed"
+    assert "READBACK_BUNDLE_CONTRACT_INVALID" in observation["blockers"]
 
 
 def test_probe_credentials_never_pass_managed_worker_admission():

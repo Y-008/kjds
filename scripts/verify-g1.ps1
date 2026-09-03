@@ -9,6 +9,9 @@ $WebSmoke = Join-Path $Runtime ("web-g1-" + [guid]::NewGuid().ToString("N"))
 $PytestTemp = Join-Path $Runtime ("pytest-g1-" + [guid]::NewGuid().ToString("N"))
 $BackupSmokeDirectory = Join-Path $Runtime ("backup-g1-" + [guid]::NewGuid().ToString("N"))
 $ReleaseEvidenceDirectory = Join-Path $Runtime ("release-g1-" + [guid]::NewGuid().ToString("N"))
+$TeamAgentGateDirectory = Join-Path $Runtime ("team-agent-gate-g1-" + [guid]::NewGuid().ToString("N"))
+$TeamAgentGateJunit = Join-Path $TeamAgentGateDirectory "junit.xml"
+$TeamAgentGateReceipt = Join-Path $TeamAgentGateDirectory "receipt.json"
 $DatabaseName = "kjds_g1_smoke"
 $RestoreDatabaseName = "kjds_g1_restore"
 $DataCoveragePostgresContract = "tests\test_global_data_coverage_ledger_postgres.py"
@@ -422,6 +425,10 @@ $result = [ordered]@{
     g1_stale_resource_recovery = $false
     global_data_coverage_postgres_contract = $false
     closed_loop_evolution_postgres_contract = $false
+    team_agent_postgres_gate = $false
+    team_agent_postgres_tests = 0
+    team_agent_postgres_junit_sha256 = $null
+    team_agent_postgres_required_contracts_sha256 = $null
     generic_postgres_contract_database = $false
     transactional_outbox = $false
     sourcing_numeric_integrity = $false
@@ -582,6 +589,43 @@ try {
     $DatabaseLeaseAcquired = $true
     $DatabaseLeaseEverAcquired = $true
     Invoke-External -Command $Python -Arguments @("scripts/manage_g1_database.py", "recreate")
+
+    # Run TeamAgent contracts while the owned G-1 database is still empty. The
+    # runner creates its own isolated schema, so it cannot inherit later 0096
+    # closed-loop triggers or contaminate the migration-lifecycle database.
+    # Keep this outside the generic phase so skipped contracts cannot look like
+    # a G-1 pass.
+    Write-Output "[G-1] Verifying TeamAgent PostgreSQL 17 contracts"
+    New-Item -ItemType Directory -Force $TeamAgentGateDirectory | Out-Null
+    $env:KJDS_TEAM_AGENT_DATABASE_URL = $MigrationDatabaseUrl
+    Invoke-External -Command uv -Arguments @(
+        "run", "python", "scripts/verify_team_agent_postgres_gate.py",
+        "--junit-output", $TeamAgentGateJunit,
+        "--receipt-output", $TeamAgentGateReceipt
+    )
+    $teamAgentReceipt = Get-Content -LiteralPath $TeamAgentGateReceipt -Raw | ConvertFrom-Json
+    if (
+        $teamAgentReceipt.status -ne "PASSED" -or
+        [int]$teamAgentReceipt.tests -le 0 -or
+        [int]$teamAgentReceipt.failures -ne 0 -or
+        [int]$teamAgentReceipt.errors -ne 0 -or
+        [int]$teamAgentReceipt.skipped -ne 0 -or
+        [string]::IsNullOrWhiteSpace([string]$teamAgentReceipt.junit_sha256) -or
+        [string]::IsNullOrWhiteSpace([string]$teamAgentReceipt.required_recovery_contracts_sha256) -or
+        -not (Test-Path -LiteralPath $TeamAgentGateJunit)
+    ) {
+        throw "TeamAgent PostgreSQL Gate receipt was incomplete"
+    }
+    $teamAgentJunitSha256 = (Get-FileHash -LiteralPath $TeamAgentGateJunit -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($teamAgentJunitSha256 -ne ([string]$teamAgentReceipt.junit_sha256).ToLowerInvariant()) {
+        throw "TeamAgent PostgreSQL Gate JUnit hash does not match its receipt"
+    }
+    $result.team_agent_postgres_tests = [int]$teamAgentReceipt.tests
+    $result.team_agent_postgres_junit_sha256 = $teamAgentJunitSha256
+    $result.team_agent_postgres_required_contracts_sha256 = [string]$teamAgentReceipt.required_recovery_contracts_sha256
+    $result.team_agent_postgres_gate = $true
+    Remove-Item Env:KJDS_TEAM_AGENT_DATABASE_URL -ErrorAction SilentlyContinue
+
     Write-Output "[G-1] Replaying migrations in disposable database"
     $env:KJDS_REPOSITORY = "postgres"
     $env:KJDS_SHADOW_MODE = "true"
@@ -1207,6 +1251,7 @@ try {
                 Remove-Item Env:KJDS_CLOSED_LOOP_OUTCOME_AUTHORITY_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_CLOSED_LOOP_REVIEW_AUTHORITY_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_RUNTIME_DATABASE_URL -ErrorAction SilentlyContinue
+                Remove-Item Env:KJDS_TEAM_AGENT_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_COVERAGE_ISSUER_PASSWORD -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_RUNTIME_PASSWORD -ErrorAction SilentlyContinue
@@ -1220,6 +1265,16 @@ try {
                 Remove-Item Env:KJDS_G1_ADMIN_DATABASE_URL -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_G1_CONTRACT_DATABASE_NAME -ErrorAction SilentlyContinue
                 Remove-Item Env:KJDS_STRATEGIC_BENCHMARK_SEALING_KEY -ErrorAction SilentlyContinue
+            }
+        },
+        @{
+            Name = "TeamAgent PostgreSQL Gate evidence"
+            Action = {
+                $errorMessage = Remove-OwnedPath `
+                    -Path $TeamAgentGateDirectory `
+                    -RuntimeRoot $Runtime `
+                    -Recurse
+                if ($errorMessage) { throw $errorMessage }
             }
         },
         @{
@@ -1288,6 +1343,7 @@ try {
                     -not (Test-Path -LiteralPath $PytestTemp) -and
                     -not (Test-Path -LiteralPath $BackupSmokeDirectory) -and
                     -not (Test-Path -LiteralPath $ReleaseEvidenceDirectory) -and
+                    -not (Test-Path -LiteralPath $TeamAgentGateDirectory) -and
                     -not (Test-Path -LiteralPath $EvidenceSmokeFile)
                 if (-not $result.cleanup_files) {
                     throw "Disposable files remain after cleanup"

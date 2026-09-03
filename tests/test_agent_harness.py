@@ -7,6 +7,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from apps.control_plane import ai_listing as _ai_listing  # noqa: F401
+from apps.control_plane import browser_capture_inbox as _browser_capture_inbox  # noqa: F401
 from apps.control_plane.agent_harness import (
     AgentHarnessService,
     GoalContractRow,
@@ -15,6 +17,12 @@ from apps.control_plane.agent_harness import (
     GraphNodeRow,
     GraphProjectRow,
     _sha,
+)
+from apps.control_plane.agent_team_orchestration import (
+    TEAM_AGENT_HARNESS_SOURCE,
+    TEAM_AGENT_HARNESS_VERIFIER_ID,
+    TEAM_AGENT_HARNESS_VERIFIER_SOURCE_TYPE,
+    TEAM_AGENT_HARNESS_VERIFIER_VERSION,
 )
 from apps.control_plane.security import Principal
 from apps.control_plane.sql_repository import Base
@@ -201,6 +209,135 @@ def test_only_bound_verifier_can_pass_and_replay_is_idempotent():
     }
     assert view["counts"]["verified_nodes"] == 1
     assert view["external_write_allowed"] is False
+
+
+def test_team_agent_observation_rejects_elevated_verifier_authority():
+    service = harness()
+    service.register_verifier(
+        {
+            "id": TEAM_AGENT_HARNESS_VERIFIER_ID,
+            "version": TEAM_AGENT_HARNESS_VERIFIER_VERSION,
+            "source_type": TEAM_AGENT_HARNESS_VERIFIER_SOURCE_TYPE,
+            "authority": "canonical",
+            "success_states": ["passed"],
+            "freshness_seconds": 3600,
+        }
+    )
+    payload = {
+        "project_id": "kjds-059",
+        "verifier_id": TEAM_AGENT_HARNESS_VERIFIER_ID,
+        "verifier_version": TEAM_AGENT_HARNESS_VERIFIER_VERSION,
+        "source": TEAM_AGENT_HARNESS_SOURCE,
+        "scope": {
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "authority_sha256": "a" * 64,
+            "session_ref": "session-1",
+            "task_ref": "task-1",
+            "observation_only": True,
+            "gate_eligible": False,
+        },
+        "state": "passed",
+        "summary": "TeamAgent terminal observation",
+        "input_sha256": "1" * 64,
+        "artifact_ref": "team-agent://session-1/task-1/observation-1",
+        "evidence_ref": None,
+        "observed_at": datetime.now(UTC).isoformat(),
+        "store_ref": "store-a",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="TeamAgent observation verifier contract mismatch",
+    ):
+        service.record_observation(payload, principal=principal())
+
+
+def test_team_agent_observation_idempotency_binds_scope_and_principal() -> None:
+    service = harness()
+    service.register_verifier(
+        {
+            "id": TEAM_AGENT_HARNESS_VERIFIER_ID,
+            "version": TEAM_AGENT_HARNESS_VERIFIER_VERSION,
+            "source_type": TEAM_AGENT_HARNESS_VERIFIER_SOURCE_TYPE,
+            "authority": "observation",
+            "success_states": ["passed", "failed", "blocked"],
+            "freshness_seconds": 3600,
+        }
+    )
+    payload = {
+        "project_id": "kjds-059",
+        "verifier_id": TEAM_AGENT_HARNESS_VERIFIER_ID,
+        "verifier_version": TEAM_AGENT_HARNESS_VERIFIER_VERSION,
+        "source": TEAM_AGENT_HARNESS_SOURCE,
+        "scope": {
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "authority_sha256": "a" * 64,
+            "session_ref": "session-1",
+            "task_ref": "task-1",
+            "observation_only": True,
+            "gate_eligible": False,
+        },
+        "state": "passed",
+        "summary": "TeamAgent terminal observation",
+        "input_sha256": "1" * 64,
+        "artifact_ref": "team-agent://session-1/task-1/observation-1",
+        "evidence_ref": None,
+        "observed_at": datetime.now(UTC).isoformat(),
+        "store_ref": "store-a",
+    }
+    monitor_a = principal(actor="monitor-a")
+    monitor_b = principal(actor="monitor-b")
+
+    first = service.record_observation(payload, principal=monitor_a)
+    replay = service.record_observation(payload, principal=monitor_a)
+    with pytest.raises(ValueError, match="idempotency payload conflict"):
+        service.record_observation(
+            {
+                **payload,
+                "observed_at": (
+                    datetime.fromisoformat(payload["observed_at"])
+                    + timedelta(seconds=1)
+                ).isoformat(),
+            },
+            principal=monitor_a,
+        )
+    other_principal = service.record_observation(payload, principal=monitor_b)
+    other_authority = service.record_observation(
+        {
+            **payload,
+            "scope": {**payload["scope"], "authority_sha256": "b" * 64},
+        },
+        principal=monitor_a,
+    )
+
+    assert replay == first
+    assert len({first["id"], other_principal["id"], other_authority["id"]}) == 3
+
+    with pytest.raises(
+        ValueError,
+        match="TeamAgent observation verifier contract mismatch",
+    ):
+        service.record_observation(
+            {
+                **payload,
+                "scope": {**payload["scope"], "authority_sha256": "not-a-hash"},
+            },
+            principal=monitor_a,
+        )
+
+    with Session(service.engine) as session, session.begin():
+        project = session.get(GraphProjectRow, "kjds-059")
+        assert project is not None
+        project.entity_ref = None
+    with pytest.raises(
+        ValueError,
+        match="TeamAgent observation verifier contract mismatch",
+    ):
+        service.record_observation(payload, principal=monitor_a)
 
 
 def test_stale_observation_cannot_keep_task_passed():

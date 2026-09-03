@@ -14,7 +14,7 @@
   "providers": {
     "ollama": {
       "production_eligible": true,
-      "text_model": "gemma4:latest",
+      "text_model": "qwen2.5:14b",
       "capabilities": [
         "text",
         "vision",
@@ -25,7 +25,7 @@
         "public",
         "internal_minimized"
       ],
-      "vision_model": "llava:7b"
+      "vision_model": "qwen2.5vl:7b"
     },
     "openai_compatible": {
       "production_eligible": true,
@@ -571,7 +571,7 @@
       "max_cost_usd": "0.25",
       "minimum_confidence": "0.80",
       "cloud_fallback_allowed": true,
-      "prompt": "Compare only the supplied rights-approved originals and generated outputs. Report subject, color, specification, accessory, text and geometry conflicts. A pass is only an AI proposal and never replaces human image QA.",
+      "prompt": "Compare only the supplied rights-approved originals and generated outputs. Report subject, color, specification, accessory, text and geometry conflicts. A pass is only an AI proposal and never replaces human image QA. Output a single JSON object containing exactly these top-level keys: \"result\" (object with \"verdict\" in [pass_proposed, reject, inconclusive], \"checks\" as an array of {\"name\",\"status\",\"reason\"} objects with status in [pass, fail, unknown], and \"conflicts\" as an array of strings), \"field_evidence\" (object mapping each check name to a list of the supplied Evidence IDs only), \"confidence\" (number from 0 to 1), \"unknowns\" (array of strings), and \"warnings\" (array of strings). Never emit schema keywords such as type, items, or maxItems as values. Do not wrap the output in markdown fences.",
       "output_schema": {
         "type": "object",
         "additionalProperties": false,

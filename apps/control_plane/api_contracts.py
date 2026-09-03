@@ -58,7 +58,9 @@ def run(call):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        status_code = getattr(exc, "http_status_code", 422)
+        detail = getattr(exc, "http_detail", str(exc))
+        raise HTTPException(status_code=status_code, detail=detail) from exc
 
 
 class EvidenceOpsPlanInput(BaseModel):

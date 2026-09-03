@@ -405,6 +405,42 @@ def test_g1_runs_closed_loop_lifecycle_before_primary_lease_and_excludes_generic
     assert "must run in the dedicated" in closed_loop_postgres
 
 
+def test_g1_runs_teamagent_postgres_gate_in_empty_owned_database_phase():
+    """The durable TeamAgent gate must have an explicit, non-skippable phase."""
+
+    harness = HARNESS.read_text(encoding="utf-8")
+    acquire = '"scripts/manage_g1_database.py", "acquire"'
+    recreate = '"scripts/manage_g1_database.py", "recreate"'
+    teamagent_marker = "Verifying TeamAgent PostgreSQL 17 contracts"
+    replay_marker = "Replaying migrations in disposable database"
+    teamagent_env = "$env:KJDS_TEAM_AGENT_DATABASE_URL = $MigrationDatabaseUrl"
+    teamagent_runner = '"scripts/verify_team_agent_postgres_gate.py"'
+    teamagent_junit = '"--junit-output", $TeamAgentGateJunit'
+    teamagent_receipt = '"--receipt-output", $TeamAgentGateReceipt'
+
+    teamagent_offset = harness.index(teamagent_marker)
+    acquire_offset = harness.index(acquire, teamagent_offset - 4000)
+    recreate_offset = harness.index(recreate, acquire_offset)
+    replay_offset = harness.index(replay_marker, teamagent_offset)
+    cleanup_offset = harness.index(
+        "Remove-Item Env:KJDS_TEAM_AGENT_DATABASE_URL",
+        teamagent_offset,
+    )
+
+    assert acquire_offset < recreate_offset < teamagent_offset
+    assert teamagent_offset < cleanup_offset < replay_offset
+    assert teamagent_env in harness[teamagent_offset:replay_offset]
+    assert teamagent_runner in harness[teamagent_offset:replay_offset]
+    assert teamagent_junit in harness[teamagent_offset:replay_offset]
+    assert teamagent_receipt in harness[teamagent_offset:replay_offset]
+    assert "TeamAgent PostgreSQL Gate receipt was incomplete" in harness
+    assert "TeamAgent PostgreSQL Gate JUnit hash does not match its receipt" in harness
+    assert "TeamAgent PostgreSQL Gate evidence" in harness
+    assert "team_agent_postgres_gate = $false" in harness
+    assert "$result.team_agent_postgres_gate = $true" in harness
+    assert "skipped contracts cannot look like" in harness
+
+
 def test_g1_global_mutex_precedes_fixed_database_and_role_contracts():
     harness = HARNESS.read_text(encoding="utf-8")
 

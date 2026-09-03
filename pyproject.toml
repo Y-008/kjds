@@ -17,6 +17,7 @@ dependencies = [
   "mcp>=1.27.2,<2",
   "cryptography>=49,<50",
   "jsonschema>=4.26,<5",
+  "pillow>=10.4,<12",
 ]
 
 [project.optional-dependencies]

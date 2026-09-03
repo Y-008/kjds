@@ -1,5 +1,6 @@
 import {
   Activity,
+  BarChart3,
   BrainCircuit,
   Boxes,
   ChevronRight,
@@ -129,6 +130,10 @@ export function DashboardShell({
             <p>{current.description}</p>
           </div>
           <div className="topbar-actions">
+            <Link className="evidenceops-launch atlas-launch" href="/bi/overview">
+              <BarChart3 size={16} />
+              BI 总览
+            </Link>
             <Link className="evidenceops-launch atlas-launch" href="/team-control">
               <Command size={16} />
               团队总控

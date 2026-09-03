@@ -1,0 +1,99 @@
+{
+  "captured_at": "2026-08-15T07:34:11.179Z",
+  "source": "w2-ozon-cdp-readonly",
+  "companies": [
+    {
+      "id": 2735620,
+      "name": "BEIJIXINGYOUXUAN",
+      "balance": {
+        "error": {
+          "detail": "rpc error: code = Unauthenticated desc = unauthorized",
+          "code": "Unauthenticated"
+        }
+      },
+      "orders": {
+        "error": {
+          "detail": "rpc error: code = Unauthenticated desc = unauthorized",
+          "code": "Unauthenticated"
+        }
+      },
+      "warehouse_summary": {
+        "total": 0,
+        "by_status": {},
+        "blocked": 0
+      },
+      "warehouses": [],
+      "product_summary": {
+        "in_sale": null,
+        "to_supply": null
+      },
+      "premium": {
+        "is_premium": null,
+        "grace_period_available": null,
+        "premium_available": null
+      }
+    },
+    {
+      "id": 2706897,
+      "name": "LINYAN888",
+      "balance": {
+        "error": {
+          "detail": "rpc error: code = Unauthenticated desc = unauthorized",
+          "code": "Unauthenticated"
+        }
+      },
+      "orders": {
+        "error": {
+          "detail": "rpc error: code = Unauthenticated desc = unauthorized",
+          "code": "Unauthenticated"
+        }
+      },
+      "warehouse_summary": {
+        "total": 0,
+        "by_status": {},
+        "blocked": 0
+      },
+      "warehouses": [],
+      "product_summary": {
+        "in_sale": null,
+        "to_supply": null
+      },
+      "premium": {
+        "is_premium": null,
+        "grace_period_available": null,
+        "premium_available": null
+      }
+    },
+    {
+      "id": 2315091,
+      "name": "Treasures of the road",
+      "balance": {
+        "error": {
+          "detail": "rpc error: code = Unauthenticated desc = unauthorized",
+          "code": "Unauthenticated"
+        }
+      },
+      "orders": {
+        "error": {
+          "detail": "rpc error: code = Unauthenticated desc = unauthorized",
+          "code": "Unauthenticated"
+        }
+      },
+      "warehouse_summary": {
+        "total": 0,
+        "by_status": {},
+        "blocked": 0
+      },
+      "warehouses": [],
+      "product_summary": {
+        "in_sale": null,
+        "to_supply": null
+      },
+      "premium": {
+        "is_premium": null,
+        "grace_period_available": null,
+        "premium_available": null
+      }
+    }
+  ]
+}

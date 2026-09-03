@@ -1588,7 +1588,9 @@ def test_artifact_path_must_remain_in_non_reparse_connector_root(tmp_path, kind)
         try:
             os.symlink(target, artifact)
         except OSError as exc:
-            pytest.skip(f"symlink creation is unavailable: {type(exc).__name__}")
+            # Windows may raise even when the link was created.
+            if not artifact.is_symlink():
+                pytest.skip(f"symlink creation is unavailable: {type(exc).__name__}")
     payload = transcript(artifact)
     if kind == "traversal":
         saved = str(root.resolve() / "subdir" / ".." / artifact.name)
@@ -1640,6 +1642,26 @@ def test_open_root_handle_rejects_root_rename_and_replacement_race(tmp_path):
     assert result["artifact"] is None
 
 
+def _link_intermediate_directory(target: Path, link: Path) -> None:
+    """Point ``link`` at ``target`` via a directory reparse link.
+
+    Prefers a symlink; tolerates Windows raising OSError after the link was
+    created, and falls back to a junction (still a reparse point) when symlink
+    creation is genuinely unavailable.
+    """
+    try:
+        os.symlink(target, link, target_is_directory=True)
+        return
+    except OSError:
+        if link.is_symlink():
+            return
+        if os.name != "nt":
+            raise
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+
+
 def test_open_file_handle_rejects_intermediate_symlink_swap_after_path_check(
     tmp_path,
 ):
@@ -1658,7 +1680,7 @@ def test_open_file_handle_rejects_intermediate_symlink_swap_after_path_check(
     ) -> None:
         original_check(checked_root, checked_target)
         inner.rename(root / "original-inner")
-        os.symlink(outside, inner, target_is_directory=True)
+        _link_intermediate_directory(outside, inner)
 
     worker._reject_reparse_chain = swap_intermediate_after_check
     transport_port.dispatch_results.append(payload)

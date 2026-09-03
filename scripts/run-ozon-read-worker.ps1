@@ -1,19 +1,30 @@
 param(
     [Parameter(Mandatory = $true)][string]$PilotId,
+    [ValidateSet("ozon.product.read", "ozon.finance.read")]
+    [string]$Operation = "ozon.product.read",
     [Parameter(Mandatory = $false)][string]$OfferId,
     [Parameter(Mandatory = $false)][string[]]$OfferIds,
     [Parameter(Mandatory = $false)][string]$Cursor,
     [int]$PageSize = 10,
+    [Parameter(Mandatory = $false)][string]$DateFrom,
+    [Parameter(Mandatory = $false)][string]$DateTo,
+    [ValidateRange(1, 2147483647)][int]$FinancePage = 1,
+    [ValidateRange(1, 1000)][int]$FinancePageSize = 1000,
     [Parameter(Mandatory = $true)][string]$IdempotencyKey,
     [switch]$Execute
 )
 
 $ErrorActionPreference = "Stop"
 $env:KJDS_READ_ONLY_PILOT_ID = $PilotId
+$env:KJDS_READ_ONLY_OPERATION = $Operation
 $env:KJDS_READ_ONLY_OFFER_ID = $OfferId
 $env:KJDS_READ_ONLY_OFFER_IDS = ($OfferIds -join ",")
 $env:KJDS_READ_ONLY_CURSOR = $Cursor
 $env:KJDS_READ_ONLY_PAGE_SIZE = [string]$PageSize
+$env:KJDS_FINANCE_DATE_FROM = $DateFrom
+$env:KJDS_FINANCE_DATE_TO = $DateTo
+$env:KJDS_FINANCE_PAGE = [string]$FinancePage
+$env:KJDS_FINANCE_PAGE_SIZE = [string]$FinancePageSize
 $env:KJDS_READ_ONLY_IDEMPOTENCY_KEY = $IdempotencyKey
 
 # Docker Compose loads the ignored local .env without this script parsing or printing

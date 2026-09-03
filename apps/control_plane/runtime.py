@@ -21,6 +21,12 @@ from .agent_runtime import (
     GovernedAgentRuntime,
 )
 from .agent_runtime_evidence import SqlAgentRuntimeEvidenceLedger
+from .agent_team_orchestration import (
+    TEAM_AGENT_HARNESS_VERIFIER_ID,
+    TEAM_AGENT_HARNESS_VERIFIER_VERSION,
+    TeamAgentCoordinator,
+    TeamAgentHarnessBridge,
+)
 from .ai_listing import AiListingPipeline
 from .automation import AutomationService
 from .batch_opportunity import BatchOpportunityWorkspace
@@ -211,6 +217,9 @@ from .strategic_capital_dashboard import (
 from .supplier_quote_authority import SupplierQuoteAuthorityService
 from .supplier_rfq import SupplierRfqWorkspace
 from .supplier_rfq_dispatch import SupplierRfqDispatchWorkspace
+from .team_agent_postgres_runtime import PostgresTeamAgentRuntime
+from .team_agent_reviewer_authority import UnavailableTeamAgentReviewerAuthority
+from .team_agent_terminal_outbox import TeamAgentTerminalOutboxPublisher
 from .team_control_tower import TeamControlTower
 from .truth_governance import TruthGovernanceService
 from .warehouse_fulfillment import WarehouseExecutionAuthorityService
@@ -222,6 +231,10 @@ class RuntimeServices:
     action_policies: Any
     agent_harness: Any
     agent_inference: Any
+    agent_team: Any
+    agent_team_harness: Any
+    agent_team_terminal_outbox_factory: Any
+    agent_team_reviewer_authority: Any
     agent_runtime_evidence: Any
     governed_agent_runtime: Any
     ai_listing: Any
@@ -454,6 +467,14 @@ def _build_closed_loop_evidence_authority(
         raise
 
 
+def _build_team_agent_runtime(engine):
+    """Select the durable TeamAgent facade only for PostgreSQL runtimes."""
+
+    if engine.dialect.name == "postgresql":
+        return PostgresTeamAgentRuntime(engine)
+    return TeamAgentCoordinator()
+
+
 def build_runtime() -> RuntimeServices:
     repo = build_repository()
     engine = getattr(repo, "engine", None) or create_database_engine()
@@ -463,6 +484,15 @@ def build_runtime() -> RuntimeServices:
         contract=media_connector_contract,
     )
     agent_harness = AgentHarnessService(engine)
+    # PostgreSQL is the only runtime that may admit durable TeamAgent
+    # orchestration.  Non-PostgreSQL engines retain the in-process Pilot for
+    # local contract tests; a PostgreSQL engine uses the 0099+0100 facade,
+    # whose every mutation restores/reconciles and commits on one connection.
+    agent_team = _build_team_agent_runtime(engine)
+    agent_team_harness = TeamAgentHarnessBridge(
+        coordinator=agent_team,
+        sink=agent_harness,
+    )
     evidence = EvidenceService(engine)
     market_recon_bundles = MarketReconBundleIngestion(
         engine=engine,
@@ -574,6 +604,23 @@ def build_runtime() -> RuntimeServices:
     research_inbox = ResearchInboxService(evidence=evidence)
     demand_reports = DemandReportGateService(evidence=evidence)
     outbox = OutboxService(engine)
+
+    def agent_team_terminal_outbox_factory(
+        *, project_id: str, principal: Any
+    ) -> TeamAgentTerminalOutboxPublisher:
+        if not isinstance(agent_team, PostgresTeamAgentRuntime):
+            raise RuntimeError(
+                "durable TeamAgent terminal outbox requires PostgreSQL runtime"
+            )
+        return TeamAgentTerminalOutboxPublisher(
+            runtime=agent_team,
+            outbox=outbox,
+            bridge=agent_team_harness,
+            project_id=project_id,
+            principal=principal,
+            verifier_id=TEAM_AGENT_HARNESS_VERIFIER_ID,
+            verifier_version=TEAM_AGENT_HARNESS_VERIFIER_VERSION,
+        )
     decision_contracts = DecisionContractService(engine=engine, evidence=evidence)
     decision_lifecycle = DecisionLifecycleService(
         engine=engine,
@@ -1186,6 +1233,7 @@ def build_runtime() -> RuntimeServices:
         local_adapter=local_inference,
         cloud_adapter=cloud_inference,
         enabled=ai_listing_enabled,
+        preferred_provider=os.getenv("KJDS_AGENT_PROVIDER_PREFERENCE", "cloud"),
     )
     governed_runtime_adapters = []
     if local_inference is not None:
@@ -1322,6 +1370,10 @@ def build_runtime() -> RuntimeServices:
         action_policies=action_policies,
         agent_harness=agent_harness,
         agent_inference=agent_inference,
+        agent_team=agent_team,
+        agent_team_harness=agent_team_harness,
+        agent_team_terminal_outbox_factory=agent_team_terminal_outbox_factory,
+        agent_team_reviewer_authority=UnavailableTeamAgentReviewerAuthority(),
         agent_runtime_evidence=agent_runtime_evidence,
         governed_agent_runtime=governed_agent_runtime,
         ai_listing=ai_listing,

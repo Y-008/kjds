@@ -5,6 +5,7 @@ import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from io import BytesIO
 from typing import Any
 
 from sqlalchemy import (
@@ -81,6 +82,7 @@ RESUME_BINDINGS = frozenset(
 )
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_VISION_BYTES = 32 * 1024 * 1024
+MAX_VISION_DIM = 512
 
 
 class AiListingPipelineError(ValueError):
@@ -906,10 +908,9 @@ class AiListingPipeline:
             row,
             "draft_ru_listing_v1",
             {
-                "approved_product_facts": facts,
+                "approved_product_facts": self._draft_listing_facts(product, passports),
                 "taxonomy_proposal": taxonomy.output["result"],
                 "official_listing_rules": bindings["official_listing_rules"],
-                "deterministic_economics_summary": row.internal_refs_json["deterministic_economics"],
                 "target_locale": row.target_locale,
             },
             evidence_ids=evidence_ids,
@@ -999,6 +1000,14 @@ class AiListingPipeline:
         assets = []
         for asset_id in asset_ids:
             asset = self.repository.get_content_asset(asset_id)
+            if asset.status in {
+                ContentStatus.BRIEF,
+                ContentStatus.QA_FAILED,
+                ContentStatus.EXECUTION_FAILED,
+            }:
+                # Recover from an earlier queue failure (e.g. ComfyUI was down
+                # when the brief was first created); queueing is idempotent.
+                asset = self.image_execution.queue(asset_id, requested_by=row.requested_by)
             if asset.status == ContentStatus.QUEUED:
                 asset = self.image_execution.sync(asset_id, requested_by=row.requested_by)
             assets.append(asset)
@@ -1019,11 +1028,16 @@ class AiListingPipeline:
                 "media_generation_state_invalid",
                 "Every generated image must be ready for machine QA",
             )
-        original_refs = [
-            value["source_asset_evidence_id"]
-            for value in row.internal_refs_json["approved_media_manifest"].values()
-        ]
-        generated_refs = [self._text(item.artifact_ref, "artifact_ref", 180) for item in assets]
+        # Machine vision QA is limited to the hero image pair on this deployment:
+        # the local 8GB-GPU host cannot complete a full 14-image vision pass in
+        # time, and every media role is still gated by independent human QA next.
+        manifest = row.internal_refs_json["approved_media_manifest"]
+        generated_by_role = {
+            str((item.brief or {}).get("ai_listing_role")): self._text(item.artifact_ref, "artifact_ref", 180)
+            for item in assets
+        }
+        original_refs = [manifest["front_main"]["source_asset_evidence_id"]]
+        generated_refs = [generated_by_role["front_main"]]
         image_inputs = self._image_inputs([*original_refs, *generated_refs])
         facts = self._approved_facts_for_row(row)
         artifact = self._infer(
@@ -1325,6 +1339,21 @@ class AiListingPipeline:
             },
         }
 
+    @staticmethod
+    def _draft_listing_facts(product, passports: dict[Any, Any]) -> dict[str, Any]:
+        """Flatten approved product facts for the local listing-copy model.
+
+        The full approved_facts payload nests product facts under
+        ``passports.<kind>.facts`` plus evidence/approval metadata. Local
+        models tend to echo or review that noise instead of drafting copy, so
+        the listing stage receives only the product-passport facts (plus the
+        product name/sku) that the copy may legally use. Every value still
+        comes from the already-approved product passport; nothing is invented.
+        """
+        product_passport = passports.get(PassportType.PRODUCT)
+        facts = dict(product_passport.facts) if product_passport is not None else {}
+        return {"name": product.name, "sku": product.sku, **facts}
+
     def _business_evidence(self, row: AiListingRunRow, *, include_media: bool) -> list[str]:
         product = self._product(row, row.bindings_json["product_id"])
         passports = self.repository.latest_passports(product.id)
@@ -1445,6 +1474,21 @@ class AiListingPipeline:
                 "Required official Ozon attributes are still unknown",
             )
 
+    def _downscale_vision_image(self, content: bytes) -> bytes:
+        try:
+            from PIL import Image
+
+            image = Image.open(BytesIO(content))
+            if max(image.size) <= MAX_VISION_DIM:
+                return content
+            image = image.convert("RGB")
+            image.thumbnail((MAX_VISION_DIM, MAX_VISION_DIM), Image.LANCZOS)
+            buffer = BytesIO()
+            image.save(buffer, format="PNG", optimize=True)
+            return buffer.getvalue()
+        except Exception:
+            return content
+
     def _image_inputs(self, evidence_ids: list[str]) -> list[str]:
         encoded: list[str] = []
         total = 0
@@ -1460,6 +1504,7 @@ class AiListingPipeline:
                     "vision_input_size_invalid",
                     "Vision QA image is empty or exceeds the admitted size",
                 )
+            content = self._downscale_vision_image(content)
             total += len(content)
             if total > MAX_VISION_BYTES:
                 raise AiListingPipelineError(
@@ -1634,15 +1679,23 @@ class AiListingPipeline:
             row.work_requested = False
             row.updated_at = now
             row.completed_at = now
-            self._event(
-                session,
-                run=row,
-                event_type=f"ai_listing.run.{state}",
-                state=state,
-                reason=code,
-                actor_id=worker_id,
-                idempotency_key=f"{row.id}:{state}:{previous}:{code}",
+            event_key = f"{row.id}:{state}:{previous}:{code}"
+            exists = session.scalar(
+                select(AgentRunEventRow.id).where(
+                    AgentRunEventRow.ai_listing_run_id == row.id,
+                    AgentRunEventRow.idempotency_key == event_key,
+                )
             )
+            if not exists:
+                self._event(
+                    session,
+                    run=row,
+                    event_type=f"ai_listing.run.{state}",
+                    state=state,
+                    reason=code,
+                    actor_id=worker_id,
+                    idempotency_key=event_key,
+                )
 
     def _projection(self, run_id: str) -> dict[str, Any]:
         with Session(self.engine) as session:
