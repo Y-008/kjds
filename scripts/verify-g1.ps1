@@ -12,6 +12,7 @@ $ReleaseEvidenceDirectory = Join-Path $Runtime ("release-g1-" + [guid]::NewGuid(
 $TeamAgentGateDirectory = Join-Path $Runtime ("team-agent-gate-g1-" + [guid]::NewGuid().ToString("N"))
 $TeamAgentGateJunit = Join-Path $TeamAgentGateDirectory "junit.xml"
 $TeamAgentGateReceipt = Join-Path $TeamAgentGateDirectory "receipt.json"
+$RestoreVerificationPath = Join-Path $Runtime "RESTORE_VERIFICATION.json"
 $DatabaseName = "kjds_g1_smoke"
 $RestoreDatabaseName = "kjds_g1_restore"
 $DataCoveragePostgresContract = "tests\test_global_data_coverage_ledger_postgres.py"
@@ -61,6 +62,7 @@ $EvidenceArchiveDirectory = Join-Path $EvidenceArchiveRoot ("g1-" + $RunTokenSha
 $ArchivedReportPath = Join-Path $EvidenceArchiveDirectory "G1_VERIFICATION.json"
 $ArchivedMutexReleaseReceipt = Join-Path $EvidenceArchiveDirectory "G1_MUTEX_RELEASE.json"
 $ArchivedRuntimeEvidenceDirectory = Join-Path $EvidenceArchiveDirectory "runtime-evidence"
+$ArchivedRestoreVerificationPath = Join-Path $ArchivedRuntimeEvidenceDirectory "RESTORE_VERIFICATION.json"
 $StrategicBenchmarkSealingKey = [Convert]::ToBase64String(
     [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 )
@@ -646,6 +648,7 @@ $result = [ordered]@{
     evidence_archive_report = $ArchivedReportPath
     evidence_archive_mutex_release_receipt = $ArchivedMutexReleaseReceipt
     evidence_archive_runtime = $ArchivedRuntimeEvidenceDirectory
+    evidence_archive_restore_verification = $ArchivedRestoreVerificationPath
 }
 
 try {
@@ -1299,10 +1302,21 @@ try {
                     -RepositoryRoot $Root `
                     -RuntimeRoot $Runtime
                 Publish-G1EvidenceDirectory `
+                    -SourceDirectory $BackupSmokeDirectory `
+                    -DestinationDirectory (Join-Path $ArchivedRuntimeEvidenceDirectory "backup") `
+                    -RepositoryRoot $Root `
+                    -RuntimeRoot $Runtime
+                Publish-G1EvidenceDirectory `
                     -SourceDirectory $ReleaseEvidenceDirectory `
                     -DestinationDirectory (Join-Path $ArchivedRuntimeEvidenceDirectory "release") `
                     -RepositoryRoot $Root `
                     -RuntimeRoot $Runtime
+                if ($result.backup_restore -and (Test-Path -LiteralPath $RestoreVerificationPath)) {
+                    Publish-G1EvidenceCopy `
+                        -SourcePath $RestoreVerificationPath `
+                        -DestinationPath $ArchivedRestoreVerificationPath `
+                        -RepositoryRoot $Root | Out-Null
+                }
             }
         },
         @{
