@@ -164,6 +164,54 @@ def test_g1_cleanup_failures_cannot_skip_report_serialization(tmp_path):
     ]
 
 
+def test_g1_archive_failure_stops_cleanup_to_retain_runtime_evidence(tmp_path):
+    if not PWSH:
+        pytest.skip("PowerShell 7 is required for the G-1 cleanup contract")
+    source = HARNESS.read_text(encoding="utf-8")
+    helper_start = source.index("function Invoke-CleanupStep")
+    harness_start = source.index("$startedAt =")
+    helpers = source[helper_start:harness_start]
+    marker = tmp_path / "cleanup-must-not-run.txt"
+    report = tmp_path / "G1_VERIFICATION.json"
+    invocation = f"""
+$ErrorActionPreference = "Stop"
+{helpers}
+$result = [ordered]@{{
+    gate = "G-1"
+    status = "PASS"
+    started_at = "2026-09-03T00:00:00Z"
+    finished_at = $null
+    git_commit = "test-commit"
+    cleanup_processes = $true
+    cleanup_database = $true
+    cleanup_files = $true
+    cleanup_file_errors = @()
+    cleanup_error = $null
+    error = $null
+    report_error = $null
+}}
+$steps = @(
+    @{{ Name = "persistent G-1 runtime evidence archive"; Action = {{ throw "archive unavailable" }} }},
+    @{{ Name = "destructive cleanup"; Action = {{ [IO.File]::WriteAllText({powershell_quote(str(marker))}, "must-not-run") }} }}
+)
+$completion = Complete-G1Verification -Result $result -CleanupSteps $steps -ReportPath {powershell_quote(str(report))}
+if (-not $completion.failed) {{ exit 31 }}
+if (Test-Path -LiteralPath {powershell_quote(str(marker))}) {{ exit 32 }}
+exit 0
+"""
+    completed = subprocess.run(
+        [PWSH, "-NoProfile", "-Command", invocation],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    payload = json.loads(report.read_text(encoding="utf-8-sig"))
+    assert payload["cleanup_error"] == (
+        "Persistent G-1 evidence archive failed; disposable resources were retained"
+    )
+
+
 def test_g1_source_guard_blocks_source_changes_but_ignores_disposable_paths(tmp_path):
     if not PWSH:
         pytest.skip("PowerShell 7 is required for the G-1 source guard contract")

@@ -497,9 +497,13 @@ function Complete-G1Verification {
     )
 
     foreach ($step in $CleanupSteps) {
-        $Result.cleanup_file_errors += @(
-            Invoke-CleanupStep -Name $step.Name -Action $step.Action
-        )
+        $cleanupError = Invoke-CleanupStep -Name $step.Name -Action $step.Action
+        $Result.cleanup_file_errors += @($cleanupError)
+        if ($cleanupError -and $step.Name -eq "persistent G-1 runtime evidence archive") {
+            $Result.cleanup_error =
+                "Persistent G-1 evidence archive failed; disposable resources were retained"
+            break
+        }
     }
 
     if (
@@ -511,8 +515,10 @@ function Complete-G1Verification {
         )
     ) {
         $Result.status = "FAIL"
-        $Result.cleanup_error =
-            "Disposable verification resources were not fully removed"
+        if (-not $Result.cleanup_error) {
+            $Result.cleanup_error =
+                "Disposable verification resources were not fully removed"
+        }
     }
 
     $Result.finished_at = (Get-Date).ToUniversalTime().ToString("o")
