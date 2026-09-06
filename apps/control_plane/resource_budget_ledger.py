@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, localcontext
@@ -30,6 +31,10 @@ from .sql_repository import Base
 
 BudgetState = Literal["reserved", "consumed", "released", "overrun"]
 STATES = frozenset({"reserved", "consumed", "released", "overrun"})
+# SQLite does not implement SELECT ... FOR UPDATE.  A process-wide lock keeps
+# independent local ledger instances from oversubscribing the same SQLite file;
+# PostgreSQL still relies on the database row lock for cross-process safety.
+_RESOURCE_LEDGER_LOCK = RLock()
 
 
 def _text(value: str, name: str, maximum: int = 240) -> str:
@@ -215,7 +220,38 @@ class ResourceBudgetEventRow(Base):
 class ResourceBudgetLedger:
     def __init__(self, engine):
         self.engine = engine
-        self._lock = RLock()
+
+    @contextmanager
+    def _transaction(self) -> Iterator[Session]:
+        """Open an admission transaction with a real SQLite write lock.
+
+        SQLite ignores ``SELECT ... FOR UPDATE`` and otherwise starts a
+        deferred transaction.  Two independent ledger instances could then
+        both observe the same remaining capacity before either INSERT obtains
+        the writer lock.  ``BEGIN IMMEDIATE`` acquires SQLite's database write
+        reservation before the capacity read, so the second instance observes
+        the first committed event (or waits for it) instead of oversubscribing
+        the budget.  PostgreSQL keeps the normal SQLAlchemy transaction so its
+        row-level ``FOR UPDATE`` admission lock remains in force.
+        """
+
+        with Session(self.engine) as session:
+            if self.engine.dialect.name == "sqlite":
+                # Session.connection() establishes SQLAlchemy's transaction
+                # facade, while SQLite itself remains deferred until this
+                # driver-level BEGIN.  Do not nest session.begin() here: the
+                # explicit BEGIN IMMEDIATE is the transaction boundary.
+                session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    yield session
+                except BaseException:
+                    session.rollback()
+                    raise
+                else:
+                    session.commit()
+                return
+            with session.begin():
+                yield session
 
     def create_budget(self, budget: ResourceBudget) -> ResourceBudget:
         now = datetime.now(UTC)
@@ -342,7 +378,15 @@ class ResourceBudgetLedger:
             raise ValueError("occurred_at cannot be in the future")
         fingerprint = _fingerprint(event)
         try:
-            with self._lock, Session(self.engine) as session, session.begin():
+            # The process lock protects SQLite engines that share a process;
+            # PostgreSQL's row lock provides the equivalent cross-worker
+            # admission guarantee without serializing unrelated budgets.
+            admission_lock = (
+                _RESOURCE_LEDGER_LOCK
+                if self.engine.dialect.name == "sqlite"
+                else nullcontext()
+            )
+            with admission_lock, self._transaction() as session:
                 # Locking the budget row makes the reservation check and insert
                 # one atomic operation across worker processes on PostgreSQL.
                 budget = session.scalar(select(ResourceBudgetRow).where(

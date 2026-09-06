@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
+from threading import Barrier
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from apps.control_plane.resource_budget_ledger import (
     ResourceBudget,
@@ -210,3 +212,71 @@ def test_event_rejects_unrepresentable_timezone_offset():
             tenant_id="tenant-a", state="reserved", amount="1",
             occurred_at=datetime.max.replace(tzinfo=timezone(timedelta(hours=-14))),
         )
+
+
+def test_sqlite_file_budget_admission_is_serialized_across_ledger_instances(tmp_path):
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'budget-race.db'}"
+
+    def make_engine():
+        engine = create_engine(
+            database_url,
+            connect_args={"check_same_thread": False, "timeout": 5},
+            poolclass=NullPool,
+        )
+
+        @sqlalchemy_event.listens_for(engine, "connect")
+        def _enable_foreign_keys(dbapi_connection, _connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+        return engine
+
+    setup_engine = make_engine()
+    Base.metadata.create_all(
+        setup_engine,
+        tables=[ResourceBudgetRow.__table__, ResourceBudgetEventRow.__table__],
+    )
+    setup_ledger = ResourceBudgetLedger(setup_engine)
+    setup_ledger.create_budget(
+        ResourceBudget("budget-race", "tenant-a", "model_tokens", "cc-ai", Decimal("10"))
+    )
+    first_engine, second_engine = make_engine(), make_engine()
+    first_ledger, second_ledger = (
+        ResourceBudgetLedger(first_engine),
+        ResourceBudgetLedger(second_engine),
+    )
+    start = Barrier(2)
+
+    def reserve(ledger: ResourceBudgetLedger, suffix: str):
+        start.wait()
+        try:
+            ledger.record(
+                event(
+                    "reserved",
+                    "6",
+                    f"race-key-{suffix}",
+                    f"race-event-{suffix}",
+                    budget_id="budget-race",
+                )
+            )
+            return "ok"
+        except ValueError as exc:
+            return str(exc)
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            outcomes = list(
+                workers.map(
+                    lambda args: reserve(*args),
+                    ((first_ledger, "a"), (second_ledger, "b")),
+                )
+            )
+        assert sorted(outcomes) == ["ok", "resource budget exceeded"]
+        snapshot = setup_ledger.snapshot(tenant_id="tenant-a", budget_id="budget-race")
+        assert snapshot["reserved"] == "6"
+        assert snapshot["available"] == "4"
+    finally:
+        first_engine.dispose()
+        second_engine.dispose()
+        setup_engine.dispose()
