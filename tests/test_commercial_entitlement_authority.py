@@ -3,13 +3,20 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import create_engine
 
 from apps.control_plane.commercial_entitlement_authority import (
     CommercialEntitlementAdmissionError,
     CommercialEntitlementAuthority,
     canonical_entitlement_id,
 )
-from apps.control_plane.commercial_lifecycle import CommercialScope
+from apps.control_plane.commercial_lifecycle import (
+    CommercialLifecycleEventRow,
+    CommercialLifecycleEvidenceRow,
+    CommercialLifecycleService,
+    CommercialScope,
+)
+from apps.control_plane.sql_repository import Base
 
 SCOPE = {
     "tenant_id": "tenant-a",
@@ -144,3 +151,68 @@ def test_multiple_metrics_require_an_explicit_allowlisted_metric():
         _resolve(authority, metric=None)
     with pytest.raises(CommercialEntitlementAdmissionError, match="not allowlisted"):
         _resolve(authority, metric="storage_gib")
+
+
+def test_sql_lifecycle_projection_is_the_authoritative_resolution_source():
+    engine = create_engine("sqlite+pysqlite://", future=True)
+    Base.metadata.create_all(
+        engine,
+        tables=[CommercialLifecycleEventRow.__table__, CommercialLifecycleEvidenceRow.__table__],
+    )
+    service = CommercialLifecycleService(engine)
+    scope = {
+        "customer_ref": SCOPE["customer_id"],
+        "deployment_ref": SCOPE["deployment_ref"],
+        "tenant_ref": SCOPE["tenant_id"],
+        "entity_ref": SCOPE["entity_ref"],
+        "store_ref": SCOPE["store_ref"],
+    }
+
+    def evidence(evidence_id: str, suffix: str):
+        return {
+            "evidence_id": evidence_id,
+            "evidence_sha256": suffix * 64,
+            "evidence_kind": "commercial_test",
+            "authority": "test",
+            "source_kind": "internal_record_only",
+            "purposes": ["commercial_audit"],
+        }
+
+    service.record_plan(
+        scope=scope,
+        plan_ref="plan-authority",
+        state="approved",
+        currency="CNY",
+        gross_amount="100",
+        effective_at=START,
+        billing_window_start=START,
+        billing_window_end=END + timedelta(days=2),
+        metric_limits=[{"metric": "requests", "limit": "10", "grace_limit": "8"}],
+        evidence=evidence("plan-evidence", "a"),
+        idempotency_key="plan-authority",
+    )
+    service.record_subscription(
+        scope=scope,
+        subscription_ref="subscription-authority",
+        plan_ref="plan-authority",
+        state="active",
+        currency="CNY",
+        amount="100",
+        effective_at=START,
+        expires_at=None,
+        settlement_evidence=evidence("settlement-evidence", "b"),
+        evidence=evidence("subscription-evidence", "c"),
+        idempotency_key="subscription-authority",
+    )
+
+    authority = CommercialEntitlementAuthority(service)
+    receipt = authority.resolve(
+        **SCOPE,
+        entitlement_id=canonical_entitlement_id(**SCOPE),
+        metric="requests",
+        occurred_at=START + timedelta(hours=1),
+    )
+    assert receipt["plan_ref"] == "plan-authority"
+    assert receipt["subscription_ref"] == "subscription-authority"
+    assert receipt["state"] == "active"
+    engine.dispose()
