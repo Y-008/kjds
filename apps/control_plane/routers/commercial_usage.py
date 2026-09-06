@@ -7,7 +7,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..api_contracts import current_principal, ensure_role, run
+from ..api_contracts import current_principal, ensure_role, ensure_store_scope, run
+from ..commercial_entitlement_authority import CommercialEntitlementAuthority
 from ..runtime import runtime
 from ..security import Principal
 from ..skill_usage_ledger import SkillUsageEvent
@@ -37,6 +38,13 @@ class UsageEventInput(BaseModel):
     cost_center: str | None = Field(default=None, max_length=160)
     input_units: Decimal | None = Field(default=None, ge=0)
     output_units: Decimal | None = Field(default=None, ge=0)
+    # Optional during migration from the legacy metering endpoint.  A
+    # declared entitlement activates strict server-side scope resolution.
+    entitlement_id: str | None = Field(default=None, min_length=1, max_length=240)
+    deployment_ref: str | None = Field(default=None, min_length=1, max_length=160)
+    entity_ref: str | None = Field(default=None, min_length=1, max_length=160)
+    store_ref: str | None = Field(default=None, min_length=1, max_length=160)
+    metric: str | None = Field(default=None, min_length=1, max_length=80)
     occurred_at: datetime | None = None
 
     @field_validator("occurred_at")
@@ -73,12 +81,77 @@ def _currency_code(value: str) -> str:
     return normalized
 
 
+def _entitlement_admission(
+    *,
+    principal: Principal,
+    customer_id: str,
+    entitlement_id: str | None,
+    deployment_ref: str | None,
+    entity_ref: str | None,
+    store_ref: str | None,
+    metric: str | None,
+    occurred_at: datetime | None,
+    as_of: datetime | None = None,
+) -> dict[str, object] | None:
+    """Resolve an explicitly declared entitlement before metering.
+
+    Requests that declare none of the entitlement fields retain the legacy
+    behavior.  Partial declarations fail closed so a typo cannot silently
+    fall back to an unbound customer or store.
+    """
+
+    declared = {
+        "entitlement_id": entitlement_id,
+        "deployment_ref": deployment_ref,
+        "entity_ref": entity_ref,
+        "store_ref": store_ref,
+    }
+    if not any(value is not None for value in declared.values()):
+        return None
+    missing = [name for name, value in declared.items() if value is None]
+    if missing:
+        raise ValueError(
+            "entitlement scope requires: " + ", ".join(sorted(missing))
+        )
+    assert entitlement_id is not None
+    assert deployment_ref is not None
+    assert entity_ref is not None
+    assert store_ref is not None
+    ensure_store_scope(principal, store_ref)
+    authority = getattr(runtime, "commercial_entitlement_authority", None)
+    if authority is None:
+        # Test and migration runtimes created before the explicit composition
+        # field remain safe while production uses the injected authority.
+        authority = CommercialEntitlementAuthority(runtime.commercial_lifecycle)
+    return authority.resolve(
+        tenant_id=principal.tenant_ref,
+        customer_id=customer_id,
+        entitlement_id=entitlement_id,
+        deployment_ref=deployment_ref,
+        entity_ref=entity_ref,
+        store_ref=store_ref,
+        metric=metric,
+        occurred_at=occurred_at,
+        as_of=as_of,
+    )
+
+
 @router.post("/v1/commercial/usage")
 def record_usage(
     body: UsageEventInput,
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "admin", "executor")
+    admission = _entitlement_admission(
+        principal=principal,
+        customer_id=body.customer_id,
+        entitlement_id=body.entitlement_id,
+        deployment_ref=body.deployment_ref,
+        entity_ref=body.entity_ref,
+        store_ref=body.store_ref,
+        metric=body.metric,
+        occurred_at=body.occurred_at,
+    )
     event = SkillUsageEvent(
         event_id=body.event_id,
         idempotency_key=body.idempotency_key,
@@ -97,7 +170,10 @@ def record_usage(
         input_units=body.input_units,
         output_units=body.output_units,
     )
-    return run(lambda: runtime.skill_usage_ledger.record(event))
+    result = run(lambda: runtime.skill_usage_ledger.record(event))
+    if admission is not None and isinstance(result, dict):
+        result["entitlement_admission"] = admission
+    return result
 
 
 @router.get("/v1/commercial/usage-preview")
@@ -114,13 +190,32 @@ def usage_preview(
         ),
     ] = "USD",
     as_of: datetime | None = None,
+    entitlement_id: str | None = None,
+    deployment_ref: str | None = None,
+    entity_ref: str | None = None,
+    store_ref: str | None = None,
+    metric: str | None = None,
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
     if as_of is not None and (as_of.tzinfo is None or as_of.utcoffset() is None):
         raise HTTPException(status_code=422, detail="as_of must include a timezone")
-    return run(lambda: runtime.skill_usage_ledger.invoice_preview(
+    admission = _entitlement_admission(
+        principal=principal,
+        customer_id=customer_id,
+        entitlement_id=entitlement_id,
+        deployment_ref=deployment_ref,
+        entity_ref=entity_ref,
+        store_ref=store_ref,
+        metric=metric,
+        occurred_at=as_of,
+        as_of=as_of,
+    )
+    result = run(lambda: runtime.skill_usage_ledger.invoice_preview(
         tenant_id=principal.tenant_ref,
         customer_id=customer_id,
         currency=_currency_code(currency),
         as_of=as_of.astimezone(UTC) if as_of is not None else None,
     ))
+    if admission is not None and isinstance(result, dict):
+        result["entitlement_admission"] = admission
+    return result

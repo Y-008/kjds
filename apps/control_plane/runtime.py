@@ -52,6 +52,7 @@ from .closed_loop_evolution import (
     GovernedClosedLoopEvolutionWorkspace,
 )
 from .commerce_operating_system import CommerceOperatingSystem
+from .commercial_entitlement_authority import CommercialEntitlementAuthority
 from .commercial_finance_ledger import CommercialFinanceLedger
 from .commercial_lifecycle import CommercialLifecycleService
 from .content_growth import ContentGrowthService
@@ -279,6 +280,7 @@ class RuntimeServices:
     causal_knowledge: Any
     causal_policies: Any
     commerce: Any
+    commercial_entitlement_authority: Any
     commercial_lifecycle: Any
     commerce_os: Any
     native_parity_acceptance: Any
@@ -680,6 +682,9 @@ def build_runtime() -> RuntimeServices:
     )
     commerce = CommerceService(repo, evidence_validator=evidence.require_valid)
     commercial_lifecycle = CommercialLifecycleService(engine=engine)
+    commercial_entitlement_authority = CommercialEntitlementAuthority(
+        lifecycle_service=commercial_lifecycle
+    )
     action_policies = ActionPolicyRegistry()
     action_authorization = ActionAuthorizationService(action_policies)
     policy_shadow = PolicyShadowService(
@@ -1447,6 +1452,7 @@ def build_runtime() -> RuntimeServices:
         causal_knowledge=causal_knowledge,
         causal_policies=causal_policies,
         commerce=commerce,
+        commercial_entitlement_authority=commercial_entitlement_authority,
         commercial_lifecycle=commercial_lifecycle,
         commerce_os=commerce_os,
         native_parity_acceptance=native_parity_acceptance,
