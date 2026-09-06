@@ -453,6 +453,9 @@ class TemporalFactRevision(_Contract):
             _sha256(self.payload_hash, "payload_hash")
         if self.event_time > self.observed_time:
             raise ValueError("event_time cannot be after observed_time")
+        canonical_permission_scope = _scope_key(self.scope)
+        if self.permission_scope != canonical_permission_scope:
+            raise ValueError("permission_scope does not match fact scope")
         if self.settled_time is not None and self.settled_time < self.event_time:
             raise ValueError("settled_time cannot precede event_time")
         # A late-arriving fact can already be stale when it is observed.  Keep

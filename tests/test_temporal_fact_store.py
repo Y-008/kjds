@@ -150,6 +150,13 @@ def test_idempotency_is_exact_and_conflicting_reuse_fails_closed() -> None:
         store.append(fact_values(source_system="different-source"))
 
 
+def test_permission_scope_must_match_canonical_scope() -> None:
+    with pytest.raises(ValueError, match="permission_scope"):
+        TemporalFactRevision.model_validate(
+            fact_values(permission_scope="tenant-a:entity-a:store-b")
+        )
+
+
 def test_quality_state_does_not_turn_zero_into_no_data() -> None:
     valid = TemporalFactRevision.model_validate(fact_values())
     assert valid.payload["amount"] == 0
