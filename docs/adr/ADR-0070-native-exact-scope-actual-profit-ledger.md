@@ -101,6 +101,35 @@ zero. Actual and zero legs must be backed by valid scoped Evidence. Costs may
 come from a scoped platform-fee mapping or a scoped per-order Bank Payment;
 unclassified values remain isolated.
 
+### After-sales long tail
+
+The fifteen-leg ledger's `return`, `customer_compensation` and `damage` legs
+remain the source for realized cash CM3.  Late returns, claims, chargebacks,
+recoveries and settlement reopenings are additionally recorded in the
+append-only native `after_sales_events` ledger.  Each row carries
+`event_time`, `observed_time`, `effective_time` and optional `settled_time`,
+exact tenant/entity/store authority, source version, Evidence, idempotency and
+causation/correlation references.  A correction appends a higher version for
+the same logical event; it never overwrites the prior row.
+
+`AfterSalesLedgerService.snapshot(...)` selects the latest version known at
+the requested `as_of` and reports `realized_profit` separately from
+`risk_adjusted_profit`:
+
+```
+realized_profit
+  - expected_return_cost
+  - chargeback_reserve
+  - realized_adjustment
+  + recovery_amount
+  - reopened_settlement
+```
+
+Missing events are `NO_DATA` and remain null rather than becoming numeric zero;
+missing Evidence, currency conflicts, negative reserve releases and invalid
+scope are `BLOCKED`.  The projection is read-only and cannot issue refunds,
+payments, permits or platform writes.
+
 Discount and refund remain revenue erosion rather than being relabelled as one
 of the fifteen costs.
 
