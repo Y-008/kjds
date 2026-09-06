@@ -3,8 +3,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from apps.control_plane.stuck_task_detector import (
+    RECOVERY_PLAN_VERSION,
     STUCK_DETECTOR_VERSION,
     TaskLivenessObservation,
+    build_recovery_plan,
     detect_stuck_tasks,
 )
 
@@ -106,3 +108,77 @@ def test_queued_task_does_not_require_pre_dispatch_heartbeat():
 def test_invalid_timeout_is_rejected():
     with pytest.raises(ValueError, match="heartbeat_timeout"):
         detect_stuck_tasks((), heartbeat_timeout=timedelta(0))
+
+
+def test_unknown_remote_outcome_emits_deterministic_proposal_only_recovery_plan():
+    observation = TaskLivenessObservation(
+        task_ref="remote-write-1",
+        state="failed",
+        last_heartbeat=NOW,
+        external_readback_required=True,
+        external_readback_state="unknown",
+        duplicate_execution_count=1,
+        idempotency_key="write-1",
+    )
+
+    first = detect_stuck_tasks((observation,), now=NOW)[0]
+    second = detect_stuck_tasks((observation,), now=NOW)[0]
+    plan = first.recovery_plan
+
+    assert plan is not None
+    assert plan.plan_sha256 == second.recovery_plan.plan_sha256
+    assert len(plan.plan_sha256) == 64
+    assert plan.action == "reconcile_external_state_before_retry"
+    assert plan.retry_allowed is False
+    assert plan.external_write_allowed is False
+    assert plan.compensation_required is True
+    assert "reconcile_external_state" in plan.steps
+    assert "record_authoritative_readback" in plan.steps
+    assert "external_state_reconciled" in plan.required_checks
+    assert RECOVERY_PLAN_VERSION == "kjds-stuck-recovery-v1"
+
+
+def test_healthy_observation_has_no_recovery_plan_and_custom_action_cannot_authorize_write():
+    healthy = detect_stuck_tasks(
+        (
+            TaskLivenessObservation(
+                task_ref="healthy-1",
+                state="queued",
+                last_heartbeat=None,
+                deadline=NOW + timedelta(hours=1),
+                consumer_id="worker-1",
+            ),
+        ),
+        now=NOW,
+    )[0]
+    assert healthy.recovery_plan is None
+
+    stuck = detect_stuck_tasks(
+        (
+            TaskLivenessObservation(
+                task_ref="custom-action-1",
+                state="failed",
+                last_heartbeat=NOW,
+                external_readback_state="unknown",
+                compensation_action="caller-supplied-action",
+            ),
+        ),
+        now=NOW,
+    )[0]
+    plan = build_recovery_plan(stuck)
+    assert plan is not None
+    assert stuck.compensation_action == "caller-supplied-action"
+    assert plan.action == "reconcile_external_state_before_retry"
+    assert plan.action_source == "detector"
+    assert plan.external_write_allowed is False
+    with pytest.raises(ValueError, match="cannot authorize external writes"):
+        type(plan)(
+            task_ref=plan.task_ref,
+            observation_sha256=plan.observation_sha256,
+            action=plan.action,
+            required_checks=plan.required_checks,
+            steps=plan.steps,
+            retry_allowed=False,
+            compensation_required=True,
+            external_write_allowed=True,
+        )

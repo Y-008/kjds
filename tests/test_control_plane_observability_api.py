@@ -115,6 +115,10 @@ def test_operations_stuck_reads_latest_heartbeats_and_fails_closed(monkeypatch):
     assert result["quality_state"] == "BLOCKED"
     assert result["stuck_count"] == 1
     assert "heartbeat_expired" in result["tasks"][0]["reasons"]
+    assert result["recovery_contract"] == "kjds-stuck-recovery-v1"
+    assert result["recovery_mode"] == "proposal_only"
+    assert result["tasks"][0]["recovery_plan"]["retry_allowed"] is False
+    assert result["tasks"][0]["recovery_plan"]["external_write_allowed"] is False
     assert result["external_write_allowed"] is False
 
 

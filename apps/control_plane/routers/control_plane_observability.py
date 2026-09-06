@@ -28,7 +28,11 @@ from ..data_fabric_registry import load_data_product_registry
 from ..economic_guard_service import EconomicGuardInput, evaluate_economic_guard
 from ..runtime import runtime
 from ..security import Principal
-from ..stuck_task_detector import TaskLivenessObservation, detect_stuck_tasks
+from ..stuck_task_detector import (
+    RECOVERY_PLAN_VERSION,
+    TaskLivenessObservation,
+    detect_stuck_tasks,
+)
 from ..temporal_fact_store import QualityState, TemporalFactQueryResult
 from ..transparency_envelope import TransparencyEnvelope
 
@@ -647,6 +651,8 @@ def operations_stuck(
         if not callable(list_latest):
             return {
                 "contract_id": "kjds-operations-stuck-v1",
+                "recovery_contract": RECOVERY_PLAN_VERSION,
+                "recovery_mode": "proposal_only",
                 "status": "BLOCKED",
                 "tasks": [],
                 "reason": "task_liveness_observation_source_not_bound",
@@ -675,6 +681,8 @@ def operations_stuck(
             # the error surface stable and avoid exposing database details.
             return {
                 "contract_id": "kjds-operations-stuck-v1",
+                "recovery_contract": RECOVERY_PLAN_VERSION,
+                "recovery_mode": "proposal_only",
                 "status": "BLOCKED",
                 "tasks": [],
                 "reason": "task_liveness_observation_source_unavailable",
@@ -698,6 +706,8 @@ def operations_stuck(
         if rows and not observations:
             return {
                 "contract_id": "kjds-operations-stuck-v1",
+                "recovery_contract": RECOVERY_PLAN_VERSION,
+                "recovery_mode": "proposal_only",
                 "status": "BLOCKED",
                 "quality_state": "BLOCKED",
                 "reason": "invalid_heartbeat_observations",
@@ -722,6 +732,8 @@ def operations_stuck(
         quality_state = status
         return {
             "contract_id": "kjds-operations-stuck-v1",
+            "recovery_contract": RECOVERY_PLAN_VERSION,
+            "recovery_mode": "proposal_only",
             "status": status,
             "quality_state": quality_state,
             "reason": None if detected else "no_heartbeat_observations",

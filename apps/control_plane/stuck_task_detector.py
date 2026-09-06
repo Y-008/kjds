@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 STUCK_DETECTOR_VERSION = "kjds-stuck-detector-v2"
+RECOVERY_PLAN_VERSION = "kjds-stuck-recovery-v1"
 
 _RECOVERY_ACTIONS: dict[str, str] = {
     "deadline_expired": "quarantine_and_replan",
@@ -40,6 +41,119 @@ _TERMINAL_STATES = frozenset({"completed", "failed", "blocked", "expired"})
 _ACTIVE_STATES = frozenset({"running", "retry_wait", "paused"})
 _QUEUED_STATE = "queued"
 
+# Recovery is a proposal assembled from immutable observation data.  These
+# steps are deliberately descriptive: the detector never claims that a lease
+# was reclaimed, a remote state was reconciled, or a compensation command was
+# executed.  A separately governed worker must consume the plan and produce
+# its own receipt.
+_RECOVERY_STEPS: dict[str, tuple[str, ...]] = {
+    "unknown_state": (
+        "quarantine_task",
+        "repair_liveness_observation",
+        "recompute_from_fresh_heartbeat",
+    ),
+    "timestamp_timezone_missing": (
+        "quarantine_task",
+        "normalize_source_timestamps",
+        "recompute_from_fresh_heartbeat",
+    ),
+    "deadline_conflict": (
+        "quarantine_task",
+        "resolve_deadline_alias_conflict",
+        "recompute_from_fresh_heartbeat",
+    ),
+    "external_readback_unknown": (
+        "freeze_retries",
+        "reconcile_external_state",
+        "record_authoritative_readback",
+        "decide_compensation",
+    ),
+    "external_readback_failed": (
+        "freeze_retries",
+        "reconcile_external_state",
+        "record_authoritative_readback",
+        "decide_compensation",
+    ),
+    "duplicate_execution_detected": (
+        "freeze_retries",
+        "deduplicate_by_idempotency",
+        "reconcile_execution_receipts",
+        "decide_compensation",
+    ),
+    "idempotency_key_missing": (
+        "quarantine_task",
+        "bind_idempotency_key",
+        "recompute_from_fresh_heartbeat",
+    ),
+    "lease_expired": (
+        "freeze_retries",
+        "reclaim_or_expire_lease",
+        "read_durable_checkpoint",
+        "resume_only_after_fresh_heartbeat",
+    ),
+    "heartbeat_expired": (
+        "freeze_retries",
+        "inspect_consumer_and_checkpoint",
+        "resume_only_after_fresh_heartbeat",
+    ),
+    "progress_stalled": (
+        "freeze_retries",
+        "inspect_consumer_and_checkpoint",
+        "resume_only_after_progress_receipt",
+    ),
+    "progress_cursor_missing": (
+        "quarantine_task",
+        "request_progress_checkpoint",
+        "resume_only_after_progress_receipt",
+    ),
+    "consumer_missing": (
+        "quarantine_task",
+        "bind_consumer",
+        "resume_only_after_fresh_heartbeat",
+    ),
+    "queued_without_consumer": (
+        "quarantine_task",
+        "bind_consumer",
+        "resume_only_after_fresh_heartbeat",
+    ),
+    "deadline_expired": (
+        "freeze_retries",
+        "quarantine_or_replan",
+        "append_recovery_receipt",
+    ),
+    "terminal_evidence_missing": (
+        "quarantine_terminal_result",
+        "attach_terminal_evidence",
+        "reopen_or_close_after_review",
+    ),
+}
+
+_RECOVERY_CHECKS: dict[str, tuple[str, ...]] = {
+    "unknown_state": ("state_contract_valid", "fresh_heartbeat_recorded"),
+    "timestamp_timezone_missing": ("source_timestamps_are_timezone_aware",),
+    "deadline_conflict": ("one_authoritative_liveness_deadline",),
+    "external_readback_unknown": (
+        "external_state_reconciled",
+        "retry_decision_is_receipted",
+    ),
+    "external_readback_failed": (
+        "external_state_reconciled",
+        "compensation_decision_is_receipted",
+    ),
+    "duplicate_execution_detected": (
+        "idempotency_winner_identified",
+        "execution_receipts_reconciled",
+    ),
+    "idempotency_key_missing": ("idempotency_key_bound",),
+    "lease_expired": ("lease_reclaimed_or_expired", "checkpoint_readback_recorded"),
+    "heartbeat_expired": ("consumer_health_checked", "fresh_heartbeat_recorded"),
+    "progress_stalled": ("checkpoint_readback_recorded", "progress_receipt_recorded"),
+    "progress_cursor_missing": ("progress_cursor_recorded",),
+    "consumer_missing": ("consumer_binding_recorded",),
+    "queued_without_consumer": ("consumer_binding_recorded",),
+    "deadline_expired": ("replan_or_terminal_receipt_recorded",),
+    "terminal_evidence_missing": ("terminal_evidence_attached", "independent_review_recorded"),
+}
 
 @dataclass(frozen=True, slots=True)
 class TaskLivenessObservation:
@@ -81,6 +195,169 @@ class StuckTask:
     recovery_ref: str | None = None
     detector_version: str = STUCK_DETECTOR_VERSION
     observation_sha256: str | None = None
+    recovery_plan: RecoveryPlan | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryPlan:
+    """A deterministic, proposal-only recovery contract for one stuck task.
+
+    ``retry_allowed`` is intentionally false for every plan emitted by the
+    detector.  Recovery workers may only change that decision after they have
+    produced the checks listed in ``required_checks`` and a new authoritative
+    heartbeat/readback.  ``external_write_allowed`` is permanently false at
+    this projection boundary.
+    """
+
+    task_ref: str
+    observation_sha256: str
+    action: str
+    required_checks: tuple[str, ...]
+    steps: tuple[str, ...]
+    retry_allowed: bool
+    compensation_required: bool
+    action_source: Literal["detector"] = "detector"
+    external_write_allowed: bool = False
+    plan_sha256: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.task_ref, str) or not self.task_ref.strip():
+            raise ValueError("recovery plan task_ref is required")
+        if self.observation_sha256 and (
+            len(self.observation_sha256) != 64
+            or any(char not in "0123456789abcdefABCDEF" for char in self.observation_sha256)
+        ):
+            raise ValueError("recovery plan observation digest is invalid")
+        if not isinstance(self.action, str) or not self.action.strip():
+            raise ValueError("recovery plan action is required")
+        if self.action_source != "detector":
+            raise ValueError("recovery plan action source is invalid")
+        if not self.required_checks:
+            raise ValueError("recovery plan requires at least one check")
+        if not self.steps:
+            raise ValueError("recovery plan requires at least one step")
+        if self.retry_allowed:
+            raise ValueError("stuck recovery plans cannot allow retry before checks")
+        if self.external_write_allowed:
+            raise ValueError("stuck recovery plans cannot authorize external writes")
+        expected = _recovery_plan_hash(
+            task_ref=self.task_ref,
+            observation_sha256=self.observation_sha256,
+            action=self.action,
+            required_checks=self.required_checks,
+            steps=self.steps,
+            retry_allowed=self.retry_allowed,
+            compensation_required=self.compensation_required,
+        )
+        if self.plan_sha256 and self.plan_sha256 != expected:
+            raise ValueError("recovery plan digest is invalid")
+        object.__setattr__(self, "plan_sha256", expected)
+
+
+def _recovery_plan_hash(
+    *,
+    task_ref: str,
+    observation_sha256: str,
+    action: str,
+    required_checks: tuple[str, ...],
+    steps: tuple[str, ...],
+    retry_allowed: bool,
+    compensation_required: bool,
+) -> str:
+    payload = {
+        "contract_id": RECOVERY_PLAN_VERSION,
+        "task_ref": task_ref,
+        "observation_sha256": observation_sha256,
+        "action": action,
+        "required_checks": list(required_checks),
+        "steps": list(steps),
+        "retry_allowed": retry_allowed,
+        "compensation_required": compensation_required,
+        "external_write_allowed": False,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    ).hexdigest()
+
+
+def build_recovery_plan(stuck: StuckTask) -> RecoveryPlan | None:
+    """Build a stable recovery proposal from a detector result.
+
+    The plan is derived from the result's immutable reason tuple and
+    observation digest.  It is therefore safe to persist/replay and it never
+    treats a caller-supplied compensation string as an executable command.
+    """
+
+    if stuck.status != "stuck":
+        return None
+    reasons = tuple(dict.fromkeys(reason for reason in stuck.reasons if reason in _RECOVERY_STEPS))
+    if not reasons:
+        reasons = ("unknown_state",)
+    # Keep the plan action detector-owned even when the legacy result carries
+    # a caller-provided compensation string.  That string remains visible on
+    # ``StuckTask.compensation_action`` for diagnostics but cannot become an
+    # executable recovery instruction at this boundary.
+    action = _canonical_action_for_reasons(reasons)
+    # Make the plan's steps deterministic across reason ordering and duplicate
+    # observations.
+    steps: list[str] = ["capture_immutable_observation"]
+    checks: list[str] = []
+    for reason in reasons:
+        for step in _RECOVERY_STEPS[reason]:
+            if step not in steps:
+                steps.append(step)
+        for check in _RECOVERY_CHECKS.get(reason, ()):
+            if check not in checks:
+                checks.append(check)
+    if "append_recovery_receipt" not in steps:
+        steps.append("append_recovery_receipt")
+    compensation_required = bool(
+        set(reasons)
+        & {
+            "external_readback_unknown",
+            "external_readback_failed",
+            "duplicate_execution_detected",
+            "lease_expired",
+            "deadline_expired",
+        }
+    )
+    plan = RecoveryPlan(
+        task_ref=stuck.task_ref,
+        observation_sha256=stuck.observation_sha256 or "",
+        action=action,
+        required_checks=tuple(checks),
+        steps=tuple(steps),
+        retry_allowed=False,
+        compensation_required=compensation_required,
+    )
+    # Include the observation digest in the action identity when available by
+    # requiring callers to retain it next to this plan.  The plan itself stays
+    # compact and can be recomputed from the immutable StuckTask fields.
+    return plan
+
+
+def _canonical_action_for_reasons(reasons: tuple[str, ...]) -> str:
+    """Select the strongest detector-owned action for a reason set."""
+
+    for reason in (
+        "unknown_state",
+        "deadline_conflict",
+        "external_readback_unknown",
+        "external_readback_failed",
+        "duplicate_execution_detected",
+        "lease_expired",
+        "deadline_expired",
+        "heartbeat_expired",
+        "progress_stalled",
+        "terminal_evidence_missing",
+        "consumer_missing",
+        "queued_without_consumer",
+        "idempotency_key_missing",
+        "timestamp_timezone_missing",
+    ):
+        if reason in reasons:
+            return _RECOVERY_ACTIONS[reason]
+    return "inspect_and_replan"
 
 
 def _utc(value: datetime | None) -> datetime | None:
@@ -129,6 +406,7 @@ def _observation_hash(item: TaskLivenessObservation) -> str:
         "evidence_required": item.evidence_required,
         "idempotency_key": item.idempotency_key,
         "duplicate_execution_count": item.duplicate_execution_count,
+        "compensation_action": item.compensation_action,
         "recovery_ref": item.recovery_ref,
     }
     return hashlib.sha256(
@@ -268,8 +546,7 @@ def detect_stuck_tasks(
         stuck = bool(deduped)
         action = _action_for(item, list(deduped)) if stuck else None
         observation_hash = _observation_hash(item)
-        result.append(
-            StuckTask(
+        detected_task = StuckTask(
                 task_ref=item.task_ref,
                 status="stuck" if stuck else "healthy",
                 reasons=deduped,
@@ -279,13 +556,16 @@ def detect_stuck_tasks(
                 detector_version=STUCK_DETECTOR_VERSION,
                 observation_sha256=observation_hash,
             )
-        )
+        result.append(replace(detected_task, recovery_plan=build_recovery_plan(detected_task)))
     return tuple(result)
 
 
 __all__ = [
+    "RECOVERY_PLAN_VERSION",
     "STUCK_DETECTOR_VERSION",
+    "RecoveryPlan",
     "StuckTask",
     "TaskLivenessObservation",
+    "build_recovery_plan",
     "detect_stuck_tasks",
 ]
