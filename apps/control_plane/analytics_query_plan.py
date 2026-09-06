@@ -507,7 +507,11 @@ def _fact_view(fact: Any) -> dict[str, Any]:
                 "protocol_id",
                 "review_eligible",
                 "causal_evidence",
+                "causal_evidence_refs",
+                "causal_evidence_id",
                 "stop_rule",
+                "stop_rule_ref",
+                "stop_rule_id",
             )
             marked_values = {
                 key: values[key] for key in marker_names if key in values

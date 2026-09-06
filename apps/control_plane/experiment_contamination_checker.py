@@ -82,7 +82,7 @@ def _has_evidence(value: Any) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
     if isinstance(value, Mapping):
-        return bool(value)
+        return any(_has_evidence(item) for item in value.values())
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return any(_has_evidence(item) for item in value)
     return False
@@ -118,7 +118,11 @@ def evaluate_experiment_fact_admission(
         "protocol_id",
         "review_eligible",
         "causal_evidence",
+        "causal_evidence_refs",
+        "causal_evidence_id",
         "stop_rule",
+        "stop_rule_ref",
+        "stop_rule_id",
     )
     marked = context is not None or any(name in fact for name in marker_names[2:])
     if not marked:

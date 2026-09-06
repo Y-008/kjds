@@ -63,3 +63,17 @@ def test_unmarked_fact_remains_backward_compatible():
     assert result.status == "unmarked"
     assert result.experiment_id is None
     assert result.blocked_reasons == ()
+
+
+def test_empty_nested_evidence_reference_is_not_admitted():
+    result = evaluate_experiment_fact_admission(
+        {
+            "experiment_id": "protocol-1",
+            "review_eligible": True,
+            "causal_evidence": {"id": None},
+            "stop_rule": {"id": "stop-1"},
+        }
+    )
+
+    assert result.status == "blocked"
+    assert result.blocked_reasons == ("experiment_causal_evidence_missing",)
