@@ -30,6 +30,7 @@ REQUIRED_RUNTIME_TABLES = (
     "commercial_finance_events",
     "resource_budgets",
     "resource_budget_events",
+    "resource_admission_events",
 )
 COVERAGE_ISSUER_DATABASE_URL_ENV = "KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL"
 COVERAGE_ISSUER_ROLE = "kjds_gdc_issuance_runtime"
