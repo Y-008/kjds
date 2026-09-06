@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine, event as sqlalchemy_event
+from sqlalchemy import create_engine
+from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 
@@ -84,11 +85,10 @@ def test_numeric_precision_is_bounded_before_persistence(ledger):
 
 
 def test_database_rejects_orphan_budget_event(ledger):
-    with pytest.raises(IntegrityError):
-        with ledger.engine.begin() as connection:
-            connection.execute(ResourceBudgetEventRow.__table__.insert().values(
-                event_id="orphan", idempotency_key="orphan-key", budget_id="missing",
-                tenant_id="tenant-a", state="reserved", amount=Decimal("1"),
-                amount_text="1", currency="USD", occurred_at=datetime(2026, 9, 6, tzinfo=UTC),
-                fingerprint_sha256="0" * 64, recorded_at=datetime(2026, 9, 6, tzinfo=UTC),
-            ))
+    with pytest.raises(IntegrityError), ledger.engine.begin() as connection:
+        connection.execute(ResourceBudgetEventRow.__table__.insert().values(
+            event_id="orphan", idempotency_key="orphan-key", budget_id="missing",
+            tenant_id="tenant-a", state="reserved", amount=Decimal("1"),
+            amount_text="1", currency="USD", occurred_at=datetime(2026, 9, 6, tzinfo=UTC),
+            fingerprint_sha256="0" * 64, recorded_at=datetime(2026, 9, 6, tzinfo=UTC),
+        ))
