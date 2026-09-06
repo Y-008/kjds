@@ -23,6 +23,7 @@ from sqlalchemy import (
     JSON,
     CheckConstraint,
     DateTime,
+    ForeignKeyConstraint,
     Index,
     Numeric,
     String,
@@ -99,6 +100,29 @@ class ResourceAdmissionEventRow(Base):
         ),
         UniqueConstraint(
             "tenant_id", "resource_event_id", name="uq_resource_admission_resource_event"
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "budget_id"],
+            ["resource_budgets.tenant_id", "resource_budgets.budget_id"],
+            name="fk_resource_admission_budget",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "budget_id", "resource_event_id"],
+            [
+                "resource_budget_events.tenant_id",
+                "resource_budget_events.budget_id",
+                "resource_budget_events.event_id",
+            ],
+            name="fk_resource_admission_resource_event",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "budget_id", "parent_resource_event_id"],
+            [
+                "resource_budget_events.tenant_id",
+                "resource_budget_events.budget_id",
+                "resource_budget_events.event_id",
+            ],
+            name="fk_resource_admission_parent_resource_event",
         ),
         CheckConstraint(
             "operation IN ('reserve', 'consume', 'release', 'hold_unknown')",
@@ -421,9 +445,12 @@ class ResourceAdmissionService:
             )
             if tenant_id is not None:
                 query = query.where(ResourceAdmissionEventRow.tenant_id == _required(tenant_id, "tenant_id", 160))
-            admission_id = session.scalar(query)
-        if admission_id is None:
+            admission_ids = list(session.scalars(query).unique())
+        if not admission_ids:
             return None
+        if len(set(admission_ids)) > 1:
+            raise ValueError("command is bound to multiple resource admissions")
+        admission_id = admission_ids[0]
         # The command id is globally unique in the current execution schema;
         # still require a tenant when callers have one to preserve exact scope.
         if tenant_id is None:
@@ -536,9 +563,17 @@ class ResourceAdmissionService:
         self._assert_binding(reserve, command_id=command_id, action_id=action_id, permit_ref=permit_ref)
         existing_op = next((row for row in rows if row.operation == operation), None)
         if existing_op is not None:
-            if idempotency_key is None or existing_op.idempotency_key == idempotency_key:
-                return self._projection(tenant_id, admission_id)
-            raise ValueError("resource admission lifecycle operation already recorded")
+            if idempotency_key is not None and existing_op.idempotency_key != idempotency_key:
+                raise ValueError("resource admission lifecycle operation already recorded")
+            if operation == "hold_unknown" and existing_op.reason != reason:
+                raise ValueError("resource admission idempotency key conflicts")
+            if (
+                operation != "hold_unknown"
+                and amount is not None
+                and _amount(amount) != Decimal(existing_op.amount_text)
+            ):
+                raise ValueError("resource admission idempotency key conflicts")
+            return self._projection(tenant_id, admission_id)
         current = self._current_status(rows)
         if operation == "hold_unknown":
             if current in {"consumed", "released"}:
@@ -682,6 +717,8 @@ class ResourceAdmissionService:
             settled = sum((Decimal(row.amount_text) for row in settled_rows), Decimal("0"))
             reserved = Decimal(reserve.amount_text)
             remaining = reserved - settled
+        if remaining < 0:
+            raise ValueError("resource admission settlement exceeds its reservation")
         return {
             "admission_id": admission_id,
             "tenant_id": tenant_id,

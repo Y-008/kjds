@@ -39,6 +39,29 @@ def upgrade() -> None:
         sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("event_id"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id", "budget_id"],
+            ["resource_budgets.tenant_id", "resource_budgets.budget_id"],
+            name="fk_resource_admission_budget",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id", "budget_id", "resource_event_id"],
+            [
+                "resource_budget_events.tenant_id",
+                "resource_budget_events.budget_id",
+                "resource_budget_events.event_id",
+            ],
+            name="fk_resource_admission_resource_event",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id", "budget_id", "parent_resource_event_id"],
+            [
+                "resource_budget_events.tenant_id",
+                "resource_budget_events.budget_id",
+                "resource_budget_events.event_id",
+            ],
+            name="fk_resource_admission_parent_resource_event",
+        ),
         sa.UniqueConstraint(
             "tenant_id",
             "idempotency_key",
