@@ -25,7 +25,8 @@ class HeartbeatInput:
     external_readback_passed: bool
     rollback_available: bool
     economic_guard: EconomicGuardResult
-    experiment_clear: bool = True
+    # Missing experiment isolation evidence must hold unattended dispatch.
+    experiment_clear: bool = False
     stuck_tasks: tuple[StuckTask, ...] = ()
     # A heartbeat is an admission check for unattended work.  These fields are
     # explicit because a caller must not turn a missing checkout/queue/lease

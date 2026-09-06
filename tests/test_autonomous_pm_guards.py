@@ -108,6 +108,19 @@ def test_heartbeat_pauses_contaminated_experiments():
     assert "experiment_contamination_detected" in decision.reasons
 
 
+def test_heartbeat_defaults_to_experiment_hold():
+    guard = evaluate_economic_guard(EconomicGuardInput(cash_available=Decimal("100")))
+    decision = evaluate_heartbeat(
+        HeartbeatInput(
+            head="abc", graph_snapshot_sha256="0" * 64, proof_ready=True,
+            evidence_fresh=True, data_quality_valid=True,
+            external_readback_passed=True, rollback_available=True,
+            economic_guard=guard,
+        )
+    )
+    assert "experiment_contamination_detected" in decision.reasons
+
+
 def test_heartbeat_requires_current_operational_snapshots_before_dispatch():
     guard = evaluate_economic_guard(EconomicGuardInput(cash_available=Decimal("100")))
     decision = evaluate_heartbeat(
