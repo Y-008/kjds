@@ -24,6 +24,23 @@ def test_stockout_demand_keeps_observed_and_estimates_lost_sales_separately():
     assert result.observed_demand == Decimal("12")
     assert result.lost_sales_estimate == Decimal("8")
     assert result.censored_demand == Decimal("20")
+    assert result.stockout_interval_days == Decimal("6.0")
+
+
+def test_full_availability_has_no_stockout_interval() -> None:
+    result = estimate_stockout_demand(
+        StockoutDemandInput(
+            sku="sku-1",
+            interval_start=datetime(2026, 9, 1, tzinfo=UTC),
+            interval_end=datetime(2026, 9, 11, tzinfo=UTC),
+            observed_units=Decimal("20"),
+            in_stock_rate=Decimal("1"),
+            baseline_units_per_day=Decimal("2"),
+        )
+    )
+
+    assert result.quality_state == "VALID"
+    assert result.stockout_interval_days == Decimal("0")
 
 
 def test_missing_baseline_is_no_data_and_never_zero_lost_sales():

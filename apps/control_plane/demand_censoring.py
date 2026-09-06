@@ -58,7 +58,12 @@ def estimate_stockout_demand(values: StockoutDemandInput) -> StockoutDemandEstim
         raise ValueError("observed_units cannot be negative")
     if values.in_stock_rate < 0 or values.in_stock_rate > 1:
         raise ValueError("in_stock_rate must be between 0 and 1")
-    days = Decimal(str((end - start).total_seconds())) / Decimal("86400")
+    observation_days = Decimal(str((end - start).total_seconds())) / Decimal("86400")
+    # ``in_stock_rate`` describes the fraction of the observation window that
+    # was sellable.  The stockout interval is therefore the complementary
+    # duration; reporting the whole observation window here would make a
+    # 100%-in-stock SKU look stocked out for the entire period.
+    stockout_days = observation_days * (Decimal("1") - values.in_stock_rate)
     reason: str | None = None
     if values.baseline_units_per_day is None:
         quality: QualityState = "NO_DATA"
@@ -68,7 +73,7 @@ def estimate_stockout_demand(values: StockoutDemandInput) -> StockoutDemandEstim
     elif values.baseline_units_per_day < 0:
         raise ValueError("baseline_units_per_day cannot be negative")
     else:
-        expected = values.baseline_units_per_day * days
+        expected = values.baseline_units_per_day * observation_days
         # A high observed value is retained; the model never subtracts
         # demand merely because the baseline was conservative.
         lost = max(Decimal("0"), expected - values.observed_units)
@@ -94,7 +99,7 @@ def estimate_stockout_demand(values: StockoutDemandInput) -> StockoutDemandEstim
         "observed_demand": str(values.observed_units),
         "censored_demand": str(censored) if censored is not None else None,
         "lost_sales_estimate": str(lost) if lost is not None else None,
-        "stockout_interval_days": str(days),
+        "stockout_interval_days": str(stockout_days),
         "reason": reason,
     }
     digest = hashlib.sha256(
@@ -106,7 +111,7 @@ def estimate_stockout_demand(values: StockoutDemandInput) -> StockoutDemandEstim
         observed_demand=values.observed_units,
         censored_demand=censored,
         lost_sales_estimate=lost,
-        stockout_interval_days=days,
+        stockout_interval_days=stockout_days,
         reason=reason,
         snapshot_sha256=digest,
     )
