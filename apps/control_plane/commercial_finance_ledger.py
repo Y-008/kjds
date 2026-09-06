@@ -23,6 +23,7 @@ from sqlalchemy import (
     Numeric,
     String,
     UniqueConstraint,
+    func,
     select,
 )
 from sqlalchemy.exc import IntegrityError
@@ -32,6 +33,8 @@ from .sql_repository import Base
 
 FinanceEventKind = Literal["token_cost", "asset_cost", "revenue_share", "refund_adjustment"]
 EVENT_KINDS = frozenset({"token_cost", "asset_cost", "revenue_share", "refund_adjustment"})
+AsOfBasis = Literal["observed", "event", "settled"]
+AS_OF_BASES = frozenset({"observed", "event", "settled"})
 
 
 def _required(value: str, name: str) -> str:
@@ -41,10 +44,35 @@ def _required(value: str, name: str) -> str:
     return value
 
 
-def _aware(value: datetime) -> datetime:
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError("occurred_at must include a timezone")
-    return value.astimezone(UTC)
+def _aware(value: datetime, name: str = "occurred_at") -> datetime:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{name} must include a timezone")
+    try:
+        return value.astimezone(UTC)
+    except OverflowError as exc:
+        raise ValueError(f"{name} is outside the supported range") from exc
+
+
+def _optional_aware(value: datetime | None, name: str) -> datetime | None:
+    return None if value is None else _aware(value, name)
+
+
+def _normalize_cutoff(value: datetime | None) -> datetime | None:
+    """Normalize an audit cutoff to UTC and reject ambiguous/future values."""
+
+    if value is None:
+        return None
+    cutoff = _aware(value, "as_of")
+    if cutoff > datetime.now(UTC):
+        raise ValueError("as_of cannot be in the future")
+    return cutoff
+
+
+def _normalize_basis(value: str) -> AsOfBasis:
+    basis = str(value).strip().lower()
+    if basis not in AS_OF_BASES:
+        raise ValueError("as_of_basis must be one of observed, event, settled")
+    return basis  # type: ignore[return-value]
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +92,13 @@ class CommercialFinanceEvent:
     asset_ref: str | None = None
     cost_center: str | None = None
     metadata: dict[str, str] | None = None
+    # ``observed_at`` is server observation time.  It is optional at the
+    # domain boundary so legacy callers can continue to provide only
+    # ``occurred_at``; the SQL adapter assigns the current UTC time when it is
+    # omitted.  ``settled_at`` is nullable because a cost or revenue event can
+    # be recorded before a platform or bank settlement is final.
+    observed_at: datetime | None = None
+    settled_at: datetime | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tenant_id", _required(self.tenant_id, "tenant_id"))
@@ -83,13 +118,18 @@ class CommercialFinanceEvent:
             raise ValueError("currency must be a three-letter ASCII code")
         object.__setattr__(self, "currency", currency)
         object.__setattr__(self, "occurred_at", _aware(self.occurred_at))
+        object.__setattr__(self, "observed_at", _optional_aware(self.observed_at, "observed_at"))
+        settled_at = _optional_aware(self.settled_at, "settled_at")
+        if settled_at is not None and settled_at < self.occurred_at:
+            raise ValueError("settled_at cannot precede occurred_at")
+        object.__setattr__(self, "settled_at", settled_at)
         if self.metadata is not None:
             if any(not str(k).strip() or not isinstance(v, str) for k, v in self.metadata.items()):
                 raise ValueError("metadata keys and values must be non-empty strings")
             object.__setattr__(self, "metadata", dict(sorted(self.metadata.items())))
 
 
-def _fingerprint(event: CommercialFinanceEvent) -> str:
+def _fingerprint_payload(event: CommercialFinanceEvent, *, include_settled: bool) -> dict[str, Any]:
     payload = {
         "tenant_id": event.tenant_id, "customer_id": event.customer_id,
         "contract_id": event.contract_id, "entitlement_id": event.entitlement_id,
@@ -99,7 +139,25 @@ def _fingerprint(event: CommercialFinanceEvent) -> str:
         "asset_ref": event.asset_ref, "cost_center": event.cost_center,
         "metadata": event.metadata,
     }
+    if include_settled:
+        payload["settled_at"] = event.settled_at.isoformat() if event.settled_at is not None else None
+    return payload
+
+
+def _event_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _fingerprint(event: CommercialFinanceEvent) -> str:
+    """Hash current immutable billing dimensions, including settlement."""
+
+    return _event_hash(_fingerprint_payload(event, include_settled=True))
+
+
+def _legacy_fingerprint(event: CommercialFinanceEvent) -> str:
+    """Hash used by rows written before observed/settled metadata existed."""
+
+    return _event_hash(_fingerprint_payload(event, include_settled=False))
 
 
 class CommercialFinanceEventRow(Base):
@@ -109,6 +167,8 @@ class CommercialFinanceEventRow(Base):
         CheckConstraint("amount >= 0", name="ck_commercial_finance_amount_nonnegative"),
         CheckConstraint("length(currency) = 3", name="ck_commercial_finance_currency_shape"),
         Index("ix_commercial_finance_scope_occurred", "tenant_id", "customer_id", "occurred_at", "event_id"),
+        Index("ix_commercial_finance_scope_observed", "tenant_id", "customer_id", "observed_at", "event_id"),
+        Index("ix_commercial_finance_scope_settled", "tenant_id", "customer_id", "settled_at", "event_id"),
         Index("ix_commercial_finance_entitlement", "tenant_id", "entitlement_id", "occurred_at"),
     )
 
@@ -123,6 +183,8 @@ class CommercialFinanceEventRow(Base):
     amount_text: Mapped[str] = mapped_column(String(100), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source_ref: Mapped[str | None] = mapped_column(String(300), nullable=True)
     usage_event_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     asset_ref: Mapped[str | None] = mapped_column(String(300), nullable=True)
@@ -139,6 +201,10 @@ class CommercialFinanceLedger:
     @staticmethod
     def _from_row(row: CommercialFinanceEventRow) -> CommercialFinanceEvent:
         metadata = row.metadata_json or None
+        # ``recorded_at`` predates the explicit observed-time column.  Falling
+        # back to it keeps rows from a partially upgraded/read-only database
+        # inspectable while migration 0120 backfills every production row.
+        observed_raw = getattr(row, "observed_at", None) or row.recorded_at
         return CommercialFinanceEvent(
             event_id=row.event_id, idempotency_key=row.idempotency_key,
             tenant_id=row.tenant_id, customer_id=row.customer_id,
@@ -147,17 +213,25 @@ class CommercialFinanceLedger:
             occurred_at=row.occurred_at.replace(tzinfo=UTC) if row.occurred_at.tzinfo is None else row.occurred_at,
             source_ref=row.source_ref, usage_event_id=row.usage_event_id,
             asset_ref=row.asset_ref, cost_center=row.cost_center, metadata=metadata,
+            observed_at=observed_raw.replace(tzinfo=UTC) if observed_raw.tzinfo is None else observed_raw,
+            settled_at=(
+                row.settled_at.replace(tzinfo=UTC)
+                if row.settled_at is not None and row.settled_at.tzinfo is None
+                else row.settled_at
+            ),
         )
 
     def record(self, event: CommercialFinanceEvent) -> CommercialFinanceEvent:
         fingerprint = _fingerprint(event)
         now = datetime.now(UTC)
+        observed_at = event.observed_at or now
         row = CommercialFinanceEventRow(
             event_id=event.event_id, idempotency_key=event.idempotency_key,
             tenant_id=event.tenant_id, customer_id=event.customer_id,
             contract_id=event.contract_id, entitlement_id=event.entitlement_id,
             event_kind=event.event_kind, amount=event.amount, amount_text=str(event.amount),
             currency=event.currency, occurred_at=event.occurred_at,
+            observed_at=observed_at, settled_at=event.settled_at,
             source_ref=event.source_ref, usage_event_id=event.usage_event_id,
             asset_ref=event.asset_ref, cost_center=event.cost_center,
             metadata_json=event.metadata,
@@ -170,36 +244,93 @@ class CommercialFinanceLedger:
                     CommercialFinanceEventRow.idempotency_key == event.idempotency_key,
                 ))
                 if existing is not None:
-                    if existing.fingerprint_sha256 != fingerprint:
+                    existing_event = self._from_row(existing)
+                    accepted = {_fingerprint(existing_event)}
+                    if existing_event.settled_at is None:
+                        accepted.add(_legacy_fingerprint(existing_event))
+                    if existing.fingerprint_sha256 not in accepted or (
+                        event.settled_at is not None and existing_event.settled_at != event.settled_at
+                    ) or (
+                        event.settled_at is None and existing_event.settled_at is not None
+                    ) or _fingerprint_payload(existing_event, include_settled=True) != _fingerprint_payload(event, include_settled=True):
                         raise ValueError("commercial finance idempotency key conflicts")
-                    return self._from_row(existing)
+                    return existing_event
                 session.add(row)
-        except IntegrityError:
+                session.flush()
+                # Materialize the immutable domain value before the session
+                # commits and expires the ORM row.
+                return self._from_row(row)
+        except IntegrityError as exc:
             with Session(self.engine) as session:
                 existing = session.scalar(select(CommercialFinanceEventRow).where(
                     CommercialFinanceEventRow.tenant_id == event.tenant_id,
                     CommercialFinanceEventRow.idempotency_key == event.idempotency_key,
                 ))
-                if existing is None or existing.fingerprint_sha256 != fingerprint:
+                if existing is None:
                     raise
-                return self._from_row(existing)
-        return event
-
-    def events_for(self, *, tenant_id: str, customer_id: str | None = None,
-                   entitlement_id: str | None = None) -> tuple[CommercialFinanceEvent, ...]:
+                existing_event = self._from_row(existing)
+                accepted = {_fingerprint(existing_event)}
+                if existing_event.settled_at is None:
+                    accepted.add(_legacy_fingerprint(existing_event))
+                if (
+                    existing.fingerprint_sha256 not in accepted
+                    or _fingerprint_payload(existing_event, include_settled=True)
+                    != _fingerprint_payload(event, include_settled=True)
+                ):
+                    raise ValueError("commercial finance idempotency key conflicts") from exc
+                return existing_event
+    def events_for(
+        self,
+        *,
+        tenant_id: str,
+        customer_id: str | None = None,
+        entitlement_id: str | None = None,
+        as_of: datetime | None = None,
+        as_of_basis: AsOfBasis = "observed",
+    ) -> tuple[CommercialFinanceEvent, ...]:
         tenant_id = _required(tenant_id, "tenant_id")
+        cutoff = _normalize_cutoff(as_of)
+        basis = _normalize_basis(as_of_basis)
         with Session(self.engine) as session:
             query = select(CommercialFinanceEventRow).where(CommercialFinanceEventRow.tenant_id == tenant_id)
             if customer_id is not None:
                 query = query.where(CommercialFinanceEventRow.customer_id == _required(customer_id, "customer_id"))
             if entitlement_id is not None:
                 query = query.where(CommercialFinanceEventRow.entitlement_id == _required(entitlement_id, "entitlement_id"))
+            if cutoff is not None:
+                if basis == "event":
+                    query = query.where(CommercialFinanceEventRow.occurred_at <= cutoff)
+                elif basis == "settled":
+                    query = query.where(
+                        CommercialFinanceEventRow.settled_at.is_not(None),
+                        CommercialFinanceEventRow.settled_at <= cutoff,
+                    )
+                else:
+                    # Legacy rows may have NULL observed_at while their
+                    # recorded_at remains authoritative.  ``coalesce`` gives
+                    # both schema generations the same as-of behavior.
+                    query = query.where(
+                        func.coalesce(
+                            CommercialFinanceEventRow.observed_at,
+                            CommercialFinanceEventRow.recorded_at,
+                        ) <= cutoff
+                    )
             rows = session.scalars(query.order_by(CommercialFinanceEventRow.occurred_at, CommercialFinanceEventRow.event_id)).all()
         return tuple(self._from_row(row) for row in rows)
 
     def summary(self, *, tenant_id: str, customer_id: str | None = None,
-                entitlement_id: str | None = None, currency: str = "USD") -> dict[str, Any]:
-        events = self.events_for(tenant_id=tenant_id, customer_id=customer_id, entitlement_id=entitlement_id)
+                entitlement_id: str | None = None, currency: str = "USD",
+                as_of: datetime | None = None,
+                as_of_basis: AsOfBasis = "observed") -> dict[str, Any]:
+        cutoff = _normalize_cutoff(as_of)
+        basis = _normalize_basis(as_of_basis)
+        events = self.events_for(
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+            entitlement_id=entitlement_id,
+            as_of=cutoff,
+            as_of_basis=basis,
+        )
         currency = str(currency).strip().upper()
         if any(event.currency != currency for event in events):
             raise ValueError("mixed currencies require an explicit FX snapshot")
@@ -211,9 +342,18 @@ class CommercialFinanceLedger:
             "entitlement_id": entitlement_id, "currency": currency,
             "event_count": len(events), "totals": {key: str(value) for key, value in totals.items()},
             "total": str(sum(totals.values(), Decimal("0"))),
+            "as_of": cutoff.isoformat() if cutoff is not None else None,
+            "as_of_basis": basis,
             "event_ids": [event.event_id for event in events],
             "external_write_allowed": False,
         }
 
 
-__all__ = ["CommercialFinanceEvent", "CommercialFinanceEventRow", "CommercialFinanceLedger", "EVENT_KINDS"]
+__all__ = [
+    "AS_OF_BASES",
+    "AsOfBasis",
+    "CommercialFinanceEvent",
+    "CommercialFinanceEventRow",
+    "CommercialFinanceLedger",
+    "EVENT_KINDS",
+]

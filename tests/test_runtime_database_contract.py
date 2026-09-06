@@ -43,8 +43,8 @@ def test_migration_graph_has_one_current_head_after_ledger_hardening():
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini")))
-    assert script.get_heads() == ["20260906_0119"]
-    assert script.get_revision("20260906_0119").down_revision == "20260906_0118"
+    assert script.get_heads() == ["20260907_0120"]
+    assert script.get_revision("20260907_0120").down_revision == "20260906_0119"
 
 
 def test_ledger_immutability_migration_covers_all_new_tables():
@@ -60,6 +60,7 @@ def test_ledger_immutability_migration_covers_all_new_tables():
             "20260906_0117": "20260906_0117_usage_entitlement_receipt_links.py",
             "20260906_0118": "20260906_0118_usage_entitlement_scope_integrity.py",
             "20260906_0119": "20260906_0119_temporal_fact_row_provenance.py",
+            "20260907_0120": "20260907_0120_commercial_finance_temporal.py",
         }.items()
     }
     for table in database.REQUIRED_RUNTIME_TABLES[1:]:
@@ -70,6 +71,8 @@ def test_ledger_immutability_migration_covers_all_new_tables():
         if revision == "20260906_0118":
             continue
         if revision == "20260906_0119":
+            continue
+        if revision == "20260907_0120":
             continue
         assert (
             'trg_{table}_immutable' in source
@@ -95,6 +98,14 @@ def test_ledger_immutability_migration_covers_all_new_tables():
     assert '"sku"' in provenance
     assert '"freshness"' in provenance
     assert "ix_temporal_fact_sku" in provenance
+
+    commercial_temporal = sources["20260907_0120"]
+    assert 'sa.Column("observed_at"' in commercial_temporal
+    assert 'sa.Column("settled_at"' in commercial_temporal
+    assert 'SET "observed_at" = "recorded_at"' in commercial_temporal
+    assert "ck_commercial_finance_settled_after_occurred" in commercial_temporal
+    assert "ix_commercial_finance_scope_observed" in commercial_temporal
+    assert "ix_commercial_finance_scope_settled" in commercial_temporal
 
 
 def test_postgresql_engine_gets_a_bounded_connect_timeout(monkeypatch):

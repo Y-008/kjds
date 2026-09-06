@@ -63,3 +63,92 @@ def test_invalid_kind_and_idempotency_drift_fail_closed(ledger):
     service.record(event(event_id="e1", key="k1", kind="token_cost", amount="1"))
     with pytest.raises(ValueError, match="conflicts"):
         service.record(event(event_id="e2", key="k1", kind="token_cost", amount="2"))
+
+
+def test_as_of_uses_observation_time_by_default_and_supports_event_and_settlement_views(ledger):
+    service, _engine = ledger
+    service.record(
+        CommercialFinanceEvent(
+            event_id="observed-first",
+            idempotency_key="observed-first-key",
+            tenant_id="tenant-a",
+            customer_id="customer-1",
+            contract_id="contract-1",
+            entitlement_id="entitlement-1",
+            event_kind="token_cost",
+            amount=Decimal("1"),
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+            observed_at=datetime(2026, 9, 2, tzinfo=UTC),
+            settled_at=datetime(2026, 9, 4, tzinfo=UTC),
+        )
+    )
+    service.record(
+        CommercialFinanceEvent(
+            event_id="observed-late",
+            idempotency_key="observed-late-key",
+            tenant_id="tenant-a",
+            customer_id="customer-1",
+            contract_id="contract-1",
+            entitlement_id="entitlement-1",
+            event_kind="asset_cost",
+            amount=Decimal("2"),
+            occurred_at=datetime(2026, 9, 1, tzinfo=UTC),
+            observed_at=datetime(2026, 9, 5, tzinfo=UTC),
+        )
+    )
+
+    observed = service.events_for(
+        tenant_id="tenant-a",
+        customer_id="customer-1",
+        as_of=datetime(2026, 9, 3, tzinfo=UTC),
+    )
+    assert [item.event_id for item in observed] == ["observed-first"]
+    assert [item.event_id for item in service.events_for(
+        tenant_id="tenant-a",
+        customer_id="customer-1",
+        as_of=datetime(2026, 9, 1, tzinfo=UTC),
+        as_of_basis="event",
+    )] == ["observed-first", "observed-late"]
+    assert [item.event_id for item in service.events_for(
+        tenant_id="tenant-a",
+        customer_id="customer-1",
+        as_of=datetime(2026, 9, 5, tzinfo=UTC),
+        as_of_basis="settled",
+    )] == ["observed-first"]
+
+    summary = service.summary(
+        tenant_id="tenant-a",
+        customer_id="customer-1",
+        as_of=datetime(2026, 9, 3, tzinfo=UTC),
+    )
+    assert summary["as_of"] == "2026-09-03T00:00:00+00:00"
+    assert summary["as_of_basis"] == "observed"
+    assert summary["event_ids"] == ["observed-first"]
+
+
+def test_record_assigns_observed_time_and_rejects_pre_event_settlement(ledger):
+    service, engine = ledger
+    recorded = service.record(event(event_id="observed-now", key="observed-now-key", kind="token_cost", amount="1"))
+    assert recorded.observed_at is not None
+    with engine.connect() as connection:
+        row = connection.execute(
+            select(
+                CommercialFinanceEventRow.observed_at,
+                CommercialFinanceEventRow.settled_at,
+            ).where(CommercialFinanceEventRow.event_id == "observed-now")
+        ).one()
+        assert row.observed_at is not None
+        assert row.settled_at is None
+    with pytest.raises(ValueError, match="settled_at cannot precede occurred_at"):
+        CommercialFinanceEvent(
+            event_id="bad-settlement",
+            idempotency_key="bad-settlement-key",
+            tenant_id="tenant-a",
+            customer_id="customer-1",
+            contract_id="contract-1",
+            entitlement_id="entitlement-1",
+            event_kind="token_cost",
+            amount=Decimal("1"),
+            occurred_at=datetime(2026, 9, 6, tzinfo=UTC),
+            settled_at=datetime(2026, 9, 5, tzinfo=UTC),
+        )
