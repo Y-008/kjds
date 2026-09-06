@@ -41,6 +41,7 @@ $credentialNames = @(
     "OZON_WRITE_API_KEY"
 )
 $runtimeNames = @(
+    "KJDS_CHANNEL_CREDENTIAL_MODE",
     "KJDS_DATABASE_URL",
     "KJDS_CHANNEL_LEASE_SIGNING_KEY",
     "KJDS_CHANNEL_LEASE_ISSUER",
@@ -80,13 +81,20 @@ foreach ($name in $runtimeNames) {
 
 $missingRuntime = @(
     $runtimeNames | Where-Object {
+        if ($_ -eq "KJDS_CHANNEL_CREDENTIAL_MODE") { return $false }
         $report = $runtimeReport[$_]
         -not ($report.process_present -or $report.dotenv_present)
     }
 )
+$modeValue = [Environment]::GetEnvironmentVariable("KJDS_CHANNEL_CREDENTIAL_MODE")
+if ([string]::IsNullOrWhiteSpace($modeValue) -and $dotenvValues.ContainsKey("KJDS_CHANNEL_CREDENTIAL_MODE")) {
+    $modeValue = $dotenvValues["KJDS_CHANNEL_CREDENTIAL_MODE"]
+}
+$managedMode = if ([string]::IsNullOrWhiteSpace($modeValue)) { "missing" } elseif ($modeValue -eq "managed") { "managed" } else { "invalid_or_unbound" }
 $blockers = [System.Collections.Generic.List[string]]::new()
 if (-not $port9225) { $blockers.Add("BROWSER_9225_OFFLINE") }
 if ($missingRuntime.Count -gt 0) { $blockers.Add("RUNTIME_SECRET_OR_IDENTITY_MISSING") }
+if ($managedMode -ne "managed") { $blockers.Add("MANAGED_RUNTIME_MODE_REQUIRED") }
 if ($ozonAntiBot) { $blockers.Add("OZON_OFFICIAL_ORIGIN_ANTIBOT") }
 $blockers.Add("REALFBS_OFFICIAL_CONFIRMATION_REQUIRED")
 $blockers.Add("BANK_ORIGINAL_EVIDENCE_REQUIRED")
@@ -102,6 +110,7 @@ $blockers.Add("BANK_ORIGINAL_EVIDENCE_REQUIRED")
     browser_9225_tcp = [bool]$port9225
     credential_presence_only = $credentialReport
     runtime_presence_only = $runtimeReport
+    managed_runtime_mode = $managedMode
     unresolved_runtime_names = $missingRuntime
     realfbs_official_confirmation = "not_verified"
     bank_cash_state = "CASH_UNKNOWN"
