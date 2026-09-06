@@ -40,6 +40,7 @@ def upgrade() -> None:
         ),
         sa.Column("recorded_by", sa.String(length=160), nullable=False),
         sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint(
             "tenant_id",
             "entity_id",
