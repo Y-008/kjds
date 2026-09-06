@@ -8,6 +8,7 @@ from typing import Any
 
 from .accounts_payable import AccountsPayableAuthorityService
 from .action_policies import ActionAuthorizationService, ActionPolicyRegistry
+from .after_sales_ledger import AfterSalesLedgerService
 from .agent_harness import AgentHarnessService
 from .agent_inference import (
     AgentInferenceService,
@@ -281,6 +282,7 @@ class RuntimeServices:
     causal_policies: Any
     commerce: Any
     commercial_entitlement_authority: Any
+    after_sales_ledger: Any
     commercial_lifecycle: Any
     commerce_os: Any
     native_parity_acceptance: Any
@@ -685,6 +687,7 @@ def build_runtime() -> RuntimeServices:
     commercial_entitlement_authority = CommercialEntitlementAuthority(
         lifecycle_service=commercial_lifecycle
     )
+    after_sales_ledger = AfterSalesLedgerService(engine)
     action_policies = ActionPolicyRegistry()
     action_authorization = ActionAuthorizationService(action_policies)
     policy_shadow = PolicyShadowService(
@@ -1453,6 +1456,7 @@ def build_runtime() -> RuntimeServices:
         causal_policies=causal_policies,
         commerce=commerce,
         commercial_entitlement_authority=commercial_entitlement_authority,
+        after_sales_ledger=after_sales_ledger,
         commercial_lifecycle=commercial_lifecycle,
         commerce_os=commerce_os,
         native_parity_acceptance=native_parity_acceptance,

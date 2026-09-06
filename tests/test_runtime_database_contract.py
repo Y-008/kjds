@@ -43,8 +43,8 @@ def test_migration_graph_has_one_current_head_after_ledger_hardening():
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini")))
-    assert script.get_heads() == ["20260906_0115"]
-    assert script.get_revision("20260906_0115").down_revision == "20260906_0114"
+    assert script.get_heads() == ["20260906_0116"]
+    assert script.get_revision("20260906_0116").down_revision == "20260906_0115"
 
 
 def test_ledger_immutability_migration_covers_all_new_tables():
@@ -56,6 +56,7 @@ def test_ledger_immutability_migration_covers_all_new_tables():
             "20260906_0113": "20260906_0113_commercial_finance_events.py",
             "20260906_0114": "20260906_0114_resource_budget_events.py",
             "20260906_0115": "20260906_0115_resource_admission_events.py",
+            "20260906_0116": "20260906_0116_after_sales_events.py",
         }.items()
     }
     for table in database.REQUIRED_RUNTIME_TABLES[1:]:
@@ -64,10 +65,12 @@ def test_ledger_immutability_migration_covers_all_new_tables():
         assert (
             'trg_{table}_immutable' in source
             or 'trg_commercial_finance_events_immutable' in source
+            or 'trg_after_sales_events_immutable' in source
         )
         assert (
             'trg_{table}_truncate_immutable' in source
             or 'trg_commercial_finance_events_truncate_immutable' in source
+            or 'trg_after_sales_events_truncate_immutable' in source
         )
         assert "BEFORE UPDATE OR DELETE" in source
         assert "BEFORE TRUNCATE" in source
