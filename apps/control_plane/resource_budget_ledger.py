@@ -112,6 +112,8 @@ class ResourceBudgetEvent:
             raise ValueError("state is not allowlisted")
         object.__setattr__(self, "amount", _amount(self.amount))
         object.__setattr__(self, "currency", _currency(self.currency))
+        if self.parent_event_id is not None:
+            object.__setattr__(self, "parent_event_id", _text(self.parent_event_id, "parent_event_id", 200))
         if self.metadata is not None:
             if not isinstance(self.metadata, Mapping) or len(self.metadata) > 100:
                 raise ValueError("metadata must be a bounded string mapping")
