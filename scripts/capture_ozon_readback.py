@@ -84,6 +84,10 @@ def _report(environment: dict[str, str]) -> dict:
         "official_origin": "https://api-seller.ozon.ru",
         "endpoints": ["/v3/product/info/list", "/v4/product/info/attributes", "/v3/finance/transaction/list"],
         "read_only": True,
+        # Backward-compatible aggregate: this means the names are present in
+        # the process environment; it deliberately says nothing about their
+        # values or validity.
+        "credentials_present": all(credential_names_present.values()),
         "credential_names_present": credential_names_present,
         "credential_values_read": False,
         "explicit_execution_required": True,

@@ -180,6 +180,7 @@ def test_capture_preflight_checks_only_credential_names():
     report = capture_ozon_readback._report(environment)
 
     assert report["credential_values_read"] is False
+    assert report["credentials_present"] is True
     assert report["credential_names_present"] == {
         "OZON_CLIENT_ID": True,
         "OZON_API_KEY": True,
