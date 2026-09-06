@@ -30,7 +30,13 @@ def response(path, body):
     }
 
 
-def product_bundle(*, offer_id="offer-1", price="1299.00", present=7):
+def product_bundle(
+    *,
+    offer_id="offer-1",
+    price="1299.00",
+    present=7,
+    attribute_path="/v4/product/info/attributes",
+):
     info = {
         "items": [
             {
@@ -85,7 +91,7 @@ def product_bundle(*, offer_id="offer-1", price="1299.00", present=7):
             "contract_version": "ozon-product-read-v1",
             "responses": [
                 response("/v3/product/info/list", info),
-                response("/v4/product/info/attributes", attributes),
+                response(attribute_path, attributes),
             ],
         },
         sort_keys=True,
@@ -182,6 +188,17 @@ def test_verified_ozon_bundle_normalizes_catalog_and_media_references():
     ]
     assert item["media_rights_status"] == EXTERNAL_MEDIA_RIGHTS_STATUS
     assert len(item["item_hash"]) == 64
+
+
+def test_verified_ozon_bundle_accepts_official_v3_attribute_fallback():
+    item = parse_ozon_product_bundle(
+        product_bundle(attribute_path="/v3/products/info/attributes"),
+        source_evidence_id="evd-v3-attributes",
+        observed_at="2026-07-20T00:00:00+00:00",
+    )
+
+    assert item["offer_id"] == "offer-1"
+    assert item["marketplace_sku"] == "321"
 
 
 def test_catalog_workspace_is_idempotent_and_selects_latest_item():

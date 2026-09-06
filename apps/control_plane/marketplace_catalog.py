@@ -15,8 +15,15 @@ from .domain import Product, ProductStatus, new_id
 
 OZON_PRODUCT_BUNDLE_SCHEMA = "ozon-response-bundle-v2"
 OZON_PRODUCT_CONTRACT_VERSION = "ozon-product-read-v1"
+OZON_PRODUCT_INFO_PATH = "/v3/product/info/list"
+OZON_PRODUCT_ATTRIBUTE_PATHS = frozenset(
+    {"/v4/product/info/attributes", "/v3/products/info/attributes"}
+)
+# Preserve the default pair for callers that use this constant as a current
+# path hint.  The parser accepts either official attribute endpoint because
+# the worker falls back when an account does not expose v4.
 OZON_PRODUCT_PATHS = frozenset(
-    {"/v3/product/info/list", "/v4/product/info/attributes"}
+    {OZON_PRODUCT_INFO_PATH, "/v4/product/info/attributes"}
 )
 EXTERNAL_MEDIA_RIGHTS_STATUS = "unverified_external_reference"
 NATIVE_CATALOG_AUTHORITY_FIELDS = (
@@ -372,22 +379,25 @@ def parse_ozon_product_bundle(
     if bundle.get("contract_version") != OZON_PRODUCT_CONTRACT_VERSION:
         raise ValueError("Ozon product Evidence has an unsupported contract version")
     responses = bundle.get("responses")
-    if not isinstance(responses, list) or len(responses) != len(OZON_PRODUCT_PATHS):
+    allowed_paths = {OZON_PRODUCT_INFO_PATH, *OZON_PRODUCT_ATTRIBUTE_PATHS}
+    if not isinstance(responses, list) or len(responses) != 2:
         raise ValueError("Ozon product Evidence must contain the bound response pair")
     by_path: dict[str, dict[str, Any]] = {}
     for response in responses:
         if not isinstance(response, dict):
             raise ValueError("Ozon product response entry must be an object")
         path = response.get("path")
-        if path not in OZON_PRODUCT_PATHS or path in by_path:
+        if path not in allowed_paths or path in by_path:
             raise ValueError("Ozon product Evidence contains an unsupported response path")
         by_path[path] = _json_body(response)
-    if frozenset(by_path) != OZON_PRODUCT_PATHS:
+    attribute_paths = set(by_path).intersection(OZON_PRODUCT_ATTRIBUTE_PATHS)
+    if OZON_PRODUCT_INFO_PATH not in by_path or len(attribute_paths) != 1:
         raise ValueError("Ozon product Evidence response paths are incomplete")
 
-    info = _single_object(by_path["/v3/product/info/list"].get("items"), "info")
+    attribute_path = next(iter(attribute_paths))
+    info = _single_object(by_path[OZON_PRODUCT_INFO_PATH].get("items"), "info")
     attributes = _single_object(
-        by_path["/v4/product/info/attributes"].get("result"), "attribute"
+        by_path[attribute_path].get("result"), "attribute"
     )
     offer_id = _required_text(info.get("offer_id"), "offer_id", max_length=160)
     attribute_offer_id = _required_text(
