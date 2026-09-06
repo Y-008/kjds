@@ -40,7 +40,10 @@ def _time(value: str | None, name: str, default: datetime | None = None) -> date
         raise HTTPException(422, f"{name} must be ISO-8601") from exc
     if parsed.tzinfo is None:
         raise HTTPException(422, f"{name} must include timezone")
-    return parsed.astimezone(UTC)
+    parsed = parsed.astimezone(UTC)
+    if name in {"as_of", "end_at"} and parsed > datetime.now(UTC):
+        raise HTTPException(422, f"{name} cannot be in the future")
+    return parsed
 
 
 def _recipe(

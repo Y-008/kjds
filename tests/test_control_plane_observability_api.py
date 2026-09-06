@@ -1,5 +1,8 @@
 from datetime import UTC, datetime
 
+import pytest
+from fastapi import HTTPException
+
 from apps.control_plane.api import registered_routes
 from apps.control_plane.routers import control_plane_observability
 from apps.control_plane.security import Principal
@@ -12,6 +15,11 @@ def test_observability_routes_are_registered():
     assert "/v1/analytics/{recipe}/lineage" in paths
     assert "/v1/operations/stuck" in paths
     assert "/v1/economics/guard-status" in paths
+
+
+def test_analytics_time_rejects_future_as_of():
+    with pytest.raises(HTTPException, match="future"):
+        control_plane_observability._time("2999-01-01T00:00:00Z", "as_of")
 
 
 def test_heartbeat_without_consumer_is_not_attributed_to_project_manager():
