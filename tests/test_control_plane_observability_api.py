@@ -4,9 +4,23 @@ import pytest
 from fastapi import HTTPException
 
 from apps.control_plane.api import registered_routes
+from apps.control_plane.data_fabric_contracts import DataProductDescriptor
 from apps.control_plane.routers import control_plane_observability
 from apps.control_plane.security import Principal
 from apps.control_plane.temporal_fact_store import TemporalFactStore
+
+
+def _verified_order_product() -> DataProductDescriptor:
+    return DataProductDescriptor(
+        dataset_id="orders.canonical.v1",
+        version="1",
+        owner="oms",
+        grain="order_line",
+        quality_threshold=0.0,
+        rebuild_method="test replay",
+        status="verified",
+        authority="canonical_fact",
+    )
 
 
 def test_observability_routes_are_registered():
@@ -148,6 +162,11 @@ def test_analytics_projections_preserve_fact_quality_and_lineage(monkeypatch):
         "current",
         lambda **_: {"status": "ready", "entity_ref": "entity-a"},
     )
+    monkeypatch.setattr(
+        control_plane_observability,
+        "load_data_product_registry",
+        lambda: (_verified_order_product(),),
+    )
     kwargs = {
         "principal": principal,
         "entity_id": "entity-a",
@@ -197,6 +216,11 @@ def test_analytics_source_outage_is_blocked_instead_of_no_data(monkeypatch):
         control_plane_observability.runtime.scope_grants,
         "current",
         lambda **_: {"status": "ready", "entity_ref": "entity-a"},
+    )
+    monkeypatch.setattr(
+        control_plane_observability,
+        "load_data_product_registry",
+        lambda: (_verified_order_product(),),
     )
     result = control_plane_observability.analytics_drilldown(
         "orders",

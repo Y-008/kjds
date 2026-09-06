@@ -4,9 +4,17 @@ import pytest
 
 from apps.control_plane.analytics_query_plan import (
     AnalyticsQueryPlanError,
+    compare_analytics_results,
+    comparison_period,
     compile_query_plan,
+    execute_analytics_plan,
 )
-from apps.control_plane.data_fabric_contracts import AnalysisRecipe, PeriodRef, ScopeRef
+from apps.control_plane.data_fabric_contracts import (
+    AnalysisRecipe,
+    DataProductDescriptor,
+    PeriodRef,
+    ScopeRef,
+)
 
 
 def recipe(*, metrics: tuple[str, ...] = ("cm3",)) -> AnalysisRecipe:
@@ -59,3 +67,172 @@ def test_demand_and_risk_profit_metrics_bind_to_explicit_products():
         "demand.censoring.v1",
         "profit.cm3.v1",
     )
+
+
+def _orders_recipe(
+    *,
+    start: datetime,
+    end: datetime,
+    compare_with: tuple[str, ...] = (),
+) -> AnalysisRecipe:
+    return AnalysisRecipe(
+        recipe_id="orders-rollup",
+        version="1",
+        scope=ScopeRef(tenant_id="t1", entity_id="e1", store_ids=("s1",)),
+        period=PeriodRef(
+            period_type="custom",
+            start_at=start,
+            end_at=end,
+            timezone="UTC",
+            currency="USD",
+            as_of=end,
+        ),
+        dimensions=("store", "sku"),
+        metrics=("net_sales", "units_sold"),
+        compare_with=compare_with,
+    )
+
+
+def _verified_orders_product(*, status: str = "verified") -> DataProductDescriptor:
+    return DataProductDescriptor(
+        dataset_id="orders.canonical.v1",
+        version="1",
+        owner="oms",
+        grain="order_line",
+        quality_threshold=0.0,
+        rebuild_method="test replay",
+        status=status,
+        authority="canonical_fact",
+    )
+
+
+def _order_fact(
+    fact_id: str,
+    event_time: datetime,
+    *,
+    gross_sales: int | float = 0,
+    quantity: int | float = 0,
+    sku: str = "sku-1",
+    quality_state: str = "VALID",
+    tenant_id: str = "t1",
+) -> dict:
+    return {
+        "fact_id": fact_id,
+        "revision_id": f"rev-{fact_id}",
+        "revision": 1,
+        "scope": {
+            "tenant_id": tenant_id,
+            "entity_id": "e1",
+            "store_ids": ("s1",),
+            "warehouse_ids": (),
+        },
+        "event_time": event_time,
+        "observed_time": event_time,
+        "quality_state": quality_state,
+        "source_system": "ozon",
+        "payload": {
+            "gross_sales": gross_sales,
+            "quantity": quantity,
+            "sku": sku,
+        },
+    }
+
+
+def test_execute_orders_rolls_up_net_sales_and_units_without_losing_zero() -> None:
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    end = datetime(2026, 9, 2, tzinfo=UTC)
+    plan = compile_query_plan(_orders_recipe(start=start, end=end))
+    facts = [
+        _order_fact("f1", start, gross_sales=10, quantity=2),
+        _order_fact("f2", start, gross_sales=5, quantity=1),
+        _order_fact("f-zero", start, gross_sales=0, quantity=0, sku="sku-zero"),
+    ]
+
+    result = execute_analytics_plan(
+        plan,
+        facts,
+        data_products=(_verified_orders_product(),),
+    )
+
+    assert result.status == "VALID"
+    assert result.included_count == 3
+    assert result.excluded_count == 0
+    by_sku = {row["sku"]: row for row in result.aggregates}
+    assert by_sku["sku-1"]["metrics"] == {"net_sales": "15", "units_sold": "3"}
+    assert by_sku["sku-zero"]["metrics"] == {"net_sales": "0", "units_sold": "0"}
+
+
+def test_execute_quality_states_stay_separate_from_numeric_values() -> None:
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    plan = compile_query_plan(_orders_recipe(start=start, end=start.replace(day=2)))
+    result = execute_analytics_plan(
+        plan,
+        [
+            _order_fact("valid", start, gross_sales=0, quantity=0),
+            _order_fact("stale", start, gross_sales=4, quantity=1, quality_state="STALE"),
+            _order_fact("unknown", start, gross_sales=7, quantity=1, quality_state="UNKNOWN_OUTCOME"),
+        ],
+        data_products=(_verified_orders_product(),),
+    )
+
+    assert result.status == "UNKNOWN_OUTCOME"
+    assert result.aggregates[0]["metrics"] == {"net_sales": "4", "units_sold": "1"}
+    assert {row["quality_state"] for row in result.excluded_rows} == {"UNKNOWN_OUTCOME"}
+    assert result.aggregates[0]["quality_state"] == "STALE"
+
+
+def test_execute_requires_verified_scoped_data_product() -> None:
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    plan = compile_query_plan(_orders_recipe(start=start, end=start.replace(day=2)))
+    result = execute_analytics_plan(
+        plan,
+        [_order_fact("f1", start, gross_sales=10, quantity=1)],
+        data_products=(_verified_orders_product(status="contract_only"),),
+    )
+
+    assert result.status == "BLOCKED"
+    assert result.quality_state == "BLOCKED"
+    assert result.aggregates == ()
+    assert result.data_product_gate["verified"] is False
+    assert "data_product_contract_only" in result.data_product_gate["reasons"][0]
+
+    out_of_scope = execute_analytics_plan(
+        plan,
+        [_order_fact("cross-tenant", start, gross_sales=10, quantity=1, tenant_id="other")],
+        data_products=(_verified_orders_product(),),
+    )
+    assert out_of_scope.status == "BLOCKED"
+    assert out_of_scope.aggregates == ()
+    assert out_of_scope.excluded_rows[0]["reason"] == "scope_mismatch"
+
+
+def test_comparison_period_and_delta_preserve_missing_as_no_data() -> None:
+    current_start = datetime(2026, 9, 1, tzinfo=UTC)
+    current_end = datetime(2026, 9, 2, tzinfo=UTC)
+    current_plan = compile_query_plan(
+        _orders_recipe(
+            start=current_start,
+            end=current_end,
+            compare_with=("previous_period",),
+        )
+    )
+    previous = comparison_period(current_plan.period, "previous_period")
+    previous_plan = compile_query_plan(
+        _orders_recipe(start=previous.start_at, end=previous.end_at)
+    )
+    product = (_verified_orders_product(),)
+    current = execute_analytics_plan(
+        current_plan,
+        [_order_fact("current", current_start, gross_sales=14, quantity=2)],
+        data_products=product,
+    )
+    prior = execute_analytics_plan(
+        previous_plan,
+        [_order_fact("prior", previous.start_at, gross_sales=10, quantity=1)],
+        data_products=product,
+    )
+    comparison = compare_analytics_results(current, prior, relation="previous_period")
+
+    assert comparison["rows"][0]["metrics"] == {"net_sales": "4", "units_sold": "1"}
+    assert comparison["rows"][0]["quality_state"] == "VALID"
+    assert comparison["comparison_result_hash"] == prior.result_hash

@@ -15,7 +15,13 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..analytics_query_plan import compile_query_plan
+from ..analytics_query_plan import (
+    compare_analytics_results,
+    comparison_period,
+    compile_query_plan,
+    evaluate_data_product_gate,
+    execute_analytics_plan,
+)
 from ..api_contracts import current_principal, ensure_role, ensure_store_scope, run
 from ..data_fabric_contracts import AnalysisRecipe, PeriodRef, ScopeRef
 from ..data_fabric_registry import load_data_product_registry
@@ -54,6 +60,7 @@ def _recipe(
     store_id: str,
     metric: tuple[str, ...],
     dimension: tuple[str, ...],
+    compare_with: tuple[str, ...] = (),
     start_at: str | None,
     end_at: str | None,
     as_of: str | None,
@@ -101,11 +108,14 @@ def _recipe(
         ),
         dimensions=dimension,
         metrics=metric,
+        compare_with=compare_with,
     )
 
 
 def _query_temporal_facts(
     recipe: AnalysisRecipe,
+    *,
+    period: PeriodRef | None = None,
 ) -> tuple[TemporalFactQueryResult | None, str | None]:
     """Read the canonical temporal adapter for one analytics recipe.
 
@@ -114,15 +124,16 @@ def _query_temporal_facts(
     outage.  No fallback fabricates rows or turns a failed read into ``VALID``.
     """
 
+    target_period = period or recipe.period
     store = getattr(runtime, "temporal_fact_store", None)
     query_as_of = getattr(store, "query_as_of", None)
     try:
         if callable(query_as_of):
             result = query_as_of(
-                recipe.period.as_of,
+                target_period.as_of,
                 scope=recipe.scope,
-                event_start=recipe.period.start_at,
-                event_end=recipe.period.end_at,
+                event_start=target_period.start_at,
+                event_end=target_period.end_at,
                 include_stale=True,
             )
             if not isinstance(result, TemporalFactQueryResult):
@@ -134,10 +145,10 @@ def _query_temporal_facts(
             return None, "temporal_fact_source_not_bound"
         facts = tuple(
             as_of(
-                recipe.period.as_of,
+                target_period.as_of,
                 scope=recipe.scope,
-                event_start=recipe.period.start_at,
-                event_end=recipe.period.end_at,
+                event_start=target_period.start_at,
+                event_end=target_period.end_at,
                 include_stale=True,
             )
         )
@@ -153,7 +164,7 @@ def _query_temporal_facts(
             elif any(item.quality_state == QualityState.PARTIAL for item in facts):
                 quality = QualityState.PARTIAL
         return TemporalFactQueryResult(
-            as_of=recipe.period.as_of,
+            as_of=target_period.as_of,
             items=facts,
             quality_state=quality,
         ), None
@@ -220,6 +231,131 @@ def _analytics_transparency(
     # ``from_query_result`` intentionally keeps its compact constructor stable;
     # attach typed edges only after the fact projection has been validated.
     return envelope.model_copy(update={"lineage_edges": tuple(lineage_edges)})
+
+
+def _blocked_query_result(recipe: AnalysisRecipe, reason: str) -> TemporalFactQueryResult:
+    """Create an empty, explicit blocked projection for a failed read gate."""
+
+    return TemporalFactQueryResult(
+        as_of=recipe.period.as_of,
+        items=(),
+        quality_state=QualityState.BLOCKED,
+        exclusion_reasons=(reason,),
+    )
+
+
+def _run_analytics_recipe(
+    recipe: AnalysisRecipe,
+    compiled: Any,
+) -> dict[str, Any]:
+    """Read and aggregate one recipe plus its requested comparison periods."""
+
+    try:
+        products = tuple(load_data_product_registry())
+        registry_error = None
+    except Exception:
+        products = ()
+        registry_error = "data_product_registry_unavailable"
+    gate = evaluate_data_product_gate(compiled, products)
+    if registry_error is not None:
+        gate = dict(gate)
+        gate["status"] = "BLOCKED"
+        gate["verified"] = False
+        gate["reasons"] = sorted(set((*gate.get("reasons", ()), registry_error)))
+
+    if not gate["verified"]:
+        query_result = _blocked_query_result(
+            recipe,
+            "data_product_gate_blocked",
+        )
+        execution = execute_analytics_plan(
+            compiled,
+            (),
+            data_products=products,
+            source_error="data_product_gate_blocked",
+            source_quality_state=QualityState.BLOCKED.value,
+        )
+        source_error = "data_product_gate_blocked"
+    else:
+        query_result, source_error = _query_temporal_facts(recipe)
+        if query_result is None:
+            query_result = _blocked_query_result(
+                recipe,
+                source_error or "temporal_fact_source_unavailable",
+            )
+            execution = execute_analytics_plan(
+                compiled,
+                (),
+                data_products=products,
+                source_error=source_error or "temporal_fact_source_unavailable",
+                source_quality_state=QualityState.BLOCKED.value,
+            )
+        else:
+            execution = execute_analytics_plan(
+                compiled,
+                query_result.items,
+                data_products=products,
+                source_quality_state=query_result.quality_state.value,
+            )
+
+    comparisons: dict[str, dict[str, Any]] = {}
+    for relation in recipe.compare_with:
+        comparison_window = comparison_period(recipe.period, relation)
+        comparison_recipe = recipe.model_copy(update={"period": comparison_window})
+        comparison_plan = compile_query_plan(comparison_recipe)
+        if not gate["verified"]:
+            comparison_query = _blocked_query_result(
+                comparison_recipe,
+                "data_product_gate_blocked",
+            )
+            comparison_execution = execute_analytics_plan(
+                comparison_plan,
+                (),
+                data_products=products,
+                source_error="data_product_gate_blocked",
+                source_quality_state=QualityState.BLOCKED.value,
+            )
+        else:
+            comparison_query, comparison_error = _query_temporal_facts(
+                recipe,
+                period=comparison_window,
+            )
+            if comparison_query is None:
+                comparison_query = _blocked_query_result(
+                    comparison_recipe,
+                    comparison_error or "temporal_fact_source_unavailable",
+                )
+                comparison_execution = execute_analytics_plan(
+                    comparison_plan,
+                    (),
+                    data_products=products,
+                    source_error=comparison_error or "temporal_fact_source_unavailable",
+                    source_quality_state=QualityState.BLOCKED.value,
+                )
+            else:
+                comparison_execution = execute_analytics_plan(
+                    comparison_plan,
+                    comparison_query.items,
+                    data_products=products,
+                    source_quality_state=comparison_query.quality_state.value,
+                )
+        comparison = compare_analytics_results(
+            execution,
+            comparison_execution,
+            relation=relation,
+        )
+        comparison["execution"] = comparison_execution.as_dict()
+        comparison["fact_quality_state"] = comparison_query.quality_state.value
+        comparisons[relation] = comparison
+
+    return {
+        "products": products,
+        "gate": gate,
+        "execution": execution,
+        "query_result": query_result,
+        "source_error": source_error,
+        "comparisons": comparisons,
+    }
 
 
 def _heartbeat_timestamp(value: object) -> datetime | None:
@@ -335,6 +471,7 @@ def analytics_drilldown(
     store_id: str = "ozon-primary",
     metric: tuple[str, ...] = ("net_sales",),
     dimension: tuple[str, ...] = ("store", "sku"),
+    compare_with: tuple[str, ...] = (),
     start_at: str | None = None,
     end_at: str | None = None,
     as_of: str | None = None,
@@ -349,30 +486,37 @@ def analytics_drilldown(
             store_id=store_id,
             metric=metric,
             dimension=dimension,
+            compare_with=compare_with,
             start_at=start_at,
             end_at=end_at,
             as_of=as_of,
         )
         compiled = compile_query_plan(recipe_contract)
-        query_result, source_error = _query_temporal_facts(recipe_contract)
-        if query_result is None:
-            facts = ()
-            transparency = None
-            quality_state = _quality_for_source_error(source_error)
-        else:
-            facts = query_result.items
-            transparency = _analytics_transparency(query_result, recipe_contract, compiled)
-            quality_state = query_result.quality_state
+        projection = _run_analytics_recipe(recipe_contract, compiled)
+        query_result = projection["query_result"]
+        execution = projection["execution"]
+        source_error = projection["source_error"]
+        facts = query_result.items
+        transparency = _analytics_transparency(query_result, recipe_contract, compiled)
+        quality_state = execution.quality_state
         rows = [item.model_dump(mode="json") for item in facts]
-        status = quality_state.value
+        status = quality_state
         return {
             "contract_id": "kjds-analytics-drilldown-v1",
             "status": status,
             "reason": source_error or (None if rows else "no_facts_at_as_of"),
             "plan": compiled.model_dump(mode="json"),
+            "period": recipe_contract.period.model_dump(mode="json"),
             "levels": ["entity", "store", "warehouse", "sku", "order", "evidence"],
             "rows": rows,
             "quality_state": status,
+            "fact_quality_state": query_result.quality_state.value,
+            "included_count": execution.included_count,
+            "excluded_count": execution.excluded_count,
+            "aggregation": execution.as_dict(),
+            "aggregates": list(execution.aggregates),
+            "comparisons": projection["comparisons"],
+            "data_product_gate": projection["gate"],
             "transparency": transparency.model_dump(mode="json") if transparency else None,
             "lineage": transparency.drilldown() if transparency else [],
             "lineage_edges": (
@@ -394,6 +538,7 @@ def analytics_lineage(
     store_id: str = "ozon-primary",
     metric: tuple[str, ...] = ("net_sales",),
     dimension: tuple[str, ...] = ("store", "sku"),
+    compare_with: tuple[str, ...] = (),
     start_at: str | None = None,
     end_at: str | None = None,
     as_of: str | None = None,
@@ -408,21 +553,20 @@ def analytics_lineage(
             store_id=store_id,
             metric=metric,
             dimension=dimension,
+            compare_with=compare_with,
             start_at=start_at,
             end_at=end_at,
             as_of=as_of,
         )
         compiled = compile_query_plan(recipe_contract)
-        query_result, source_error = _query_temporal_facts(recipe_contract)
-        products = {item.dataset_id: item for item in load_data_product_registry()}
-        if query_result is None:
-            facts = ()
-            quality_state = _quality_for_source_error(source_error)
-            transparency = None
-        else:
-            facts = query_result.items
-            quality_state = query_result.quality_state
-            transparency = _analytics_transparency(query_result, recipe_contract, compiled)
+        projection = _run_analytics_recipe(recipe_contract, compiled)
+        query_result = projection["query_result"]
+        execution = projection["execution"]
+        source_error = projection["source_error"]
+        products = {item.dataset_id: item for item in projection["products"]}
+        facts = query_result.items
+        quality_state = execution.quality_state
+        transparency = _analytics_transparency(query_result, recipe_contract, compiled)
         fact_refs = [
             {
                 "id": fact.revision_id,
@@ -450,13 +594,22 @@ def analytics_lineage(
                     if transparency
                     else []
                 ),
-                "quality_state": quality_state.value,
+                "quality_state": quality_state,
             })
         return {
             "contract_id": "kjds-analytics-lineage-v1",
-            "status": quality_state.value,
+            "status": quality_state,
             "reason": source_error or (None if facts else "no_facts_at_as_of"),
             "plan_hash": compiled.plan_hash,
+            "period": recipe_contract.period.model_dump(mode="json"),
+            "quality_state": quality_state,
+            "fact_quality_state": query_result.quality_state.value,
+            "included_count": execution.included_count,
+            "excluded_count": execution.excluded_count,
+            "aggregation": execution.as_dict(),
+            "aggregates": list(execution.aggregates),
+            "comparisons": projection["comparisons"],
+            "data_product_gate": projection["gate"],
             "chain": chain,
             "transparency": transparency.model_dump(mode="json") if transparency else None,
             "external_write_allowed": False,
