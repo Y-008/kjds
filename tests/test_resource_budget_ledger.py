@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
@@ -11,6 +12,7 @@ from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import NullPool, StaticPool
 
+from apps.control_plane import resource_budget_ledger as resource_budget_module
 from apps.control_plane.resource_budget_ledger import (
     ResourceBudget,
     ResourceBudgetEvent,
@@ -214,7 +216,12 @@ def test_event_rejects_unrepresentable_timezone_offset():
         )
 
 
-def test_sqlite_file_budget_admission_is_serialized_across_ledger_instances(tmp_path):
+def test_sqlite_file_budget_admission_is_serialized_across_ledger_instances(
+    tmp_path, monkeypatch
+):
+    # Disable the in-process convenience lock so this test exercises the
+    # database-level BEGIN IMMEDIATE guarantee between independent engines.
+    monkeypatch.setattr(resource_budget_module, "_RESOURCE_LEDGER_LOCK", nullcontext())
     database_url = f"sqlite+pysqlite:///{tmp_path / 'budget-race.db'}"
 
     def make_engine():
