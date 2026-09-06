@@ -1,6 +1,6 @@
 {
   "schema_version": "kjds-frontier-technology-adoption-v1",
-  "as_of": "2026-08-07",
+  "as_of": "2026-09-06",
   "registry_purpose": "A date-bounded, evidence-linked decision register for frontier technology adoption in KJDS.",
   "decision_vocabulary": {
     "adopt_now": "Approved to enter a scoped implementation slice; not proof that implementation or production rollout is complete.",
@@ -148,8 +148,8 @@
         ]
       },
       "owner": "platform_security",
-      "reviewed_on": "2026-08-03",
-      "review_due_on": "2026-09-03",
+      "reviewed_on": "2026-09-06",
+      "review_due_on": "2026-10-06",
       "control_boundary": {
         "runtime_implemented": true,
         "production_dependency_allowed": false,
