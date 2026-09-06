@@ -18,6 +18,7 @@ from .routers import (
     autonomous_execution_profiles,
     channel_accounts,
     commerce_os,
+    commercial_finance,
     commercial_lifecycle,
     commercial_usage,
     control_plane_observability,
@@ -295,6 +296,7 @@ _ROUTE_MODULES = (
     temporal_facts,
     finance_imports,
     commercial_usage,
+    commercial_finance,
     autonomous_execution_profiles,
     control_plane_observability,
 )

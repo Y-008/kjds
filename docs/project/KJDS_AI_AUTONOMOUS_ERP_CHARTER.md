@@ -81,7 +81,7 @@ modular SaaS after commercial gate
 media and Agent Job API with KJDS usage credits
 ```
 
-Skill, Connector, Auth Token, Usage Credit and model-token cost are separate objects. Customer access keys remain secrets; a Skill cannot grant a platform scope. Each tenant has isolated data, usage, billing, export and deletion boundaries.
+Skill, Connector, Auth Token, Usage Credit and model-token cost are separate objects. Customer access keys remain secrets; a Skill cannot grant a platform scope. `commercial_finance_events` additionally binds token cost, media asset cost, revenue share and refund adjustments to the customer contract and entitlement with tenant-scoped idempotency. Each tenant has isolated data, usage, billing, export and deletion boundaries.
 
 ## 7. Non-negotiable acceptance
 

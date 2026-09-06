@@ -52,6 +52,7 @@ from .closed_loop_evolution import (
     GovernedClosedLoopEvolutionWorkspace,
 )
 from .commerce_operating_system import CommerceOperatingSystem
+from .commercial_finance_ledger import CommercialFinanceLedger
 from .commercial_lifecycle import CommercialLifecycleService
 from .content_growth import ContentGrowthService
 from .cost_evidence_review import CostEvidenceAuthorityService
@@ -301,6 +302,7 @@ class RuntimeServices:
     project_heartbeat_store: Any
     project_graph_proposal_ledger: Any
     autonomous_execution_profile_store: Any
+    commercial_finance_ledger: Any
     finance: Any
     fx_evidence_intake: Any
     finance_report_reviews: Any
@@ -505,6 +507,7 @@ def build_runtime() -> RuntimeServices:
     # Standing autonomy profiles are governance facts.  Their revisions are
     # append-only and persisted separately from the short-lived Permit itself.
     autonomous_execution_profile_store = AutonomousExecutionProfileStore(engine)
+    commercial_finance_ledger = CommercialFinanceLedger(engine)
     media_connector_contract = MediaConnectorContract()
     media_connectors = MediaConnectorRegistry(
         engine=engine,
@@ -1466,6 +1469,7 @@ def build_runtime() -> RuntimeServices:
         project_heartbeat_store=project_heartbeat_store,
         project_graph_proposal_ledger=project_graph_proposal_ledger,
         autonomous_execution_profile_store=autonomous_execution_profile_store,
+        commercial_finance_ledger=commercial_finance_ledger,
         finance=finance,
         fx_evidence_intake=fx_evidence_intake,
         finance_report_reviews=finance_report_reviews,
