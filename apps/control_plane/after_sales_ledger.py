@@ -868,7 +868,8 @@ class AfterSalesLedgerService:
         entity = cls._required(authority.get("entity_ref"), "entity_ref", 160)
         store = cls._required(authority.get("store_ref"), "store_ref", 160)
         grant = cls._required(
-            authority.get("scope_grant_authority_sha256"),
+            authority.get("scope_grant_authority_sha256")
+            or authority.get("authority_sha256"),
             "scope_grant_authority_sha256",
             64,
         ).lower()
@@ -876,7 +877,8 @@ class AfterSalesLedgerService:
             raise AfterSalesLedgerError("scope grant authority must be SHA-256")
         source_hash = cls._required(
             authority.get("source_evidence_sha256")
-            or authority.get("scope_source_evidence_sha256"),
+            or authority.get("scope_source_evidence_sha256")
+            or authority.get("evidence_sha256"),
             "source_evidence_sha256",
             64,
         ).lower()
@@ -884,7 +886,12 @@ class AfterSalesLedgerService:
             ch not in "0123456789abcdef" for ch in source_hash
         ):
             raise AfterSalesLedgerError("source evidence authority must be SHA-256")
-        as_of = authority.get("scope_as_of") or authority.get("as_of")
+        as_of = (
+            authority.get("scope_as_of")
+            or authority.get("as_of")
+            or authority.get("grant_effective_at")
+            or authority.get("effective_at")
+        )
         if as_of is None:
             raise AfterSalesLedgerError("scope_as_of is required")
         cutoff = cls._timestamp(str(as_of), "scope_as_of")
