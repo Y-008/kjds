@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
@@ -33,6 +34,25 @@ def test_observability_routes_are_registered():
     assert "/v1/analytics/{recipe}/lineage" in paths
     assert "/v1/operations/stuck" in paths
     assert "/v1/economics/guard-status" in paths
+
+
+def test_economic_guard_exposes_inventory_ceiling_and_blocks_overstock():
+    principal = Principal(
+        actor_id="analyst",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    result = control_plane_observability.economics_guard_status(
+        principal=principal,
+        cash_available=Decimal("1000"),
+        inventory_days=Decimal("45"),
+        max_inventory_days=Decimal("30"),
+    )
+    assert result["status"] == "BLOCKED"
+    assert result["quality_state"] == "BLOCKED"
+    assert "inventory_days_above_ceiling" in result["reasons"]
+    assert result["external_write_allowed"] is False
 
 
 def test_analytics_time_rejects_future_as_of():

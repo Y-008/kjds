@@ -1017,6 +1017,8 @@ def economics_guard_status(
     min_cash: Decimal = Decimal("0"),
     margin_rate: Decimal | None = None,
     min_margin_rate: Decimal | None = None,
+    inventory_days: Decimal | None = None,
+    max_inventory_days: Decimal | None = None,
     budget_remaining: Decimal | None = None,
     min_budget_remaining: Decimal = Decimal("0"),
     budget_id: str | None = None,
@@ -1047,7 +1049,8 @@ def economics_guard_status(
         return response
     result = evaluate_economic_guard(EconomicGuardInput(
         cash_available=cash_available, min_cash=min_cash, margin_rate=margin_rate,
-        min_margin_rate=min_margin_rate, budget_remaining=budget_remaining,
+        min_margin_rate=min_margin_rate, inventory_days=inventory_days,
+        max_inventory_days=max_inventory_days, budget_remaining=budget_remaining,
         min_budget_remaining=min_budget_remaining,
     ))
     quality_state = "VALID" if result.status == "allowed" else "BLOCKED"
