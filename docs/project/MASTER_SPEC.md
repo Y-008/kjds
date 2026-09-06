@@ -4,7 +4,7 @@
 |---|---|
 | doc_id | KJDS-MASTER-SPEC-001 |
 | status | Active |
-| version | 8.67 |
+| version | 8.68 |
 | last_reviewed | 2026-09-06 |
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
