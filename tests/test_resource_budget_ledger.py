@@ -101,6 +101,7 @@ def test_metadata_is_copied_and_validated():
     created = ResourceBudgetEvent(
         event_id="meta-event", idempotency_key="meta-key", budget_id="budget-1",
         tenant_id="tenant-a", state="reserved", amount="1", metadata=metadata,
+        occurred_at=datetime(2026, 9, 6, tzinfo=UTC),
     )
     metadata["z"] = "changed"
     assert dict(created.metadata or {}) == {"a": "1", "z": "2"}
@@ -108,6 +109,7 @@ def test_metadata_is_copied_and_validated():
         ResourceBudgetEvent(
             event_id="bad-meta", idempotency_key="bad-meta-key", budget_id="budget-1",
             tenant_id="tenant-a", state="reserved", amount="1", metadata={1: "x"},
+            occurred_at=datetime(2026, 9, 6, tzinfo=UTC),
         )
 
 
@@ -129,6 +131,43 @@ def test_overrun_cannot_be_attached_to_a_reservation(ledger):
     ledger.record(event("reserved", "1", "r1", "e1"))
     with pytest.raises(ValueError, match="standalone"):
         ledger.record(event("overrun", "1", "o1", "e2", parent="e1"))
+
+
+@pytest.mark.parametrize("state", ["consumed", "released"])
+def test_settlement_requires_parent_reservation(ledger, state):
+    ledger.create_budget(ResourceBudget("budget-1", "tenant-a", "model_tokens", "cc-ai", Decimal("5")))
+    with pytest.raises(ValueError, match="requires a parent"):
+        ledger.record(event(state, "1", f"{state}-key", f"{state}-event"))
+
+
+def test_settlement_parent_must_be_reserved(ledger):
+    ledger.create_budget(ResourceBudget("budget-1", "tenant-a", "model_tokens", "cc-ai", Decimal("5")))
+    ledger.record(event("overrun", "1", "overrun-key", "overrun-event"))
+    with pytest.raises(ValueError, match="parent must be reserved"):
+        ledger.record(event(
+            "consumed", "1", "consumed-key", "consumed-event", parent="overrun-event"
+        ))
+
+
+def test_database_rejects_invalid_parent_shapes(ledger):
+    ledger.create_budget(ResourceBudget("budget-parent-shape", "tenant-a", "model_tokens", "cc-ai", Decimal("5")))
+    ledger.record(event("reserved", "1", "parent-shape-parent", "parent-shape-parent-event", budget_id="budget-parent-shape"))
+    with pytest.raises(IntegrityError), ledger.engine.begin() as connection:
+        connection.execute(ResourceBudgetEventRow.__table__.insert().values(
+            event_id="invalid-overrun-parent", idempotency_key="invalid-overrun-parent-key",
+            budget_id="budget-parent-shape", tenant_id="tenant-a", state="overrun", amount=Decimal("1"),
+            amount_text="1", currency="USD", parent_event_id="parent-shape-parent-event",
+            occurred_at=datetime(2026, 9, 6, tzinfo=UTC), fingerprint_sha256="0" * 64,
+            recorded_at=datetime(2026, 9, 6, tzinfo=UTC),
+        ))
+    with pytest.raises(IntegrityError), ledger.engine.begin() as connection:
+        connection.execute(ResourceBudgetEventRow.__table__.insert().values(
+            event_id="invalid-consumed-parent", idempotency_key="invalid-consumed-parent-key",
+            budget_id="budget-parent-shape", tenant_id="tenant-a", state="consumed", amount=Decimal("1"),
+            amount_text="1", currency="USD", parent_event_id=None,
+            occurred_at=datetime(2026, 9, 6, tzinfo=UTC), fingerprint_sha256="0" * 64,
+            recorded_at=datetime(2026, 9, 6, tzinfo=UTC),
+        ))
 
 
 def test_database_rejects_orphan_budget_event(ledger):

@@ -50,6 +50,28 @@ def _currency(value: str) -> str:
     return value.strip().upper()
 
 
+def _occurred_at(value: datetime | None) -> datetime:
+    """Normalize a client event time against the server's trusted clock.
+
+    A budget event may legitimately arrive late, so historical timestamps are
+    accepted.  A timestamp in the future cannot describe an observed spend or
+    reservation and would let a caller move the event outside an as-of view;
+    reject it before the event reaches the ledger.  The check is deliberately
+    performed inside the route operation (rather than trusting a client-side
+    validator) so every API caller is subject to the server clock.
+    """
+
+    trusted_now = datetime.now(UTC)
+    if value is None:
+        return trusted_now
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("occurred_at must include a timezone")
+    normalized = value.astimezone(UTC)
+    if normalized > trusted_now:
+        raise ValueError("occurred_at cannot be in the future")
+    return normalized
+
+
 def _budget_dict(budget: ResourceBudget) -> dict[str, object]:
     return {
         "budget_id": budget.budget_id,
@@ -103,7 +125,7 @@ def record_budget_event(
             amount=body.amount,
             currency=_currency(body.currency),
             parent_event_id=body.parent_event_id,
-            occurred_at=(body.occurred_at or datetime.now(UTC)).astimezone(UTC),
+            occurred_at=_occurred_at(body.occurred_at),
             metadata=body.metadata,
         )
         persisted = runtime.resource_budget_ledger.record(event)
