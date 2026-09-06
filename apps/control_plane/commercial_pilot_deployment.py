@@ -5,10 +5,13 @@ readiness checklist: one app instance, one database, one key domain and one
 storage namespace per customer, TLS termination, managed secrets, verified
 backup/restore, verified upgrade/rollback, verified full data export, health
 monitoring and declared RPO/RTO. It also freezes the two-customer negative
-isolation invariant. This kernel is a contract and classifier only — it admits
-no real deployment, secret write, Fact, FinanceEntry, Approval, Permit, Pilot,
-Invoice, Payment, Receivable or Outbox authority; unevidenced controls are
-reported UNKNOWN, never fabricated as ready.
+isolation invariant. Caller-supplied evidence ids and hashes are claims only;
+an ``IMPLEMENTED`` control requires a server-bound EvidenceService/validator
+to resolve the id and return a matching, valid digest. This kernel is a
+contract and classifier only — it admits no real deployment, secret write,
+Fact, FinanceEntry, Approval, Permit, Pilot, Invoice, Payment, Receivable or
+Outbox authority; unevidenced controls are reported UNKNOWN, never fabricated
+as ready.
 """
 
 from __future__ import annotations
@@ -20,6 +23,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+
+from .commercial_gate import GovernedCommercialGate
 
 DEPLOYMENT_CONTRACT = "kjds-commercial-pilot-deployment-v1"
 ISOLATION_CONTRACT = "kjds-commercial-isolation-v1"
@@ -164,8 +169,26 @@ def _hash(value: Any) -> str:
 class GovernedCommercialDeployment:
     """Deterministic commercial pilot deployment contract kernel (COM-002 prep-only)."""
 
-    def __init__(self, *, clock: Any = None) -> None:
+    def __init__(
+        self,
+        *,
+        clock: Any = None,
+        evidence_verifier: Any = None,
+        evidence_service: Any = None,
+        evidence_validator: Any = None,
+    ) -> None:
+        verifiers = [
+            candidate
+            for candidate in (evidence_verifier, evidence_service, evidence_validator)
+            if candidate is not None
+        ]
+        if len(verifiers) > 1:
+            raise CommercialDeploymentError("evidence_verifier_ambiguous")
         self.clock = clock or (lambda: datetime.now(UTC))
+        # The verifier is a server-owned dependency; it is never read from the
+        # assessment payload. Reuse the Gate's strict identity/hash contract so
+        # deployment and commercial assessments cannot drift apart.
+        self.evidence_verifier = verifiers[0] if verifiers else None
 
     def assess_deployment(
         self,
@@ -210,12 +233,23 @@ class GovernedCommercialDeployment:
         unknowns: list[str] = []
         for control in DEPLOYMENT_CONTROLS:
             if control in evidence_map:
+                evidence_id = evidence_map[control]["evidence_id"]
+                content_sha = evidence_map[control]["content_sha256"]
+                control_status, verification_state, verification_reason = GovernedCommercialGate._verify_evidence(
+                    self.evidence_verifier,
+                    evidence_id=evidence_id,
+                    expected_sha256=content_sha,
+                )
+                if control_status != "IMPLEMENTED":
+                    unknowns.append(control)
                 rows.append(
                     {
                         "control": control,
-                        "status": "IMPLEMENTED",
-                        "evidence_id": evidence_map[control]["evidence_id"],
-                        "content_sha256": evidence_map[control]["content_sha256"],
+                        "status": control_status,
+                        "evidence_id": evidence_id,
+                        "content_sha256": content_sha,
+                        "verification_state": verification_state,
+                        "verification_reason": verification_reason,
                     }
                 )
             elif control in declared_set:

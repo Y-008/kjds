@@ -31,6 +31,24 @@ def _evidence_for_all() -> list[dict]:
     ]
 
 
+def _verified_evidence(evidence_id: str) -> dict[str, object]:
+    records = {entry["evidence_id"]: entry["content_sha256"] for entry in _evidence_for_all()}
+    records["evd-db"] = _sha("db")
+    digest = records.get(evidence_id)
+    if digest is None:
+        return {"evidence_id": evidence_id, "valid": False}
+    return {
+        "evidence_id": evidence_id,
+        "expected_sha256": digest,
+        "actual_sha256": digest,
+        "valid": True,
+    }
+
+
+def _server_verified_deployment() -> GovernedCommercialDeployment:
+    return GovernedCommercialDeployment(evidence_verifier=_verified_evidence)
+
+
 def _tenant(customer_id: str, *, suffix: str = "") -> dict:
     return {
         "customer_id": customer_id,
@@ -41,7 +59,7 @@ def _tenant(customer_id: str, *, suffix: str = "") -> dict:
 
 
 def test_assess_all_implemented_admits():
-    result = _deploy().assess_deployment(
+    result = _server_verified_deployment().assess_deployment(
         customer_id="cust-1",
         scope="single_customer_isolated_single_store",
         evidence=_evidence_for_all(),
@@ -76,12 +94,12 @@ def test_assess_nothing_declared_all_unknown():
 
 
 def test_assess_partial_mixed_statuses():
-    result = _deploy().assess_deployment(
+    result = _server_verified_deployment().assess_deployment(
         customer_id="cust-1",
         scope="single_customer_isolated_single_store",
         declared=["tls_termination"],
         evidence=[
-            {"control": "single_customer_database", "evidence_id": "evd-1", "content_sha256": _sha("db")}
+            {"control": "single_customer_database", "evidence_id": "evd-db", "content_sha256": _sha("db")}
         ],
     )
     statuses = {row["control"]: row["status"] for row in result.controls}
@@ -89,6 +107,97 @@ def test_assess_partial_mixed_statuses():
     assert statuses["tls_termination"] == "CONTRACT_ONLY"
     assert statuses["secrets_management"] == "UNKNOWN"
     assert result.ready is False
+
+
+def test_unbound_server_verifier_cannot_promote_caller_supplied_refs():
+    result = _deploy().assess_deployment(
+        customer_id="cust-1",
+        scope="single_customer_isolated_single_store",
+        evidence=_evidence_for_all(),
+    )
+
+    assert result.status == "NOT_ADMITTED"
+    assert result.ready is False
+    assert result.unknowns == DEPLOYMENT_CONTROLS
+    assert all(row["status"] == "UNKNOWN" for row in result.controls)
+    assert all(row["verification_state"] == "UNAVAILABLE" for row in result.controls)
+    assert all(row["verification_reason"] == "evidence_verifier_not_bound" for row in result.controls)
+
+
+def test_server_verifier_hash_mismatch_is_unknown():
+    def wrong_hash(evidence_id: str) -> dict[str, object]:
+        return {
+            "evidence_id": evidence_id,
+            "valid": True,
+            "actual_sha256": _sha("different"),
+        }
+
+    result = GovernedCommercialDeployment(evidence_verifier=wrong_hash).assess_deployment(
+        customer_id="cust-1",
+        scope="scope",
+        evidence=[
+            {
+                "control": "tls_termination",
+                "evidence_id": "real-ref",
+                "content_sha256": _sha("claimed"),
+            }
+        ],
+    )
+
+    row = result.controls[4]
+    assert row["status"] == "UNKNOWN"
+    assert row["verification_state"] == "INVALID"
+    assert row["verification_reason"] == "evidence_hash_mismatch"
+    assert result.ready is False
+
+
+def test_server_verifier_identity_mismatch_is_unknown():
+    def wrong_identity(_evidence_id: str) -> dict[str, object]:
+        digest = _sha("claimed")
+        return {
+            "evidence_id": "another-ref",
+            "valid": True,
+            "actual_sha256": digest,
+        }
+
+    result = GovernedCommercialDeployment(evidence_verifier=wrong_identity).assess_deployment(
+        customer_id="cust-1",
+        scope="scope",
+        evidence=[
+            {
+                "control": "tls_termination",
+                "evidence_id": "real-ref",
+                "content_sha256": _sha("claimed"),
+            }
+        ],
+    )
+
+    row = result.controls[4]
+    assert row["status"] == "UNKNOWN"
+    assert row["verification_reason"] == "evidence_id_mismatch"
+    assert result.ready is False
+
+
+def test_evidence_service_verify_result_is_bound_to_control_reference():
+    class EvidenceServiceStub:
+        def verify(self, evidence_id: str) -> dict[str, object]:
+            return _verified_evidence(evidence_id)
+
+    result = GovernedCommercialDeployment(evidence_service=EvidenceServiceStub()).assess_deployment(
+        customer_id="cust-1",
+        scope="scope",
+        evidence=[
+            {
+                "control": "tls_termination",
+                "evidence_id": "evd-4",
+                "content_sha256": _sha("tls_termination"),
+            }
+        ],
+    )
+
+    row = result.controls[4]
+    assert row["status"] == "IMPLEMENTED"
+    assert row["verification_state"] == "VERIFIED"
 
 
 def test_assess_unrecognized_control_fail_closed():
@@ -184,7 +293,7 @@ def test_check_isolation_invalid_tenant_fail_closed():
 
 
 def test_readback_pending_verified_invalidated():
-    deploy = _deploy()
+    deploy = _server_verified_deployment()
     assessment = deploy.assess_deployment(customer_id="cust-1", scope="scope", evidence=_evidence_for_all())
     assert deploy.readback(assessment)["readback_state"] == "PENDING"
     assert deploy.readback(assessment, observed=assessment.assessment_sha256)["readback_state"] == "VERIFIED"
