@@ -29,6 +29,7 @@ from .agent_team_orchestration import (
 )
 from .ai_listing import AiListingPipeline
 from .automation import AutomationService
+from .autonomous_execution_profile_store import AutonomousExecutionProfileStore
 from .batch_opportunity import BatchOpportunityWorkspace
 from .browser_capture_inbox import BrowserCaptureInbox
 from .candidate_evidence_review import CandidateEvidenceAuthorityService
@@ -299,6 +300,7 @@ class RuntimeServices:
     skill_usage_ledger: Any
     project_heartbeat_store: Any
     project_graph_proposal_ledger: Any
+    autonomous_execution_profile_store: Any
     finance: Any
     fx_evidence_intake: Any
     finance_report_reviews: Any
@@ -500,6 +502,9 @@ def build_runtime() -> RuntimeServices:
     # adapter intentionally performs no DDL here; migration 0110 owns the
     # schema and an un-migrated runtime fails closed on first proposal write.
     project_graph_proposal_ledger = SqlProjectGraphProposalLedger(engine)
+    # Standing autonomy profiles are governance facts.  Their revisions are
+    # append-only and persisted separately from the short-lived Permit itself.
+    autonomous_execution_profile_store = AutonomousExecutionProfileStore(engine)
     media_connector_contract = MediaConnectorContract()
     media_connectors = MediaConnectorRegistry(
         engine=engine,
@@ -1460,6 +1465,7 @@ def build_runtime() -> RuntimeServices:
         skill_usage_ledger=skill_usage_ledger,
         project_heartbeat_store=project_heartbeat_store,
         project_graph_proposal_ledger=project_graph_proposal_ledger,
+        autonomous_execution_profile_store=autonomous_execution_profile_store,
         finance=finance,
         fx_evidence_intake=fx_evidence_intake,
         finance_report_reviews=finance_report_reviews,

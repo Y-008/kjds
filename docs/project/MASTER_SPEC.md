@@ -4,8 +4,8 @@
 |---|---|
 | doc_id | KJDS-MASTER-SPEC-001 |
 | status | Active |
-| version | 8.66 |
-| last_reviewed | 2026-08-02 |
+| version | 8.67 |
+| last_reviewed | 2026-09-06 |
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
 | source_of_truth | 本文件定义需求、产品、架构、数据和验收边界；运行事实以代码、迁移、测试和证据账为准 |
@@ -26,10 +26,10 @@
 - `proof_frontier_planner.py`、`temporal_fact_store.py`、`transparency_envelope.py` 和 `temporal_fact_sql.py` 提供机器可检查的证明前沿、四时间事实、透明血缘和持久化适配器。
 - `project_manager_cycle.py` 组合前沿、四状态护栏、卡死恢复和 Agent 标准产物；`demand_censoring.py` 与 `after_sales_economics.py` 分别约束缺货截断需求和售后长尾利润。
 - `governed_graph_contracts.py` 固定 `temporal_truth`、`data_quality`、`economic_guard`、`experiment`、`counterexample`、`incident`、`recovery`、`commercial_entitlement` 和 `model_risk` 节点类型，并要求证明、证据、运行、经济四状态同时满足才可进入 `LIVE`。
-- [Standing Autonomous Execution Profile](KJDS_STANDING_AUTONOMOUS_EXECUTION_PROFILE.md) 与 `autonomous_execution_profile.py` 提供精确范围、六项门槛和一次性命令 Permit；它不改变 Approval、Readback、Rollback、Kill Switch 或 Agent 权限边界。
+- [Standing Autonomous Execution Profile](KJDS_STANDING_AUTONOMOUS_EXECUTION_PROFILE.md)、`autonomous_execution_profile.py` 与 `autonomous_execution_profile_store.py` 提供精确范围、六项门槛、append-only 治理版本和一次性命令 Permit；它不改变 Approval、Readback、Rollback、Kill Switch 或 Agent 权限边界。
 - [Project Graph Proposal Ledger Contract](KJDS_PROJECT_GRAPH_PROPOSAL_LEDGER_CONTRACT.md) 与 `project_graph_proposal_ledger.py` 固化 `dispatch-wave`/`invalidate` 的 exact-scope 幂等、CAS revision、不可变响应和回放；proposal ledger 仍是内部审计投影，不是队列、Permit 或外部写入权威。
 - [Compose migration boundary](KJDS_COMPOSE_MIGRATION_BOUNDARY.md) 固定 `migrate → api → workers` 启动依赖：`KJDS_DATABASE_URL` 只注入 one-shot migrate 服务，API 仅接收独立的非 owner `KJDS_RUNTIME_DATABASE_URL`，并且不得在启动时执行 Alembic。
-- Alembic `20260906_0111` 为时间事实、心跳、用量和提案账本增加数据库级 append-only 触发器；`/health/ready` 必须同时通过 PostgreSQL 连通、代码迁移 head 和核心表检查，否则返回 HTTP 503。
+- Alembic `20260906_0111` 为时间事实、心跳、用量和提案账本增加数据库级 append-only 触发器，`20260906_0112` 增加 Standing Profile 修订和治理事件；`/health/ready` 必须同时通过 PostgreSQL 连通、代码迁移 head 和核心表检查，否则返回 HTTP 503。
 
 这些契约统一数据产品、事实粒度、双时间、指标、期间、血缘、下钻、回放、质量、租户作用域和导出格式。它们不授予外部写权限；任何策略自动执行仍须复用本文件的统一授权、Approval、Permit、预算、回读、审计和回滚要求。
 

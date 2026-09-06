@@ -18,4 +18,9 @@
 
 profile 的创建、启用、暂停、过期和版本变更应作为治理事件保存，并由独立 owner/reviewer/compliance 身份复核。Agent 不能修改 profile、预算、租约、Kill Switch 或自身权限。profile 的 `enabled=true` 只表达已完成治理授权，不能绕过现有 Approval、Permit、Readback、Rollback 和 Kill Switch 约束。
 
-实现：`apps/control_plane/autonomous_execution_profile.py`；纯合同测试：`tests/test_autonomous_execution_profile.py`。
+实现：`apps/control_plane/autonomous_execution_profile.py`（纯门禁评估）与
+`apps/control_plane/autonomous_execution_profile_store.py`（append-only profile revision 和治理事件）。
+数据库迁移为 `20260906_0112`；控制面提供创建、启用、暂停、当前版本和历史查询接口。
+Profile 创建时必须为 disabled，启用需要独立的 owner、reviewer、compliance 身份；任何 API
+响应都明确 `external_write_allowed=false`。纯合同测试：`tests/test_autonomous_execution_profile.py`
+和 `tests/test_autonomous_execution_profile_store.py`。

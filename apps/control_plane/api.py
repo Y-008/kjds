@@ -15,6 +15,7 @@ from .routers import (
     accounts_payable,
     agent_control,
     ai_listing,
+    autonomous_execution_profiles,
     channel_accounts,
     commerce_os,
     commercial_lifecycle,
@@ -294,6 +295,7 @@ _ROUTE_MODULES = (
     temporal_facts,
     finance_imports,
     commercial_usage,
+    autonomous_execution_profiles,
     control_plane_observability,
 )
 for _module in _ROUTE_MODULES:

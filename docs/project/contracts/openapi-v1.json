@@ -1305,6 +1305,22 @@
         "title": "Body_checkpoint_read_only_pilot_response_v1_read_only_pilot_runs__run_id__response_checkpoint_post",
         "type": "object"
       },
+      "Body_create_profile_v1_autonomous_execution_profiles__profile_id__post": {
+        "properties": {
+          "body": {
+            "$ref": "#/components/schemas/ProfileInput"
+          },
+          "governance": {
+            "$ref": "#/components/schemas/GovernanceInput"
+          }
+        },
+        "required": [
+          "body",
+          "governance"
+        ],
+        "title": "Body_create_profile_v1_autonomous_execution_profiles__profile_id__post",
+        "type": "object"
+      },
       "Body_finalize_supplier_comparison_v1_sourcing_comparison_finalize_post": {
         "properties": {
           "assumption_evidence": {
@@ -7397,6 +7413,36 @@
         "title": "GlobalExpertTaskRouteInput",
         "type": "object"
       },
+      "GovernanceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "compliance_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Compliance Id",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "reviewer_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Reviewer Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "reviewer_id",
+          "compliance_id"
+        ],
+        "title": "GovernanceInput",
+        "type": "object"
+      },
       "GovernedExecutionDryRunInput": {
         "additionalProperties": false,
         "properties": {
@@ -12028,6 +12074,101 @@
           "name"
         ],
         "title": "ProductInput",
+        "type": "object"
+      },
+      "ProfileInput": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_channels": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Allowed Channels",
+            "type": "array"
+          },
+          "allowed_operations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Allowed Operations",
+            "type": "array"
+          },
+          "entity_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Entity Ref",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "max_command_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Command Amount"
+          },
+          "max_permit_ttl_seconds": {
+            "default": 300,
+            "maximum": 3600.0,
+            "minimum": 1.0,
+            "title": "Max Permit Ttl Seconds",
+            "type": "integer"
+          },
+          "profile_version": {
+            "default": "1",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Profile Version",
+            "type": "string"
+          },
+          "store_refs": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Store Refs",
+            "type": "array"
+          },
+          "tenant_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Tenant Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tenant_ref",
+          "entity_ref",
+          "store_refs",
+          "allowed_channels",
+          "allowed_operations"
+        ],
+        "title": "ProfileInput",
         "type": "object"
       },
       "ProfitErpItemSyncPrepareInput": {
@@ -21371,6 +21512,288 @@
           }
         ],
         "summary": "Decide Approval"
+      }
+    },
+    "/v1/autonomous-execution-profiles/{profile_id}": {
+      "get": {
+        "operationId": "get_profile_v1_autonomous_execution_profiles__profile_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Entity Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Get Profile"
+      },
+      "post": {
+        "operationId": "create_profile_v1_autonomous_execution_profiles__profile_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_profile_v1_autonomous_execution_profiles__profile_id__post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Create Profile"
+      }
+    },
+    "/v1/autonomous-execution-profiles/{profile_id}/activate": {
+      "post": {
+        "operationId": "activate_profile_v1_autonomous_execution_profiles__profile_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Entity Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GovernanceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Activate Profile"
+      }
+    },
+    "/v1/autonomous-execution-profiles/{profile_id}/history": {
+      "get": {
+        "operationId": "profile_history_v1_autonomous_execution_profiles__profile_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Entity Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Profile History"
+      }
+    },
+    "/v1/autonomous-execution-profiles/{profile_id}/suspend": {
+      "post": {
+        "operationId": "suspend_profile_v1_autonomous_execution_profiles__profile_id__suspend_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "title": "Profile Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": true,
+            "schema": {
+              "maxLength": 160,
+              "minLength": 1,
+              "title": "Entity Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GovernanceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Suspend Profile"
       }
     },
     "/v1/batch-market-scans": {
