@@ -96,6 +96,21 @@ def test_numeric_precision_is_bounded_before_persistence(ledger):
         ledger.record(event("reserved", "0.000000007", "p2", "p2", budget_id="budget-precise"))
 
 
+def test_metadata_is_copied_and_validated():
+    metadata = {"z": "2", "a": "1"}
+    created = ResourceBudgetEvent(
+        event_id="meta-event", idempotency_key="meta-key", budget_id="budget-1",
+        tenant_id="tenant-a", state="reserved", amount="1", metadata=metadata,
+    )
+    metadata["z"] = "changed"
+    assert dict(created.metadata or {}) == {"a": "1", "z": "2"}
+    with pytest.raises(ValueError, match="metadata"):
+        ResourceBudgetEvent(
+            event_id="bad-meta", idempotency_key="bad-meta-key", budget_id="budget-1",
+            tenant_id="tenant-a", state="reserved", amount="1", metadata={1: "x"},
+        )
+
+
 def test_overrun_cannot_be_attached_to_a_reservation(ledger):
     ledger.create_budget(ResourceBudget("budget-1", "tenant-a", "model_tokens", "cc-ai", Decimal("5")))
     ledger.record(event("reserved", "1", "r1", "e1"))

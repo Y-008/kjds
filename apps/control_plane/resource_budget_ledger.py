@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, localcontext
 from threading import RLock
+from types import MappingProxyType
 from typing import Any, Literal
 
 from sqlalchemy import (
@@ -100,7 +102,7 @@ class ResourceBudgetEvent:
     currency: str = "USD"
     parent_event_id: str | None = None
     occurred_at: datetime = datetime.min.replace(tzinfo=UTC)
-    metadata: dict[str, str] | None = None
+    metadata: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:
         limits = {"event_id": 200, "idempotency_key": 300, "budget_id": 200, "tenant_id": 160}
@@ -110,6 +112,17 @@ class ResourceBudgetEvent:
             raise ValueError("state is not allowlisted")
         object.__setattr__(self, "amount", _amount(self.amount))
         object.__setattr__(self, "currency", _currency(self.currency))
+        if self.metadata is not None:
+            if not isinstance(self.metadata, Mapping) or len(self.metadata) > 100:
+                raise ValueError("metadata must be a bounded string mapping")
+            canonical: dict[str, str] = {}
+            for key, value in self.metadata.items():
+                if not isinstance(key, str) or not key or len(key) > 120:
+                    raise ValueError("metadata keys must be non-empty bounded strings")
+                if not isinstance(value, str) or len(value) > 2000:
+                    raise ValueError("metadata values must be bounded strings")
+                canonical[key] = value
+            object.__setattr__(self, "metadata", MappingProxyType(dict(sorted(canonical.items()))))
         if self.occurred_at.tzinfo is None or self.occurred_at.utcoffset() is None:
             raise ValueError("occurred_at must include a timezone")
         object.__setattr__(self, "occurred_at", self.occurred_at.astimezone(UTC))
@@ -120,7 +133,7 @@ def _fingerprint(event: ResourceBudgetEvent) -> str:
         "budget_id": event.budget_id, "tenant_id": event.tenant_id,
         "state": event.state, "amount": str(event.amount), "currency": event.currency,
         "parent_event_id": event.parent_event_id, "occurred_at": event.occurred_at.isoformat(),
-        "metadata": event.metadata,
+        "metadata": dict(event.metadata) if event.metadata is not None else None,
     }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -380,7 +393,8 @@ class ResourceBudgetLedger:
                     budget_id=event.budget_id, tenant_id=event.tenant_id, state=event.state,
                     amount=event.amount, amount_text=str(event.amount), currency=event.currency,
                     parent_event_id=event.parent_event_id, occurred_at=event.occurred_at,
-                    metadata_json=event.metadata, fingerprint_sha256=fingerprint,
+                    metadata_json=dict(event.metadata) if event.metadata is not None else None,
+                    fingerprint_sha256=fingerprint,
                     recorded_at=datetime.now(UTC)))
         except IntegrityError as exc:
             raise ValueError("resource budget event already exists or idempotency key conflicts") from exc
