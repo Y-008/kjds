@@ -459,7 +459,25 @@ class LimitedExecutorService:
             if existing is not None:
                 if existing.request_hash != requested_hash:
                     raise ValueError("Execution receipt is immutable")
-                return self._receipt(existing, self._rollback_for(session, command_id))
+                result = self._receipt(existing, self._rollback_for(session, command_id))
+                existing_outcome = existing.outcome
+                existing_mutation_applied = existing.mutation_applied
+                existing_error_code = existing.error_code
+                existing_error_detail = existing.error_detail
+                # Release the command transaction before retrying admission
+                # settlement.  The receipt is immutable, so this rollback
+                # only ends the read lock and cannot discard a mutation.
+                session.rollback()
+                admission = self._settle_resource_admission(
+                    command_id,
+                    outcome=existing_outcome,
+                    mutation_applied=existing_mutation_applied,
+                    error_code=existing_error_code,
+                    error_detail=existing_error_detail,
+                )
+                if admission is not None:
+                    result["resource_admission"] = admission
+                return result
             if row.status != "write_started" or row.claimed_by != recorded_by:
                 raise ValueError(
                     "Only the worker that consumed the command write attempt may record its receipt"

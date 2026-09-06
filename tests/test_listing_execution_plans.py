@@ -656,7 +656,7 @@ def test_approved_listing_plan_derives_ozon_target_and_items_server_side():
     assert receipt["remote_operation_id"] == "42"
 
 
-def test_late_execution_receipt_is_persisted_as_uncertain() -> None:
+def test_late_execution_receipt_is_persisted_as_uncertain(monkeypatch) -> None:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -735,6 +735,12 @@ def test_late_execution_receipt_is_persisted_as_uncertain() -> None:
     assert receipt["error_code"] == "EXECUTION_LEASE_EXPIRED"
     assert receipt["remote_operation_id"] == "42"
     assert executor.get("lxc-late")["status"] == "uncertain"
+    settlement_retries = []
+    monkeypatch.setattr(
+        executor,
+        "_settle_resource_admission",
+        lambda *args, **kwargs: settlement_retries.append((args, kwargs)) or None,
+    )
     retry = executor.record_receipt(
         "lxc-late",
         outcome="failed",
@@ -749,5 +755,6 @@ def test_late_execution_receipt_is_persisted_as_uncertain() -> None:
         trace_id="trace-retry",
     )
     assert retry["id"] == receipt["id"]
+    assert settlement_retries and settlement_retries[0][1]["outcome"] == "uncertain"
     with Session(engine) as session:
         assert session.query(LimitedExecutionReceiptRow).count() == 1
