@@ -151,6 +151,7 @@ def test_postgresql_health_requires_current_head_and_required_tables(monkeypatch
     connection = _ProbeConnection()
     assert database.database_health(_ProbeEngine(connection)) == {"status": "ok"}
     assert any("alembic_version" in statement for statement in connection.statements)
+    assert any("public.alembic_version" in statement for statement in connection.statements)
 
 
 def test_postgresql_health_fails_closed_on_stale_head_or_missing_table(monkeypatch):

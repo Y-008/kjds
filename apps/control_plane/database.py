@@ -117,7 +117,10 @@ def _verify_postgresql_schema(connection: Any) -> None:
         sorted(
             str(value)
             for value in connection.execute(
-                text("SELECT version_num FROM alembic_version ORDER BY version_num")
+                text(
+                    "SELECT version_num FROM public.alembic_version "
+                    "ORDER BY version_num"
+                )
             ).scalars()
         )
     )

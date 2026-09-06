@@ -381,6 +381,34 @@
       "delivery_contract": "append_only_exact_scope_warehouse_execution_authority",
       "rationale": "仓库 location/bin/lot/reservation/wave/pick/pack/parcel/scan/weight 与独立治理的正式 Readback 只追加为 exact-scope 内部权威；KJDS 没有库存调整、出库确认、面单购买或承运商交接执行路径，也不联系承运商或客户。",
       "activation_trigger": "正式授权的仓库或承运商执行 Worker、一次性 Permit 消费者与跨服务通知合同上线前"
+    },
+    {
+      "module": "pm_heartbeat_store.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_project_manager_heartbeat_ledger",
+      "rationale": "项目经理心跳、前沿、阻塞和恢复游标是控制面内部审计事实；不创建外部通知、Permit 或平台动作。",
+      "activation_trigger": "独立监控告警消费者或跨服务任务调度上线前"
+    },
+    {
+      "module": "project_graph_proposal_ledger.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_exact_scope_graph_proposal_replay",
+      "rationale": "图前沿 dispatch-wave/invalidate 只保存不可变 proposal 与回放哈希；它不提交队列、不获取租约、不签发 Permit、不触发外部写。",
+      "activation_trigger": "提案经独立治理批准并接入既有 TeamAgent 执行权威前"
+    },
+    {
+      "module": "skill_usage_sql.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_tenant_scoped_usage_cost_ledger",
+      "rationale": "Skill、模型、Token、生图和视频用量只形成租户隔离的商业成本事实；当前不连接支付、退款或外部计费投递。",
+      "activation_trigger": "真实支付或发票消费者上线前"
+    },
+    {
+      "module": "temporal_fact_sql.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_bitemporal_fact_revision_ledger",
+      "rationale": "四时间事实修订和血缘版本是标准事实的持久化适配器；修订追加新版本，不生成外部通知或执行动作。",
+      "activation_trigger": "事实晋级需要跨服务事件投递前"
     }
   ]
 }
