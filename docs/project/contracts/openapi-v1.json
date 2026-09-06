@@ -825,6 +825,14 @@
       },
       "Body_analytics_drilldown_v1_analytics__recipe__drilldown_get": {
         "properties": {
+          "compare_with": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Compare With",
+            "type": "array"
+          },
           "dimension": {
             "default": [
               "store",
@@ -852,6 +860,14 @@
       },
       "Body_analytics_lineage_v1_analytics__recipe__lineage_get": {
         "properties": {
+          "compare_with": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Compare With",
+            "type": "array"
+          },
           "dimension": {
             "default": [
               "store",
@@ -8655,6 +8671,70 @@
           "current_state_hash"
         ],
         "title": "LimitedExecutionClaimInput",
+        "type": "object"
+      },
+      "LimitedExecutionQueueInput": {
+        "additionalProperties": false,
+        "description": "Optional explicit resource budget to reserve before command claim.",
+        "properties": {
+          "resource_admission_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Admission Id"
+          },
+          "resource_budget_amount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Budget Amount"
+          },
+          "resource_budget_currency": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "pattern": "^[A-Za-z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Budget Currency"
+          },
+          "resource_budget_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Budget Id"
+          }
+        },
+        "title": "LimitedExecutionQueueInput",
         "type": "object"
       },
       "LimitedExecutionReceiptInput": {
@@ -24413,6 +24493,23 @@
               "title": "Currency",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
           }
         ],
         "responses": {
@@ -28911,6 +29008,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LimitedExecutionQueueInput"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {
