@@ -404,6 +404,20 @@
       "activation_trigger": "真实支付或发票消费者上线前"
     },
     {
+      "module": "autonomous_execution_profile_store.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_standing_profile_revision_and_governance_event_ledger",
+      "rationale": "Standing Profile 的创建、启用和暂停只追加 exact-scope 治理修订；Permit 仍由纯策略评估器短时签发，不创建外部通知或平台动作。",
+      "activation_trigger": "Profile 治理事件需要独立审计或跨服务消费者时"
+    },
+    {
+      "module": "commercial_finance_ledger.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_tenant_scoped_commercial_cost_and_revenue_ledger",
+      "rationale": "Token、媒体资产、收入分成和退款调整绑定客户合同与 Entitlement，只形成租户隔离的商业财务事实；当前不连接 PSP、银行或外部付款消费者。",
+      "activation_trigger": "真实支付、发票、退款或收入分成消费者上线前"
+    },
+    {
       "module": "temporal_fact_sql.py",
       "status": "internal_only",
       "delivery_contract": "append_only_bitemporal_fact_revision_ledger",
