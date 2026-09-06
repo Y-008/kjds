@@ -37,7 +37,8 @@ _RECOVERY_ACTIONS: dict[str, str] = {
 }
 
 _TERMINAL_STATES = frozenset({"completed", "failed", "blocked", "expired"})
-_ACTIVE_STATES = frozenset({"running", "queued", "retry_wait", "paused"})
+_ACTIVE_STATES = frozenset({"running", "retry_wait", "paused"})
+_QUEUED_STATE = "queued"
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,7 +202,7 @@ def detect_stuck_tasks(
         state = item.state.strip().lower() if isinstance(item.state, str) else ""
         if not isinstance(item.task_ref, str) or not item.task_ref.strip():
             reasons.append("unknown_state")
-        if state not in _ACTIVE_STATES | _TERMINAL_STATES:
+        if state not in _ACTIVE_STATES | _TERMINAL_STATES | {_QUEUED_STATE}:
             reasons.append("unknown_state")
 
         # A naive timestamp is not trusted.  ``_utc`` normalizes it for local
@@ -239,8 +240,14 @@ def detect_stuck_tasks(
                 progress_at is None or progress_at + effective_progress_timeout <= current
             ):
                 reasons.append("progress_stalled")
-        elif state == "queued" and _is_blank(item.consumer_id):
-            reasons.append("queued_without_consumer")
+        elif state == _QUEUED_STATE:
+            # Queue admission has no heartbeat yet; use the queue deadline and
+            # consumer binding instead of falsely treating a pre-dispatch task
+            # as heartbeat-expired.
+            if deadline is not None and deadline <= current:
+                reasons.append("deadline_expired")
+            if _is_blank(item.consumer_id):
+                reasons.append("queued_without_consumer")
 
         if item.external_readback_required and item.external_readback_state in {None, "pending", "unknown"}:
             reasons.append("external_readback_unknown")

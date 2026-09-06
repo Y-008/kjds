@@ -94,6 +94,15 @@ def test_conflicting_deadline_aliases_fail_closed_and_hash_is_stable():
     assert first.observation_sha256 == second.observation_sha256
 
 
+def test_queued_task_does_not_require_pre_dispatch_heartbeat():
+    observation = TaskLivenessObservation(
+        task_ref="queued-healthy", state="queued", last_heartbeat=None,
+        deadline=NOW + timedelta(hours=1), consumer_id="worker-1",
+    )
+    result = detect_stuck_tasks((observation,), now=NOW)[0]
+    assert result.status == "healthy"
+
+
 def test_invalid_timeout_is_rejected():
     with pytest.raises(ValueError, match="heartbeat_timeout"):
         detect_stuck_tasks((), heartbeat_timeout=timedelta(0))
