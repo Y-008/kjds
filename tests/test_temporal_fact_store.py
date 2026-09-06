@@ -146,6 +146,9 @@ def test_idempotency_is_exact_and_conflicting_reuse_fails_closed() -> None:
     with pytest.raises(RevisionConflictError, match="idempotency key"):
         store.append(fact_values(payload={"amount": 9, "currency": "RUB"}))
 
+    with pytest.raises(RevisionConflictError, match="idempotency key"):
+        store.append(fact_values(source_system="different-source"))
+
 
 def test_quality_state_does_not_turn_zero_into_no_data() -> None:
     valid = TemporalFactRevision.model_validate(fact_values())

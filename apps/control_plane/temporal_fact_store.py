@@ -549,6 +549,8 @@ def _request_fingerprint(fact: TemporalFactRevision) -> str:
             "effective_time": fact.effective_time.isoformat(),
             "settled_time": fact.settled_time.isoformat() if fact.settled_time else None,
             "fresh_until": fact.fresh_until.isoformat() if fact.fresh_until else None,
+            "source_system": fact.source_system,
+            "source_record_id": fact.source_record_id,
             "source_version": fact.source_version,
             "causation_id": fact.causation_id,
             "correlation_id": fact.correlation_id,
@@ -557,6 +559,7 @@ def _request_fingerprint(fact: TemporalFactRevision) -> str:
             "quality_state": fact.quality_state.value,
             "lineage": [item.model_dump(mode="json") for item in fact.lineage],
             "revision_reason": fact.revision_reason,
+            "created_by": fact.created_by,
             "metadata": fact.metadata,
         }
     )
