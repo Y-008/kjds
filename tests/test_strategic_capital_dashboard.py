@@ -30,7 +30,7 @@ from apps.control_plane.strategic_capital_dashboard import (
     seal_available_projection,
 )
 from tests.test_primary_source_intake import (
-    admit as admit_primary_source,
+    envelope as primary_envelope,
 )
 from tests.test_primary_source_intake import (
     intake_runtime as _intake_runtime_fixture,
@@ -764,8 +764,34 @@ def test_real_primary_and_benchmark_services_compose_and_rotation_hides_old_rows
         benchmark_value
     )
     benchmark.scope_grants = shared_scope
-    admitted = admit_primary_source(primary, [primary_record()])
+    # Keep both real upstream projections inside the same valid-time horizon.
+    # The primary-source module's shared fixture is intentionally frozen in the
+    # past; using it unchanged here would make its review window expire before
+    # the benchmark fixture's rolling clock and would correctly produce
+    # ``stale``.  Build this integration row at the dashboard read horizon
+    # instead of weakening the production freshness check.
     primary.clock = lambda: BENCHMARK_NOW
+    admitted = primary.admit(
+        principal=primary_principal(),
+        store_ref="store-a",
+        as_of=BENCHMARK_NOW,
+        idempotency_key="dashboard-lead-batch",
+        envelope=primary_envelope(
+            source_total=1,
+            captured_at=BENCHMARK_NOW - timedelta(hours=3),
+            effective_at=BENCHMARK_NOW - timedelta(hours=3),
+            integrity={
+                "raw_blob_reverified": True,
+                "verifier_id": "sha256-byte-verifier",
+                "verifier_version": "1",
+                "verified_at": BENCHMARK_NOW - timedelta(hours=1),
+            },
+            review_due_at=BENCHMARK_NOW + timedelta(days=30),
+        ),
+        records=[
+            primary_record(signal_observed_at=BENCHMARK_NOW - timedelta(hours=2))
+        ],
+    )
     built = build_benchmark(benchmark, [benchmark_group()])
     registry = StrategicCapitalDashboardRegistry.load()
     service = StrategicCapitalDashboardService(
