@@ -143,6 +143,11 @@ def _row_to_revision(row: TemporalFactRow) -> TemporalFactRevision:
         settled_time=_aware(row.settled_time),
         fresh_until=_aware(row.fresh_until),
         quality_state=QualityState(row.quality_state),
+        # Preserve the persisted digest so the Pydantic contract can verify
+        # the payload instead of silently recomputing a new digest on read.
+        # Recomputing here would hide a tampered/corrupt SQL row and make a
+        # replay appear valid even though its stored integrity claim changed.
+        payload_hash=row.payload_hash,
         source_system=row.source_system or "unknown",
         source_record_id=row.source_record_id or row.natural_key,
         source_version=row.source_version or "1",

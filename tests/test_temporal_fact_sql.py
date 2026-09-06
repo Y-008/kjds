@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, update
 
 from apps.control_plane.sql_repository import Base
 from apps.control_plane.temporal_fact_sql import SqlTemporalFactStore, TemporalFactRow
@@ -143,3 +143,23 @@ def test_sql_as_of_projects_stale_and_can_exclude_it_without_mutation():
     assert store.as_of(cutoff)[0].quality_state is QualityState.STALE
     assert store.as_of(cutoff, include_stale=False) == ()
     assert store.get(first.fact_id).quality_state is QualityState.VALID
+
+
+def test_sql_read_preserves_payload_digest_and_rejects_tampered_row():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine, tables=[TemporalFactRow.__table__])
+    store = SqlTemporalFactStore(engine)
+    first = store.append(_fact())
+
+    # Simulate storage corruption after the append.  The adapter must validate
+    # the persisted digest on read instead of recomputing it from the changed
+    # payload and making the corrupted row look trustworthy.
+    with engine.begin() as connection:
+        connection.execute(
+            update(TemporalFactRow)
+            .where(TemporalFactRow.revision_id == first.revision_id)
+            .values(payload_json={"amount": 999})
+        )
+
+    with pytest.raises(ValueError, match="payload_hash does not match payload"):
+        store.get(first.fact_id)
