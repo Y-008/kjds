@@ -101,6 +101,8 @@ def create_profile(
     ensure_role(principal, "admin", "compliance")
     if body.tenant_ref != principal.tenant_ref:
         raise HTTPException(status_code=403, detail="profile tenant scope does not match principal")
+    if not set(body.store_refs).issubset(principal.store_refs):
+        raise HTTPException(status_code=403, detail="profile store scope exceeds principal scope")
     profile = _profile(body, profile_id=profile_id)
     return run(lambda: _as_dict(runtime.autonomous_execution_profile_store.create(
         profile, idempotency_key=governance.idempotency_key,
