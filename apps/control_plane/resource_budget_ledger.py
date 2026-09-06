@@ -149,6 +149,12 @@ class ResourceBudgetEventRow(Base):
         UniqueConstraint("tenant_id", "idempotency_key", name="uq_resource_budget_event_tenant_idempotency"),
         UniqueConstraint("tenant_id", "budget_id", "event_id", name="uq_resource_budget_event_scope_id"),
         CheckConstraint("state IN ('reserved', 'consumed', 'released', 'overrun')", name="ck_resource_budget_event_state"),
+        CheckConstraint(
+            "(state = 'reserved' AND parent_event_id IS NULL) OR "
+            "(state IN ('consumed', 'released') AND parent_event_id IS NOT NULL) OR "
+            "(state = 'overrun')",
+            name="ck_resource_budget_event_parent_shape",
+        ),
         ForeignKeyConstraint(
             ["tenant_id", "budget_id"],
             ["resource_budgets.tenant_id", "resource_budgets.budget_id"],

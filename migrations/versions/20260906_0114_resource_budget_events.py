@@ -64,6 +64,12 @@ def upgrade() -> None:
             "state IN ('reserved', 'consumed', 'released', 'overrun')",
             name="ck_resource_budget_event_state",
         ),
+        sa.CheckConstraint(
+            "(state = 'reserved' AND parent_event_id IS NULL) OR "
+            "(state IN ('consumed', 'released') AND parent_event_id IS NOT NULL) OR "
+            "(state = 'overrun')",
+            name="ck_resource_budget_event_parent_shape",
+        ),
         sa.CheckConstraint("amount >= 0", name="ck_resource_budget_event_amount_nonnegative"),
         sa.CheckConstraint("length(currency) = 3", name="ck_resource_budget_event_currency_shape"),
     )
