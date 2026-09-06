@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -44,3 +44,24 @@ def test_idempotency_keys_are_scoped_to_tenant():
     ledger.record(_event("shared"))
     other = replace(_event("shared", event_id="e2"), tenant_id="t2")
     assert ledger.record(other) == other
+
+
+def test_invoice_preview_supports_historical_cutoff_and_rejects_future_events():
+    ledger = SkillUsageLedger()
+    base = datetime.now(UTC) - timedelta(days=2)
+    ledger.record(replace(_event("k1", event_id="e1"), occurred_at=base))
+    later = replace(_event("k2", event_id="e2"), occurred_at=base + timedelta(hours=12))
+    ledger.record(later)
+    preview = ledger.invoice_preview(
+        tenant_id="t1", customer_id="c1", as_of=base + timedelta(hours=6)
+    )
+    assert preview["event_ids"] == ["e1"]
+    with pytest.raises(ValueError, match="future"):
+        ledger.events_for(tenant_id="t1", as_of=datetime.now(UTC).replace(year=2099))
+
+
+def test_usage_event_rejects_nan_and_missing_timestamp():
+    with pytest.raises(ValueError, match="finite"):
+        replace(_event("nan"), units=Decimal("NaN"))
+    with pytest.raises(ValueError, match="required"):
+        replace(_event("missing"), occurred_at=datetime.min.replace(tzinfo=UTC))

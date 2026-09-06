@@ -29,7 +29,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from .skill_usage_ledger import SkillUsageEvent, _usage_fingerprint
+from .skill_usage_ledger import SkillUsageEvent, _normalize_cutoff, _usage_fingerprint
 from .sql_repository import Base
 
 
@@ -261,14 +261,18 @@ class SqlSkillUsageLedger:
             return _event_from_row(row)
 
     def events_for(
-        self, *, tenant_id: str, customer_id: str | None = None
+        self, *, tenant_id: str, customer_id: str | None = None,
+        as_of: datetime | None = None,
     ) -> tuple[SkillUsageEvent, ...]:
+        cutoff = _normalize_cutoff(as_of)
         with Session(self.engine) as session:
             query = select(SkillUsageEventRow).where(
                 SkillUsageEventRow.tenant_id == tenant_id
             )
             if customer_id is not None:
                 query = query.where(SkillUsageEventRow.customer_id == customer_id)
+            if cutoff is not None:
+                query = query.where(SkillUsageEventRow.occurred_at <= cutoff)
             rows = session.scalars(
                 query.order_by(
                     SkillUsageEventRow.occurred_at, SkillUsageEventRow.event_id
@@ -282,20 +286,22 @@ class SqlSkillUsageLedger:
         tenant_id: str,
         customer_id: str | None = None,
         currency: str = "USD",
+        as_of: datetime | None = None,
     ) -> Decimal:
-        rows = self.events_for(tenant_id=tenant_id, customer_id=customer_id)
+        rows = self.events_for(tenant_id=tenant_id, customer_id=customer_id, as_of=as_of)
         if any(event.currency != currency for event in rows):
             raise ValueError("mixed currencies require an explicit FX snapshot")
         return sum((event.total_cost for event in rows), Decimal("0"))
 
     def invoice_preview(
-        self, *, tenant_id: str, customer_id: str, currency: str = "USD"
+        self, *, tenant_id: str, customer_id: str, currency: str = "USD",
+        as_of: datetime | None = None,
     ) -> dict[str, object]:
-        rows = self.events_for(tenant_id=tenant_id, customer_id=customer_id)
+        rows = self.events_for(tenant_id=tenant_id, customer_id=customer_id, as_of=as_of)
         total = self.total_cost(
-            tenant_id=tenant_id, customer_id=customer_id, currency=currency
+            tenant_id=tenant_id, customer_id=customer_id, currency=currency, as_of=as_of
         )
-        return {
+        result = {
             "tenant_id": tenant_id,
             "customer_id": customer_id,
             "currency": currency,
@@ -303,6 +309,9 @@ class SqlSkillUsageLedger:
             "total_cost": str(total),
             "event_ids": [event.event_id for event in rows],
         }
+        if as_of is not None:
+            result["as_of"] = as_of.astimezone(UTC).isoformat()
+        return result
 
 
 __all__ = ["SkillUsageEventRow", "SqlSkillUsageLedger"]
