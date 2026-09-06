@@ -3,6 +3,14 @@
   "schema_version": "1.0",
   "status": "active",
   "observed_at": "2026-08-01T00:00:00+08:00",
+  "current_external_gate": {
+    "checked_on": "2026-09-07",
+    "status": "BLOCKED_EVIDENCE",
+    "last_attempt_error_code": "OZON_HTTP_403",
+    "raw_response_artifact_present": false,
+    "historical_observations_usable_as_current": false,
+    "evidence_ref": "docs/project/evidence/20260907_OZON_EXTERNAL_READBACK_BLOCKED.md"
+  },
   "source": "user-provided Ozon Seller portal screenshots (2026-08-01); OCR-captured, non-secret identity facts only",
   "verified_native": false,
   "canonical_authorization_recorded": true,
