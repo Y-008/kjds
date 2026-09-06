@@ -280,7 +280,9 @@ class GovernedCommercialGate:
             return "UNKNOWN", "INVALID", "evidence_invalid"
 
         returned_id = cls._nested_result_value(result, ("evidence_id", "id"))
-        if returned_id is not None and returned_id != evidence_id:
+        if not isinstance(returned_id, str):
+            return "UNKNOWN", "UNPROVEN", "evidence_id_unbound"
+        if returned_id != evidence_id:
             return "UNKNOWN", "INVALID", "evidence_id_mismatch"
 
         actual_sha = cls._nested_result_value(
