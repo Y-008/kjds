@@ -31,6 +31,7 @@ class ProofState(StrEnum):
 
 class EvidenceState(StrEnum):
     VALID = "VALID"
+    PARTIAL = "PARTIAL"
     STALE = "STALE"
     BLOCKED = "BLOCKED"
     NO_DATA = "NO_DATA"
@@ -81,13 +82,28 @@ class GovernedGraphNode(BaseModel):
             and self.rollback_available
         ):
             return "LIVE"
+
+        # Explicit hard failures must dominate an unknown external outcome or
+        # a refreshable hold.  In particular, a missing rollback path and
+        # BLOCKED operational/economic gates are unsafe even when the other
+        # states happen to look healthy.
+        if (
+            self.rollback_available is False
+            or self.proof_state
+            in {ProofState.BLOCKED, ProofState.STALE, ProofState.NO_DATA}
+            or self.evidence_state
+            in {
+                EvidenceState.BLOCKED,
+                EvidenceState.STALE,
+                EvidenceState.NO_DATA,
+            }
+            or self.operational_state == OperationalState.BLOCKED
+            or self.economic_state == EconomicState.BLOCKED
+        ):
+            return "BLOCKED"
+
         if self.evidence_state == EvidenceState.UNKNOWN_OUTCOME:
             return "UNKNOWN_OUTCOME"
-        if any(
-            state in {ProofState.BLOCKED, ProofState.STALE, ProofState.NO_DATA}
-            for state in (self.proof_state,)
-        ) or self.evidence_state in {EvidenceState.BLOCKED, EvidenceState.STALE, EvidenceState.NO_DATA}:
-            return "BLOCKED"
         return "HOLD"
 
     @model_validator(mode="after")
