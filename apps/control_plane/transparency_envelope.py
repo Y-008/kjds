@@ -586,10 +586,21 @@ class TransparencyEnvelope(_Contract):
 
         chain = self.lineage_chain
         path = self.drilldown_path
+        chain_audit = chain.structure_audit() if chain else {
+            "complete": False,
+            "structurally_complete": False,
+            "missing_stages": list(LINEAGE_STAGE_ORDER),
+            "continuity_errors": ["lineage_chain_missing"],
+            "node_count": 0,
+            "edge_count": 0,
+        }
         return {
             "lineage_complete": bool(chain and chain.complete),
+            "lineage_structurally_complete": bool(chain and chain.structurally_complete),
             "lineage_missing_stages": list(chain.missing_stages) if chain else list(LINEAGE_STAGE_ORDER),
             "lineage_coverage": chain.coverage_ratio() if chain else 0.0,
+            "lineage_continuity_errors": chain_audit["continuity_errors"],
+            "lineage_structure": chain_audit,
             "drilldown_complete": bool(path and path.complete),
             "drilldown_missing_levels": list(path.missing_levels) if path else list(DRILLDOWN_LEVEL_ORDER),
             "record_contract_complete": bool(self.records) and len(self.records) == len(self.data),

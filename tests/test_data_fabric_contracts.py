@@ -227,3 +227,46 @@ def test_lineage_chain_and_six_level_path_report_missing_nodes() -> None:
 
     with pytest.raises(ValidationError, match="ordered"):
         DrilldownPath(nodes=(DrilldownNode(level="sku", id="sku-1"), DrilldownNode(level="store", id="s1")))
+
+
+def test_lineage_chain_requires_connected_ordered_edges_for_strict_replay() -> None:
+    nodes = tuple(LineageNode(stage=stage, id=f"{stage}-1") for stage in LINEAGE_STAGE_ORDER)
+    edges = tuple(
+        {
+            "from_type": left.stage,
+            "from_id": left.id,
+            "to_type": right.stage,
+            "to_id": right.id,
+            "relationship": "derives",
+        }
+        for left, right in zip(nodes, nodes[1:], strict=False)
+    )
+    chain = LineageChain(nodes=nodes, edges=edges)
+    assert chain.complete is True
+    assert chain.structurally_complete is True
+    assert chain.continuity_errors == ()
+    assert chain.structure_audit()["edge_count"] == len(LINEAGE_STAGE_ORDER) - 1
+
+    broken = LineageChain(nodes=nodes, edges=edges[:-1])
+    assert broken.complete is True
+    assert broken.structurally_complete is False
+    assert any(item.startswith("adjacent_edge_missing:") for item in broken.continuity_errors)
+
+
+def test_lineage_chain_rejects_or_reports_edges_outside_node_set() -> None:
+    chain = LineageChain(
+        nodes=(LineageNode(stage="metric", id="metric-1"),),
+        edges=(
+            {
+                "from_type": "metric",
+                "from_id": "metric-1",
+                "to_type": "raw_file",
+                "to_id": "missing-file",
+                "relationship": "derives",
+            },
+        ),
+        required_stages=("metric",),
+    )
+    assert chain.complete is True
+    assert chain.structurally_complete is False
+    assert "edge_target_missing:raw_file:missing-file" in chain.continuity_errors

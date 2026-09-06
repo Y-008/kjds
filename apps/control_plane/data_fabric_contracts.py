@@ -409,6 +409,66 @@ class LineageChain(_Contract):
         return not self.missing_stages
 
     @property
+    def continuity_errors(self) -> tuple[str, ...]:
+        """Return structural lineage errors without asserting artifact truth.
+
+        Stage presence alone is insufficient for replay: an edge may point to
+        a non-existent node or jump backwards in the declared metric-to-source
+        order.  Keep this as a diagnostic property so legacy partial chains can
+        still be rendered, while strict consumers can require
+        :attr:`structurally_complete`.
+        """
+
+        node_keys = {(node.stage, node.id) for node in self.nodes}
+        errors: list[str] = []
+        for edge in self.edges:
+            from_stage = str(edge.from_type).strip().lower()
+            to_stage = str(edge.to_type).strip().lower()
+            if (from_stage, edge.from_id) not in node_keys:
+                errors.append(f"edge_source_missing:{from_stage}:{edge.from_id}")
+            if (to_stage, edge.to_id) not in node_keys:
+                errors.append(f"edge_target_missing:{to_stage}:{edge.to_id}")
+            if (
+                from_stage in LINEAGE_STAGE_ORDER
+                and to_stage in LINEAGE_STAGE_ORDER
+                and LINEAGE_STAGE_ORDER.index(from_stage) >= LINEAGE_STAGE_ORDER.index(to_stage)
+            ):
+                errors.append(f"edge_order_invalid:{from_stage}:{to_stage}")
+        if self.complete and len(self.nodes) > 1:
+            expected_pairs = {
+                ((left.stage, left.id), (right.stage, right.id))
+                for left, right in zip(self.nodes, self.nodes[1:], strict=False)
+            }
+            actual_pairs = {
+                ((str(edge.from_type).strip().lower(), edge.from_id),
+                 (str(edge.to_type).strip().lower(), edge.to_id))
+                for edge in self.edges
+            }
+            for source, target in sorted(expected_pairs - actual_pairs):
+                errors.append(
+                    f"adjacent_edge_missing:{source[0]}:{source[1]}->{target[0]}:{target[1]}"
+                )
+        return tuple(dict.fromkeys(errors))
+
+    @property
+    def structurally_complete(self) -> bool:
+        """Whether all required stages and their ordered edges are present."""
+
+        return self.complete and not self.continuity_errors
+
+    def structure_audit(self) -> dict[str, Any]:
+        """Stable, JSON-safe diagnostics for UI and replay tooling."""
+
+        return {
+            "complete": self.complete,
+            "structurally_complete": self.structurally_complete,
+            "missing_stages": list(self.missing_stages),
+            "continuity_errors": list(self.continuity_errors),
+            "node_count": len(self.nodes),
+            "edge_count": len(self.edges),
+        }
+
+    @property
     def present_stage_count(self) -> int:
         return len(self.present_stages)
 
