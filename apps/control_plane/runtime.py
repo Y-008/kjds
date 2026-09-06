@@ -136,6 +136,7 @@ from .ozon_finance_review import (
     OzonFinanceReportReviewService,
 )
 from .ozon_global_rules import OzonGlobalRuleRegistry
+from .ozon_production_acceptance import OzonProductionAcceptanceService
 from .pilot_readiness import PilotReadinessService
 from .pilot_runs import PilotRunService
 from .pm_heartbeat_store import SqlProjectHeartbeatStore
@@ -358,6 +359,7 @@ class RuntimeServices:
     pilot_runs: Any
     scoped_read_only_pilots: Any
     scoped_read_only_claims: Any
+    ozon_production_acceptance: Any
     policy_shadow: Any
     post_execution: Any
     portfolio_pilot: Any
@@ -1054,6 +1056,11 @@ def build_runtime() -> RuntimeServices:
         source_adapters=intelligence_source_adapters,
         catalog=marketplace_catalog,
     )
+    ozon_production_acceptance = OzonProductionAcceptanceService(
+        scoped_pilots=scoped_read_only_pilots,
+        evidence=evidence,
+        channel_account_reader=scoped_channel_account_authority,
+    )
     scoped_marketplace_observation = ScopedMarketplaceObservationAuthority(
         observations=marketplace_observation,
         scoped_evidence=scoped_evidence,
@@ -1544,6 +1551,7 @@ def build_runtime() -> RuntimeServices:
         pilot_runs=pilot_runs,
         scoped_read_only_pilots=scoped_read_only_pilots,
         scoped_read_only_claims=scoped_read_only_claims,
+        ozon_production_acceptance=ozon_production_acceptance,
         policy_shadow=policy_shadow,
         post_execution=post_execution,
         portfolio_pilot=portfolio_pilot,

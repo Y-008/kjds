@@ -601,6 +601,45 @@ def evaluate_read_only_pilot(
     )
 
 
+@router.get("/v1/read-only-pilot-runs/{run_id}/production-acceptance")
+def evaluate_ozon_production_acceptance(
+    run_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
+    as_of: str | None = None,
+):
+    """Project whether one real Ozon readback is admissible for production.
+
+    This endpoint is read-only: it evaluates the scoped run, raw Evidence,
+    official response contract and managed channel identity.  It never
+    promotes a Fact, issues a Permit, or contacts Ozon.
+    """
+
+    ensure_role(
+        principal,
+        "pilot_reader",
+        "operator",
+        "reviewer",
+        "compliance",
+        "admin",
+    )
+    store = _store_ref(principal, store_ref)
+    cutoff, entity_scope = _scope_context(
+        principal,
+        store_ref=store,
+        as_of=as_of,
+    )
+    return run(
+        lambda: runtime.ozon_production_acceptance.evaluate(
+            principal=principal,
+            entity_scope=entity_scope,
+            store_ref=store,
+            run_id=run_id,
+            as_of=cutoff,
+        )
+    )
+
+
 @router.post("/v1/read-only-pilots/{pilot_id}/attestations", status_code=201)
 def attest_read_only_pilot_control(
     pilot_id: str,
