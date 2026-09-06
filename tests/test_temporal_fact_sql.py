@@ -99,6 +99,7 @@ def test_sql_as_of_requires_exact_store_and_warehouse_scope():
                 store_ids=("s2",),
                 warehouse_ids=("w2",),
             ),
+            "permission_scope": "t1:e1:s2:w2",
         },
         deep=True,
     )
