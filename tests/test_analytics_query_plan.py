@@ -147,6 +147,7 @@ def test_execute_orders_rolls_up_net_sales_and_units_without_losing_zero() -> No
         _order_fact("f2", start, gross_sales=5, quantity=1),
         _order_fact("f-zero", start, gross_sales=0, quantity=0, sku="sku-zero"),
     ]
+    facts[0]["scope"]["warehouse_ids"] = ("warehouse-1",)
 
     result = execute_analytics_plan(
         plan,

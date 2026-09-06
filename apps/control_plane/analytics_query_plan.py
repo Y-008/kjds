@@ -482,8 +482,8 @@ def _scope_exact(actual: ScopeRef, expected: ScopeRef) -> bool:
     return (
         actual.tenant_id == expected.tenant_id
         and actual.entity_id == expected.entity_id
-        and set(actual.store_ids) == set(expected.store_ids)
-        and set(actual.warehouse_ids) == set(expected.warehouse_ids)
+        and (not expected.store_ids or set(actual.store_ids) == set(expected.store_ids))
+        and (not expected.warehouse_ids or set(actual.warehouse_ids) == set(expected.warehouse_ids))
     )
 
 
