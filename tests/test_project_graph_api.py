@@ -1,9 +1,12 @@
+from datetime import UTC, datetime
+
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from apps.control_plane.api import app, is_write_safety_control_path, registered_routes
+from apps.control_plane.autonomous_pm_heartbeat import GitWorktreeObservation
 from apps.control_plane.routers import project_graph
 from apps.control_plane.runtime import runtime
 from apps.control_plane.security import Principal, WritesDisabled
@@ -149,6 +152,67 @@ def test_heartbeat_persists_and_replays_standard_task_result(monkeypatch):
     expected = body.task_result
     assert result["task_result"] == expected
     assert captured["payload"]["task_result"] == expected
+
+
+def test_heartbeat_ignores_caller_git_attestation_and_binds_server_observation(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        project_graph,
+        "_graph",
+        lambda *_args, **_kwargs: {
+            "scope": {"entity_ref": "entity-a", "store_ref": "store-a"},
+            "nodes": [],
+            "edges": [],
+            "tasks": [],
+        },
+    )
+    server_observation = GitWorktreeObservation(
+        status="observed",
+        head="b" * 40,
+        worktree_clean=False,
+        status_sha256="c" * 64,
+        observed_at=datetime(2026, 9, 6, 12, tzinfo=UTC),
+    )
+    monkeypatch.setattr(
+        project_graph,
+        "observe_server_git_worktree",
+        lambda: server_observation,
+    )
+    captured: dict[str, object] = {}
+
+    def record(**values):
+        captured.update(values)
+        return {"heartbeat_id": "hb-server-git", "revision": 1, "payload": values["payload"]}
+
+    monkeypatch.setattr(runtime.project_heartbeat_store, "record", record)
+    result = project_graph.project_heartbeat(
+        project_id="project-a",
+        body=project_graph.ProjectHeartbeatInput(
+            entity_ref="entity-a",
+            store_ref="store-a",
+            # Deliberately claim a matching/clean checkout.  The server
+            # observation below must win over these legacy fields.
+            head="b" * 40,
+            head_verified=True,
+            workspace_state_known=True,
+            workspace_clean=True,
+            idempotency_key="hb-server-git-1",
+        ),
+        principal=principal,
+    )
+
+    operational = captured["payload"]["operational_snapshot"]
+    assert operational["server_git"]["snapshot_sha256"] == server_observation.snapshot_sha256
+    assert operational["workspace_clean"] is False
+    assert operational["caller_claims_ignored"]["workspace_clean"] is True
+    assert result["server_observation"]["caller_git_attestation_used"] is False
+    assert result["server_observation"]["git"]["head"] == "b" * 40
+    assert result["decision"].reasons.count("workspace_dirty") == 1
 
 
 def test_heartbeat_task_result_carries_graph_debt_and_frontier(monkeypatch):

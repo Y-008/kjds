@@ -1,9 +1,63 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
-from apps.control_plane.autonomous_pm_heartbeat import HeartbeatInput, evaluate_heartbeat
+from apps.control_plane.autonomous_pm_heartbeat import (
+    HeartbeatInput,
+    evaluate_heartbeat,
+    observe_server_git_worktree,
+)
 from apps.control_plane.economic_guard_service import EconomicGuardInput, evaluate_economic_guard
 from apps.control_plane.stuck_task_detector import TaskLivenessObservation, detect_stuck_tasks
+
+
+def test_server_git_observation_derives_flags_from_actual_probe():
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def runner(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[1] == "rev-parse":
+            return SimpleNamespace(returncode=0, stdout="A" * 40, stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    observed = observe_server_git_worktree(
+        repository_root=".",
+        observed_at=datetime(2026, 9, 6, 12, tzinfo=UTC),
+        runner=runner,
+    )
+
+    assert observed.status == "observed"
+    assert observed.available is True
+    assert observed.head == "a" * 40
+    assert observed.worktree_clean is True
+    assert observed.flags_for("A" * 40) == {
+        "head_verified": True,
+        "workspace_state_known": True,
+        "workspace_clean": True,
+    }
+    assert observed.flags_for("b" * 40)["head_verified"] is False
+    assert len(observed.snapshot_sha256) == 64
+    assert all(kwargs["shell"] is False for _args, kwargs in calls)
+
+
+def test_server_git_observation_failure_is_explicit_and_fail_closed():
+    def runner(_args, **_kwargs):
+        raise OSError("git unavailable")
+
+    observed = observe_server_git_worktree(
+        repository_root=".",
+        observed_at=datetime(2026, 9, 6, 12, tzinfo=UTC),
+        runner=runner,
+    )
+
+    assert observed.status == "blocked"
+    assert observed.reason == "git_probe_failed"
+    assert observed.flags_for("a" * 40) == {
+        "head_verified": False,
+        "workspace_state_known": False,
+        "workspace_clean": False,
+    }
+    assert len(observed.snapshot_sha256) == 64
 
 
 def test_economic_guard_blocks_cash_and_margin_floor():
