@@ -454,6 +454,11 @@ class TransparencyEnvelope(_Contract):
             }
             for fact in result.items
         )
+        unsafe_quality = result.quality_state in {
+            QualityState.NO_DATA,
+            QualityState.BLOCKED,
+            QualityState.UNKNOWN_OUTCOME,
+        }
         return cls(
             dataset=dataset,
             scope=scope,
@@ -461,10 +466,11 @@ class TransparencyEnvelope(_Contract):
             fresh_until=fresh_until,
             status=_QUALITY_TO_STATUS[result.quality_state],
             quality_state=result.quality_state,
-            data=data,
-            included_rows=data,
+            data=() if unsafe_quality else data,
+            included_rows=() if unsafe_quality else data,
+            excluded_rows=data if unsafe_quality else (),
             source_count=len(lineage),
-            excluded_count=result.excluded_count,
+            excluded_count=max(result.excluded_count, len(data) if unsafe_quality else 0),
             exclusion_reasons=result.exclusion_reasons,
             formula_version=formula_version,
             rule_version=rule_version,

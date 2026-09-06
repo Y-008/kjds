@@ -4,7 +4,12 @@ import pytest
 from pydantic import ValidationError
 
 from apps.control_plane.data_fabric_contracts import DataEnvelope, QualitySummary, ScopeRef
-from apps.control_plane.temporal_fact_store import QualityState, TemporalFactStore
+from apps.control_plane.temporal_fact_store import (
+    QualityState,
+    TemporalFactQueryResult,
+    TemporalFactRevision,
+    TemporalFactStore,
+)
 from apps.control_plane.transparency_envelope import (
     LineageEdge,
     LineageRef,
@@ -99,7 +104,6 @@ def test_terminal_quality_states_are_fail_closed(status: str, quality_state: str
     )
     assert envelope.data == ()
     assert envelope.to_data_envelope().data == ()
-
     with pytest.raises(ValidationError, match="cannot contain data rows"):
         TransparencyEnvelope(
             dataset="orders.v1",
@@ -109,6 +113,31 @@ def test_terminal_quality_states_are_fail_closed(status: str, quality_state: str
             quality_state=quality_state,
             data=({"amount": 0},),
         )
+
+
+def test_query_projection_keeps_blocked_rows_as_excluded_diagnostics() -> None:
+    fact = TemporalFactRevision(
+        fact_id="fact-blocked",
+        revision_id="rev-blocked",
+        natural_key="order-1",
+        source_record_id="order-1",
+        scope=SCOPE,
+        event_time=T0,
+        observed_time=T0,
+        effective_time=T0,
+        quality_state=QualityState.BLOCKED,
+        payload={},
+    )
+    envelope = TransparencyEnvelope.from_query_result(
+        TemporalFactQueryResult(as_of=T0, items=(fact,), quality_state=QualityState.BLOCKED),
+        dataset="orders.v1",
+        scope=SCOPE,
+    )
+    assert envelope.data == ()
+    assert envelope.included_rows == ()
+    assert envelope.excluded_rows[0]["fact_id"] == "fact-blocked"
+    assert envelope.quality_status is QualityState.BLOCKED
+    assert envelope.to_data_envelope().data == ()
 
 
 def test_status_quality_and_freshness_cannot_disagree() -> None:

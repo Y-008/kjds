@@ -127,6 +127,8 @@ class ResourceBudgetEvent:
             object.__setattr__(self, "metadata", MappingProxyType(dict(sorted(canonical.items()))))
         if not isinstance(self.occurred_at, datetime):
             raise ValueError("occurred_at must be a timezone-aware datetime")
+        if self.occurred_at == datetime.min.replace(tzinfo=UTC):
+            raise ValueError("occurred_at is required")
         if self.occurred_at.tzinfo is None or self.occurred_at.utcoffset() is None:
             raise ValueError("occurred_at must include a timezone")
         object.__setattr__(self, "occurred_at", self.occurred_at.astimezone(UTC))
