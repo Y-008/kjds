@@ -523,6 +523,16 @@ def analytics_drilldown(
             "data_product_gate": projection["gate"],
             "transparency": transparency.model_dump(mode="json") if transparency else None,
             "lineage": transparency.drilldown() if transparency else [],
+            "lineage_audit": transparency.lineage_audit() if transparency else {
+                "lineage_complete": False,
+                "lineage_structurally_complete": False,
+                "lineage_missing_stages": [],
+                "lineage_coverage": 0.0,
+                "lineage_continuity_errors": ["transparency_unavailable"],
+                "drilldown_complete": False,
+                "drilldown_missing_levels": [],
+                "record_contract_complete": False,
+            },
             "lineage_edges": (
                 [edge.model_dump(mode="json") for edge in transparency.lineage_edges]
                 if transparency
@@ -616,6 +626,16 @@ def analytics_lineage(
             "data_product_gate": projection["gate"],
             "chain": chain,
             "transparency": transparency.model_dump(mode="json") if transparency else None,
+            "lineage_audit": transparency.lineage_audit() if transparency else {
+                "lineage_complete": False,
+                "lineage_structurally_complete": False,
+                "lineage_missing_stages": [],
+                "lineage_coverage": 0.0,
+                "lineage_continuity_errors": ["transparency_unavailable"],
+                "drilldown_complete": False,
+                "drilldown_missing_levels": [],
+                "record_contract_complete": False,
+            },
             "external_write_allowed": False,
         }
 
