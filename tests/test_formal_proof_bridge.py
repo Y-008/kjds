@@ -1,8 +1,14 @@
 import hashlib
+import json
 
 import pytest
 
-from apps.control_plane.formal_proof_manifest import load_manifest, manifest_sha256, validate_manifest_modules
+from apps.control_plane.formal_proof_manifest import (
+    load_manifest,
+    manifest_sha256,
+    validate_manifest_artifacts,
+    validate_manifest_modules,
+)
 from apps.control_plane.formal_theorem_runner import run_manifest
 from apps.control_plane.proof_artifact_validator import validate_artifact
 from apps.control_plane.proof_evidence_bridge import bind_evidence
@@ -121,3 +127,20 @@ def test_artifact_hash_and_explicit_binding(tmp_path):
     assert binding.evidence_refs == ("ev-1",)
     with pytest.raises(ValueError):
         bind_evidence("t.empty", (), ())
+
+
+def test_manifest_artifact_digest_is_checked_against_module_bytes(tmp_path):
+    module = tmp_path / "Proof.lean"
+    module.write_text("theorem t : True := by trivial\n", encoding="utf-8")
+    digest = hashlib.sha256(module.read_bytes()).hexdigest()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps({"entries": [{"stable_key": "k", "theorem": "t", "module": "Proof.lean", "artifact_sha256": digest}]}),
+        encoding="utf-8",
+    )
+    entries = load_manifest(manifest)
+    assert validate_manifest_artifacts(entries, root=tmp_path) == ()
+    module.write_text("theorem t : True := by decide\n", encoding="utf-8")
+    assert validate_manifest_artifacts(entries, root=tmp_path) == (
+        "artifact_hash_mismatch:k:Proof.lean",
+    )

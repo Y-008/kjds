@@ -7,7 +7,13 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from .formal_proof_manifest import load_manifest, manifest_sha256, toolchain_status, validate_manifest_modules
+from .formal_proof_manifest import (
+    load_manifest,
+    manifest_sha256,
+    toolchain_status,
+    validate_manifest_artifacts,
+    validate_manifest_modules,
+)
 
 
 def run_manifest(path: str | Path) -> dict[str, Any]:
@@ -15,16 +21,18 @@ def run_manifest(path: str | Path) -> dict[str, Any]:
     entries = load_manifest(path)
     toolchain = toolchain_status()
     module_errors = validate_manifest_modules(entries, root=manifest_path.parent)
+    artifact_errors = validate_manifest_artifacts(entries, root=manifest_path.parent)
     base = {
         "toolchain": toolchain,
         "manifest_sha256": manifest_sha256(entries),
         "module_errors": list(module_errors),
+        "artifact_errors": list(artifact_errors),
     }
-    if module_errors:
+    if module_errors or artifact_errors:
         return {
             **base,
             "status": "failed",
-            "reason": "proof_module_validation_failed",
+            "reason": "proof_artifact_validation_failed" if artifact_errors else "proof_module_validation_failed",
             "proved": [],
             "blocked": [entry.stable_key for entry in entries],
         }

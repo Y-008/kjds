@@ -102,6 +102,36 @@ def validate_manifest_modules(entries: tuple[ProofEntry, ...], *, root: str | Pa
     return tuple(errors)
 
 
+def validate_manifest_artifacts(
+    entries: tuple[ProofEntry, ...], *, root: str | Path = "."
+) -> tuple[str, ...]:
+    """Validate optional receipt digests before a proof can be admitted.
+
+    An artifact digest in the manifest is a claim about a concrete file.  A
+    missing file or changed bytes must invalidate that entry rather than being
+    treated as metadata-only.  Paths are constrained to the manifest root to
+    keep verification deterministic and prevent out-of-scope reads.
+    """
+    base = Path(root).resolve()
+    errors: list[str] = []
+    for entry in entries:
+        if entry.artifact_sha256 is None:
+            continue
+        artifact = (base / entry.module).resolve()
+        try:
+            artifact.relative_to(base)
+        except ValueError:
+            errors.append(f"artifact_outside_root:{entry.stable_key}:{entry.module}")
+            continue
+        if not artifact.is_file():
+            errors.append(f"missing_artifact:{entry.stable_key}:{entry.module}")
+            continue
+        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        if digest.lower() != entry.artifact_sha256.lower():
+            errors.append(f"artifact_hash_mismatch:{entry.stable_key}:{entry.module}")
+    return tuple(errors)
+
+
 def manifest_sha256(entries: tuple[ProofEntry, ...]) -> str:
     canonical = [entry.__dict__ if hasattr(entry, "__dict__") else {
         "stable_key": entry.stable_key,
