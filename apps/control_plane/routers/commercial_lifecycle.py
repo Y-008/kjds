@@ -43,12 +43,21 @@ def _scope(body: CommercialScopeInput) -> dict[str, str]:
     return body.model_dump()
 
 
+def _ensure_tenant_scope(scope: CommercialScopeInput, principal: Principal) -> None:
+    if scope.tenant_ref != principal.tenant_ref:
+        raise HTTPException(
+            status_code=403,
+            detail="Commercial scope tenant_ref is outside authenticated tenant",
+        )
+
+
 @router.post("/v1/commercial-lifecycle/plans")
 def record_plan(
     body: CommercialPlanInput,
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "approver", "risk", "monitor", "admin")
+    _ensure_tenant_scope(body.scope, principal)
     ensure_store_scope(principal, body.scope.store_ref)
     return run(lambda: runtime.commercial_lifecycle.record_plan(**body.model_dump()))
 
@@ -59,6 +68,7 @@ def record_subscription(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "approver", "risk", "monitor", "admin")
+    _ensure_tenant_scope(body.scope, principal)
     ensure_store_scope(principal, body.scope.store_ref)
     return run(lambda: runtime.commercial_lifecycle.record_subscription(**body.model_dump()))
 
@@ -69,6 +79,7 @@ def record_invoice(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "approver", "risk", "monitor", "admin")
+    _ensure_tenant_scope(body.scope, principal)
     ensure_store_scope(principal, body.scope.store_ref)
     return run(lambda: runtime.commercial_lifecycle.record_invoice(**body.model_dump()))
 
@@ -79,6 +90,7 @@ def record_payment_attempt(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "approver", "risk", "monitor", "admin")
+    _ensure_tenant_scope(body.scope, principal)
     ensure_store_scope(principal, body.scope.store_ref)
     return run(lambda: runtime.commercial_lifecycle.record_payment_attempt(**body.model_dump()))
 
@@ -89,6 +101,7 @@ def record_refund(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "approver", "risk", "monitor", "admin")
+    _ensure_tenant_scope(body.scope, principal)
     ensure_store_scope(principal, body.scope.store_ref)
     return run(lambda: runtime.commercial_lifecycle.record_refund(**body.model_dump()))
 
@@ -99,6 +112,7 @@ def record_tax_evidence(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "approver", "risk", "monitor", "admin")
+    _ensure_tenant_scope(body.scope, principal)
     ensure_store_scope(principal, body.scope.store_ref)
     return run(lambda: runtime.commercial_lifecycle.record_tax_evidence(**body.model_dump()))
 
@@ -114,6 +128,8 @@ def commercial_lifecycle_snapshot(
     as_of: str | None = None,
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "approver", "risk", "monitor", "admin")
+    if tenant_ref != principal.tenant_ref:
+        raise HTTPException(status_code=403, detail="tenant_ref is outside authenticated tenant")
     ensure_store_scope(principal, store_ref)
     cutoff = _cutoff(as_of)
     return run(
