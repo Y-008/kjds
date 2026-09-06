@@ -1,6 +1,10 @@
 {
-  "contract_id": "kjds-formal-proof-manifest-v1",
+  "contract_id": "kjds-formal-proof-manifest-v2",
   "toolchain": "lean4-lake",
+  "example_policy": {
+    "require_positive": true,
+    "require_counterexample": true
+  },
   "entries": [
     {
       "stable_key": "order.settlement.profit.closed",
@@ -8,7 +12,10 @@
       "module": "formal/KJDS/Profit.lean",
       "status": "blocked",
       "assumptions": ["settlement_currency_explicit", "all_fee_facts_current"],
-      "evidence_refs": []
+      "evidence_refs": [],
+      "positive_refs": ["proof-example:order.settlement.profit.closed:positive-1"],
+      "counterexample_refs": ["proof-counterexample:order.settlement.profit.closed:missing-cost"],
+      "mutation_test_refs": ["proof-mutation:order.settlement.profit.closed:cost-change"]
     }
   ]
 }

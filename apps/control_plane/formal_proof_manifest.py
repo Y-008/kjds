@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -22,6 +23,26 @@ class ProofEntry:
     assumptions: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     artifact_sha256: str | None = None
+    positive_refs: tuple[str, ...] = ()
+    counterexample_refs: tuple[str, ...] = ()
+    mutation_test_refs: tuple[str, ...] = ()
+
+
+def _ref_tuple(raw: Any, *, field: str) -> tuple[str, ...]:
+    """Normalize a manifest reference list without accepting character lists."""
+
+    if raw is None:
+        return ()
+    if isinstance(raw, str) or not isinstance(raw, (list, tuple)):
+        raise ValueError(f"{field} must be a list of strings")
+    values: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"{field} must contain non-empty strings")
+        value = item.strip()
+        if value not in values:
+            values.append(value)
+    return tuple(values)
 
 
 def load_manifest(path: str | Path) -> tuple[ProofEntry, ...]:
@@ -58,12 +79,71 @@ def load_manifest(path: str | Path) -> tuple[ProofEntry, ...]:
                 theorem=theorem,
                 module=module_name,
                 status=status,  # type: ignore[arg-type]
-                assumptions=tuple(str(item) for item in raw.get("assumptions", ())),
-                evidence_refs=tuple(str(item) for item in raw.get("evidence_refs", ())),
+                assumptions=_ref_tuple(raw.get("assumptions", ()), field="assumptions"),
+                evidence_refs=_ref_tuple(raw.get("evidence_refs", ()), field="evidence_refs"),
                 artifact_sha256=artifact_sha256,
+                positive_refs=_ref_tuple(
+                    raw.get("positive_refs", raw.get("positive_examples", ())),
+                    field="positive_refs",
+                ),
+                counterexample_refs=_ref_tuple(
+                    raw.get("counterexample_refs", raw.get("counterexamples", ())),
+                    field="counterexample_refs",
+                ),
+                mutation_test_refs=_ref_tuple(
+                    raw.get("mutation_test_refs", raw.get("mutation_tests", ())),
+                    field="mutation_test_refs",
+                ),
             )
         )
     return tuple(entries)
+
+
+def manifest_metadata(path: str | Path) -> dict[str, Any]:
+    """Return the optional policy metadata without changing entry parsing."""
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("proof manifest must be an object")
+    metadata = payload.get("metadata", {})
+    if metadata is None:
+        metadata = {}
+    if not isinstance(metadata, dict):
+        raise ValueError("proof manifest metadata must be an object")
+    # ``example_policy`` is intentionally copied as data; callers decide
+    # whether a strict policy applies to this manifest version.
+    policy = payload.get("example_policy", metadata.get("example_policy", {}))
+    if policy is None:
+        policy = {}
+    if not isinstance(policy, dict):
+        raise ValueError("proof manifest example_policy must be an object")
+    return {
+        "contract_id": str(payload.get("contract_id", "kjds-formal-proof-manifest-v1")),
+        "example_policy": dict(policy),
+        "metadata": dict(metadata),
+    }
+
+
+def validate_manifest_examples(
+    entries: tuple[ProofEntry, ...],
+    *,
+    require_positive: bool = True,
+    require_counterexample: bool = True,
+) -> tuple[str, ...]:
+    """Check the local positive/counterexample obligations for each theorem.
+
+    Legacy manifests can call this with both flags disabled.  The versioned
+    manifest policy used by production planning enables both checks before a
+    theorem can be admitted.
+    """
+
+    errors: list[str] = []
+    for entry in entries:
+        if require_positive and not entry.positive_refs:
+            errors.append(f"positive_example_missing:{entry.stable_key}")
+        if require_counterexample and not entry.counterexample_refs:
+            errors.append(f"counterexample_missing:{entry.stable_key}")
+    return tuple(errors)
 
 
 def toolchain_status() -> dict[str, Any]:
@@ -132,7 +212,9 @@ def validate_manifest_artifacts(
     return tuple(errors)
 
 
-def manifest_sha256(entries: tuple[ProofEntry, ...]) -> str:
+def manifest_sha256(
+    entries: tuple[ProofEntry, ...], *, metadata: Mapping[str, Any] | None = None
+) -> str:
     canonical = [entry.__dict__ if hasattr(entry, "__dict__") else {
         "stable_key": entry.stable_key,
         "theorem": entry.theorem,
@@ -141,5 +223,27 @@ def manifest_sha256(entries: tuple[ProofEntry, ...]) -> str:
         "assumptions": entry.assumptions,
         "evidence_refs": entry.evidence_refs,
         "artifact_sha256": entry.artifact_sha256,
+        "positive_refs": entry.positive_refs,
+        "counterexample_refs": entry.counterexample_refs,
+        "mutation_test_refs": entry.mutation_test_refs,
     } for entry in entries]
-    return hashlib.sha256(json.dumps(canonical, sort_keys=True, default=list, separators=(",", ":")).encode()).hexdigest()
+    payload: Any = canonical if metadata is None else {
+        "entries": canonical,
+        "metadata": metadata,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=list, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+__all__ = [
+    "ProofEntry",
+    "ProofStatus",
+    "load_manifest",
+    "manifest_metadata",
+    "manifest_sha256",
+    "toolchain_status",
+    "validate_manifest_artifacts",
+    "validate_manifest_examples",
+    "validate_manifest_modules",
+]
