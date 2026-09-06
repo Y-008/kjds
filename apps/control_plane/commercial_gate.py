@@ -207,8 +207,11 @@ class GovernedCommercialGate:
 
         if isinstance(result, Mapping):
             for name in names:
-                if name in result:
-                    return result[name]
+                try:
+                    if name in result:
+                        return result[name]
+                except Exception:
+                    return None
         for name in names:
             try:
                 value = getattr(result, name)
@@ -252,9 +255,12 @@ class GovernedCommercialGate:
         if verifier is None:
             return "UNKNOWN", "UNAVAILABLE", "evidence_verifier_not_bound"
 
-        verify_method = getattr(verifier, "verify", None)
-        if not callable(verify_method):
-            verify_method = getattr(verifier, "validate", None)
+        try:
+            verify_method = getattr(verifier, "verify", None)
+            if not callable(verify_method):
+                verify_method = getattr(verifier, "validate", None)
+        except Exception:
+            return "UNKNOWN", "UNAVAILABLE", "evidence_verifier_unavailable"
         if not callable(verify_method) and callable(verifier):
             verify_method = verifier
         if not callable(verify_method):
