@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from threading import RLock
 from typing import Any, Literal
 
@@ -238,22 +238,35 @@ class ResourceBudgetLedger:
 
     @staticmethod
     def _totals(rows: list[ResourceBudgetEventRow]) -> dict[str, Decimal]:
-        totals = {state: Decimal("0") for state in sorted(STATES)}
-        for row in rows:
-            if row.state not in STATES:
-                raise ValueError("resource budget contains an unknown event state")
-            totals[row.state] += Decimal(row.amount_text)
+        with localcontext() as context:
+            context.prec = 60
+            totals = {state: Decimal("0") for state in sorted(STATES)}
+            for row in rows:
+                if row.state not in STATES:
+                    raise ValueError("resource budget contains an unknown event state")
+                totals[row.state] += Decimal(row.amount_text)
         return totals
 
-    @staticmethod
     def _assert_numeric_integrity(
-        budget: ResourceBudgetRow, rows: list[ResourceBudgetEventRow]
+        self, budget: ResourceBudgetRow, rows: list[ResourceBudgetEventRow]
     ) -> None:
-        if Decimal(str(budget.limit_amount)) != Decimal(budget.limit_amount_text):
-            raise ValueError("resource budget numeric integrity check failed")
+        # SQLite's SQLAlchemy Numeric adapter round-trips through a binary
+        # float. The text columns remain canonical for the test adapter;
+        # production PostgreSQL keeps the exact Numeric/Text parity check.
+        exact_numeric = self.engine.dialect.name != "sqlite"
+        try:
+            if exact_numeric and Decimal(str(budget.limit_amount)) != Decimal(budget.limit_amount_text):
+                raise ValueError("resource budget numeric integrity check failed")
+            Decimal(budget.limit_amount_text)
+        except (ArithmeticError, TypeError, ValueError) as exc:
+            raise ValueError("resource budget numeric integrity check failed") from exc
         for row in rows:
-            if Decimal(str(row.amount)) != Decimal(row.amount_text):
-                raise ValueError("resource budget event numeric integrity check failed")
+            try:
+                if exact_numeric and Decimal(str(row.amount)) != Decimal(row.amount_text):
+                    raise ValueError("resource budget event numeric integrity check failed")
+                Decimal(row.amount_text)
+            except (ArithmeticError, TypeError, ValueError) as exc:
+                raise ValueError("resource budget event numeric integrity check failed") from exc
             if row.currency != budget.currency:
                 raise ValueError("resource budget event currency integrity check failed")
 
@@ -265,21 +278,23 @@ class ResourceBudgetLedger:
     ) -> Decimal:
         # A consumed or released child settles its parent reservation.  This
         # avoids charging the same amount twice while retaining gross counters.
-        settled_by_parent: dict[str, Decimal] = {}
-        for row in rows:
-            if row.parent_event_id and row.state in {"consumed", "released"}:
-                settled_by_parent[row.parent_event_id] = (
-                    settled_by_parent.get(row.parent_event_id, Decimal("0"))
-                    + Decimal(row.amount_text)
-                )
-        outstanding = Decimal("0")
-        for row in rows:
-            if row.state == "reserved":
-                outstanding += max(
-                    Decimal("0"),
-                    Decimal(row.amount_text) - settled_by_parent.get(row.event_id, Decimal("0")),
-                )
-        return Decimal(budget.limit_amount_text) - totals["consumed"] - totals["overrun"] - outstanding
+        with localcontext() as context:
+            context.prec = 60
+            settled_by_parent: dict[str, Decimal] = {}
+            for row in rows:
+                if row.parent_event_id and row.state in {"consumed", "released"}:
+                    settled_by_parent[row.parent_event_id] = (
+                        settled_by_parent.get(row.parent_event_id, Decimal("0"))
+                        + Decimal(row.amount_text)
+                    )
+            outstanding = Decimal("0")
+            for row in rows:
+                if row.state == "reserved":
+                    outstanding += max(
+                        Decimal("0"),
+                        Decimal(row.amount_text) - settled_by_parent.get(row.event_id, Decimal("0")),
+                    )
+            return Decimal(budget.limit_amount_text) - totals["consumed"] - totals["overrun"] - outstanding
 
     @staticmethod
     def _event_from_row(row: ResourceBudgetEventRow) -> ResourceBudgetEvent:
@@ -344,7 +359,11 @@ class ResourceBudgetLedger:
                         ResourceBudgetEventRow.parent_event_id == event.parent_event_id,
                         ResourceBudgetEventRow.state.in_(("consumed", "released")),
                     )).all()
-                    settled_amount = sum((Decimal(row.amount_text) for row in settled), Decimal("0"))
+                    with localcontext() as context:
+                        context.prec = 60
+                        settled_amount = sum(
+                            (Decimal(row.amount_text) for row in settled), Decimal("0")
+                        )
                     if settled_amount + event.amount > Decimal(parent.amount_text):
                         raise ValueError("resource budget parent reservation already settled")
                 if event.state == "reserved":

@@ -18,7 +18,7 @@ readback receipt, it is not sufficient to admit a side effect.
   is rejected.
 - `consumed` and `released` lifecycle events must reference a `reserved` event
   in the same tenant and budget, and their cumulative amount cannot exceed the
-  parent reservation. `overrun` events may stand alone for explicit loss
+  parent reservation. `overrun` events must stand alone for explicit loss
   accounting.
 - PostgreSQL reservation admission locks the budget row, checks available
   capacity and inserts the event in one transaction. This prevents two workers

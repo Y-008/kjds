@@ -89,6 +89,11 @@ def test_numeric_precision_is_bounded_before_persistence(ledger):
         Decimal("99999999999999999999.999999999999999999"),
     ))
     ledger.create_budget(ResourceBudget("budget-zero", "tenant-a", "model_tokens", "cc-ai", Decimal("0E+20")))
+    precise_limit = Decimal("1000.000000000000000000")
+    ledger.create_budget(ResourceBudget("budget-precise", "tenant-a", "model_tokens", "cc-ai", precise_limit))
+    ledger.record(event("reserved", "999.999999995000000000", "p1", "p1", budget_id="budget-precise"))
+    with pytest.raises(ValueError, match="exceeded"):
+        ledger.record(event("reserved", "0.000000007", "p2", "p2", budget_id="budget-precise"))
 
 
 def test_overrun_cannot_be_attached_to_a_reservation(ledger):
