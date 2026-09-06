@@ -944,7 +944,12 @@ class ScopedProfitLedgerAuthority:
             )
         else:
             try:
-                snapshot = service.snapshot_for_order(
+                snapshot_method = getattr(service, "snapshot_for_order", None)
+                if snapshot_method is None:
+                    snapshot_method = getattr(service, "snapshot", None)
+                if not callable(snapshot_method):
+                    raise TypeError("after_sales_snapshot_method_missing")
+                snapshot = snapshot_method(
                     scope_authority=scope_authority,
                     as_of=context["cutoff"].isoformat(),
                     realized_profit=Decimal(row["actual_profit"]),
@@ -1196,13 +1201,17 @@ class ScopedProfitLedgerAuthority:
         else:
             values = dict(empty)
 
-        if invalid and status in {"VALID", "PARTIAL", "STALE"}:
-            status = "BLOCKED" if any(
+        if invalid:
+            hard_invalid = any(
                 item.endswith("_conflict")
                 or item.endswith("_drift")
                 or item.endswith("_invalid")
                 for item in invalid
-            ) else "PARTIAL"
+            )
+            if hard_invalid:
+                status = "BLOCKED"
+            elif status in {"VALID", "PARTIAL", "STALE"}:
+                status = "PARTIAL"
             values = dict(empty)
 
         summary = {
