@@ -454,15 +454,17 @@ def _governance_projection(
     elif not rollback_available:
         reasons.append("rollback_missing")
 
-    # Unknown external outcomes are surfaced distinctly so a caller cannot
-    # interpret them as an ordinary failed or successful action.
-    if evidence_state == "UNKNOWN_OUTCOME":
-        admission = "UNKNOWN_OUTCOME"
-    elif any(
+    # Explicit hard failures win over unknown outcomes so a rollback or
+    # operational/economic stop cannot be mistaken for a retryable unknown.
+    if any(
         item in {"BLOCKED", "STALE", "INVALID"}
         for item in (proof_state, evidence_state, operational_state, economic_state)
     ) or rollback_available is False:
         admission = "BLOCKED"
+    # Unknown external outcomes are surfaced distinctly when no hard stop is
+    # present; callers must not interpret them as ordinary success/failure.
+    elif evidence_state == "UNKNOWN_OUTCOME":
+        admission = "UNKNOWN_OUTCOME"
     elif any(
         item in {None, "NO_DATA", "UNPROVED", "UNKNOWN", "PARTIAL", "AT_RISK", "SHADOW", "PAUSED"}
         for item in (proof_state, evidence_state, operational_state, economic_state)
@@ -600,12 +602,12 @@ def _admission_for_state(governance: _GovernanceState, state: ProofState) -> str
     """Downgrade a green admission when graph propagation invalidates it."""
 
     admission = governance.admission_state
-    if admission == "UNKNOWN_OUTCOME":
-        return admission
     if state == BLOCKED:
         return "BLOCKED"
     if state == STALE:
         return "BLOCKED"
+    if admission == "UNKNOWN_OUTCOME":
+        return admission
     if state == NO_DATA and admission == "LIVE":
         return "HOLD"
     return admission

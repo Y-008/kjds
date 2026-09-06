@@ -326,6 +326,22 @@ def test_explicit_direct_staleness_also_downgrades_green_admission() -> None:
     assert snapshot_graph(graph)["nodes"][0]["admission_state"] == "BLOCKED"
 
 
+def test_hard_governance_stop_precedes_unknown_outcome() -> None:
+    graph = {
+        "nodes": [{
+            "id": "blocked-unknown",
+            "state": "passed",
+            "proof_state": "PROVED",
+            "evidence_state": "UNKNOWN_OUTCOME",
+            "operational_state": "BLOCKED",
+            "economic_state": "ALLOWED",
+            "rollback_available": True,
+        }]
+    }
+    result = plan_proof_frontier(graph)
+    assert result["nodes"][0]["admission_state"] == "BLOCKED"
+
+
 def test_legacy_nodes_keep_the_original_projection_shape() -> None:
     graph = {"nodes": [{"id": "legacy", "state": "passed"}]}
 
