@@ -4,7 +4,7 @@
 |---|---|
 | doc_id | KJDS-MASTER-SPEC-001 |
 | status | Active |
-| version | 8.68 |
+| version | 8.69 |
 | last_reviewed | 2026-09-06 |
 | owner | 项目负责人（待确认） |
 | approver | 经营负责人 |
@@ -30,7 +30,7 @@
 - [Standing Autonomous Execution Profile](KJDS_STANDING_AUTONOMOUS_EXECUTION_PROFILE.md)、`autonomous_execution_profile.py` 与 `autonomous_execution_profile_store.py` 提供精确范围、六项门槛、append-only 治理版本和一次性命令 Permit；它不改变 Approval、Readback、Rollback、Kill Switch 或 Agent 权限边界。
 - [Project Graph Proposal Ledger Contract](KJDS_PROJECT_GRAPH_PROPOSAL_LEDGER_CONTRACT.md) 与 `project_graph_proposal_ledger.py` 固化 `dispatch-wave`/`invalidate` 的 exact-scope 幂等、CAS revision、不可变响应和回放；proposal ledger 仍是内部审计投影，不是队列、Permit 或外部写入权威。
 - [Compose migration boundary](KJDS_COMPOSE_MIGRATION_BOUNDARY.md) 固定 `migrate → api → workers` 启动依赖：`KJDS_DATABASE_URL` 只注入 one-shot migrate 服务，API 仅接收独立的非 owner `KJDS_RUNTIME_DATABASE_URL`，并且不得在启动时执行 Alembic。
-- Alembic `20260906_0111` 为时间事实、心跳、用量和提案账本增加数据库级 append-only 触发器，`20260906_0112` 增加 Standing Profile 修订和治理事件，`20260906_0113` 增加客户合同/Entitlement 绑定的 Token、资产、收入分成和退款调整事件，`20260906_0114` 增加 Agent、模型、数据库、外部 API 和媒体生成的预算、预留、消耗、释放与超支账本；`/health/ready` 必须同时通过 PostgreSQL 连通、代码迁移 head 和核心表检查，否则返回 HTTP 503。
+- Alembic `20260906_0111` 为时间事实、心跳、用量和提案账本增加数据库级 append-only 触发器，`20260906_0112` 增加 Standing Profile 修订和治理事件，`20260906_0113` 增加客户合同/Entitlement 绑定的 Token、资产、收入分成和退款调整事件，`20260906_0114` 增加 Agent、模型、数据库、外部 API 和媒体生成的预算、预留、消耗、释放与超支账本，`20260906_0115` 增加执行资源准入事件，`20260906_0116` 增加四时间售后风险账本，`20260906_0117` 将显式用量绑定到商业 Entitlement receipt，`20260906_0118` 进一步以复合身份约束租户、客户和用量事件的数据库关联；`/health/ready` 必须同时通过 PostgreSQL 连通、代码迁移 head 和核心表检查，否则返回 HTTP 503。
 
 这些契约统一数据产品、事实粒度、双时间、指标、期间、血缘、下钻、回放、质量、租户作用域和导出格式。它们不授予外部写权限；任何策略自动执行仍须复用本文件的统一授权、Approval、Permit、预算、回读、审计和回滚要求。
 
