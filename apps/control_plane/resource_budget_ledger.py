@@ -239,8 +239,8 @@ class ResourceBudgetLedger:
             rows = session.scalars(select(ResourceBudgetEventRow).where(
                 ResourceBudgetEventRow.tenant_id == tenant_id,
                 ResourceBudgetEventRow.budget_id == budget_id)).all()
-            totals = self._totals(rows)
             self._assert_numeric_integrity(budget, rows)
+            totals = self._totals(rows)
         available = self._available(budget, rows, totals)
         return {
             "tenant_id": tenant_id, "budget_id": budget_id, "resource_type": budget.resource_type,
@@ -272,14 +272,14 @@ class ResourceBudgetLedger:
         try:
             if exact_numeric and Decimal(str(budget.limit_amount)) != Decimal(budget.limit_amount_text):
                 raise ValueError("resource budget numeric integrity check failed")
-            Decimal(budget.limit_amount_text)
+            _amount(Decimal(budget.limit_amount_text), "persisted budget limit")
         except (ArithmeticError, TypeError, ValueError) as exc:
             raise ValueError("resource budget numeric integrity check failed") from exc
         for row in rows:
             try:
                 if exact_numeric and Decimal(str(row.amount)) != Decimal(row.amount_text):
                     raise ValueError("resource budget event numeric integrity check failed")
-                Decimal(row.amount_text)
+                _amount(Decimal(row.amount_text), "persisted budget event amount")
             except (ArithmeticError, TypeError, ValueError) as exc:
                 raise ValueError("resource budget event numeric integrity check failed") from exc
             if row.currency != budget.currency:

@@ -139,3 +139,16 @@ def test_database_rejects_orphan_budget_event(ledger):
             amount_text="1", currency="USD", occurred_at=datetime(2026, 9, 6, tzinfo=UTC),
             fingerprint_sha256="0" * 64, recorded_at=datetime(2026, 9, 6, tzinfo=UTC),
         ))
+
+
+def test_snapshot_rejects_corrupt_persisted_amount(ledger):
+    ledger.create_budget(ResourceBudget("budget-corrupt", "tenant-a", "model_tokens", "cc-ai", Decimal("5")))
+    with ledger.engine.begin() as connection:
+        connection.execute(ResourceBudgetEventRow.__table__.insert().values(
+            event_id="corrupt", idempotency_key="corrupt-key", budget_id="budget-corrupt",
+            tenant_id="tenant-a", state="reserved", amount=Decimal("1"), amount_text="NaN",
+            currency="USD", occurred_at=datetime(2026, 9, 6, tzinfo=UTC),
+            fingerprint_sha256="0" * 64, recorded_at=datetime(2026, 9, 6, tzinfo=UTC),
+        ))
+    with pytest.raises(ValueError, match="integrity"):
+        ledger.snapshot(tenant_id="tenant-a", budget_id="budget-corrupt")
