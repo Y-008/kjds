@@ -110,7 +110,9 @@ def evaluate_experiment_fact_admission(
     if not isinstance(fact, Mapping):
         raise TypeError("experiment fact must be an object")
 
-    context: Any = fact.get("experiment_context", fact.get("experiment"))
+    context: Any = fact.get("experiment_context")
+    if context is None and "experiment" in fact:
+        context = fact["experiment"]
     marker_names = (
         "experiment_context",
         "experiment",
@@ -124,7 +126,11 @@ def evaluate_experiment_fact_admission(
         "stop_rule_ref",
         "stop_rule_id",
     )
-    marked = context is not None or any(name in fact for name in marker_names[2:])
+    marked = (
+        "experiment_context" in fact
+        or "experiment" in fact
+        or any(name in fact for name in marker_names[2:])
+    )
     if not marked:
         return _experiment_admission("unmarked", None, ())
 

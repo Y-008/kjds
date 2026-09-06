@@ -497,10 +497,14 @@ def _fact_view(fact: Any) -> dict[str, Any]:
         raise AnalyticsQueryPlanError("fact event_time and observed_time are required")
     experiment_context: Any = None
     if is_mapping:
-        if "experiment_context" in values:
+        if "experiment_context" in values and values["experiment_context"] is not None:
             experiment_context = values["experiment_context"]
         elif "experiment" in values:
             experiment_context = values["experiment"]
+        elif "experiment_context" in values:
+            # Preserve an explicit null marker so the admission gate can
+            # reject it instead of treating the fact as an ordinary row.
+            experiment_context = {"experiment_context": None}
         else:
             marker_names = (
                 "experiment_id",

@@ -77,3 +77,12 @@ def test_empty_nested_evidence_reference_is_not_admitted():
 
     assert result.status == "blocked"
     assert result.blocked_reasons == ("experiment_causal_evidence_missing",)
+
+
+def test_null_experiment_context_is_not_a_silent_bypass():
+    result = evaluate_experiment_fact_admission(
+        {"experiment_context": None, "experiment_id": "protocol-1"}
+    )
+
+    assert result.status == "blocked"
+    assert "experiment_not_review_eligible" in result.blocked_reasons

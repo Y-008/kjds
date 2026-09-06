@@ -374,6 +374,22 @@ def test_reviewed_experiment_fact_can_enter_rollup_and_top_level_legacy_markers_
     assert result.excluded_rows[0]["experiment_id"] == "protocol-2"
 
 
+def test_null_nested_experiment_context_cannot_bypass_long_term_gate() -> None:
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    end = datetime(2026, 9, 2, tzinfo=UTC)
+    fact = _order_fact("null-experiment", start, gross_sales=10, quantity=1)
+    fact["experiment_context"] = None
+
+    result = execute_analytics_plan(
+        compile_query_plan(_orders_recipe(start=start, end=end)),
+        [fact],
+        data_products=(_verified_orders_product(),),
+    )
+
+    assert result.aggregates == ()
+    assert result.excluded_rows[0]["reason"] == "experiment_not_long_term_eligible"
+
+
 def test_execute_quality_states_stay_separate_from_numeric_values() -> None:
     start = datetime(2026, 9, 1, tzinfo=UTC)
     plan = compile_query_plan(_orders_recipe(start=start, end=start.replace(day=2)))
