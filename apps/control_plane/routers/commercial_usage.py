@@ -113,10 +113,7 @@ def usage_preview(
             description="Three-letter ASCII currency code",
         ),
     ] = "USD",
-    as_of: datetime | None = Query(
-        default=None,
-        description="Optional historical cutoff (ISO-8601 with timezone)",
-    ),
+    as_of: datetime | None = None,
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
     if as_of is not None and (as_of.tzinfo is None or as_of.utcoffset() is None):
