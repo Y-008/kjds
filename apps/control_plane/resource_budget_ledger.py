@@ -152,7 +152,7 @@ class ResourceBudgetEventRow(Base):
         CheckConstraint(
             "(state = 'reserved' AND parent_event_id IS NULL) OR "
             "(state IN ('consumed', 'released') AND parent_event_id IS NOT NULL) OR "
-            "(state = 'overrun')",
+            "(state = 'overrun' AND parent_event_id IS NULL)",
             name="ck_resource_budget_event_parent_shape",
         ),
         ForeignKeyConstraint(
