@@ -1,7 +1,18 @@
 from decimal import Decimal
 
+import pytest
+
 from apps.control_plane.economic_guard_service import EconomicGuardInput, evaluate_economic_guard
-from apps.control_plane.project_manager_cycle import ProjectManagerCycleInput, run_project_manager_cycle
+from apps.control_plane.project_manager_cycle import (
+    ProjectManagerCycleInput,
+    normalize_task_result,
+    run_project_manager_cycle,
+)
+
+
+def test_task_result_rejects_unstructured_blockers():
+    with pytest.raises(ValueError, match="contain objects"):
+        normalize_task_result({"new_blockers": ["free-form blocker"]})
 
 
 def _graph():

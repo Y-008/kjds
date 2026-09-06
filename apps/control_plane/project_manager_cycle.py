@@ -113,7 +113,23 @@ def normalize_task_result(value: Mapping[str, Any] | None = None) -> dict[str, A
             raise ValueError("task_result.new_blockers must be an array")
         if len(blockers) > 200:
             raise ValueError("task_result.new_blockers exceeds 200 items")
-        result["new_blockers"] = list(blockers)
+        normalized_blockers: list[dict[str, Any]] = []
+        for blocker in blockers:
+            if not isinstance(blocker, Mapping):
+                raise ValueError("task_result.new_blockers must contain objects")
+            if len(blocker) > 32:
+                raise ValueError("task_result.new_blocker has too many fields")
+            for key in blocker:
+                if not isinstance(key, str) or not key.strip() or len(key) > 120:
+                    raise ValueError("task_result.new_blocker keys must be bounded strings")
+            encoded = json.dumps(
+                dict(blocker), ensure_ascii=False, sort_keys=True,
+                separators=(",", ":"), allow_nan=False,
+            )
+            if len(encoded) > 20_000:
+                raise ValueError("task_result.new_blocker is too large")
+            normalized_blockers.append(dict(blocker))
+        result["new_blockers"] = normalized_blockers
 
     if "economic_impact" in normalized:
         impact = normalized["economic_impact"]
