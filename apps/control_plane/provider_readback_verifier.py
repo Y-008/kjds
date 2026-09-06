@@ -228,6 +228,21 @@ class ProviderReadbackVerifier:
         return parsed is not None
 
     @classmethod
+    def parse_bundle_contract(
+        cls,
+        bundle_bytes: bytes,
+        expected_contract: str,
+    ) -> dict[str, Any] | None:
+        """Parse and validate one supported bundle for independent adapters.
+
+        The public projection contains only contract metadata and counts.  It
+        never returns decoded provider response bodies, so downstream
+        acceptance evaluators can reuse the exact verifier rules without
+        gaining a second path to raw external data.
+        """
+        return cls._parse_bundle(bundle_bytes, expected_contract)
+
+    @classmethod
     def _finance_summary_matches_bundle(
         cls,
         summary: dict[str, Any],

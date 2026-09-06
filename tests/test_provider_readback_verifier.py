@@ -254,6 +254,22 @@ def test_valid_official_product_readback_passes_all_checks():
     assert observation["blockers"] == []
 
 
+def test_public_bundle_parser_returns_only_validated_projection():
+    parsed = ProviderReadbackVerifier.parse_bundle_contract(
+        product_bundle(),
+        READBACK_PRODUCT_CONTRACT_VERSION,
+    )
+    assert parsed == {
+        "response_count": 2,
+        "operation": "ozon.product.read",
+        "offer_id_sha256": hashlib.sha256(b"offer-1").hexdigest(),
+    }
+    assert ProviderReadbackVerifier.parse_bundle_contract(
+        b"{}",
+        READBACK_PRODUCT_CONTRACT_VERSION,
+    ) is None
+
+
 def test_tampered_bundle_fails_integrity_and_contract():
     observation = verify(bundle_bytes=finance_bundle() + b" ")
     assert observation["verdict"] == "failed"
