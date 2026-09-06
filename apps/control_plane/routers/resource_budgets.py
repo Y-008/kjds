@@ -43,7 +43,12 @@ class BudgetEventInput(BaseModel):
             return None
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("occurred_at must include a timezone")
-        return value.astimezone(UTC)
+        try:
+            return value.astimezone(UTC)
+        except OverflowError as exc:
+            # An offset-adjusted datetime outside Python's representable range
+            # is invalid input, not an internal server failure.
+            raise ValueError("occurred_at is outside the supported range") from exc
 
 
 def _currency(value: str) -> str:
@@ -66,7 +71,10 @@ def _occurred_at(value: datetime | None) -> datetime:
         return trusted_now
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("occurred_at must include a timezone")
-    normalized = value.astimezone(UTC)
+    try:
+        normalized = value.astimezone(UTC)
+    except OverflowError as exc:
+        raise ValueError("occurred_at is outside the supported range") from exc
     if normalized > trusted_now:
         raise ValueError("occurred_at cannot be in the future")
     return normalized

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -115,3 +115,16 @@ def test_budget_event_api_overrun_requires_governance_role(monkeypatch):
 
     assert caught.value.status_code == 403
     assert ledger.events == []
+
+
+def test_budget_event_input_rejects_unrepresentable_timezone_offset():
+    with pytest.raises(ValueError, match="outside the supported range"):
+        resource_budgets.BudgetEventInput(
+            event_id="overflow-event",
+            idempotency_key="overflow-key",
+            state="reserved",
+            amount=Decimal("1"),
+            occurred_at=datetime.max.replace(
+                tzinfo=timezone(timedelta(hours=-14))
+            ),
+        )
