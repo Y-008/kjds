@@ -7391,6 +7391,18 @@
             ],
             "title": "Occurred At"
           },
+          "settled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled At"
+          },
           "source_ref": {
             "anyOf": [
               {
@@ -24460,6 +24472,38 @@
               "title": "Currency",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of_basis",
+            "required": false,
+            "schema": {
+              "default": "observed",
+              "enum": [
+                "observed",
+                "event",
+                "settled"
+              ],
+              "title": "As Of Basis",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -26364,6 +26408,46 @@
                 }
               ],
               "title": "Min Margin Rate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inventory_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Inventory Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_inventory_days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Inventory Days"
             }
           },
           {
