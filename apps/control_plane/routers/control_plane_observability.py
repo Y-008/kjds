@@ -23,7 +23,15 @@ from ..analytics_query_plan import (
     execute_analytics_plan,
 )
 from ..api_contracts import current_principal, ensure_role, ensure_store_scope, run
-from ..data_fabric_contracts import AnalysisRecipe, PeriodRef, ScopeRef
+from ..data_fabric_contracts import (
+    LINEAGE_STAGE_ORDER,
+    AnalysisRecipe,
+    LineageChain,
+    LineageEdgeContract,
+    LineageNode,
+    PeriodRef,
+    ScopeRef,
+)
 from ..data_fabric_registry import load_data_product_registry
 from ..economic_guard_service import EconomicGuardInput, evaluate_economic_guard
 from ..runtime import runtime
@@ -33,8 +41,20 @@ from ..stuck_task_detector import (
     TaskLivenessObservation,
     detect_stuck_tasks,
 )
-from ..temporal_fact_store import QualityState, TemporalFactQueryResult
+from ..temporal_fact_store import (
+    QualityState,
+    TemporalFactQueryResult,
+    TemporalFactRevision,
+    content_sha256,
+)
 from ..transparency_envelope import TransparencyEnvelope
+from .temporal_facts import (
+    _fact_drilldown_path,
+    _fact_matches_scope,
+    _lineage_chain,
+    _lineage_material,
+    _query_quality,
+)
 
 router = APIRouter()
 
@@ -142,6 +162,14 @@ def _query_temporal_facts(
             )
             if not isinstance(result, TemporalFactQueryResult):
                 raise TypeError("temporal adapter returned an invalid query result")
+            if result.as_of != target_period.as_of:
+                raise ValueError("temporal adapter returned a different as_of cutoff")
+            if any(not isinstance(item, TemporalFactRevision) for item in result.items):
+                raise TypeError("temporal adapter returned invalid fact rows")
+            if any(not _fact_matches_scope(item, recipe.scope) for item in result.items):
+                return None, "temporal_fact_scope_mismatch"
+            if result.quality_state != _query_quality(result.items):
+                return None, "temporal_fact_quality_mismatch"
             return result, None
 
         as_of = getattr(store, "as_of", None)
@@ -156,6 +184,10 @@ def _query_temporal_facts(
                 include_stale=True,
             )
         )
+        if not all(isinstance(item, TemporalFactRevision) for item in facts):
+            raise TypeError("temporal adapter returned invalid fact rows")
+        if any(not _fact_matches_scope(item, recipe.scope) for item in facts):
+            return None, "temporal_fact_scope_mismatch"
         quality = QualityState.NO_DATA
         if facts:
             quality = QualityState.VALID
@@ -192,23 +224,145 @@ def _quality_for_source_error(source_error: str | None) -> QualityState:
     return QualityState.BLOCKED if source_error else QualityState.NO_DATA
 
 
-def _analytics_transparency(
+def _analytics_transparency_details(
     result: TemporalFactQueryResult,
     recipe: AnalysisRecipe,
     compiled: Any,
-) -> TransparencyEnvelope:
-    """Build the auditable lineage projection for a query result."""
+    products: Mapping[str, Any] | tuple[Any, ...] | None = None,
+) -> dict[str, Any]:
+    """Build strict chain/path material for one analytics read.
 
-    lineage_edges = []
-    edge_reader = getattr(runtime.temporal_fact_store, "lineage_edges", None)
-    if callable(edge_reader):
+    The older analytics response exposed a flat list of lineage references.
+    This helper keeps that list while also binding the metric plan and data
+    product descriptors to the exact canonical fact revisions.  Missing
+    stages remain missing in ``LineageChain``; the API never upgrades a
+    partial chain to a complete one merely because a metric was computed.
+    """
+
+    store = getattr(runtime, "temporal_fact_store", None)
+    lineage_refs, lineage_edges, lineage_errors = _lineage_material(
+        result.items,
+        store=store,
+    )
+    fact_chain = _lineage_chain(result.items)
+    nodes = list(fact_chain.nodes) if fact_chain else []
+    chain_edges = list(fact_chain.edges) if fact_chain else []
+    seen_nodes = {(node.stage, node.id) for node in nodes}
+    seen_edges = {
+        (edge.from_type, edge.from_id, edge.to_type, edge.to_id, edge.relationship)
+        for edge in chain_edges
+    }
+
+    metric_id = str(compiled.plan_hash)
+    metric_node = LineageNode(
+        stage="metric",
+        id=metric_id,
+        sha256=metric_id,
+        version=str(recipe.version),
+        observed_time=recipe.period.as_of,
+        metadata={
+            "recipe_id": recipe.recipe_id,
+            "metrics": list(compiled.metrics),
+            "metric_versions": dict(compiled.metric_versions),
+        },
+    )
+    if (metric_node.stage, metric_node.id) not in seen_nodes:
+        nodes.append(metric_node)
+        seen_nodes.add((metric_node.stage, metric_node.id))
+
+    if isinstance(products, Mapping):
+        product_index = dict(products)
+    else:
+        product_index = {}
+        for item in products or ():
+            dataset_id = (
+                item.get("dataset_id")
+                if isinstance(item, Mapping)
+                else item.dataset_id
+                if hasattr(item, "dataset_id")
+                else None
+            )
+            if dataset_id:
+                product_index[str(dataset_id)] = item
+    for dataset_id in compiled.source_datasets:
+        descriptor = product_index.get(dataset_id)
+        descriptor_payload = (
+            descriptor.model_dump(mode="json")
+            if hasattr(descriptor, "model_dump")
+            else descriptor
+        )
+        descriptor_hash = (
+            content_sha256(descriptor_payload)
+            if isinstance(descriptor_payload, Mapping)
+            else None
+        )
+        product_node = LineageNode(
+            stage="data_product",
+            id=dataset_id,
+            sha256=descriptor_hash,
+            version=(str(descriptor.version) if descriptor is not None and hasattr(descriptor, "version") else None),
+            observed_time=recipe.period.as_of,
+            metadata={
+                "descriptor_present": descriptor is not None,
+                "status": getattr(descriptor, "status", None),
+            },
+        )
+        if (product_node.stage, product_node.id) not in seen_nodes:
+            nodes.append(product_node)
+            seen_nodes.add((product_node.stage, product_node.id))
+        edge_key = ("metric", metric_id, "data_product", dataset_id, "uses")
+        if edge_key not in seen_edges:
+            chain_edges.append(
+                LineageEdgeContract(
+                    from_type="metric",
+                    from_id=metric_id,
+                    to_type="data_product",
+                    to_id=dataset_id,
+                    relationship="uses",
+                    from_sha256=metric_id,
+                    to_sha256=descriptor_hash,
+                )
+            )
+            seen_edges.add(edge_key)
         for fact in result.items:
-            try:
-                lineage_edges.extend(edge_reader(fact.fact_id, revision=fact.revision))
-            except Exception:
-                # A missing optional edge adapter does not erase fact lineage;
-                # the envelope remains truthful with an empty edge list.
+            edge_key = (
+                "data_product",
+                dataset_id,
+                "canonical_fact",
+                fact.revision_id,
+                "materializes",
+            )
+            if edge_key in seen_edges:
                 continue
+            chain_edges.append(
+                LineageEdgeContract(
+                    from_type="data_product",
+                    from_id=dataset_id,
+                    to_type="canonical_fact",
+                    to_id=fact.revision_id,
+                    relationship="materializes",
+                    from_sha256=descriptor_hash,
+                    to_sha256=fact.content_sha256,
+                )
+            )
+            seen_edges.add(edge_key)
+
+    nodes.sort(key=lambda node: (LINEAGE_STAGE_ORDER.index(node.stage), node.id))
+    chain_edges.sort(
+        key=lambda edge: (
+            LINEAGE_STAGE_ORDER.index(edge.from_type)
+            if edge.from_type in LINEAGE_STAGE_ORDER
+            else len(LINEAGE_STAGE_ORDER),
+            edge.from_id,
+            LINEAGE_STAGE_ORDER.index(edge.to_type)
+            if edge.to_type in LINEAGE_STAGE_ORDER
+            else len(LINEAGE_STAGE_ORDER),
+            edge.to_id,
+            edge.relationship,
+        )
+    )
+    chain = LineageChain(nodes=tuple(nodes), edges=tuple(chain_edges)) if nodes else None
+    drilldown_paths = tuple(_fact_drilldown_path(item) for item in result.items)
     source_watermarks: dict[str, str] = {}
     for fact in result.items:
         previous = source_watermarks.get(fact.source_system)
@@ -219,6 +373,13 @@ def _analytics_transparency(
         f"{metric}:{compiled.metric_versions[metric]}"
         for metric in compiled.metrics
     )
+    next_action = (
+        "repair_lineage_edges"
+        if lineage_errors
+        else None
+        if result.quality_state == QualityState.VALID
+        else "refresh_or_reconcile_temporal_facts"
+    )
     envelope = TransparencyEnvelope.from_query_result(
         result,
         dataset=f"analytics.{recipe.recipe_id}.v1",
@@ -226,15 +387,50 @@ def _analytics_transparency(
         authority_hash="temporal-fact-store",
         formula_version=formula_version or None,
         source_watermarks=source_watermarks,
-        next_action=(
-            None
-            if result.quality_state == QualityState.VALID
-            else "refresh_or_reconcile_temporal_facts"
-        ),
+        next_action=next_action,
+        lineage_chain=chain,
+        drilldown_path=drilldown_paths[0] if drilldown_paths else None,
     )
-    # ``from_query_result`` intentionally keeps its compact constructor stable;
-    # attach typed edges only after the fact projection has been validated.
-    return envelope.model_copy(update={"lineage_edges": tuple(lineage_edges)})
+    envelope = envelope.model_copy(update={"lineage_edges": tuple(lineage_edges)})
+    return {
+        "envelope": envelope,
+        "lineage_refs": lineage_refs,
+        "lineage_edges": lineage_edges,
+        "lineage_errors": lineage_errors,
+        "lineage_chain": chain,
+        "drilldown_paths": drilldown_paths,
+    }
+
+
+def _lineage_projection_status(details: Mapping[str, Any]) -> str:
+    """Return a strict status while retaining partial legacy projections.
+
+    A flat lineage reference list is useful for older clients, but it cannot
+    establish replayability.  Only a chain with every required stage and
+    ordered edges, plus complete hierarchy paths, is reported as ``VALID``.
+    Missing stages/levels remain visible through the audit fields and produce
+    ``PARTIAL`` instead of silently upgrading the projection.
+    """
+
+    chain = details.get("lineage_chain")
+    if not isinstance(chain, LineageChain) or not chain.structurally_complete:
+        return "PARTIAL"
+    paths = details.get("drilldown_paths", ())
+    if any(not path.complete for path in paths):
+        return "PARTIAL"
+    if details.get("lineage_errors"):
+        return "PARTIAL"
+    return "VALID"
+
+
+def _analytics_transparency(
+    result: TemporalFactQueryResult,
+    recipe: AnalysisRecipe,
+    compiled: Any,
+) -> TransparencyEnvelope:
+    """Backward-compatible compact transparency accessor."""
+
+    return _analytics_transparency_details(result, recipe, compiled)["envelope"]
 
 
 def _blocked_query_result(recipe: AnalysisRecipe, reason: str) -> TemporalFactQueryResult:
@@ -501,7 +697,13 @@ def analytics_drilldown(
         execution = projection["execution"]
         source_error = projection["source_error"]
         facts = query_result.items
-        transparency = _analytics_transparency(query_result, recipe_contract, compiled)
+        transparency_details = _analytics_transparency_details(
+            query_result,
+            recipe_contract,
+            compiled,
+            projection["products"],
+        )
+        transparency = transparency_details["envelope"]
         quality_state = execution.quality_state
         rows = [item.model_dump(mode="json") for item in facts]
         status = quality_state
@@ -523,6 +725,17 @@ def analytics_drilldown(
             "data_product_gate": projection["gate"],
             "transparency": transparency.model_dump(mode="json") if transparency else None,
             "lineage": transparency.drilldown() if transparency else [],
+            "lineage_chain": (
+                transparency_details["lineage_chain"].model_dump(mode="json")
+                if transparency_details["lineage_chain"]
+                else None
+            ),
+            "drilldown_paths": [
+                path.model_dump(mode="json")
+                for path in transparency_details["drilldown_paths"]
+            ],
+            "lineage_errors": list(transparency_details["lineage_errors"]),
+            "lineage_status": _lineage_projection_status(transparency_details),
             "lineage_audit": transparency.lineage_audit() if transparency else {
                 "lineage_complete": False,
                 "lineage_structurally_complete": False,
@@ -580,7 +793,13 @@ def analytics_lineage(
         products = {item.dataset_id: item for item in projection["products"]}
         facts = query_result.items
         quality_state = execution.quality_state
-        transparency = _analytics_transparency(query_result, recipe_contract, compiled)
+        transparency_details = _analytics_transparency_details(
+            query_result,
+            recipe_contract,
+            compiled,
+            products,
+        )
+        transparency = transparency_details["envelope"]
         fact_refs = [
             {
                 "id": fact.revision_id,
@@ -625,6 +844,25 @@ def analytics_lineage(
             "comparisons": projection["comparisons"],
             "data_product_gate": projection["gate"],
             "chain": chain,
+            "lineage_chain": (
+                transparency_details["lineage_chain"].model_dump(mode="json")
+                if transparency_details["lineage_chain"]
+                else None
+            ),
+            "drilldown_paths": [
+                path.model_dump(mode="json")
+                for path in transparency_details["drilldown_paths"]
+            ],
+            "lineage": [
+                ref.model_dump(mode="json")
+                for ref in transparency_details["lineage_refs"]
+            ],
+            "lineage_edges": [
+                edge.model_dump(mode="json")
+                for edge in transparency_details["lineage_edges"]
+            ],
+            "lineage_errors": list(transparency_details["lineage_errors"]),
+            "lineage_status": _lineage_projection_status(transparency_details),
             "transparency": transparency.model_dump(mode="json") if transparency else None,
             "lineage_audit": transparency.lineage_audit() if transparency else {
                 "lineage_complete": False,

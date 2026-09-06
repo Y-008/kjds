@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
@@ -7,7 +7,11 @@ from apps.control_plane.api import registered_routes
 from apps.control_plane.data_fabric_contracts import DataProductDescriptor
 from apps.control_plane.routers import control_plane_observability
 from apps.control_plane.security import Principal
-from apps.control_plane.temporal_fact_store import TemporalFactStore
+from apps.control_plane.temporal_fact_store import (
+    QualityState,
+    TemporalFactQueryResult,
+    TemporalFactStore,
+)
 
 
 def _verified_order_product() -> DataProductDescriptor:
@@ -196,9 +200,131 @@ def test_analytics_projections_preserve_fact_quality_and_lineage(monkeypatch):
     assert drilldown["transparency"]["source_count"] == 1
     assert drilldown["lineage"][0]["id"] == "ozon-response-1"
     assert drilldown["lineage_edges"][0]["to_id"] == drilldown["rows"][0]["revision_id"]
+    assert drilldown["lineage_status"] == "PARTIAL"
+    assert drilldown["lineage_audit"]["lineage_structurally_complete"] is False
+    assert [node["stage"] for node in drilldown["lineage_chain"]["nodes"]] == [
+        "metric",
+        "data_product",
+        "canonical_fact",
+        "raw_file",
+    ]
+    assert [node["level"] for node in drilldown["drilldown_paths"][0]["nodes"]] == [
+        "entity",
+        "store",
+        "sku",
+        "transaction",
+        "evidence",
+    ]
     assert lineage["status"] == "VALID"
     assert lineage["chain"][0]["facts"][0]["fact_id"] == "order-fact-1"
     assert lineage["chain"][0]["raw_evidence"][0]["id"] == "ozon-response-1"
+    assert lineage["lineage_status"] == "PARTIAL"
+    assert lineage["lineage_audit"]["lineage_structurally_complete"] is False
+
+
+def _analytics_adapter_fixture(monkeypatch, adapter, *, t0):
+    principal = Principal(
+        actor_id="analyst",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(control_plane_observability.runtime, "temporal_fact_store", adapter)
+    monkeypatch.setattr(
+        control_plane_observability.runtime.scope_grants,
+        "current",
+        lambda **_: {"status": "ready", "entity_ref": "entity-a"},
+    )
+    monkeypatch.setattr(
+        control_plane_observability,
+        "load_data_product_registry",
+        lambda: (_verified_order_product(),),
+    )
+    return {
+        "principal": principal,
+        "entity_id": "entity-a",
+        "store_id": "store-a",
+        "start_at": t0.isoformat(),
+        "end_at": (t0 + timedelta(days=1)).isoformat(),
+        "as_of": (t0 + timedelta(hours=2)).isoformat(),
+    }
+
+
+def test_analytics_adapter_foreign_scope_row_is_blocked(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    t0 = datetime(2026, 9, 1, tzinfo=UTC)
+    source = TemporalFactStore(clock=lambda: t0 + timedelta(hours=4))
+    foreign = source.append(
+        fact_id="foreign-order",
+        fact_type="order",
+        natural_key="foreign-order-1",
+        payload={"gross_sales": 7},
+        tenant_id="tenant-b",
+        entity_id="entity-a",
+        store_id="store-a",
+        event_time=t0,
+        observed_time=t0 + timedelta(hours=1),
+        effective_time=t0,
+        source_system="fixture",
+        source_record_id="foreign-order-1",
+        idempotency_key="foreign-import-1",
+    )
+
+    class _ForeignAdapter:
+        def query_as_of(self, cutoff, **_kwargs):
+            return TemporalFactQueryResult(
+                as_of=cutoff,
+                items=(foreign,),
+                quality_state=QualityState.VALID,
+            )
+
+    kwargs = _analytics_adapter_fixture(monkeypatch, _ForeignAdapter(), t0=t0)
+    result = control_plane_observability.analytics_drilldown("orders", **kwargs)
+
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "temporal_fact_scope_mismatch"
+    assert result["rows"] == []
+    assert result["fact_quality_state"] == "BLOCKED"
+    assert result["lineage_status"] == "PARTIAL"
+
+
+def test_analytics_adapter_quality_claim_drift_is_blocked(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    t0 = datetime(2026, 9, 1, tzinfo=UTC)
+    source = TemporalFactStore(clock=lambda: t0 + timedelta(hours=4))
+    valid = source.append(
+        fact_id="valid-order",
+        fact_type="order",
+        natural_key="valid-order-1",
+        payload={"gross_sales": 7},
+        tenant_id="tenant-a",
+        entity_id="entity-a",
+        store_id="store-a",
+        event_time=t0,
+        observed_time=t0 + timedelta(hours=1),
+        effective_time=t0,
+        source_system="fixture",
+        source_record_id="valid-order-1",
+        idempotency_key="valid-import-1",
+    )
+
+    class _DriftAdapter:
+        def query_as_of(self, cutoff, **_kwargs):
+            return TemporalFactQueryResult(
+                as_of=cutoff,
+                items=(valid,),
+                quality_state=QualityState.NO_DATA,
+            )
+
+    kwargs = _analytics_adapter_fixture(monkeypatch, _DriftAdapter(), t0=t0)
+    result = control_plane_observability.analytics_lineage("orders", **kwargs)
+
+    assert result["status"] == "BLOCKED"
+    assert result["reason"] == "temporal_fact_quality_mismatch"
+    assert result["chain"][0]["facts"] == []
+    assert result["lineage_status"] == "PARTIAL"
 
 
 def test_analytics_source_outage_is_blocked_instead_of_no_data(monkeypatch):
