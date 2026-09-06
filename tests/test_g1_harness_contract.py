@@ -563,10 +563,12 @@ def test_g1_generic_contract_database_has_run_scoped_ownership_and_cleanup():
         "test_team_agent_evolution_postgres.py",
     }
     for module in (media_postgres, primary_postgres):
-        assert 'os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")' in module
+        assert 'os.getenv("KJDS_G1_CONTRACT_DATABASE_URL", "")' in module
+        assert 'or os.getenv("KJDS_DATABASE_URL"' not in module
         assert 'os.environ["KJDS_DATABASE_URL"] = DATABASE_URL' in module
         assert 'os.environ["KJDS_DATABASE_URL"] = original_database_url' in module
-    assert 'os.getenv("KJDS_G1_CONTRACT_DATABASE_URL")' in team_agent_postgres
+    assert 'os.getenv("KJDS_G1_CONTRACT_DATABASE_URL", "")' in team_agent_postgres
+    assert 'or os.getenv("KJDS_DATABASE_URL"' not in team_agent_postgres
     assert 'os.environ["KJDS_DATABASE_URL"] = target.url.render_as_string(' in (
         team_agent_postgres
     )

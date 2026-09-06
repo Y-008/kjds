@@ -20,12 +20,13 @@ from apps.control_plane.media_connectors import (
 )
 from apps.control_plane.security import Principal
 
-DATABASE_URL = os.getenv("KJDS_G1_CONTRACT_DATABASE_URL") or os.getenv(
-    "KJDS_DATABASE_URL", ""
-)
+DATABASE_URL = os.getenv("KJDS_G1_CONTRACT_DATABASE_URL", "").strip()
 pytestmark = pytest.mark.skipif(
     not DATABASE_URL.startswith("postgresql"),
-    reason="PostgreSQL contract tests require KJDS_DATABASE_URL",
+    reason=(
+        "PostgreSQL contract tests require the run-scoped disposable "
+        "KJDS_G1_CONTRACT_DATABASE_URL"
+    ),
 )
 BASE = datetime(2026, 8, 3, 9, tzinfo=UTC)
 
