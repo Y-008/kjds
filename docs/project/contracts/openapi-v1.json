@@ -13034,7 +13034,7 @@
             "title": "Compensation Action"
           },
           "data_quality_valid": {
-            "default": true,
+            "default": false,
             "title": "Data Quality Valid",
             "type": "boolean"
           },
@@ -13050,7 +13050,7 @@
             "type": "string"
           },
           "evidence_fresh": {
-            "default": true,
+            "default": false,
             "title": "Evidence Fresh",
             "type": "boolean"
           },
@@ -13079,7 +13079,7 @@
             "title": "Expected Revision"
           },
           "experiment_clear": {
-            "default": true,
+            "default": false,
             "title": "Experiment Clear",
             "type": "boolean"
           },
@@ -13227,7 +13227,7 @@
             "title": "Recovery Ref"
           },
           "rollback_available": {
-            "default": true,
+            "default": false,
             "title": "Rollback Available",
             "type": "boolean"
           },
@@ -14054,17 +14054,10 @@
             "title": "Fresh Until"
           },
           "idempotency_key": {
-            "anyOf": [
-              {
-                "maxLength": 300,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Idempotency Key"
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
           },
           "lineage": {
             "anyOf": [
@@ -14155,7 +14148,8 @@
         "required": [
           "entity_ref",
           "payload",
-          "correction_reason"
+          "correction_reason",
+          "idempotency_key"
         ],
         "title": "RestateFactInput",
         "type": "object"

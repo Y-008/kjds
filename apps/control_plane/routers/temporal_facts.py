@@ -31,7 +31,7 @@ class RestateFactInput(BaseModel):
     source_version: str | None = Field(default=None, min_length=1, max_length=120)
     causation_id: str | None = Field(default=None, max_length=300)
     correlation_id: str | None = Field(default=None, max_length=300)
-    idempotency_key: str | None = Field(default=None, min_length=1, max_length=300)
+    idempotency_key: str = Field(min_length=1, max_length=300)
     metadata: dict[str, Any] | None = None
     created_by: str | None = Field(default=None, min_length=1, max_length=160)
 
@@ -145,7 +145,10 @@ def restate_fact(
             correlation_id=body.correlation_id,
             idempotency_key=body.idempotency_key,
             metadata=body.metadata,
-            created_by=body.created_by,
+            # The authenticated actor is the only authoritative recorder;
+            # caller-supplied identity is retained only as an ignored legacy
+            # compatibility field in the transport model.
+            created_by=principal.actor_id,
         )
         return updated.model_dump(mode="json")
     return run(mutate)
