@@ -1,8 +1,9 @@
 """One-shot bounded official Ozon readback probe (BAS-160 step 4 input).
 
 Explicit ``--execute`` intent is required.  The probe performs exactly one
-bounded read-only finance query against the official Seller API and persists a
-content-addressed response bundle plus a non-secret identity summary.  It never
+bounded read-only operation (product or finance) against the official Seller
+API and persists a content-addressed response bundle plus a non-secret
+identity summary.  It never
 prints or stores Client-Id/Api-Key material, never constructs a provider client
 through the managed worker factory, and never performs any write.
 

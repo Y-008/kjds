@@ -8,6 +8,7 @@
 - 执行：`READBACK_FAILED`。
 - 首次错误：`Ozon read transport failure`（代理链路提前关闭 TLS）。
 - 直连复核：官方域名 DNS 与 TCP/443 可达；绕过代理后返回 HTTP `403`，因此当前账号/权限未获得可接受的商品读回。
+- 错误分类：capture_ozon_readback.py 保留官方错误代码 OZON_HTTP_403；生产验收投影增加稳定阻断码 OZON_READ_AUTHORIZATION_FAILED。
 - 原始响应工件：未生成。
 - 外部写入：未执行。
 - 重试：仅在明确修正代理路径后进行一次直连复核；收到 `403` 后停止，避免重复请求。
