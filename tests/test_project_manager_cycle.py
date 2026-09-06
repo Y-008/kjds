@@ -52,10 +52,11 @@ def test_pm_cycle_can_dispatch_only_when_all_required_snapshots_are_current():
             workspace_state_known=True,
             workspace_clean=True,
             task_queue_known=True,
-            lease_snapshot_known=True,
-            test_receipts_current=True,
-            proof_receipts_current=True,
-        )
+                lease_snapshot_known=True,
+                test_receipts_current=True,
+                proof_receipts_current=True,
+                experiment_clear=True,
+            )
     )
     assert result["decision"]["status"] == "dispatch"
     assert result["dispatch_allowed"] is True

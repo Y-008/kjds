@@ -149,7 +149,8 @@ class ProjectManagerCycleInput:
     lease_snapshot_known: bool = False
     test_receipts_current: bool = False
     proof_receipts_current: bool = False
-    experiment_clear: bool = True
+    # Omitted experiment isolation evidence must never permit unattended work.
+    experiment_clear: bool = False
     stuck_tasks: tuple[StuckTask, ...] = ()
     changed_files: tuple[str, ...] = ()
     proof_refs: tuple[str, ...] = ()
