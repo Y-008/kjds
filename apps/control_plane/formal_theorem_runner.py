@@ -37,6 +37,19 @@ def run_manifest(path: str | Path) -> dict[str, Any]:
             "proved": [],
             "blocked": missing_evidence,
         }
+    non_runnable = [
+        entry.stable_key
+        for entry in entries
+        if entry.status not in {"proposed", "running"}
+    ]
+    if non_runnable:
+        return {
+            **base,
+            "status": "blocked",
+            "reason": "proof_status_not_eligible",
+            "proved": [],
+            "blocked": non_runnable,
+        }
     if toolchain["status"] != "ready":
         return {
             **base,

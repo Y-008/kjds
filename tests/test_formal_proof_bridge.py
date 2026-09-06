@@ -79,6 +79,39 @@ def test_runner_can_prove_only_an_evidence_bound_entry(tmp_path, monkeypatch):
     assert result["proved"] == ["k"]
 
 
+def test_runner_does_not_promote_blocked_entry(tmp_path, monkeypatch):
+    module = tmp_path / "Proof.lean"
+    module.write_text("theorem t : True := by trivial\n", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        '{"entries":[{"stable_key":"k","theorem":"t","module":"Proof.lean",'
+        '"status":"blocked","evidence_refs":["evidence://k"]}]}',
+        encoding="utf-8",
+    )
+    from apps.control_plane import formal_theorem_runner
+
+    monkeypatch.setattr(
+        formal_theorem_runner,
+        "toolchain_status",
+        lambda: {"status": "ready", "lean": "lean", "lake": "lake", "reason": None},
+    )
+    result = formal_theorem_runner.run_manifest(manifest)
+    assert result["status"] == "blocked"
+    assert result["reason"] == "proof_status_not_eligible"
+    assert result["blocked"] == ["k"]
+
+
+def test_manifest_rejects_invalid_artifact_digest(tmp_path):
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        '{"entries":[{"stable_key":"k","theorem":"t","module":"Proof.lean",'
+        '"artifact_sha256":"nope"}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="artifact_sha256"):
+        load_manifest(manifest)
+
+
 def test_artifact_hash_and_explicit_binding(tmp_path):
     artifact = tmp_path / "proof.txt"
     artifact.write_text("receipt", encoding="utf-8")
