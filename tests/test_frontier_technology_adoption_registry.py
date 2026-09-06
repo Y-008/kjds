@@ -395,7 +395,7 @@ def test_next_16_3_stable_material_does_not_auto_upgrade_kjds():
     package = json.loads(WEB_PACKAGE_PATH.read_text(encoding="utf-8"))
 
     assert web["decision"] == "adopt_now"
-    assert web["reviewed_on"] == "2026-08-07"
+    assert web["reviewed_on"] == "2026-09-06"
     assert "Next.js 16.3 is a stable release" in web["maturity"]["evidence_basis"]
     assert "some features still explicitly experimental" in (
         web["maturity"]["evidence_basis"]

@@ -91,8 +91,8 @@
         ]
       },
       "owner": "agent_platform",
-      "reviewed_on": "2026-08-07",
-      "review_due_on": "2026-09-07",
+      "reviewed_on": "2026-09-06",
+      "review_due_on": "2026-10-06",
       "control_boundary": {
         "runtime_implemented": true,
         "production_dependency_allowed": false,
@@ -204,8 +204,8 @@
         ]
       },
       "owner": "web_platform",
-      "reviewed_on": "2026-08-07",
-      "review_due_on": "2026-09-07",
+      "reviewed_on": "2026-09-06",
+      "review_due_on": "2026-10-06",
       "control_boundary": {
         "runtime_implemented": false,
         "production_dependency_allowed": false,
@@ -424,8 +424,8 @@
         ]
       },
       "owner": "observability",
-      "reviewed_on": "2026-08-07",
-      "review_due_on": "2026-09-07",
+      "reviewed_on": "2026-09-06",
+      "review_due_on": "2026-10-06",
       "control_boundary": {
         "runtime_implemented": false,
         "production_dependency_allowed": false,
