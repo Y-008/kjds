@@ -6,6 +6,7 @@ from apps.control_plane.data_fabric_registry import (
     DataProductRegistryError,
     get_data_product,
     load_data_product_registry,
+    require_verified_data_product,
 )
 
 
@@ -52,3 +53,8 @@ def test_registry_rejects_invalid_status(tmp_path) -> None:
     path.write_text(json.dumps({"status": "live", "products": []}), encoding="utf-8")
     with pytest.raises(DataProductRegistryError, match="status"):
         load_data_product_registry(path)
+
+
+def test_contract_only_product_cannot_be_admitted_for_production() -> None:
+    with pytest.raises(DataProductRegistryError, match="not verified"):
+        require_verified_data_product("profit.cm3.v1")

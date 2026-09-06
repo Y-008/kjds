@@ -82,3 +82,20 @@ def get_data_product(
         (product for product in load_data_product_registry(path) if product.dataset_id == dataset_id),
         None,
     )
+
+
+def require_verified_data_product(
+    dataset_id: str,
+    *,
+    path: str | Path = DEFAULT_REGISTRY_PATH,
+) -> DataProductDescriptor:
+    """Resolve a product for production use and reject contract-only entries."""
+
+    product = get_data_product(dataset_id, path=path)
+    if product is None:
+        raise DataProductRegistryError(f"unknown data product: {dataset_id}")
+    if product.status != "verified":
+        raise DataProductRegistryError(
+            f"data product is not verified for production use: {dataset_id}"
+        )
+    return product
