@@ -406,6 +406,7 @@ export function ChannelAccountConsole() {
           <span><Store size={18} /></span>
           <div><strong>Channel Accounts</strong><small>EXACT-SCOPE AUTHORITY</small></div>
         </div>
+        <Link href="/ozon/production-acceptance">Ozon 外部验收</Link>
         <span className={styles.topBoundary}><LockKeyhole size={14} /> NON-SECRET · READ ONLY</span>
       </header>
 
