@@ -44,6 +44,7 @@ from .routers import (
     product_content,
     profit_command,
     project_graph,
+    resource_budgets,
     returns_aftersales,
     seller_erp_bridge,
     seller_strategy,
@@ -298,6 +299,7 @@ _ROUTE_MODULES = (
     commercial_usage,
     commercial_finance,
     autonomous_execution_profiles,
+    resource_budgets,
     control_plane_observability,
 )
 for _module in _ROUTE_MODULES:

@@ -418,6 +418,13 @@
       "activation_trigger": "真实支付、发票、退款或收入分成消费者上线前"
     },
     {
+      "module": "resource_budget_ledger.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_tenant_scoped_resource_budget_ledger",
+      "rationale": "Agent、模型、数据库、外部 API 和媒体生成的预算、预留、消耗、释放与超支只形成租户隔离的内部资源事实；当前不触发外部通知、支付或平台动作。",
+      "activation_trigger": "预算告警或成本消费者需要跨服务投递前"
+    },
+    {
       "module": "temporal_fact_sql.py",
       "status": "internal_only",
       "delivery_contract": "append_only_bitemporal_fact_revision_ledger",

@@ -157,6 +157,7 @@ from .read_only_claims import ReadOnlyClaimService
 from .readiness import ExecutionReadinessService, GateReadinessService
 from .repository import InMemoryRepository
 from .research_inbox import ResearchInboxService
+from .resource_budget_ledger import ResourceBudgetLedger
 from .scope_grants import ScopeGrantAuthority
 from .scoped_accounts_payable import ScopedAccountsPayableWorkspace
 from .scoped_batch_opportunity import ScopedBatchOpportunityAuthority
@@ -303,6 +304,7 @@ class RuntimeServices:
     project_graph_proposal_ledger: Any
     autonomous_execution_profile_store: Any
     commercial_finance_ledger: Any
+    resource_budget_ledger: Any
     finance: Any
     fx_evidence_intake: Any
     finance_report_reviews: Any
@@ -508,6 +510,7 @@ def build_runtime() -> RuntimeServices:
     # append-only and persisted separately from the short-lived Permit itself.
     autonomous_execution_profile_store = AutonomousExecutionProfileStore(engine)
     commercial_finance_ledger = CommercialFinanceLedger(engine)
+    resource_budget_ledger = ResourceBudgetLedger(engine)
     media_connector_contract = MediaConnectorContract()
     media_connectors = MediaConnectorRegistry(
         engine=engine,
@@ -1470,6 +1473,7 @@ def build_runtime() -> RuntimeServices:
         project_graph_proposal_ledger=project_graph_proposal_ledger,
         autonomous_execution_profile_store=autonomous_execution_profile_store,
         commercial_finance_ledger=commercial_finance_ledger,
+        resource_budget_ledger=resource_budget_ledger,
         finance=finance,
         fx_evidence_intake=fx_evidence_intake,
         finance_report_reviews=finance_report_reviews,

@@ -16,7 +16,7 @@ RUNTIME_DATABASE_URL_ENV = "KJDS_RUNTIME_DATABASE_URL"
 MIGRATION_HEAD_ENV = "KJDS_MIGRATION_HEAD"
 DATABASE_CONNECT_TIMEOUT_ENV = "KJDS_DATABASE_CONNECT_TIMEOUT_SECONDS"
 # These tables are the minimum schema required for the control plane's core
-# repository and the replay/accounting slices added in 0104--0113.  A current
+# repository and the replay/accounting slices added in 0104--0114.  A current
 # Alembic version without these tables is a corrupted or partially restored
 # database and must never be advertised as ready.
 REQUIRED_RUNTIME_TABLES = (
@@ -28,6 +28,8 @@ REQUIRED_RUNTIME_TABLES = (
     "autonomous_execution_profile_revisions",
     "autonomous_execution_profile_events",
     "commercial_finance_events",
+    "resource_budgets",
+    "resource_budget_events",
 )
 COVERAGE_ISSUER_DATABASE_URL_ENV = "KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL"
 COVERAGE_ISSUER_ROLE = "kjds_gdc_issuance_runtime"

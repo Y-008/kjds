@@ -43,8 +43,8 @@ def test_migration_graph_has_one_current_head_after_ledger_hardening():
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini")))
-    assert script.get_heads() == ["20260906_0113"]
-    assert script.get_revision("20260906_0113").down_revision == "20260906_0112"
+    assert script.get_heads() == ["20260906_0114"]
+    assert script.get_revision("20260906_0114").down_revision == "20260906_0113"
 
 
 def test_ledger_immutability_migration_covers_all_new_tables():
@@ -54,6 +54,7 @@ def test_ledger_immutability_migration_covers_all_new_tables():
             "20260906_0111": "20260906_0111_new_ledger_immutability.py",
             "20260906_0112": "20260906_0112_autonomous_execution_profiles.py",
             "20260906_0113": "20260906_0113_commercial_finance_events.py",
+            "20260906_0114": "20260906_0114_resource_budget_events.py",
         }.items()
     }
     for table in database.REQUIRED_RUNTIME_TABLES[1:]:
