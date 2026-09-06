@@ -13,7 +13,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from ..api_contracts import current_principal, ensure_role, ensure_store_scope, run
 from ..autonomous_pm_heartbeat import (
     HeartbeatInput,
+    ServerAuthoritySnapshot,
+    ServerEconomicGuardRead,
     evaluate_heartbeat,
+    observe_server_authority,
     observe_server_git_worktree,
 )
 from ..economic_guard_service import (
@@ -29,11 +32,10 @@ from ..security import Principal
 router = APIRouter()
 
 
-# These request fields remain in the wire contract for old PM clients, but no
-# service-owned observer currently supplies their truth.  The heartbeat route
-# therefore records the claims for replay diagnostics and always evaluates the
-# corresponding gates as false.  Adding a new observer requires an explicit
-# code change that binds its snapshot and digest here; a caller cannot promote
+# These request fields remain in the wire contract for old PM clients.  The
+# route records them for replay diagnostics, while effective values come only
+# from the server-owned runtime readers below.  If a deployment has not bound
+# a reader, the corresponding observation is blocked; a caller cannot promote
 # itself by posting ``true``.
 _UNOBSERVED_HEARTBEAT_FIELDS: tuple[str, ...] = (
     "task_queue_known",
@@ -50,6 +52,18 @@ _UNOBSERVED_HEARTBEAT_FIELDS: tuple[str, ...] = (
 _UNOBSERVED_HEARTBEAT_REASONS: dict[str, str] = {
     field: f"server_observation_unavailable:{field}"
     for field in _UNOBSERVED_HEARTBEAT_FIELDS
+}
+_SERVER_AUTHORITY_TO_HEARTBEAT_FIELD: dict[str, str] = {
+    "task_queue": "task_queue_known",
+    "lease_snapshot": "lease_snapshot_known",
+    "test_receipts": "test_receipts_current",
+    "proof_receipts": "proof_receipts_current",
+    "evidence": "evidence_fresh",
+    "data_quality": "data_quality_valid",
+    "external_readback": "external_readback_passed",
+    "rollback": "rollback_available",
+    "experiment": "experiment_clear",
+    "economic_guard": "economic_state_known",
 }
 
 
@@ -265,6 +279,79 @@ def _stable_hash(value: Any) -> str:
             allow_nan=False,
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _heartbeat_scope_key(
+    *,
+    principal: Principal,
+    entity_ref: str,
+    store_ref: str,
+) -> str:
+    """Build the compact exact scope passed to server-side PM readers."""
+
+    tenant = principal.tenant_ref.strip()
+    entity = entity_ref.strip()
+    store = store_ref.strip()
+    if not tenant or not entity or not store:
+        raise ValueError("heartbeat authority scope is incomplete")
+    scope_key = f"{tenant}/{entity}/{store}"
+    if len(scope_key) > 500:
+        raise ValueError("heartbeat authority scope is too long")
+    return scope_key
+
+
+def _runtime_pm_economic_reader() -> Any:
+    """Return the explicitly bound runtime economic reader, if any."""
+
+    value = getattr(runtime, "pm_economic_guard_reader", None)
+    if isinstance(value, ServerEconomicGuardRead):
+        # A static read remains subject to its own observed_at/expiry checks.
+        def read_static(**_values: Any) -> ServerEconomicGuardRead:
+            return value
+
+        return read_static
+    return value if callable(value) else None
+
+
+def _runtime_pm_authority_readers() -> Mapping[str, Any]:
+    """Return only the server-owned PM reader registry, never request data."""
+
+    value = getattr(runtime, "pm_authority_readers", None)
+    return value if isinstance(value, Mapping) else {}
+
+
+def _heartbeat_authority_fields(
+    snapshot: ServerAuthoritySnapshot,
+    heartbeat: HeartbeatInput,
+) -> tuple[list[str], list[str], dict[str, bool]]:
+    """Project server observation status into the legacy response fields."""
+
+    flags = {
+        field: bool(getattr(heartbeat, field, False))
+        for field in (
+            *(_SERVER_AUTHORITY_TO_HEARTBEAT_FIELD.values()),
+            "head_verified",
+            "workspace_state_known",
+            "workspace_clean",
+        )
+    }
+    economic = snapshot.economic_observation
+    flags["economic_state_known"] = bool(
+        economic is not None and economic.is_current(snapshot.observed_at)
+    )
+    verified: list[str] = []
+    unverified: list[str] = []
+    for _source, target in _SERVER_AUTHORITY_TO_HEARTBEAT_FIELD.items():
+        if flags.get(target, False):
+            verified.append(target)
+        else:
+            unverified.append(target)
+    for target in ("head_verified", "workspace_state_known", "workspace_clean"):
+        if flags.get(target, False):
+            verified.append(target)
+        else:
+            unverified.append(target)
+    return verified, unverified, flags
 
 
 def _proposal_request_hash(
@@ -1095,49 +1182,41 @@ def project_heartbeat(
             budget_remaining=body.budget_remaining,
             min_budget_remaining=body.min_budget_remaining,
         ))
-        # Numeric economic inputs and the ``economic_state_known`` bit are
-        # caller claims until a server-owned balance/settlement observer is
-        # wired.  Keep the computed guard as a diagnostic, then force its
-        # effective state to blocked and bind the reason into a new digest.
-        guard = _force_unverified_economic_guard(
-            economic_claim_guard,
-            caller_claimed_state=body.economic_state_known,
-        )
         # ``head_verified`` and ``workspace_*`` used to be caller assertions.
         # Read the checkout from the API process itself so a worker cannot
         # claim a clean/current source tree by posting ``true`` flags.  A
         # failed probe remains an explicit hold condition; it never falls back
         # to the legacy request values.
         server_git = observe_server_git_worktree()
-        server_git_flags = server_git.flags_for(body.head)
-        # Queue, lease, receipt, evidence, readback, rollback and experiment
-        # facts have no server authority at this boundary yet.  Deliberately
-        # discard their request values before evaluation.  This is the
-        # fail-closed point: a client can report a claim, but cannot mint a
-        # dispatch permit by setting a boolean to true.
-        server_unverified_flags = {
-            field: False for field in _UNOBSERVED_HEARTBEAT_FIELDS
-        }
-        authority_reasons = tuple(_UNOBSERVED_HEARTBEAT_REASONS.values())
-        decision = evaluate_heartbeat(HeartbeatInput(
+        # Queue, lease, receipt, evidence, readback, rollback, experiment and
+        # economic facts are read only from the explicitly bound runtime
+        # adapters.  The adapter returns blocked observations when a
+        # deployment has not wired one; request claims are never consulted.
+        authority_snapshot = observe_server_authority(
+            _runtime_pm_authority_readers(),
+            scope_key=_heartbeat_scope_key(
+                principal=principal,
+                entity_ref=body.entity_ref,
+                store_ref=body.store_ref,
+            ),
+            economic_guard_reader=_runtime_pm_economic_reader(),
+            git_observation=server_git,
+            observed_at=server_git.observed_at,
+        )
+        heartbeat_input = HeartbeatInput.from_server_authority(
+            authority_snapshot,
             head=body.head,
             graph_snapshot_sha256=projection["snapshot_sha256"],
             proof_ready=projection["status"] == "PROVEN",
-            evidence_fresh=server_unverified_flags["evidence_fresh"],
-            data_quality_valid=server_unverified_flags["data_quality_valid"],
-            external_readback_passed=server_unverified_flags["external_readback_passed"],
-            rollback_available=server_unverified_flags["rollback_available"],
-            economic_guard=guard,
-            experiment_clear=server_unverified_flags["experiment_clear"],
-            head_verified=server_git_flags["head_verified"],
-            workspace_state_known=server_git_flags["workspace_state_known"],
-            workspace_clean=server_git_flags["workspace_clean"],
-            task_queue_known=server_unverified_flags["task_queue_known"],
-            lease_snapshot_known=server_unverified_flags["lease_snapshot_known"],
-            test_receipts_current=server_unverified_flags["test_receipts_current"],
-            proof_receipts_current=server_unverified_flags["proof_receipts_current"],
-            authority_reasons=authority_reasons,
-        ))
+        )
+        authority_verified_fields, authority_unverified_fields, authority_flags = (
+            _heartbeat_authority_fields(authority_snapshot, heartbeat_input)
+        )
+        authority_reasons = authority_snapshot.authority_reasons(
+            as_of=authority_snapshot.observed_at
+        )
+        decision = evaluate_heartbeat(heartbeat_input)
+        guard = heartbeat_input.economic_guard
         submitted_task_result = normalize_task_result(body.task_result)
         # The PM itself is responsible for carrying graph-derived debt and
         # dependencies.  A caller-supplied result may add detail, but it
@@ -1209,7 +1288,8 @@ def project_heartbeat(
                     "reasons": list(guard.reasons),
                     "snapshot_sha256": guard.snapshot_sha256,
                     "diagnostic_snapshot_sha256": economic_claim_guard.snapshot_sha256,
-                    "source": "caller_claim_diagnostic",
+                    "source": "server_authority_snapshot",
+                    "diagnostic_source": "caller_claim_diagnostic",
                 },
                 "operational_snapshot": {
                     "server_git": {
@@ -1221,17 +1301,15 @@ def project_heartbeat(
                         "reason": server_git.reason,
                         "snapshot_sha256": server_git.snapshot_sha256,
                     },
-                    "authority_status": "blocked",
-                    "authority_verified_fields": [
-                        "head_verified",
-                        "workspace_state_known",
-                        "workspace_clean",
-                    ],
-                    "authority_unverified_fields": list(_UNOBSERVED_HEARTBEAT_FIELDS),
+                    "authority_snapshot": authority_snapshot.as_dict(),
+                    "authority_snapshot_sha256": authority_snapshot.snapshot_sha256,
+                    "authority_status": authority_snapshot.status,
+                    "authority_verified_fields": authority_verified_fields,
+                    "authority_unverified_fields": authority_unverified_fields,
                     "authority_reasons": list(authority_reasons),
-                    "head_verified": server_git_flags["head_verified"],
-                    "workspace_state_known": server_git_flags["workspace_state_known"],
-                    "workspace_clean": server_git_flags["workspace_clean"],
+                    "head_verified": authority_flags["head_verified"],
+                    "workspace_state_known": authority_flags["workspace_state_known"],
+                    "workspace_clean": authority_flags["workspace_clean"],
                     # These legacy request fields remain visible for replay
                     # diagnostics, but are never promoted to server facts.
                     "caller_claims_ignored": {
@@ -1261,7 +1339,7 @@ def project_heartbeat(
                         "budget_remaining",
                         "min_budget_remaining",
                     ],
-                    **server_unverified_flags,
+                    **authority_flags,
                 },
                 # Keep the standard Agent result inside the immutable
                 # heartbeat payload.  This makes the PM decision replayable
@@ -1286,13 +1364,11 @@ def project_heartbeat(
                 },
                 "source": "server",
                 "caller_git_attestation_used": False,
-                "authority_status": "blocked",
-                "authority_verified_fields": [
-                    "head_verified",
-                    "workspace_state_known",
-                    "workspace_clean",
-                ],
-                "authority_unverified_fields": list(_UNOBSERVED_HEARTBEAT_FIELDS),
+                "authority_snapshot": authority_snapshot.as_dict(),
+                "authority_snapshot_sha256": authority_snapshot.snapshot_sha256,
+                "authority_status": authority_snapshot.status,
+                "authority_verified_fields": authority_verified_fields,
+                "authority_unverified_fields": authority_unverified_fields,
                 "authority_reasons": list(authority_reasons),
                 "caller_claims_ignored": {
                     field: getattr(body, field) for field in _UNOBSERVED_HEARTBEAT_FIELDS

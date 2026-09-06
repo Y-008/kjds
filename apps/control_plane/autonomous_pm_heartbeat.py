@@ -318,6 +318,8 @@ class AuthorityObservation:
         if expires_at is not None and expires_at < observed_at:
             raise ValueError("authority observation expires_at precedes observed_at")
         reason = self.reason.strip() if isinstance(self.reason, str) and self.reason.strip() else None
+        if reason is not None and len(reason) > 500:
+            raise ValueError("authority observation reason is too long")
         if status in {"blocked", "unknown"} and reason is None:
             raise ValueError("blocked or unknown authority observation requires a reason")
         expected = _authority_observation_hash(
@@ -400,6 +402,10 @@ class ServerEconomicGuardRead:
     def __post_init__(self) -> None:
         if not isinstance(self.guard, EconomicGuardResult):
             raise ValueError("economic guard read guard is invalid")
+        if self.guard.status not in {"allowed", "blocked"}:
+            raise ValueError("economic guard read status is invalid")
+        if not _SHA256.fullmatch(str(self.guard.snapshot_sha256).strip().lower()):
+            raise ValueError("economic guard read digest is invalid")
         if not isinstance(self.observation, AuthorityObservation):
             raise ValueError("economic guard read observation is invalid")
         if self.observation.name != "economic_guard":
@@ -794,7 +800,10 @@ def _coerce_economic_guard_read(
     """Normalize a guard reader result and bind its freshness receipt."""
 
     if isinstance(value, ServerEconomicGuardRead):
-        read = value
+        read = ServerEconomicGuardRead(
+            guard=_coerce_economic_guard(value.guard),
+            observation=value.observation,
+        )
     elif isinstance(value, EconomicGuardResult):
         guard = _coerce_economic_guard(value)
         read = ServerEconomicGuardRead(

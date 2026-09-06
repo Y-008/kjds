@@ -387,6 +387,12 @@ class RuntimeServices:
     supplier_rfq: Any
     supplier_rfq_dispatch: Any
     truth_governance: Any
+    # Optional server-owned readers consumed by the autonomous PM heartbeat.
+    # They intentionally default to ``None``: until a deployment binds
+    # concrete, scope-authorized read adapters, the heartbeat remains blocked
+    # rather than treating request claims as facts.
+    pm_authority_readers: Any = None
+    pm_economic_guard_reader: Any = None
 
 
 def build_repository():

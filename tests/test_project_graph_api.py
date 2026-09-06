@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
@@ -6,7 +7,13 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from apps.control_plane.api import app, is_write_safety_control_path, registered_routes
-from apps.control_plane.autonomous_pm_heartbeat import GitWorktreeObservation
+from apps.control_plane.autonomous_pm_heartbeat import (
+    SERVER_AUTHORITY_FIELDS,
+    AuthorityObservation,
+    GitWorktreeObservation,
+    ServerEconomicGuardRead,
+)
+from apps.control_plane.economic_guard_service import EconomicGuardInput, evaluate_economic_guard
 from apps.control_plane.routers import project_graph
 from apps.control_plane.runtime import runtime
 from apps.control_plane.security import Principal, WritesDisabled
@@ -213,6 +220,222 @@ def test_heartbeat_ignores_caller_git_attestation_and_binds_server_observation(m
     assert result["server_observation"]["caller_git_attestation_used"] is False
     assert result["server_observation"]["git"]["head"] == "b" * 40
     assert result["decision"].reasons.count("workspace_dirty") == 1
+
+
+def _wire_server_authority_for_heartbeat(monkeypatch, *, observed_at: datetime):
+    """Bind deterministic server readers for route-level authority tests."""
+
+    graph = {
+        "scope": {"entity_ref": "entity-a", "store_ref": "store-a"},
+        "nodes": [],
+        "edges": [],
+        "tasks": [],
+    }
+    projection = {
+        "status": "PROVEN",
+        "as_of": observed_at.isoformat(),
+        "snapshot_sha256": "d" * 64,
+        "frontier": [],
+        "frontier_ids": [],
+        "blockers": [],
+        "invalidations": {},
+    }
+    monkeypatch.setattr(project_graph, "_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(project_graph, "plan_proof_frontier", lambda _graph: projection)
+    git = GitWorktreeObservation(
+        status="observed",
+        head="a" * 40,
+        worktree_clean=True,
+        status_sha256="b" * 64,
+        observed_at=observed_at,
+    )
+    monkeypatch.setattr(project_graph, "observe_server_git_worktree", lambda: git)
+
+    calls: list[tuple[str, str, datetime]] = []
+    readers = {}
+    for name in SERVER_AUTHORITY_FIELDS:
+        def read(*, scope_key, observed_at, _name=name):
+            calls.append((_name, scope_key, observed_at))
+            return AuthorityObservation(
+                name=_name,
+                status="valid",
+                scope_key=scope_key,
+                observed_at=observed_at,
+                source_ref=f"server://heartbeat/{_name}",
+                payload_sha256="e" * 64,
+            )
+
+        readers[name] = read
+    guard = evaluate_economic_guard(
+        EconomicGuardInput(cash_available=Decimal("100"))
+    )
+    economic_observation = AuthorityObservation(
+        name="economic_guard",
+        status="valid",
+        scope_key="tenant-a/entity-a/store-a",
+        observed_at=observed_at,
+        source_ref="server://heartbeat/economic_guard",
+        payload_sha256=guard.snapshot_sha256,
+    )
+    economic_read = ServerEconomicGuardRead(
+        guard=guard,
+        observation=economic_observation,
+    )
+    economic_calls: list[tuple[str, datetime]] = []
+
+    def read_economic(*, scope_key, observed_at):
+        economic_calls.append((scope_key, observed_at))
+        return economic_read
+
+    monkeypatch.setattr(runtime, "pm_authority_readers", readers)
+    monkeypatch.setattr(runtime, "pm_economic_guard_reader", read_economic)
+    return git, calls, economic_calls
+
+
+def test_heartbeat_route_uses_runtime_authority_and_ignores_caller_claims(monkeypatch):
+    observed_at = datetime(2026, 9, 7, 12, tzinfo=UTC)
+    _git, calls, economic_calls = _wire_server_authority_for_heartbeat(
+        monkeypatch, observed_at=observed_at
+    )
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    captured: dict[str, object] = {}
+
+    def record(**values):
+        captured.update(values)
+        return {"heartbeat_id": "hb-authority", "revision": 1, "payload": values["payload"]}
+
+    monkeypatch.setattr(runtime.project_heartbeat_store, "record", record)
+    result = project_graph.project_heartbeat(
+        project_id="project-a",
+        body=project_graph.ProjectHeartbeatInput(
+            entity_ref="entity-a",
+            store_ref="store-a",
+            head="a" * 40,
+            # Every legacy claim is intentionally false.  The server readers
+            # below are the only values allowed to influence the decision.
+            head_verified=False,
+            workspace_state_known=False,
+            workspace_clean=False,
+            task_queue_known=False,
+            lease_snapshot_known=False,
+            test_receipts_current=False,
+            proof_receipts_current=False,
+            evidence_fresh=False,
+            data_quality_valid=False,
+            external_readback_passed=False,
+            rollback_available=False,
+            experiment_clear=False,
+            economic_state_known=False,
+            cash_available=Decimal("0"),
+            idempotency_key="hb-authority-1",
+        ),
+        principal=principal,
+    )
+
+    assert result["decision"].status == "dispatch"
+    operational = captured["payload"]["operational_snapshot"]
+    assert operational["authority_status"] == "ready"
+    assert operational["authority_unverified_fields"] == []
+    assert all(operational[field] is True for field in (
+        "task_queue_known",
+        "lease_snapshot_known",
+        "test_receipts_current",
+        "proof_receipts_current",
+        "evidence_fresh",
+        "data_quality_valid",
+        "external_readback_passed",
+        "rollback_available",
+        "experiment_clear",
+        "economic_state_known",
+        "head_verified",
+        "workspace_state_known",
+        "workspace_clean",
+    ))
+    assert all(value is False for value in operational["caller_claims_ignored"].values())
+    assert captured["payload"]["economic_guard"]["source"] == "server_authority_snapshot"
+    assert {name for name, _scope, _time in calls} == set(SERVER_AUTHORITY_FIELDS)
+    assert all(scope == "tenant-a/entity-a/store-a" for _name, scope, _time in calls)
+    assert economic_calls == [("tenant-a/entity-a/store-a", observed_at)]
+
+
+def test_heartbeat_route_blocks_when_runtime_authority_readers_are_unbound(monkeypatch):
+    observed_at = datetime(2026, 9, 7, 12, tzinfo=UTC)
+    graph = {
+        "scope": {"entity_ref": "entity-a", "store_ref": "store-a"},
+        "nodes": [],
+        "edges": [],
+        "tasks": [],
+    }
+    projection = {
+        "status": "PROVEN",
+        "snapshot_sha256": "f" * 64,
+        "frontier_ids": [],
+        "frontier": [],
+        "blockers": [],
+        "invalidations": {},
+    }
+    monkeypatch.setattr(project_graph, "_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(project_graph, "plan_proof_frontier", lambda _graph: projection)
+    monkeypatch.setattr(
+        project_graph,
+        "observe_server_git_worktree",
+        lambda: GitWorktreeObservation(
+            status="observed",
+            head="a" * 40,
+            worktree_clean=True,
+            status_sha256="b" * 64,
+            observed_at=observed_at,
+        ),
+    )
+    monkeypatch.setattr(runtime, "pm_authority_readers", None)
+    monkeypatch.setattr(runtime, "pm_economic_guard_reader", None)
+    monkeypatch.setattr(
+        runtime.project_heartbeat_store,
+        "record",
+        lambda **values: {"heartbeat_id": "hb-blocked", "revision": 1, "payload": values["payload"]},
+    )
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    result = project_graph.project_heartbeat(
+        project_id="project-a",
+        body=project_graph.ProjectHeartbeatInput(
+            entity_ref="entity-a",
+            store_ref="store-a",
+            head="a" * 40,
+            # False or true caller claims must have the same blocked result.
+            head_verified=True,
+            workspace_state_known=True,
+            workspace_clean=True,
+            task_queue_known=True,
+            lease_snapshot_known=True,
+            test_receipts_current=True,
+            proof_receipts_current=True,
+            evidence_fresh=True,
+            data_quality_valid=True,
+            external_readback_passed=True,
+            rollback_available=True,
+            experiment_clear=True,
+            economic_state_known=True,
+            cash_available=Decimal("100000"),
+            idempotency_key="hb-blocked-1",
+        ),
+        principal=principal,
+    )
+
+    assert result["decision"].status == "isolate"
+    assert "server_observation_unavailable:task_queue" in result["decision"].reasons
+    assert "server_observation_unavailable:economic_guard" in result["decision"].reasons
+    assert result["server_observation"]["authority_status"] == "blocked"
+    assert result["server_observation"]["authority_unverified_fields"]
 
 
 def test_heartbeat_task_result_carries_graph_debt_and_frontier(monkeypatch):
