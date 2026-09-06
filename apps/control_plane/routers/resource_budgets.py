@@ -85,7 +85,14 @@ def record_budget_event(
     body: BudgetEventInput,
     principal: Annotated[Principal, Depends(current_principal)],
 ):
-    ensure_role(principal, "operator", "executor", "admin")
+    # Manual overrun adjustments can freeze automated execution and therefore
+    # require a governance role. Normal execution settlements are still
+    # accepted from operator/executor until the server-owned admission bridge
+    # is installed.
+    if body.state == "overrun":
+        ensure_role(principal, "admin", "compliance")
+    else:
+        ensure_role(principal, "operator", "executor", "admin", "compliance")
     def record():
         event = ResourceBudgetEvent(
             event_id=body.event_id,
