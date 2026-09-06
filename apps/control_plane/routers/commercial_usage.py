@@ -113,10 +113,17 @@ def usage_preview(
             description="Three-letter ASCII currency code",
         ),
     ] = "USD",
+    as_of: datetime | None = Query(
+        default=None,
+        description="Optional historical cutoff (ISO-8601 with timezone)",
+    ),
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    if as_of is not None and (as_of.tzinfo is None or as_of.utcoffset() is None):
+        raise HTTPException(status_code=422, detail="as_of must include a timezone")
     return run(lambda: runtime.skill_usage_ledger.invoice_preview(
         tenant_id=principal.tenant_ref,
         customer_id=customer_id,
         currency=_currency_code(currency),
+        as_of=as_of.astimezone(UTC) if as_of is not None else None,
     ))
