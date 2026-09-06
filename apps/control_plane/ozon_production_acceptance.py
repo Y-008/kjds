@@ -585,10 +585,11 @@ class OzonProductionAcceptanceService:
 
     @staticmethod
     def _aware(value: Any, name: str) -> datetime:
-        if isinstance(value, datetime):
-            parsed = value
-        else:
-            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = (
+            value
+            if isinstance(value, datetime)
+            else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        )
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise ValueError(f"{name} must include a timezone")
         return parsed.astimezone(UTC)

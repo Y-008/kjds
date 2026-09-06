@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from apps.control_plane.api import registered_routes
 from apps.control_plane.ozon_production_acceptance import OzonProductionAcceptanceService
-from apps.control_plane.routers import execution_operations
+from apps.control_plane.routers import ozon_production_acceptance
 from apps.control_plane.security import Principal
 
 
@@ -17,7 +17,7 @@ def _principal() -> Principal:
 
 def test_production_acceptance_route_is_registered_and_read_only():
     paths = {route.path for route in registered_routes()}
-    assert "/v1/read-only-pilot-runs/{run_id}/production-acceptance" in paths
+    assert "/v1/ozon/production-acceptance/{run_id}" in paths
 
 
 def test_missing_entity_scope_is_explicit_no_data_without_authority_access():
@@ -63,9 +63,9 @@ def test_route_delegates_to_server_acceptance_projection(monkeypatch):
                 "external_write_allowed": False,
             }
 
-    monkeypatch.setattr(execution_operations.runtime, "scope_grants", _ScopeGrants())
-    monkeypatch.setattr(execution_operations.runtime, "ozon_production_acceptance", _Acceptance())
-    result = execution_operations.evaluate_ozon_production_acceptance(
+    monkeypatch.setattr(ozon_production_acceptance.runtime, "scope_grants", _ScopeGrants())
+    monkeypatch.setattr(ozon_production_acceptance.runtime, "ozon_production_acceptance", _Acceptance())
+    result = ozon_production_acceptance.get_ozon_production_acceptance(
         run_id="run-1",
         principal=_principal(),
         store_ref="store-a",

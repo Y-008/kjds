@@ -35819,7 +35819,7 @@
     },
     "/v1/ozon/production-acceptance/{run_id}": {
       "get": {
-        "description": "Evaluate a stored Ozon read run without contacting or writing Ozon.\n\nThe evaluator consumes only the SQL-scoped Pilot/Run, immutable raw\nresponse Evidence, and the server-owned channel runtime identity.  A\nmissing artifact or transport-failed run is returned as ``BLOCKED_EVIDENCE``;\nit is never downgraded to ``NO_DATA`` or treated as a successful read.",
+        "description": "Evaluate a stored Ozon read run without contacting or writing Ozon.\n\nThe evaluator consumes only the SQL-scoped Pilot/Run, immutable raw\nresponse Evidence, and the server-owned channel runtime identity. A\nmissing artifact or transport-failed run is returned as\n``BLOCKED_EVIDENCE``; it is never downgraded to ``NO_DATA`` or treated as\na successful read.",
         "operationId": "get_ozon_production_acceptance_v1_ozon_production_acceptance__run_id__get",
         "parameters": [
           {
@@ -40169,81 +40169,6 @@
           }
         ],
         "summary": "Finalize Read Only Pilot Response"
-      }
-    },
-    "/v1/read-only-pilot-runs/{run_id}/production-acceptance": {
-      "get": {
-        "description": "Project whether one real Ozon readback is admissible for production.\n\nThis endpoint is read-only: it evaluates the scoped run, raw Evidence,\nofficial response contract and managed channel identity.  It never\npromotes a Fact, issues a Permit, or contacts Ozon.",
-        "operationId": "evaluate_ozon_production_acceptance_v1_read_only_pilot_runs__run_id__production_acceptance_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "run_id",
-            "required": true,
-            "schema": {
-              "title": "Run Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "store_ref",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Store Ref"
-            }
-          },
-          {
-            "in": "query",
-            "name": "as_of",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "As Of"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "KjdsApiKey": []
-          }
-        ],
-        "summary": "Evaluate Ozon Production Acceptance"
       }
     },
     "/v1/read-only-pilot-runs/{run_id}/response-checkpoint": {
