@@ -86,6 +86,57 @@ class FakeScopedEvidence:
         }
 
 
+class FakeAfterSales:
+    """Deterministic read-only after-sales adapter for profit overlay tests."""
+
+    def __init__(self, *, blocked_orders: set[str] | None = None) -> None:
+        self.blocked_orders = blocked_orders or set()
+        self.calls: list[dict] = []
+
+    def snapshot_for_order(self, **kwargs):
+        self.calls.append(kwargs)
+        scope = dict(kwargs["scope_authority"])
+        as_of = kwargs["as_of"]
+        order_ref = kwargs["order_ref"]
+        status = "BLOCKED" if order_ref in self.blocked_orders else "VALID"
+        payload = {
+            "contract_id": "kjds-native-risk-adjusted-profit-v1",
+            "registry_version": "native-after-sales/1.0.0",
+            "status": status,
+            "as_of": as_of,
+            "scope": {**scope, "as_of": as_of},
+            "order_ref": order_ref,
+            "sku": kwargs["sku"],
+            "currency": kwargs["currency"],
+            "realized_profit": str(kwargs["realized_profit"]),
+            "expected_return_cost": "12" if status == "VALID" else None,
+            "chargeback_reserve": "8" if status == "VALID" else None,
+            "realized_adjustment": "4" if status == "VALID" else None,
+            "recovery_amount": "3" if status == "VALID" else None,
+            "reopened_settlement": "5" if status == "VALID" else None,
+            "risk_adjusted_profit": "54" if status == "VALID" else None,
+            "claim_status": "open" if status == "VALID" else "none",
+            "event_count": 5 if status == "VALID" else 0,
+            "event_ids": [f"after-{order_ref}"] if status == "VALID" else [],
+            "evidence_ids": ["after-evidence"] if status == "VALID" else [],
+            "versions": {f"logical-{order_ref}": 1}
+            if status == "VALID"
+            else {},
+            "events": [],
+            "invalid": ["after_sales_source_blocked"]
+            if status == "BLOCKED"
+            else [],
+            "replay": {"latest_version_per_logical_event": True},
+            "control_envelope": {
+                "read_only_projection": True,
+                "external_write_allowed": False,
+                "finance_cash_mutation_allowed": False,
+            },
+        }
+        payload["snapshot_sha256"] = ScopedProfitLedgerAuthority._hash(payload)
+        return payload
+
+
 class FakeFinance:
     def __init__(
         self,
@@ -574,6 +625,139 @@ def test_native_exact_scope_profit_is_deterministic_and_conserves():
     assert erosion["result"] == "80"
     assert finance.source_calls == 4
     assert finance.authority_calls == 4
+
+
+def test_after_sales_overlay_keeps_realized_cash_and_publishes_risk_profit():
+    source, authorities, hashes = build_sources()
+    after_sales = FakeAfterSales()
+    authority, _, _, _ = authority_for(
+        source=source,
+        authorities=authorities,
+        hashes=hashes,
+    )
+    # Rebuild with the optional overlay while retaining the exact same native
+    # finance fixtures.  Scope-grant evidence is required before a risk join.
+    authority = ScopedProfitLedgerAuthority(
+        engine=authority.engine,
+        finance=authority.finance,
+        evidence=authority.evidence,
+        scoped_evidence=authority.scoped_evidence,
+        after_sales_ledger=after_sales,
+    )
+    entity_scope = {
+        **ENTITY_SCOPE,
+        "evidence_sha256": "a" * 64,
+    }
+
+    result = authority.snapshot(
+        principal=principal(),
+        entity_scope=entity_scope,
+        store_ref=SCOPE["store_ref"],
+        as_of=AS_OF,
+    )
+
+    row = result["rows"][0]
+    assert row["actual_profit"] == "80"
+    assert row["realized_profit"] == "80"
+    assert row["after_sales_status"] == "VALID"
+    assert row["after_sales_quality_state"] == "VALID"
+    assert row["expected_return_cost"] == "12"
+    assert row["chargeback_reserve"] == "8"
+    assert row["realized_adjustment"] == "4"
+    assert row["recovery_amount"] == "3"
+    assert row["reopened_settlement"] == "5"
+    assert row["risk_adjusted_profit"] == "54"
+    assert row["after_sales"]["event_ids"] == ["after-order-1"]
+    assert row["canonical_order_sku_receipt"]["issuer_contract_id"] == (
+        authority.CONTRACT_ID
+    )
+    assert len(after_sales.calls) == 1
+    assert after_sales.calls[0]["scope_authority"]["source_evidence_sha256"] == (
+        "a" * 64
+    )
+
+
+def test_after_sales_overlay_blocks_risk_value_when_replay_is_not_valid():
+    source, authorities, hashes = build_sources()
+    authority, _, _, _ = authority_for(
+        source=source,
+        authorities=authorities,
+        hashes=hashes,
+    )
+    authority = ScopedProfitLedgerAuthority(
+        engine=authority.engine,
+        finance=authority.finance,
+        evidence=authority.evidence,
+        scoped_evidence=authority.scoped_evidence,
+        after_sales_ledger=FakeAfterSales(blocked_orders={"order-1"}),
+    )
+
+    result = authority.snapshot(
+        principal=principal(),
+        entity_scope={**ENTITY_SCOPE, "evidence_sha256": "a" * 64},
+        store_ref=SCOPE["store_ref"],
+        as_of=AS_OF,
+    )
+    row = result["rows"][0]
+    assert row["actual_profit"] == "80"
+    assert row["after_sales_status"] == "BLOCKED"
+    assert row["risk_adjusted_profit"] is None
+    assert row["expected_return_cost"] is None
+    assert row["after_sales"]["invalid"] == ["after_sales_source_blocked"]
+
+
+def test_after_sales_aggregate_with_missing_order_is_partial_without_zero_fill():
+    source_a, authorities, hashes = build_sources(key="order-a")
+    source_b, _, hashes_b = build_sources(key="order-b")
+    source_a["facts"].extend(source_b["facts"])
+    source_a["entries"].extend(source_b["entries"])
+    source_a["reconciliations"].extend(source_b["reconciliations"])
+    source_a["snapshot_sha256"] = ScopedProfitLedgerAuthority._hash(
+        {
+            key: value
+            for key, value in source_a.items()
+            if key != "snapshot_sha256"
+        }
+    )
+    authorities["snapshot_sha256"] = ScopedProfitLedgerAuthority._hash(
+        {
+            key: value
+            for key, value in authorities.items()
+            if key != "snapshot_sha256"
+        }
+    )
+    hashes.update(hashes_b)
+    base, _, _, _ = authority_for(
+        source=source_a,
+        authorities=authorities,
+        hashes=hashes,
+    )
+
+    class MixedAfterSales(FakeAfterSales):
+        def snapshot_for_order(self, **kwargs):
+            if kwargs["order_ref"] == "order-b":
+                self.blocked_orders.add("order-b")
+            return super().snapshot_for_order(**kwargs)
+
+    authority = ScopedProfitLedgerAuthority(
+        engine=base.engine,
+        finance=base.finance,
+        evidence=base.evidence,
+        scoped_evidence=base.scoped_evidence,
+        after_sales_ledger=MixedAfterSales(),
+    )
+    result = authority.snapshot(
+        principal=principal(),
+        entity_scope={**ENTITY_SCOPE, "evidence_sha256": "a" * 64},
+        store_ref=SCOPE["store_ref"],
+        as_of=AS_OF,
+        grain="sku",
+    )
+    row = result["rows"][0]
+    assert row["realized_profit"] == "160"
+    assert row["after_sales_status"] == "BLOCKED"
+    assert row["risk_adjusted_profit"] is None
+    assert row["after_sales"]["coverage"]["blocked"] == 1
 
 
 def test_order_sku_receipt_excludes_observation_time_noise():

@@ -926,12 +926,14 @@ def build_runtime() -> RuntimeServices:
         finance=finance,
         evidence=evidence,
         scoped_evidence=scoped_evidence,
+        after_sales_ledger=after_sales_ledger,
     )
     profit_receipt_authority = ScopedProfitOrderSkuReceiptAuthority(
         engine=engine,
         finance=finance,
         evidence=evidence,
         scoped_evidence=scoped_evidence,
+        after_sales_ledger=after_sales_ledger,
     )
     scoped_settlement_cash = ScopedSettlementCashWorkspace(
         finance=finance,

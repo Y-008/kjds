@@ -73,11 +73,17 @@ class ScopedProfitLedgerAuthority:
         finance,
         evidence,
         scoped_evidence,
+        after_sales_ledger=None,
     ) -> None:
         self.engine = engine
         self.finance = finance
         self.evidence = evidence
         self.scoped_evidence = scoped_evidence
+        # The settled finance projection remains the source of ``actual_profit``.
+        # After-sales is an optional, read-only overlay so older callers and
+        # isolated projections keep their existing contract while the runtime
+        # can expose late returns/claims/recoveries through the same order row.
+        self.after_sales_ledger = after_sales_ledger
 
     def snapshot(
         self,
@@ -262,6 +268,11 @@ class ScopedProfitLedgerAuthority:
             if projection_issues:
                 excluded_reasons.update(set(projection_issues))
                 continue
+            self._attach_after_sales(
+                row,
+                context=context,
+                quote_currency=normalized_currency,
+            )
             rows.append(row)
 
         unmatched_keys = (
@@ -398,11 +409,14 @@ class ScopedProfitLedgerAuthority:
         evidence_ids: set[str] = set()
         baseline = ZERO
         result = ZERO
+        after_sales_rows: list[dict[str, Any]] = []
         for page in ledgers:
             for row in page["rows"]:
                 baseline += Decimal(row["gross_revenue"])
                 result += Decimal(row["actual_profit"])
                 evidence_ids.update(row.get("evidence_ids", []))
+                if "after_sales_status" in row:
+                    after_sales_rows.append(row)
                 for key in EROSION_CATEGORIES:
                     totals[key] += Decimal(row["erosion"][key])
         erosion_total = sum(totals.values(), ZERO)
@@ -417,6 +431,7 @@ class ScopedProfitLedgerAuthority:
             "currency": ledger["currency"],
             "baseline": self._decimal(baseline),
             "result": self._decimal(result),
+            "realized_profit": self._decimal(result),
             "items": [
                 {
                     "category": key,
@@ -443,6 +458,25 @@ class ScopedProfitLedgerAuthority:
                 ]
             ),
         }
+        if after_sales_rows:
+            overlay = self._aggregate_after_sales(after_sales_rows)
+            payload.update(
+                {
+                    "after_sales_status": overlay["after_sales_status"],
+                    "after_sales_quality_state": overlay[
+                        "after_sales_quality_state"
+                    ],
+                    "expected_return_cost": overlay["expected_return_cost"],
+                    "chargeback_reserve": overlay["chargeback_reserve"],
+                    "realized_adjustment": overlay["realized_adjustment"],
+                    "recovery_amount": overlay["recovery_amount"],
+                    "reopened_settlement": overlay["reopened_settlement"],
+                    "risk_adjusted_profit": overlay[
+                        "risk_adjusted_profit"
+                    ],
+                    "after_sales": overlay["after_sales"],
+                }
+            )
         payload["snapshot_sha256"] = self._hash(payload)
         return payload
 
@@ -871,8 +905,338 @@ class ScopedProfitLedgerAuthority:
         }
         receipt["receipt_sha256"] = self._hash(receipt)
         row["canonical_order_sku_receipt"] = receipt
+        # Keep the canonical receipt basis compatible with the historical
+        # realized-cash row.  The explicit alias is a projection convenience
+        # and must not invalidate receipts issued before the risk overlay.
+        row["realized_profit"] = row["actual_profit"]
         row["snapshot_sha256"] = self._hash(row)
         return row, []
+
+    def _attach_after_sales(
+        self,
+        row: dict[str, Any],
+        *,
+        context: dict[str, Any],
+        quote_currency: str,
+    ) -> None:
+        """Overlay replayed after-sales risk on a settled profit row.
+
+        ``actual_profit`` is deliberately left untouched: it is the cash
+        result certified by the native finance reconciliation.  The overlay
+        only publishes a risk-adjusted value when the after-sales snapshot is
+        complete and independently scope-bound.  A missing or malformed
+        overlay therefore becomes an explicit quality state instead of being
+        silently treated as zero cost.
+        """
+
+        service = self.after_sales_ledger
+        if service is None:
+            return
+
+        scope_authority = self._after_sales_scope(context)
+        if scope_authority is None:
+            snapshot = self._after_sales_diagnostic(
+                row=row,
+                context=context,
+                currency=quote_currency,
+                status="BLOCKED",
+                reason="after_sales_scope_source_missing",
+            )
+        else:
+            try:
+                snapshot = service.snapshot_for_order(
+                    scope_authority=scope_authority,
+                    as_of=context["cutoff"].isoformat(),
+                    realized_profit=Decimal(row["actual_profit"]),
+                    order_ref=row["order_ref"],
+                    sku=row.get("sku"),
+                    currency=quote_currency,
+                )
+            except Exception as exc:  # pragma: no cover - defensive boundary
+                # A failed risk overlay must not make the settled ledger look
+                # successful or fabricate a reserve.  Keep the exception type
+                # only as a stable diagnostic; do not expose database details.
+                snapshot = self._after_sales_diagnostic(
+                    row=row,
+                    context=context,
+                    currency=quote_currency,
+                    status="BLOCKED",
+                    reason=f"after_sales_projection_failed:{type(exc).__name__}",
+                )
+
+        status, values, summary = self._normalize_after_sales_snapshot(
+            snapshot,
+            row=row,
+            context=context,
+            quote_currency=quote_currency,
+        )
+        row["realized_profit"] = row["actual_profit"]
+        row["after_sales_status"] = status
+        row["after_sales_quality_state"] = status
+        for field in (
+            "expected_return_cost",
+            "chargeback_reserve",
+            "realized_adjustment",
+            "recovery_amount",
+            "reopened_settlement",
+            "risk_adjusted_profit",
+        ):
+            row[field] = values.get(field)
+        row["after_sales"] = summary
+        row["snapshot_sha256"] = self._hash(row)
+
+    def _after_sales_scope(
+        self,
+        context: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Build the exact after-sales scope from the current grant.
+
+        Scope grants expose their immutable source as ``evidence_sha256``;
+        the after-sales ledger calls the same value
+        ``source_evidence_sha256``.  Refuse to join rows when that authority
+        is absent or malformed so a risk projection can never cross scopes.
+        """
+
+        entity_scope = context.get("entity_scope")
+        if not isinstance(entity_scope, dict):
+            return None
+        source_hash = str(
+            entity_scope.get("source_evidence_sha256")
+            or entity_scope.get("evidence_sha256")
+            or ""
+        ).strip().lower()
+        grant_hash = str(
+            context.get("scope", {}).get("scope_grant_authority_sha256")
+            or ""
+        ).strip().lower()
+        scope = context.get("scope") or {}
+        if (
+            not self._sha256(source_hash)
+            or not self._sha256(grant_hash)
+            or not str(scope.get("tenant_ref") or "").strip()
+            or not str(scope.get("entity_ref") or "").strip()
+            or not str(scope.get("store_ref") or "").strip()
+        ):
+            return None
+        return {
+            "tenant_ref": scope["tenant_ref"],
+            "entity_ref": scope["entity_ref"],
+            "store_ref": scope["store_ref"],
+            "scope_grant_authority_sha256": grant_hash,
+            "source_evidence_sha256": source_hash,
+            # This value is a query boundary for the append-only ledger.  The
+            # ledger itself still filters each event by recorded/observed and
+            # effective time at ``as_of``.
+            "scope_as_of": context["cutoff"].isoformat(),
+        }
+
+    @classmethod
+    def _after_sales_diagnostic(
+        cls,
+        *,
+        row: dict[str, Any],
+        context: dict[str, Any],
+        currency: str,
+        status: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        scope = context.get("scope") or {}
+        payload = {
+            "contract_id": "kjds-native-risk-adjusted-profit-v1",
+            "registry_version": "native-after-sales/1.0.0",
+            "status": status,
+            "as_of": context["cutoff"].isoformat(),
+            "scope": {
+                "tenant_ref": scope.get("tenant_ref"),
+                "entity_ref": scope.get("entity_ref"),
+                "store_ref": scope.get("store_ref"),
+                "scope_grant_authority_sha256": scope.get(
+                    "scope_grant_authority_sha256"
+                ),
+                "source_evidence_sha256": None,
+                "as_of": context["cutoff"].isoformat(),
+            },
+            "order_ref": row.get("order_ref"),
+            "sku": row.get("sku"),
+            "currency": currency,
+            "realized_profit": row.get("actual_profit"),
+            "expected_return_cost": None,
+            "chargeback_reserve": None,
+            "realized_adjustment": None,
+            "recovery_amount": None,
+            "reopened_settlement": None,
+            "risk_adjusted_profit": None,
+            "claim_status": "none",
+            "event_count": 0,
+            "event_ids": [],
+            "evidence_ids": [],
+            "versions": {},
+            "events": [],
+            "invalid": [reason],
+            "replay": {"latest_version_per_logical_event": True},
+            "control_envelope": {
+                "read_only_projection": True,
+                "external_write_allowed": False,
+                "finance_cash_mutation_allowed": False,
+            },
+        }
+        payload["snapshot_sha256"] = cls._hash(payload)
+        return payload
+
+    def _normalize_after_sales_snapshot(
+        self,
+        snapshot: Any,
+        *,
+        row: dict[str, Any],
+        context: dict[str, Any],
+        quote_currency: str,
+    ) -> tuple[str, dict[str, str | None], dict[str, Any]]:
+        """Validate the overlay contract and return safe row fields."""
+
+        fields = (
+            "expected_return_cost",
+            "chargeback_reserve",
+            "realized_adjustment",
+            "recovery_amount",
+            "reopened_settlement",
+            "risk_adjusted_profit",
+        )
+        empty = {field: None for field in fields}
+        if not isinstance(snapshot, dict):
+            snapshot = self._after_sales_diagnostic(
+                row=row,
+                context=context,
+                currency=quote_currency,
+                status="BLOCKED",
+                reason="after_sales_snapshot_invalid",
+            )
+
+        status = str(snapshot.get("status") or "BLOCKED").strip().upper()
+        allowed = {
+            "VALID",
+            "PARTIAL",
+            "STALE",
+            "NO_DATA",
+            "BLOCKED",
+            "UNKNOWN_OUTCOME",
+        }
+        invalid = [
+            str(item)
+            for item in snapshot.get("invalid", [])
+            if str(item).strip()
+        ] if isinstance(snapshot.get("invalid"), list) else []
+        if status not in allowed:
+            status = "BLOCKED"
+            invalid.append("after_sales_status_invalid")
+
+        expected_scope = context.get("scope") or {}
+        actual_scope = snapshot.get("scope")
+        expected_after_sales_scope = self._after_sales_scope(context)
+        if not isinstance(actual_scope, dict):
+            invalid.append("after_sales_scope_invalid")
+        else:
+            for field in (
+                "tenant_ref",
+                "entity_ref",
+                "store_ref",
+                "scope_grant_authority_sha256",
+            ):
+                if actual_scope.get(field) != expected_scope.get(field):
+                    invalid.append(f"after_sales_scope_{field}_conflict")
+            if expected_after_sales_scope is not None and actual_scope.get(
+                "source_evidence_sha256"
+            ) != expected_after_sales_scope["source_evidence_sha256"]:
+                invalid.append("after_sales_scope_source_evidence_conflict")
+            if actual_scope.get("as_of") != context["cutoff"].isoformat():
+                invalid.append("after_sales_as_of_conflict")
+        if snapshot.get("contract_id") != "kjds-native-risk-adjusted-profit-v1":
+            invalid.append("after_sales_contract_conflict")
+        if snapshot.get("as_of") != context["cutoff"].isoformat():
+            invalid.append("after_sales_as_of_conflict")
+        if snapshot.get("order_ref") != row.get("order_ref"):
+            invalid.append("after_sales_order_conflict")
+        if snapshot.get("sku") != row.get("sku"):
+            invalid.append("after_sales_sku_conflict")
+        if snapshot.get("currency") != quote_currency:
+            invalid.append("after_sales_currency_conflict")
+        if not self._valid_snapshot(snapshot):
+            invalid.append("after_sales_snapshot_hash_drift")
+
+        if status == "VALID" and not invalid:
+            parsed: dict[str, Decimal] = {}
+            for field in fields:
+                value = self._decimal_or_none(snapshot.get(field))
+                if value is None:
+                    invalid.append(f"after_sales_{field}_invalid")
+                else:
+                    parsed[field] = value
+            realized = self._decimal_or_none(snapshot.get("realized_profit"))
+            baseline = self._decimal_or_none(row.get("actual_profit"))
+            if realized is None or baseline is None or realized != baseline:
+                invalid.append("after_sales_realized_profit_conflict")
+            if not invalid:
+                calculated = (
+                    realized
+                    - parsed["expected_return_cost"]
+                    - parsed["chargeback_reserve"]
+                    - parsed["realized_adjustment"]
+                    + parsed["recovery_amount"]
+                    - parsed["reopened_settlement"]
+                )
+                if calculated != parsed["risk_adjusted_profit"]:
+                    invalid.append("after_sales_risk_formula_drift")
+            values = (
+                {
+                    field: self._decimal(parsed[field])
+                    for field in fields
+                }
+                if not invalid
+                else dict(empty)
+            )
+        else:
+            values = dict(empty)
+
+        if invalid and status in {"VALID", "PARTIAL", "STALE"}:
+            status = "BLOCKED" if any(
+                item.endswith("_conflict")
+                or item.endswith("_drift")
+                or item.endswith("_invalid")
+                for item in invalid
+            ) else "PARTIAL"
+            values = dict(empty)
+
+        summary = {
+            "contract_id": snapshot.get("contract_id"),
+            "status": status,
+            "as_of": snapshot.get("as_of"),
+            "order_ref": snapshot.get("order_ref"),
+            "sku": snapshot.get("sku"),
+            "currency": snapshot.get("currency"),
+            "claim_status": snapshot.get("claim_status", "none"),
+            "event_count": snapshot.get("event_count", 0),
+            "event_ids": sorted(
+                str(item) for item in (snapshot.get("event_ids") or [])
+            ),
+            "evidence_ids": sorted(
+                str(item) for item in (snapshot.get("evidence_ids") or [])
+            ),
+            "versions": snapshot.get("versions") or {},
+            "invalid": sorted(set(invalid)),
+            "replay": snapshot.get("replay") or {},
+            "snapshot_sha256": snapshot.get("snapshot_sha256"),
+        }
+        if status == "VALID" and not invalid:
+            summary.update(
+                {
+                    field: snapshot.get(field)
+                    for field in fields
+                    if field != "risk_adjusted_profit"
+                }
+            )
+            summary["risk_adjusted_profit"] = snapshot.get(
+                "risk_adjusted_profit"
+            )
+        return status, values, summary
 
     def _entry_issues(
         self,
@@ -1505,6 +1869,7 @@ class ScopedProfitLedgerAuthority:
                     actual / gross if gross != ZERO else ZERO
                 ),
                 "actual_profit": cls._decimal(actual),
+                "realized_profit": cls._decimal(actual),
                 "actual_cash_cm3": {
                     "status": "available",
                     "amount": cls._decimal(actual),
@@ -1552,9 +1917,127 @@ class ScopedProfitLedgerAuthority:
                 ),
                 "next_workspace": "/finance-control",
             }
+            if any("after_sales_status" in item for item in items):
+                row.update(cls._aggregate_after_sales(items))
             row["snapshot_sha256"] = cls._hash(row)
             result.append(row)
         return result
+
+    @classmethod
+    def _aggregate_after_sales(
+        cls,
+        items: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Aggregate the risk overlay without turning missing rows into zero.
+
+        A SKU/day result is numerically risk-adjusted only when every order in
+        that group has a valid after-sales replay.  The coverage counts and
+        event/evidence references remain available for drill-down when the
+        group is partial or blocked.
+        """
+
+        allowed = {
+            "VALID",
+            "PARTIAL",
+            "STALE",
+            "NO_DATA",
+            "BLOCKED",
+            "UNKNOWN_OUTCOME",
+        }
+        statuses = [
+            str(item.get("after_sales_status") or "NO_DATA").upper()
+            for item in items
+        ]
+        statuses = [status if status in allowed else "BLOCKED" for status in statuses]
+        counts = {status: statuses.count(status) for status in sorted(allowed)}
+        if statuses and all(status == "VALID" for status in statuses):
+            status = "VALID"
+        elif statuses and all(status == "NO_DATA" for status in statuses):
+            status = "NO_DATA"
+        elif "BLOCKED" in statuses:
+            status = "BLOCKED"
+        elif "UNKNOWN_OUTCOME" in statuses:
+            status = "UNKNOWN_OUTCOME"
+        elif "STALE" in statuses:
+            status = "STALE"
+        else:
+            status = "PARTIAL"
+
+        fields = (
+            "expected_return_cost",
+            "chargeback_reserve",
+            "realized_adjustment",
+            "recovery_amount",
+            "reopened_settlement",
+            "risk_adjusted_profit",
+        )
+        values: dict[str, str | None] = {field: None for field in fields}
+        if status == "VALID":
+            try:
+                for field in fields:
+                    values[field] = cls._decimal(
+                        sum(
+                            (
+                                Decimal(str(item[field]))
+                                for item in items
+                            ),
+                            ZERO,
+                        )
+                    )
+            except (KeyError, InvalidOperation, TypeError, ValueError):
+                # A malformed child row cannot be represented as a valid
+                # aggregate.  Preserve the diagnostic and withhold values.
+                status = "BLOCKED"
+                values = {field: None for field in fields}
+
+        coverage = {
+            "total": len(items),
+            "valid": counts.get("VALID", 0),
+            "partial": counts.get("PARTIAL", 0),
+            "stale": counts.get("STALE", 0),
+            "no_data": counts.get("NO_DATA", 0),
+            "blocked": counts.get("BLOCKED", 0),
+            "unknown_outcome": counts.get("UNKNOWN_OUTCOME", 0),
+        }
+        event_ids = sorted(
+            {
+                str(event_id)
+                for item in items
+                for event_id in (item.get("after_sales") or {}).get(
+                    "event_ids", []
+                )
+            }
+        )
+        evidence_ids = sorted(
+            {
+                str(evidence_id)
+                for item in items
+                for evidence_id in (item.get("after_sales") or {}).get(
+                    "evidence_ids", []
+                )
+            }
+        )
+        snapshot_hashes = sorted(
+            {
+                str((item.get("after_sales") or {}).get("snapshot_sha256"))
+                for item in items
+                if (item.get("after_sales") or {}).get("snapshot_sha256")
+            }
+        )
+        return {
+            "after_sales_status": status,
+            "after_sales_quality_state": status,
+            **values,
+            "after_sales": {
+                "contract_id": "kjds-native-risk-adjusted-profit-v1",
+                "status": status,
+                "coverage": coverage,
+                "event_ids": event_ids,
+                "evidence_ids": evidence_ids,
+                "snapshot_sha256": cls._hash(snapshot_hashes),
+                "child_snapshot_sha256": snapshot_hashes,
+            },
+        }
 
     def verify_order_sku_receipt(
         self,
@@ -2174,12 +2657,14 @@ class ScopedProfitOrderSkuReceiptAuthority:
         finance,
         evidence,
         scoped_evidence,
+        after_sales_ledger=None,
     ) -> None:
         self.__canonical_profit = ScopedProfitLedgerAuthority(
             engine=engine,
             finance=finance,
             evidence=evidence,
             scoped_evidence=scoped_evidence,
+            after_sales_ledger=after_sales_ledger,
         )
 
     def verify_order_sku_receipt(
