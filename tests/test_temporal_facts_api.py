@@ -1,8 +1,14 @@
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from apps.control_plane.api import registered_routes
-from apps.control_plane.routers.temporal_facts import RestateFactInput
+from apps.control_plane.routers.temporal_facts import RestateFactInput, _timestamp
+
+
+def test_as_of_rejects_future_timestamp():
+    with pytest.raises(HTTPException, match="future"):
+        _timestamp("2999-01-01T00:00:00Z")
 
 
 def test_temporal_fact_routes_are_registered():

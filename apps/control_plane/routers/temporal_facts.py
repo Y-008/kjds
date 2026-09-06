@@ -37,15 +37,19 @@ class RestateFactInput(BaseModel):
 
 
 def _timestamp(value: str | None) -> datetime:
+    trusted_now = datetime.now(UTC)
     if value is None:
-        return datetime.now(UTC)
+        return trusted_now
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise HTTPException(422, "as_of must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None:
         raise HTTPException(422, "as_of must include timezone")
-    return parsed.astimezone(UTC)
+    parsed = parsed.astimezone(UTC)
+    if parsed > trusted_now:
+        raise HTTPException(422, "as_of cannot be in the future")
+    return parsed
 
 
 def _scope(principal: Principal, entity_ref: str, store_ref: str) -> ScopeRef:
