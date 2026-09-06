@@ -390,6 +390,24 @@ class AuthorityObservation:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class ServerEconomicGuardRead:
+    """A server economic guard plus the freshness receipt for that guard."""
+
+    guard: EconomicGuardResult
+    observation: AuthorityObservation
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.guard, EconomicGuardResult):
+            raise ValueError("economic guard read guard is invalid")
+        if not isinstance(self.observation, AuthorityObservation):
+            raise ValueError("economic guard read observation is invalid")
+        if self.observation.name != "economic_guard":
+            raise ValueError("economic guard read observation name is invalid")
+        if self.observation.payload_sha256 != str(self.guard.snapshot_sha256).strip().lower():
+            raise ValueError("economic guard read digest does not match observation")
+
+
 def _authority_observation_hash(
     *,
     name: str,
@@ -767,6 +785,56 @@ def _coerce_economic_guard(value: Any) -> EconomicGuardResult:
     return value
 
 
+def _coerce_economic_guard_read(
+    value: Any,
+    *,
+    scope_key: str,
+    observed_at: datetime,
+) -> ServerEconomicGuardRead:
+    """Normalize a guard reader result and bind its freshness receipt."""
+
+    if isinstance(value, ServerEconomicGuardRead):
+        read = value
+    elif isinstance(value, EconomicGuardResult):
+        guard = _coerce_economic_guard(value)
+        read = ServerEconomicGuardRead(
+            guard=guard,
+            observation=AuthorityObservation(
+                name="economic_guard",
+                status="valid",
+                scope_key=scope_key,
+                observed_at=observed_at,
+                source_ref="server://authority/economic_guard",
+                payload_sha256=guard.snapshot_sha256,
+            ),
+        )
+    else:
+        guard_value: Any = None
+        observation_value: Any = None
+        if isinstance(value, (tuple, list)) and len(value) == 2:
+            first, second = value
+            if isinstance(first, EconomicGuardResult):
+                guard_value, observation_value = first, second
+            else:
+                observation_value, guard_value = first, second
+        elif isinstance(value, Mapping):
+            guard_value = value.get("economic_guard", value.get("guard"))
+            observation_value = value.get("economic_observation", value.get("observation"))
+        if guard_value is None or observation_value is None:
+            raise ValueError("economic guard reader must return a server guard read")
+        guard = _coerce_economic_guard(guard_value)
+        observation = _coerce_server_observation(
+            "economic_guard",
+            observation_value,
+            scope_key=scope_key,
+            observed_at=observed_at,
+        )
+        read = ServerEconomicGuardRead(guard=guard, observation=observation)
+    if read.observation.scope_key != scope_key:
+        raise ValueError("economic guard observation scope mismatch")
+    return read
+
+
 def observe_server_authority(
     readers: Mapping[str, Callable[..., Any]] | None = None,
     *,
@@ -854,18 +922,13 @@ def observe_server_authority(
         )
     else:
         try:
-            economic_guard = _coerce_economic_guard(
-                economic_guard_reader(scope_key=normalized_scope, observed_at=now)
-            )
-            economic_observation = AuthorityObservation(
-                name="economic_guard",
-                status="valid",
+            economic_read = _coerce_economic_guard_read(
+                economic_guard_reader(scope_key=normalized_scope, observed_at=now),
                 scope_key=normalized_scope,
                 observed_at=now,
-                source_ref="server://authority/economic_guard",
-                payload_sha256=economic_guard.snapshot_sha256,
-                reason=None,
             )
+            economic_guard = economic_read.guard
+            economic_observation = economic_read.observation
         except Exception:
             economic_guard = _blocked_economic_guard("reader_failed:economic_guard")
             economic_observation = _blocked_authority_observation(
@@ -1065,6 +1128,7 @@ __all__ = [
     "HeartbeatDecision",
     "HeartbeatInput",
     "SERVER_AUTHORITY_FIELDS",
+    "ServerEconomicGuardRead",
     "ServerAuthoritySnapshot",
     "evaluate_heartbeat",
     "observe_server_authority",

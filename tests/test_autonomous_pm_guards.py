@@ -8,6 +8,7 @@ from apps.control_plane.autonomous_pm_heartbeat import (
     GitWorktreeObservation,
     HeartbeatInput,
     ServerAuthoritySnapshot,
+    ServerEconomicGuardRead,
     evaluate_heartbeat,
     observe_server_authority,
     observe_server_git_worktree,
@@ -453,3 +454,75 @@ def test_server_authority_snapshot_is_replayable_and_digest_bound():
         graph_snapshot_sha256="c" * 64,
         proof_ready=True,
     )
+
+
+def test_server_economic_guard_reader_binds_freshness_and_digest():
+    now = datetime(2026, 9, 7, 12, tzinfo=UTC)
+    scope = "tenant-a/entity-a/store-a"
+    readers = _server_authority_readers(scope)
+    guard = evaluate_economic_guard(
+        EconomicGuardInput(cash_available=Decimal("100"))
+    )
+    stale_observation = AuthorityObservation(
+        name="economic_guard",
+        status="valid",
+        scope_key=scope,
+        observed_at=now - timedelta(minutes=5),
+        expires_at=now - timedelta(seconds=1),
+        source_ref="server://test/economic-guard",
+        payload_sha256=guard.snapshot_sha256,
+    )
+    snapshot = observe_server_authority(
+        readers,
+        scope_key=scope,
+        economic_guard_reader=lambda **_values: ServerEconomicGuardRead(
+            guard=guard,
+            observation=stale_observation,
+        ),
+        git_observation=_server_git(now),
+        observed_at=now,
+    )
+
+    heartbeat = snapshot.to_heartbeat_input(
+        head="a" * 40,
+        graph_snapshot_sha256="c" * 64,
+        proof_ready=True,
+    )
+    assert heartbeat.economic_guard.status == "blocked"
+    assert "server_observation_stale:economic_guard" in heartbeat.economic_guard.reasons
+    assert evaluate_heartbeat(heartbeat).status == "hold"
+
+
+def test_server_economic_guard_digest_mismatch_is_blocked_without_leaking_reader_error():
+    now = datetime(2026, 9, 7, 12, tzinfo=UTC)
+    scope = "tenant-a/entity-a/store-a"
+    readers = _server_authority_readers(scope)
+    guard = evaluate_economic_guard(
+        EconomicGuardInput(cash_available=Decimal("100"))
+    )
+    mismatched = AuthorityObservation(
+        name="economic_guard",
+        status="valid",
+        scope_key=scope,
+        observed_at=now,
+        source_ref="server://test/economic-guard",
+        payload_sha256="0" * 64,
+    )
+    snapshot = observe_server_authority(
+        readers,
+        scope_key=scope,
+        economic_guard_reader=lambda **_values: (guard, mismatched),
+        git_observation=_server_git(now),
+        observed_at=now,
+    )
+
+    assert snapshot.economic_guard.status == "blocked"
+    assert snapshot.economic_observation is not None
+    assert snapshot.economic_observation.reason == "reader_failed"
+    assert evaluate_heartbeat(
+        snapshot.to_heartbeat_input(
+            head="a" * 40,
+            graph_snapshot_sha256="c" * 64,
+            proof_ready=True,
+        )
+    ).status == "hold"
