@@ -219,3 +219,32 @@ def test_scoped_authority_failure_is_blocked_and_does_not_become_no_data():
     assert result["gate_status"] == "BLOCKED_EVIDENCE"
     assert "scoped_read_run_not_admissible" in result["blockers"]
     assert result["gate_status"] != "NO_DATA"
+
+
+def test_blocked_scope_authority_is_not_misreported_as_no_data():
+    service = _service(_run(_bundle()))
+    result = service.evaluate(
+        principal=_principal(),
+        entity_scope={
+            "status": "blocked",
+            "entity_ref": None,
+            "authority_sha256": "b" * 64,
+        },
+        store_ref="store-a",
+        run_id="run-1",
+        as_of=AS_OF,
+    )
+
+    assert result["status"] == "blocked"
+    assert result["gate_status"] == "BLOCKED_EVIDENCE"
+    assert result["blockers"] == ["entity_scope_authority_blocked"]
+
+
+def test_malformed_scoped_run_projection_fails_closed():
+    service = _service(_run(_bundle()))
+    service.scoped_pilots = _Pilots(None)
+    result = _evaluate(service)
+
+    assert result["status"] == "blocked"
+    assert result["gate_status"] == "BLOCKED_EVIDENCE"
+    assert result["blockers"] == ["scoped_read_run_projection_invalid"]

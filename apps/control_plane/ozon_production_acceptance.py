@@ -94,10 +94,30 @@ class OzonProductionAcceptanceService:
         run_ref = self._required(run_id, "run_id", 300)
         scope = self._scope(principal, entity_scope, store_ref)
 
-        # A missing entity authority is a normal no-data state for a newly
-        # provisioned tenant.  Return a safe projection without touching the
-        # Pilot/Run/Evidence stores, preserving the SQL-first isolation rule.
+        # A genuinely absent entity authority is a normal no-data state for a
+        # newly provisioned tenant.  An authority that is present but blocked
+        # (ambiguous, stale, or invalid) must remain BLOCKED_EVIDENCE; mapping
+        # it to NO_DATA would hide a governance failure from release gates.
         if scope["entity_ref"] is None:
+            scope_status = str(entity_scope.get("status") or "").strip().lower()
+            if scope_status not in {"missing", "no_data", "absent"}:
+                blocker = {
+                    "blocked": "entity_scope_authority_blocked",
+                    "stale": "entity_scope_authority_stale",
+                    "unknown": "entity_scope_authority_unknown",
+                }.get(scope_status, "entity_scope_authority_invalid")
+                return self._result(
+                    status="blocked",
+                    gate_status="BLOCKED_EVIDENCE",
+                    scope=scope,
+                    run=None,
+                    checks={"exact_scope": False},
+                    blockers=[blocker],
+                    evidence_ids=[],
+                    source_contract=None,
+                    runtime_identity=None,
+                    next_action="Repair the current exact tenant/entity/store scope authority before running Ozon acceptance.",
+                )
             return self._result(
                 status="no_data",
                 gate_status="NO_DATA",
@@ -136,6 +156,20 @@ class OzonProductionAcceptanceService:
                 source_contract=None,
                 runtime_identity=None,
                 next_action="Re-establish the current scoped Pilot and its independently bound Evidence.",
+            )
+
+        if not isinstance(run, Mapping):
+            return self._result(
+                status="blocked",
+                gate_status="BLOCKED_EVIDENCE",
+                scope=scope,
+                run=None,
+                checks={"exact_scope": False},
+                blockers=["scoped_read_run_projection_invalid"],
+                evidence_ids=[],
+                source_contract=None,
+                runtime_identity=None,
+                next_action="Re-establish a valid scoped Pilot run projection before running Ozon acceptance.",
             )
 
         checks: dict[str, bool] = {}
