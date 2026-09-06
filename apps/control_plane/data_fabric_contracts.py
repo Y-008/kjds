@@ -90,6 +90,11 @@ class DataProductDescriptor(_Contract):
     refresh_sla_seconds: int | None = Field(default=None, ge=1)
     quality_threshold: float = Field(ge=0, le=1)
     rebuild_method: str = Field(min_length=1, max_length=500)
+    # Registry status and authority are part of the descriptor so a
+    # contract-only product cannot be mistaken for a verified production
+    # source by downstream planners.
+    status: Literal["contract_only", "verified", "deprecated"] = "contract_only"
+    authority: str = Field(default="unverified", min_length=1, max_length=160)
 
 
 class MetricDefinition(_Contract):

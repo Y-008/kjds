@@ -34,6 +34,9 @@ def load_data_product_registry(
 
     if not isinstance(payload, dict) or not isinstance(payload.get("products"), list):
         raise DataProductRegistryError("registry must contain a products list")
+    registry_status = payload.get("status", "contract_only")
+    if registry_status not in {"contract_only", "verified", "deprecated"}:
+        raise DataProductRegistryError("registry status is invalid")
 
     products: list[DataProductDescriptor] = []
     seen: set[str] = set()
@@ -59,6 +62,8 @@ def load_data_product_registry(
                     refresh_sla_seconds=raw_product.get("refresh_sla_seconds"),
                     quality_threshold=raw_product.get("quality_threshold", 0),
                     rebuild_method=raw_product.get("rebuild_method", "registered source replay"),
+                    status=registry_status,
+                    authority=raw_product.get("authority", "unverified"),
                 )
             )
         except (KeyError, TypeError, ValueError) as exc:
