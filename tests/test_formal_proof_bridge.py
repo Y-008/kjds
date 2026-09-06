@@ -5,13 +5,25 @@ import pytest
 
 from apps.control_plane.formal_proof_manifest import (
     load_manifest,
+    manifest_metadata,
     manifest_sha256,
     validate_manifest_artifacts,
+    validate_manifest_examples,
     validate_manifest_modules,
 )
 from apps.control_plane.formal_theorem_runner import run_manifest
-from apps.control_plane.proof_artifact_validator import validate_artifact
-from apps.control_plane.proof_evidence_bridge import bind_evidence
+from apps.control_plane.proof_artifact_validator import (
+    ProofArtifactReceipt,
+    replay_proof_receipt,
+    validate_artifact,
+    validate_proof_receipt,
+)
+from apps.control_plane.proof_evidence_bridge import (
+    bind_evidence,
+    evidence_payload_sha256,
+    validate_binding,
+    validate_evidence_payload,
+)
 
 
 def test_manifest_is_loadable_and_hashed():
@@ -144,3 +156,85 @@ def test_manifest_artifact_digest_is_checked_against_module_bytes(tmp_path):
     assert validate_manifest_artifacts(entries, root=tmp_path) == (
         "artifact_hash_mismatch:k:Proof.lean",
     )
+
+
+def test_manifest_examples_are_explicit_but_legacy_entries_remain_compatible(tmp_path):
+    module = tmp_path / "Proof.lean"
+    module.write_text("theorem t : True := by trivial\n", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "contract_id": "kjds-formal-proof-manifest-v2",
+                "example_policy": {
+                    "require_positive": True,
+                    "require_counterexample": True,
+                },
+                "entries": [
+                    {
+                        "stable_key": "k",
+                        "theorem": "t",
+                        "module": "Proof.lean",
+                        "positive_refs": ["example:k:1"],
+                        "counterexample_refs": ["counterexample:k:1"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    entries = load_manifest(manifest)
+    assert validate_manifest_examples(entries) == ()
+    assert manifest_metadata(manifest)["example_policy"]["require_positive"] is True
+
+
+def test_manifest_example_policy_reports_missing_counterexample(tmp_path):
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        '{"entries":[{"stable_key":"k","theorem":"t","module":"Proof.lean",'
+        '"positive_refs":["example:k:1"]}],"example_policy":'
+        '{"require_positive":true,"require_counterexample":true}}',
+        encoding="utf-8",
+    )
+    entries = load_manifest(manifest)
+    assert validate_manifest_examples(entries) == ("counterexample_missing:k",)
+
+
+def test_evidence_binding_carries_stable_digests_and_rejects_tamper():
+    digest = evidence_payload_sha256("payload")
+    binding = bind_evidence(
+        "t.order",
+        ("evidence://order-1",),
+        ("currency_explicit",),
+        evidence_digests={"evidence://order-1": digest},
+    )
+    assert validate_binding(binding, require_evidence=True, require_assumptions=True) == ()
+    assert len(binding.binding_sha256) == 64
+    assert validate_evidence_payload("payload", digest)
+    with pytest.raises(ValueError, match="payload hash"):
+        validate_evidence_payload("tampered", digest)
+    persisted = binding.as_dict()
+    persisted["binding_sha256"] = "0" * 64
+    assert "binding_digest_mismatch" in validate_binding(persisted)
+
+
+def test_proof_receipt_replay_detects_module_revision(tmp_path):
+    module = tmp_path / "Proof.lean"
+    module.write_text("theorem t : True := by trivial\n", encoding="utf-8")
+    artifact_digest = hashlib.sha256(module.read_bytes()).hexdigest()
+    receipt = ProofArtifactReceipt(
+        stable_key="k",
+        theorem="t",
+        module="Proof.lean",
+        manifest_sha256="a" * 64,
+        artifact_sha256=artifact_digest,
+        build_output_sha256="b" * 64,
+        status="proved",
+    )
+    assert validate_proof_receipt(receipt, root=tmp_path) == ()
+    replayed = replay_proof_receipt(receipt, root=tmp_path, expected_manifest_sha256="a" * 64)
+    assert replayed["status"] == "replayable"
+    module.write_text("theorem t : True := by decide\n", encoding="utf-8")
+    stale = replay_proof_receipt(receipt, root=tmp_path, expected_manifest_sha256="a" * 64)
+    assert stale["status"] == "stale"
+    assert stale["replay_allowed"] is False
