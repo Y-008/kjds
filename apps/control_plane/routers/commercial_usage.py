@@ -8,7 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..api_contracts import current_principal, ensure_role, ensure_store_scope, run
-from ..commercial_entitlement_authority import CommercialEntitlementAuthority
+from ..commercial_entitlement_authority import (
+    CommercialEntitlementAdmissionError,
+    CommercialEntitlementAuthority,
+)
 from ..runtime import runtime
 from ..security import Principal
 from ..skill_usage_ledger import SkillUsageEvent
@@ -105,10 +108,18 @@ def _entitlement_admission(
         "deployment_ref": deployment_ref,
         "entity_ref": entity_ref,
         "store_ref": store_ref,
+        "metric": metric,
     }
     if not any(value is not None for value in declared.values()):
         return None
-    missing = [name for name, value in declared.items() if value is None]
+    # ``metric`` is part of the declaration too: accepting it without an
+    # entitlement would make the request look metered while remaining
+    # completely unbound.
+    missing = [
+        name for name, value in declared.items() if value is None and name != "metric"
+    ]
+    if entitlement_id is None and metric is not None:
+        raise ValueError("metric requires an entitlement scope")
     if missing:
         raise ValueError(
             "entitlement scope requires: " + ", ".join(sorted(missing))
@@ -123,17 +134,22 @@ def _entitlement_admission(
         # Test and migration runtimes created before the explicit composition
         # field remain safe while production uses the injected authority.
         authority = CommercialEntitlementAuthority(runtime.commercial_lifecycle)
-    return authority.resolve(
-        tenant_id=principal.tenant_ref,
-        customer_id=customer_id,
-        entitlement_id=entitlement_id,
-        deployment_ref=deployment_ref,
-        entity_ref=entity_ref,
-        store_ref=store_ref,
-        metric=metric,
-        occurred_at=occurred_at,
-        as_of=as_of,
-    )
+    try:
+        return authority.resolve(
+            tenant_id=principal.tenant_ref,
+            customer_id=customer_id,
+            entitlement_id=entitlement_id,
+            deployment_ref=deployment_ref,
+            entity_ref=entity_ref,
+            store_ref=store_ref,
+            metric=metric,
+            occurred_at=occurred_at,
+            as_of=as_of,
+        )
+    except CommercialEntitlementAdmissionError as exc:
+        # Route helpers run before the normal ``run`` wrapper, so translate
+        # the authority's typed domain error explicitly for HTTP callers.
+        raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
 
 
 @router.post("/v1/commercial/usage")

@@ -9,6 +9,7 @@ from apps.control_plane.commercial_entitlement_authority import (
     CommercialEntitlementAuthority,
     canonical_entitlement_id,
 )
+from apps.control_plane.commercial_lifecycle import CommercialScope
 
 SCOPE = {
     "tenant_id": "tenant-a",
@@ -30,12 +31,21 @@ def _snapshot(*, state: str = "active", plan_state: str = "approved", metric_lim
         "entity_ref": SCOPE["entity_ref"],
         "store_ref": SCOPE["store_ref"],
     }
+    scope_hash = CommercialScope(
+        customer_ref=scope["customer_ref"],
+        deployment_ref=scope["deployment_ref"],
+        tenant_ref=scope["tenant_ref"],
+        entity_ref=scope["entity_ref"],
+        store_ref=scope["store_ref"],
+    ).scope_hash
     return {
-        "scope": scope,
+            "scope": scope,
+        "scope_hash": scope_hash,
         "plan": {
             "record_ref": "plan-a",
             "state": plan_state,
             "payload": {
+                "effective_at": START.isoformat(),
                 "billing_window_start": START.isoformat(),
                 "billing_window_end": END.isoformat(),
                 "metric_limits": metric_limits
@@ -44,9 +54,15 @@ def _snapshot(*, state: str = "active", plan_state: str = "approved", metric_lim
         },
         "entitlement": {
             "id": "commercial-entitlement-event-a",
+            "record_ref": "entitlement",
             "state": state,
             "decision_sha256": "a" * 64,
             "payload": {"subscription_ref": "subscription-a"},
+        },
+        "subscription": {
+            "record_ref": "subscription-a",
+            "state": "active",
+            "payload": {"effective_at": START.isoformat(), "expires_at": None},
         },
     }
 

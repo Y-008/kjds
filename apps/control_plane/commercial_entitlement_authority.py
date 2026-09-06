@@ -193,10 +193,23 @@ class CommercialEntitlementAuthority:
             raise CommercialEntitlementAdmissionError(
                 "commercial lifecycle scope does not match the authenticated request"
             )
+        if snapshot.get("scope_hash") != scope.scope_hash:
+            raise CommercialEntitlementAdmissionError(
+                "commercial lifecycle scope hash does not match the authenticated request"
+            )
         entitlement = snapshot.get("entitlement")
         if not isinstance(entitlement, dict):
             raise CommercialEntitlementAdmissionError(
                 "commercial entitlement is not admitted for the exact scope"
+            )
+        if entitlement.get("record_ref") != "entitlement":
+            raise CommercialEntitlementAdmissionError(
+                "commercial entitlement projection has an invalid record reference"
+            )
+        entitlement_payload = entitlement.get("payload")
+        if not isinstance(entitlement_payload, dict):
+            raise CommercialEntitlementAdmissionError(
+                "commercial entitlement projection is malformed"
             )
         state = str(entitlement.get("state") or "")
         if state not in ACTIVE_ENTITLEMENT_STATES:
@@ -219,6 +232,20 @@ class CommercialEntitlementAuthority:
             raise CommercialEntitlementAdmissionError(
                 f"commercial plan state {plan_state or 'unknown'} does not permit usage"
             )
+        subscription = snapshot.get("subscription")
+        if not isinstance(subscription, dict):
+            raise CommercialEntitlementAdmissionError(
+                "commercial entitlement has no authoritative subscription"
+            )
+        subscription_payload = subscription.get("payload")
+        if not isinstance(subscription_payload, dict):
+            raise CommercialEntitlementAdmissionError(
+                "commercial entitlement subscription projection is malformed"
+            )
+        if subscription.get("record_ref") != entitlement_payload.get("subscription_ref"):
+            raise CommercialEntitlementAdmissionError(
+                "commercial entitlement subscription lineage does not match"
+            )
 
         window_start = _aware(plan_payload.get("billing_window_start"), "billing_window_start")
         window_end = _aware(plan_payload.get("billing_window_end"), "billing_window_end")
@@ -229,6 +256,23 @@ class CommercialEntitlementAuthority:
         if event_time < window_start or event_time >= window_end:
             raise CommercialEntitlementAdmissionError(
                 "occurred_at is outside the commercial entitlement billing window"
+            )
+        effective_raw = plan_payload.get("effective_at")
+        if effective_raw is not None and event_time < _aware(effective_raw, "plan_effective_at"):
+            raise CommercialEntitlementAdmissionError(
+                "occurred_at precedes the commercial plan effective time"
+            )
+        subscription_effective = _aware(
+            subscription_payload.get("effective_at"), "subscription_effective_at"
+        )
+        if event_time < subscription_effective:
+            raise CommercialEntitlementAdmissionError(
+                "occurred_at precedes the commercial subscription effective time"
+            )
+        expires_raw = subscription_payload.get("expires_at")
+        if expires_raw is not None and event_time >= _aware(expires_raw, "subscription_expires_at"):
+            raise CommercialEntitlementAdmissionError(
+                "occurred_at is outside the commercial subscription validity window"
             )
 
         raw_limits = plan_payload.get("metric_limits")
@@ -274,9 +318,7 @@ class CommercialEntitlementAuthority:
             "scope_hash": scope.scope_hash,
             "state": state,
             "plan_ref": plan.get("record_ref"),
-            "subscription_ref": entitlement.get("payload", {}).get("subscription_ref")
-            if isinstance(entitlement.get("payload"), dict)
-            else None,
+            "subscription_ref": entitlement_payload.get("subscription_ref"),
             "metric": selected_metric,
             "metric_limit": limits[selected_metric]["limit"],
             "metric_grace_limit": limits[selected_metric]["grace_limit"],

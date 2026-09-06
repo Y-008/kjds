@@ -4,8 +4,12 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
-from apps.control_plane.commercial_entitlement_authority import canonical_entitlement_id
+from apps.control_plane.commercial_entitlement_authority import (
+    CommercialEntitlementAdmissionError,
+    canonical_entitlement_id,
+)
 from apps.control_plane.routers import commercial_usage
 from apps.control_plane.security import Principal
 
@@ -51,6 +55,11 @@ class FakeAuthority:
     def resolve(self, **kwargs):
         self.calls.append(kwargs)
         return {"receipt_sha256": "a" * 64, "entitlement_id": kwargs["entitlement_id"]}
+
+
+class RejectingAuthority(FakeAuthority):
+    def resolve(self, **kwargs):
+        raise CommercialEntitlementAdmissionError("entitlement is stale")
 
 
 class FakeLedger:
@@ -122,3 +131,22 @@ def test_legacy_usage_request_remains_compatible_without_entitlement_fields(monk
 
     assert response["event_id"] == "legacy-usage-1"
     assert len(ledger.events) == 1
+
+
+def test_authority_rejection_is_a_forbidden_http_error_before_write(monkeypatch):
+    authority = RejectingAuthority()
+    ledger = FakeLedger()
+    monkeypatch.setattr(
+        commercial_usage,
+        "runtime",
+        SimpleNamespace(
+            commercial_entitlement_authority=authority,
+            skill_usage_ledger=ledger,
+        ),
+    )
+
+    with pytest.raises(HTTPException) as caught:
+        commercial_usage.record_usage(_body(), _principal())
+    assert caught.value.status_code == 403
+    assert caught.value.detail == "entitlement is stale"
+    assert ledger.events == []
