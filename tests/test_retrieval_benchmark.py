@@ -41,9 +41,11 @@ FIXTURE = Path(
     "tests/fixtures/retrieval_benchmark/bas173_gold_questions_v1.json"
 )
 AUTHORITY_A = "a" * 64
-# The complete repository Gate collects this module before a multi-minute suite.
-# Keep one frozen data cutoff inside the fixture's one-day effective interval.
-DATA_AS_OF = datetime.now(UTC) + timedelta(days=1)
+# The gold set contains temporal decoys that become visible at this boundary.
+# Keep the historical data cutoff deterministic and independent from the wall clock
+# used to re-check current scope authority during a complete repository Gate.
+FUTURE_DECOY_BOUNDARY = datetime(2026, 9, 1, tzinfo=UTC)
+DATA_AS_OF = datetime(2026, 8, 15, 12, tzinfo=UTC)
 
 
 class FakeScopeGrants:
@@ -91,7 +93,7 @@ def _citation_content(document: dict) -> bytes:
 
 def _seed(engine, *, authority: str = AUTHORITY_A):
     Base.metadata.create_all(engine)
-    now = datetime.now(UTC)
+    now = DATA_AS_OF - timedelta(hours=1)
     exact_scope = {
         "tenant_ref": "tenant-a",
         "entity_ref": "entity-a",
@@ -174,6 +176,9 @@ def _seed(engine, *, authority: str = AUTHORITY_A):
         },
     )
     with Session(engine) as session, session.begin():
+        evidence_row = session.get(EvidenceRecordRow, record.id)
+        assert evidence_row is not None
+        evidence_row.recorded_at = now
         session.add(
             GraphEdgeRow(
                 id="edge-fx-requires",
@@ -395,6 +400,36 @@ def test_current_authority_is_rechecked_while_historical_data_as_of_cannot_rewin
     assert revoked["winner_status"] == "no_data"
 
 
+def test_temporal_decoy_boundary_is_inclusive_and_disqualifies_structured_sql(
+    setup_workspace,
+):
+    workspace, _scope, _clock, _engine, _record = setup_workspace
+    before = _evaluate(
+        workspace,
+        key="before-temporal-decoy-boundary",
+        as_of=FUTURE_DECOY_BOUNDARY - timedelta(microseconds=1),
+    )
+    at_boundary = _evaluate(
+        workspace,
+        key="at-temporal-decoy-boundary",
+        as_of=FUTURE_DECOY_BOUNDARY,
+    )
+
+    assert before["winner_status"] == "UNKNOWN"
+    assert before["eligible_candidate_method_ids"] == ["structured_sql"]
+    assert at_boundary["winner_status"] == "no_data"
+    assert at_boundary["eligible_candidate_method_ids"] == []
+    boundary_claims = {
+        claim
+        for question in at_boundary["questions"]
+        for claim in question["results"][0]["claims"]
+    }
+    assert {
+        "unsupported_future_backfill_agent_claim",
+        "unsupported_future_temporal_claim",
+    } <= boundary_claims
+
+
 def test_idempotency_drift_conflicts_only_inside_same_exact_authority(setup_workspace):
     workspace, _scope, _clock, _engine, _record = setup_workspace
     _evaluate(workspace, key="immutable", methods=("structured_sql",))
@@ -517,7 +552,7 @@ def test_graph_evidence_hash_scope_currentness_and_recorded_time_are_hard_gates(
 
     with Session(engine) as session, session.begin():
         row = session.get(EvidenceRecordRow, record.id)
-        row.recorded_at = datetime.now(UTC) - timedelta(minutes=1)
+        row.recorded_at = DATA_AS_OF - timedelta(minutes=1)
         row.effective_until = DATA_AS_OF
     stale = GovernedRetrievalBenchmarkWorkspace(
         engine=engine,
@@ -574,7 +609,7 @@ def test_graph_missing_evidence_and_ambiguous_cycle_never_produce_an_eligible_wi
     setup_workspace,
 ):
     workspace, _scope, _clock, engine, _record = setup_workspace
-    now = datetime.now(UTC)
+    now = DATA_AS_OF - timedelta(hours=1)
     with Session(engine) as session, session.begin():
         edge = session.get(GraphEdgeRow, "edge-fx-requires")
         edge.evidence_ref = None
@@ -739,6 +774,26 @@ def test_postgresql_fts_uses_same_frozen_corpus_and_quality_tie_is_not_a_winner(
             for question in result["questions"]
             for method in question["results"]
         )
+
+        before_boundary = _evaluate(
+            workspace,
+            key="postgres-fts-before-boundary",
+            methods=("structured_sql", "postgresql_fts"),
+            as_of=FUTURE_DECOY_BOUNDARY - timedelta(microseconds=1),
+        )
+        at_boundary = _evaluate(
+            workspace,
+            key="postgres-fts-at-boundary",
+            methods=("structured_sql", "postgresql_fts"),
+            as_of=FUTURE_DECOY_BOUNDARY,
+        )
+        assert before_boundary["winner_status"] == "UNKNOWN"
+        assert before_boundary["eligible_candidate_method_ids"] == [
+            "structured_sql",
+            "postgresql_fts",
+        ]
+        assert at_boundary["winner_status"] == "no_data"
+        assert at_boundary["eligible_candidate_method_ids"] == []
         replay = _evaluate(
             workspace,
             key="postgres-fts",
