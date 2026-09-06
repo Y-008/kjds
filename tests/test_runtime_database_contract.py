@@ -106,6 +106,8 @@ def test_ledger_immutability_migration_covers_all_new_tables():
     assert "ck_commercial_finance_settled_after_occurred" in commercial_temporal
     assert "ix_commercial_finance_scope_observed" in commercial_temporal
     assert "ix_commercial_finance_scope_settled" in commercial_temporal
+    assert commercial_temporal.index("DROP TRIGGER IF EXISTS") < commercial_temporal.index("f'UPDATE")
+    assert commercial_temporal.index("f'UPDATE") < commercial_temporal.index("CREATE TRIGGER")
 
 
 def test_postgresql_engine_gets_a_bounded_connect_timeout(monkeypatch):

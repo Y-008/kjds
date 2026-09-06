@@ -25,6 +25,7 @@ TABLE = "commercial_finance_events"
 OBSERVED_INDEX = "ix_commercial_finance_scope_observed"
 SETTLED_INDEX = "ix_commercial_finance_scope_settled"
 SETTLED_CHECK = "ck_commercial_finance_settled_after_occurred"
+IMMUTABLE_TRIGGER = "trg_commercial_finance_events_immutable"
 
 
 def upgrade() -> None:
@@ -36,11 +37,22 @@ def upgrade() -> None:
         TABLE,
         sa.Column("settled_at", sa.DateTime(timezone=True), nullable=True),
     )
-    # ``recorded_at`` is the only observation timestamp in 0113.  The update
-    # is deterministic and leaves the old column intact for compatibility.
+    # ``recorded_at`` is the only observation timestamp in 0113.  The table is
+    # append-only and 0113 installed a BEFORE UPDATE trigger, so temporarily
+    # remove and immediately restore that trigger around this deterministic
+    # one-time backfill.  The migration transaction prevents an interleaving
+    # writer; the trigger is present again before the revision commits.
+    op.execute(
+        f'DROP TRIGGER IF EXISTS "{IMMUTABLE_TRIGGER}" ON "{TABLE}"'
+    )
     op.execute(
         f'UPDATE "{TABLE}" SET "observed_at" = "recorded_at" '
         'WHERE "observed_at" IS NULL'
+    )
+    op.execute(
+        f'CREATE TRIGGER "{IMMUTABLE_TRIGGER}" '
+        f'BEFORE UPDATE OR DELETE ON "{TABLE}" FOR EACH ROW '
+        "EXECUTE FUNCTION kjds_commercial_finance_immutable()"
     )
     op.alter_column(
         TABLE,
@@ -71,4 +83,3 @@ def downgrade() -> None:
     op.drop_constraint(SETTLED_CHECK, TABLE, type_="check")
     op.drop_column(TABLE, "settled_at")
     op.drop_column(TABLE, "observed_at")
-
