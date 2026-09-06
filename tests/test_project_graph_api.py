@@ -66,6 +66,14 @@ def test_heartbeat_rejects_entity_scope_mismatch(monkeypatch):
     assert caught.value.status_code == 403
 
 
+def test_heartbeat_core_guards_default_to_fail_closed():
+    body = project_graph.ProjectHeartbeatInput(entity_ref="entity-a", head="abc")
+    assert body.evidence_fresh is False
+    assert body.data_quality_valid is False
+    assert body.rollback_available is False
+    assert body.experiment_clear is False
+
+
 def test_heartbeat_path_bypasses_kill_switch_for_safety_bookkeeping(monkeypatch):
     principal = Principal(
         actor_id="pm-test",

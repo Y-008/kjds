@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event as sqlalchemy_event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 
 from apps.control_plane.resource_budget_ledger import (
@@ -24,6 +25,11 @@ def ledger():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    @sqlalchemy_event.listens_for(engine, "connect")
+    def _enable_foreign_keys(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
     Base.metadata.create_all(engine, tables=[ResourceBudgetRow.__table__, ResourceBudgetEventRow.__table__])
     return ResourceBudgetLedger(engine)
 
@@ -75,3 +81,14 @@ def test_idempotent_retry_returns_persisted_event_identity(ledger):
 def test_numeric_precision_is_bounded_before_persistence(ledger):
     with pytest.raises(ValueError, match="NUMERIC"):
         ledger.create_budget(ResourceBudget("budget-1", "tenant-a", "model_tokens", "cc-ai", Decimal("0.1234567890123456789")))
+
+
+def test_database_rejects_orphan_budget_event(ledger):
+    with pytest.raises(IntegrityError):
+        with ledger.engine.begin() as connection:
+            connection.execute(ResourceBudgetEventRow.__table__.insert().values(
+                event_id="orphan", idempotency_key="orphan-key", budget_id="missing",
+                tenant_id="tenant-a", state="reserved", amount=Decimal("1"),
+                amount_text="1", currency="USD", occurred_at=datetime(2026, 9, 6, tzinfo=UTC),
+                fingerprint_sha256="0" * 64, recorded_at=datetime(2026, 9, 6, tzinfo=UTC),
+            ))

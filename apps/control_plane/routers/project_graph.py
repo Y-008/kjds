@@ -39,11 +39,11 @@ class ProjectHeartbeatInput(BaseModel):
     lease_snapshot_known: bool = False
     test_receipts_current: bool = False
     proof_receipts_current: bool = False
-    evidence_fresh: bool = True
-    data_quality_valid: bool = True
+    evidence_fresh: bool = False
+    data_quality_valid: bool = False
     external_readback_passed: bool = False
-    rollback_available: bool = True
-    experiment_clear: bool = True
+    rollback_available: bool = False
+    experiment_clear: bool = False
     liveness_deadline: datetime | None = None
     heartbeat_at: datetime | None = None
     progress_cursor: str | None = Field(default=None, max_length=500)
