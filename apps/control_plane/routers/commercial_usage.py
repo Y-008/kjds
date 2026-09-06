@@ -119,10 +119,11 @@ def _entitlement_admission(
         name for name, value in declared.items() if value is None and name != "metric"
     ]
     if entitlement_id is None and metric is not None:
-        raise ValueError("metric requires an entitlement scope")
+        raise HTTPException(status_code=422, detail="metric requires an entitlement scope")
     if missing:
-        raise ValueError(
-            "entitlement scope requires: " + ", ".join(sorted(missing))
+        raise HTTPException(
+            status_code=422,
+            detail="entitlement scope requires: " + ", ".join(sorted(missing)),
         )
     assert entitlement_id is not None
     assert deployment_ref is not None

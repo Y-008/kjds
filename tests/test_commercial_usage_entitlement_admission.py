@@ -101,11 +101,13 @@ def test_partial_entitlement_declaration_fails_before_ledger_write(monkeypatch):
         SimpleNamespace(skill_usage_ledger=ledger),
     )
 
-    with pytest.raises(ValueError, match="entitlement scope requires"):
+    with pytest.raises(HTTPException) as caught:
         commercial_usage.record_usage(
             _body(entity_ref=None),
             _principal(),
         )
+    assert caught.value.status_code == 422
+    assert "entitlement scope requires" in str(caught.value.detail)
     assert ledger.events == []
 
 
