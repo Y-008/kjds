@@ -73,6 +73,16 @@ def _recipe(
     if authorized_entities and entity_id not in set(authorized_entities):
         raise HTTPException(403, "entity is outside principal scope")
     ensure_store_scope(principal, store_id)
+    scope_authority = getattr(runtime, "scope_grants", None)
+    current_grant = getattr(scope_authority, "current", None)
+    if not callable(current_grant):
+        raise HTTPException(403, "current entity scope authority is unavailable")
+    try:
+        grant = current_grant(principal=principal, store_ref=store_id, as_of=cutoff)
+    except (KeyError, PermissionError, RuntimeError, ValueError) as exc:
+        raise HTTPException(403, "entity is outside the current authorized scope") from exc
+    if grant.get("status") != "ready" or grant.get("entity_ref") != entity_id:
+        raise HTTPException(403, "entity is outside the current authorized scope")
     return AnalysisRecipe(
         recipe_id=recipe_id,
         version="1",

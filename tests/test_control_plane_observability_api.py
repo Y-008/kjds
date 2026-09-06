@@ -22,6 +22,24 @@ def test_analytics_time_rejects_future_as_of():
         control_plane_observability._time("2999-01-01T00:00:00Z", "as_of")
 
 
+def test_analytics_rejects_entity_without_current_scope_grant(monkeypatch):
+    principal = Principal(
+        actor_id="analyst", roles=frozenset({"monitor"}), tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        control_plane_observability.runtime.scope_grants,
+        "current",
+        lambda **_: {"status": "ready", "entity_ref": "other-entity"},
+    )
+    with pytest.raises(HTTPException, match="authorized scope"):
+        control_plane_observability._recipe(
+            "orders", principal, entity_id="entity-a", store_id="store-a",
+            metric=("net_sales",), dimension=("store",), start_at=None,
+            end_at=None, as_of=None,
+        )
+
+
 def test_heartbeat_without_consumer_is_not_attributed_to_project_manager():
     observation = control_plane_observability._heartbeat_observation({
         "project_id": "project-a",
@@ -125,6 +143,11 @@ def test_analytics_projections_preserve_fact_quality_and_lineage(monkeypatch):
         "temporal_fact_store",
         facts,
     )
+    monkeypatch.setattr(
+        control_plane_observability.runtime.scope_grants,
+        "current",
+        lambda **_: {"status": "ready", "entity_ref": "entity-a"},
+    )
     kwargs = {
         "principal": principal,
         "entity_id": "entity-a",
@@ -170,6 +193,11 @@ def test_analytics_source_outage_is_blocked_instead_of_no_data(monkeypatch):
             raise RuntimeError("database unavailable")
 
     monkeypatch.setattr(control_plane_observability.runtime, "temporal_fact_store", _BrokenFacts())
+    monkeypatch.setattr(
+        control_plane_observability.runtime.scope_grants,
+        "current",
+        lambda **_: {"status": "ready", "entity_ref": "entity-a"},
+    )
     result = control_plane_observability.analytics_drilldown(
         "orders",
         principal=principal,
