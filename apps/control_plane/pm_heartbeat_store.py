@@ -390,6 +390,7 @@ class SqlProjectHeartbeatStore:
         tenant_id: str,
         entity_id: str | None = None,
         store_refs: tuple[str, ...] | None = None,
+        observed_until: datetime | None = None,
     ) -> tuple[dict[str, Any], ...]:
         """Return the latest heartbeat for each visible project/store scope.
 
@@ -400,7 +401,7 @@ class SqlProjectHeartbeatStore:
         """
 
         tenant_id = _text(tenant_id, "tenant_id", 160) or ""
-        entity_id = _text(entity_id, "entity_id", 160)
+        entity_id = _text(entity_id, "entity_id", 160) if entity_id is not None else None
         normalized_stores = tuple(
             dict.fromkeys(
                 value
@@ -421,6 +422,9 @@ class SqlProjectHeartbeatStore:
             conditions.append(ProjectHeartbeatRow.entity_id == entity_id)
         if normalized_stores:
             conditions.append(ProjectHeartbeatRow.store_ref.in_(normalized_stores))
+        if observed_until is not None:
+            cutoff = _aware(observed_until)
+            conditions.append(ProjectHeartbeatRow.observed_at <= cutoff)
 
         with Session(self.engine) as session:
             rows = session.scalars(

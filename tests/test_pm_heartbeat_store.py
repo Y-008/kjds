@@ -133,3 +133,21 @@ def test_list_latest_is_scope_bound_and_selects_one_revision_per_project_store()
         ("p2", 1),
     ]
     assert store.list_latest(tenant_id="tenant-a", store_refs=()) == ()
+
+
+def test_list_latest_can_replay_only_observations_known_by_cutoff():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine, tables=[ProjectHeartbeatRow.__table__])
+    store = SqlProjectHeartbeatStore(engine)
+    common = dict(
+        tenant_id="tenant-a", entity_id="entity-a", store_ref="store-a",
+        project_id="p1", head="h", graph_snapshot_sha256="d" * 64,
+        status="hold", payload={}, idempotency_key="k1",
+    )
+    store.record(**common, observed_at=datetime(2026, 9, 5, tzinfo=UTC))
+    store.record(**{**common, "idempotency_key": "k2", "head": "future"}, observed_at=datetime(2026, 9, 7, tzinfo=UTC))
+    rows = store.list_latest(
+        tenant_id="tenant-a", entity_id="entity-a", store_refs=("store-a",),
+        observed_until=datetime(2026, 9, 6, tzinfo=UTC),
+    )
+    assert rows[0]["head"] == "h"

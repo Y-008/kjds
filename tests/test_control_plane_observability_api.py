@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from apps.control_plane.api import registered_routes
 from apps.control_plane.routers import control_plane_observability
 from apps.control_plane.security import Principal
@@ -10,6 +12,16 @@ def test_observability_routes_are_registered():
     assert "/v1/analytics/{recipe}/lineage" in paths
     assert "/v1/operations/stuck" in paths
     assert "/v1/economics/guard-status" in paths
+
+
+def test_heartbeat_without_consumer_is_not_attributed_to_project_manager():
+    observation = control_plane_observability._heartbeat_observation({
+        "project_id": "project-a",
+        "status": "dispatch",
+        "observed_at": "2026-09-06T00:00:00+00:00",
+        "payload": {},
+    })
+    assert observation.consumer_id is None
 
 
 def test_operations_stuck_reads_latest_heartbeats_and_fails_closed(monkeypatch):
@@ -57,6 +69,7 @@ def test_operations_stuck_reads_latest_heartbeats_and_fails_closed(monkeypatch):
         "tenant_id": "tenant-a",
         "entity_id": None,
         "store_refs": ("store-a",),
+        "observed_until": datetime(2026, 9, 6, 1, tzinfo=UTC),
     }
     assert result["status"] == "BLOCKED"
     assert result["quality_state"] == "BLOCKED"

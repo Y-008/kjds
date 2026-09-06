@@ -247,7 +247,9 @@ def _heartbeat_observation(row: Mapping[str, object]) -> TaskLivenessObservation
     }
     state = state_aliases.get(state, state)
 
-    consumer = liveness.get("consumer_id") or payload.get("consumer_id") or "project-manager"
+    # Missing consumer identity is evidence of an unowned task, not proof that
+    # the project manager consumed it.
+    consumer = liveness.get("consumer_id") or payload.get("consumer_id")
     readback = liveness.get("external_readback_state") or payload.get("external_readback_state")
     readback_value = str(readback).strip().lower() if readback is not None else None
     if readback_value not in {"passed", "failed", "unknown", "pending"}:
@@ -495,6 +497,7 @@ def operations_stuck(
                     tenant_id=principal.tenant_ref,
                     entity_id=entity_ref,
                     store_refs=visible_stores,
+                    observed_until=cutoff,
                 )
             )
         except Exception:
