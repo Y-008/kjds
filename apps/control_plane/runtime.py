@@ -157,6 +157,7 @@ from .read_only_claims import ReadOnlyClaimService
 from .readiness import ExecutionReadinessService, GateReadinessService
 from .repository import InMemoryRepository
 from .research_inbox import ResearchInboxService
+from .resource_admission import ResourceAdmissionService
 from .resource_budget_ledger import ResourceBudgetLedger
 from .scope_grants import ScopeGrantAuthority
 from .scoped_accounts_payable import ScopedAccountsPayableWorkspace
@@ -305,6 +306,7 @@ class RuntimeServices:
     autonomous_execution_profile_store: Any
     commercial_finance_ledger: Any
     resource_budget_ledger: Any
+    resource_admissions: Any
     finance: Any
     fx_evidence_intake: Any
     finance_report_reviews: Any
@@ -511,6 +513,7 @@ def build_runtime() -> RuntimeServices:
     autonomous_execution_profile_store = AutonomousExecutionProfileStore(engine)
     commercial_finance_ledger = CommercialFinanceLedger(engine)
     resource_budget_ledger = ResourceBudgetLedger(engine)
+    resource_admissions = ResourceAdmissionService(engine, ledger=resource_budget_ledger)
     media_connector_contract = MediaConnectorContract()
     media_connectors = MediaConnectorRegistry(
         engine=engine,
@@ -885,6 +888,7 @@ def build_runtime() -> RuntimeServices:
         kill_switch=kill_switch,
         enabled=os.getenv("KJDS_LIMITED_EXECUTION_ENABLED", "false").lower() == "true",
         credential_grant_issuer=worker_grant_issuer,
+        resource_admissions=resource_admissions,
     )
     post_execution = PostExecutionService(
         engine=engine,
@@ -1474,6 +1478,7 @@ def build_runtime() -> RuntimeServices:
         autonomous_execution_profile_store=autonomous_execution_profile_store,
         commercial_finance_ledger=commercial_finance_ledger,
         resource_budget_ledger=resource_budget_ledger,
+        resource_admissions=resource_admissions,
         finance=finance,
         fx_evidence_intake=fx_evidence_intake,
         finance_report_reviews=finance_report_reviews,

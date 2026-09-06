@@ -20,6 +20,7 @@ from ..api_contracts import (
     IncidentRecoveryCheckInput,
     IncidentRecoveryReviewInput,
     LimitedExecutionClaimInput,
+    LimitedExecutionQueueInput,
     LimitedExecutionReceiptInput,
     OperationalIncidentInput,
     OperationsQueueScanInput,
@@ -125,9 +126,21 @@ def dry_run_governed_execution_plan(
 
 
 @router.post("/v1/governed-execution-plans/{plan_id}/commands", status_code=201)
-def queue_limited_execution_command(plan_id: str, principal: Annotated[Principal, Depends(current_principal)]):
+def queue_limited_execution_command(
+    plan_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    body: LimitedExecutionQueueInput | None = None,
+):
     ensure_role(principal, "operator", "admin")
-    return run(lambda: runtime.limited_executor.queue(plan_id, queued_by=principal.actor_id))
+    queue_args = body.model_dump(exclude_none=True) if body is not None else {}
+    return run(
+        lambda: runtime.limited_executor.queue(
+            plan_id,
+            queued_by=principal.actor_id,
+            tenant_id=principal.tenant_ref,
+            **queue_args,
+        )
+    )
 
 
 @router.get("/v1/limited-execution-commands")

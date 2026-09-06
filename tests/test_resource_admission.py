@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy.pool import StaticPool
 
+from apps.control_plane.limited_executor import LimitedExecutorService
 from apps.control_plane.resource_admission import (
     ResourceAdmissionEventRow,
     ResourceAdmissionService,
@@ -181,3 +182,26 @@ def test_terminal_admission_cannot_be_settled_twice(admission):
             tenant_id="tenant-a",
             idempotency_key="release-after-consume",
         )
+
+
+def test_limited_executor_receipt_settles_bound_admission(admission):
+    _reserve(admission)
+    executor = object.__new__(LimitedExecutorService)
+    executor.resource_admissions = admission
+
+    unknown = executor._settle_resource_admission(
+        "command-1",
+        outcome="uncertain",
+        mutation_applied=False,
+        error_code="REMOTE_TIMEOUT",
+        error_detail="authoritative readback unavailable",
+    )
+    assert unknown["status"] == "unknown"
+    consumed = executor._settle_resource_admission(
+        "command-1",
+        outcome="succeeded",
+        mutation_applied=True,
+        error_code=None,
+        error_detail=None,
+    )
+    assert consumed["status"] == "consumed"

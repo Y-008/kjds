@@ -112,6 +112,7 @@ class LimitedExecutorService:
         action_policies: ActionPolicyRegistry | None = None,
         enabled: bool = False,
         credential_grant_issuer=None,
+        resource_admissions=None,
     ) -> None:
         self.engine = engine
         self.execution_plans = execution_plans
@@ -121,8 +122,22 @@ class LimitedExecutorService:
         self.action_authorization = execution_plans.action_authorization
         self.enabled = enabled
         self.credential_grant_issuer = credential_grant_issuer
+        # Optional so legacy/read-only deployments can compose the executor
+        # before migration 0115.  When present, every explicitly budgeted
+        # command must obtain an admission before it can be claimed.
+        self.resource_admissions = resource_admissions
 
-    def queue(self, plan_id: str, *, queued_by: str) -> dict[str, Any]:
+    def queue(
+        self,
+        plan_id: str,
+        *,
+        queued_by: str,
+        tenant_id: str | None = None,
+        resource_budget_id: str | None = None,
+        resource_budget_amount: Decimal | str | int | float | None = None,
+        resource_budget_currency: str | None = None,
+        resource_admission_id: str | None = None,
+    ) -> dict[str, Any]:
         self._enabled()
         self.kill_switch.ensure_writes_allowed()
         queued_by = self._required(queued_by, "Command requester")
@@ -134,16 +149,28 @@ class LimitedExecutorService:
         self._authorize_plan(plan, queued_by=queued_by)
         existing = self._command_for(plan_id, "execute")
         if existing is not None:
-            return self.get(existing.id)
-        return self._insert_command(
-            plan=plan,
-            command_kind="execute",
-            parent_command_id=None,
-            operation=plan["adapter"]["operation"],
-            patch=plan["intended_patch"],
-            expected_state_hash=plan["precondition_state_hash"],
-            queued_by=queued_by,
+            command = self.get(existing.id)
+        else:
+            command = self._insert_command(
+                plan=plan,
+                command_kind="execute",
+                parent_command_id=None,
+                operation=plan["adapter"]["operation"],
+                patch=plan["intended_patch"],
+                expected_state_hash=plan["precondition_state_hash"],
+                queued_by=queued_by,
+            )
+        admission = self._ensure_resource_admission(
+            command,
+            tenant_id=tenant_id,
+            budget_id=resource_budget_id,
+            amount=resource_budget_amount,
+            currency=resource_budget_currency,
+            admission_id=resource_admission_id,
         )
+        if admission is not None:
+            command["resource_admission"] = admission
+        return command
 
     def claim(
         self,
@@ -170,7 +197,7 @@ class LimitedExecutorService:
                     self._authorize_command(
                         session, row, self.execution_plans.get(row.plan_id), worker_id
                     )
-                    return self._command(row, None)
+                    return self._command_result(row, None)
                 raise ValueError("Execution command is not available for claim")
             plan = self.execution_plans.get(row.plan_id)
             if row.command_kind == "execute" and not plan["ready_for_executor"]:
@@ -199,7 +226,16 @@ class LimitedExecutorService:
             raise ValueError("Current platform state does not match the command precondition")
         if result is None:
             raise RuntimeError("Execution claim did not produce a command")
-        return result
+        with Session(self.engine) as session:
+            row = session.get(LimitedExecutionCommandRow, command_id)
+            if row is None:
+                raise KeyError(f"Limited execution command not found: {command_id}")
+            receipt = session.scalar(
+                select(LimitedExecutionReceiptRow).where(
+                    LimitedExecutionReceiptRow.command_id == command_id
+                )
+            )
+        return self._command_result(row, receipt)
 
     def begin_write_attempt(self, command_id: str, *, worker_id: str) -> dict[str, Any]:
         """Consume the command's single external-write authorization."""
@@ -241,9 +277,14 @@ class LimitedExecutorService:
             raise ValueError("Execution lease expired before the write attempt; command is uncertain")
         if result is None:
             raise RuntimeError("Execution write attempt did not produce a command")
-        result["credential_grant"] = credential_grant
-        result["credential_grant_bound"] = credential_grant is not None
-        return result
+        with Session(self.engine) as session:
+            row = session.get(LimitedExecutionCommandRow, command_id)
+            if row is None:
+                raise KeyError(f"Limited execution command not found: {command_id}")
+        command_result = self._command_result(row, None)
+        command_result["credential_grant"] = credential_grant
+        command_result["credential_grant_bound"] = credential_grant is not None
+        return command_result
 
     def capture_execution_artifact(
         self,
@@ -462,6 +503,18 @@ class LimitedExecutorService:
             result = self._receipt(receipt, rollback_id)
         if result is None:
             raise RuntimeError("Execution receipt did not produce a result")
+        # Settle a previously reserved resource admission only after the
+        # immutable execution receipt is committed.  Unknown outcomes retain
+        # the reservation for reconciliation and never trigger a retry write.
+        admission = self._settle_resource_admission(
+            command_id,
+            outcome=outcome,
+            mutation_applied=mutation_applied,
+            error_code=error_code,
+            error_detail=error_detail,
+        )
+        if admission is not None:
+            result["resource_admission"] = admission
         self._link(evidence_ids, "limited_execution_receipt", result["id"], recorded_by)
         return result
 
@@ -512,7 +565,7 @@ class LimitedExecutorService:
                     LimitedExecutionReceiptRow.command_id == command_id
                 )
             )
-            return self._command(row, receipt)
+            return self._command_result(row, receipt)
 
     def _insert_command(
         self,
@@ -704,6 +757,128 @@ class LimitedExecutorService:
     def _enabled(self) -> None:
         if not self.enabled:
             raise ValueError("Limited execution is disabled by the global execution gate")
+
+    def _ensure_resource_admission(
+        self,
+        command: dict[str, Any],
+        *,
+        tenant_id: str | None,
+        budget_id: str | None,
+        amount: Decimal | str | int | float | None,
+        currency: str | None,
+        admission_id: str | None,
+    ) -> dict[str, Any] | None:
+        """Reserve an explicitly requested budget before a command is claimed.
+
+        Queueing remains backward compatible for plans that do not declare a
+        resource budget.  Once a caller supplies any budget field, all fields
+        are validated and the server-owned command authorization hash becomes
+        the permit reference; callers cannot substitute a permit identity.
+        """
+
+        requested = any(
+            value is not None
+            for value in (budget_id, amount, currency, admission_id)
+        )
+        if self.resource_admissions is None:
+            if requested:
+                raise ValueError("Resource admission service is not configured")
+            return None
+        existing = self.resource_admissions.for_command(command["id"])
+        if not requested:
+            if command.get("status") == "budget_blocked":
+                raise ValueError("Execution command is blocked pending a resource admission")
+            return existing
+        if not tenant_id:
+            raise ValueError("tenant_id is required for a resource admission")
+        if not budget_id:
+            raise ValueError("resource_budget_id is required for a resource admission")
+        if amount is None:
+            raise ValueError("resource_budget_amount is required for a resource admission")
+        if command.get("command_kind") != "execute":
+            raise ValueError("Only execute commands may reserve a resource budget")
+        if command.get("status") not in {"queued", "budget_blocked"}:
+            raise ValueError("Resource budget must be reserved before command execution starts")
+        normalized_currency = currency or command.get("risk_currency") or "USD"
+        key = f"execution-command:{command['id']}:resource-reserve"
+        try:
+            admission = self.resource_admissions.reserve(
+                tenant_id=tenant_id,
+                command_id=command["id"],
+                action_id=command["action_id"],
+                permit_ref=command["authorization_hash"],
+                budget_id=budget_id,
+                amount=amount,
+                currency=normalized_currency,
+                idempotency_key=key,
+                admission_id=admission_id,
+            )
+        except (KeyError, ValueError):
+            self._mark_budget_blocked(command["id"])
+            raise
+        if command.get("status") == "budget_blocked":
+            self._set_command_status(command["id"], "queued")
+            command["status"] = "queued"
+        return admission
+
+    def _settle_resource_admission(
+        self,
+        command_id: str,
+        *,
+        outcome: ReceiptOutcome,
+        mutation_applied: bool,
+        error_code: str | None,
+        error_detail: str | None,
+    ) -> dict[str, Any] | None:
+        if self.resource_admissions is None:
+            return None
+        admission = self.resource_admissions.for_command(command_id)
+        if admission is None:
+            return None
+        context = {
+            "tenant_id": admission["tenant_id"],
+            "command_id": admission["command_id"],
+            "action_id": admission["action_id"],
+            "permit_ref": admission["permit_ref"],
+        }
+        if outcome == "uncertain":
+            reason = ": ".join(item for item in (error_code, error_detail) if item)
+            return self.resource_admissions.hold_unknown(
+                admission["admission_id"],
+                **context,
+                reason=reason or "external execution outcome is unknown",
+                idempotency_key=f"execution-command:{command_id}:resource-unknown",
+            )
+        if outcome == "succeeded" or mutation_applied:
+            return self.resource_admissions.consume(
+                admission["admission_id"],
+                **context,
+                idempotency_key=f"execution-command:{command_id}:resource-consume",
+            )
+        return self.resource_admissions.release(
+            admission["admission_id"],
+            **context,
+            idempotency_key=f"execution-command:{command_id}:resource-release",
+        )
+
+    def _mark_budget_blocked(self, command_id: str) -> None:
+        self._set_command_status(command_id, "budget_blocked")
+
+    def _set_command_status(self, command_id: str, status: str) -> None:
+        with Session(self.engine) as session, session.begin():
+            row = session.get(LimitedExecutionCommandRow, command_id, with_for_update=True)
+            if row is not None and row.status in {"queued", "budget_blocked"}:
+                row.status = status
+
+    def _command_result(
+        self,
+        row: LimitedExecutionCommandRow,
+        receipt: LimitedExecutionReceiptRow | None,
+    ) -> dict[str, Any]:
+        result = self._command(row, receipt)
+        if self.resource_admissions is not None:
+            result["resource_admission"] = self.resource_admissions.for_command(row.id)
+        return result
 
     def _authorize_plan(self, plan: dict[str, Any], *, queued_by: str) -> None:
         if plan["adapter"]["action_id"] != plan["action_id"]:

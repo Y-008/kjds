@@ -1781,6 +1781,31 @@ class GovernedExecutionDryRunInput(BaseModel):
     evidence_ids: list[str] = Field(min_length=1)
 
 
+class LimitedExecutionQueueInput(BaseModel):
+    """Optional explicit resource budget to reserve before command claim."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    resource_budget_id: str | None = Field(default=None, min_length=1, max_length=200)
+    resource_budget_amount: Decimal | None = Field(default=None, ge=0)
+    resource_budget_currency: str | None = Field(
+        default=None, min_length=3, max_length=3, pattern=r"^[A-Za-z]{3}$"
+    )
+    resource_admission_id: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def require_budget_pair(self) -> LimitedExecutionQueueInput:
+        if self.resource_budget_amount is not None and self.resource_budget_id is None:
+            raise ValueError("resource_budget_id is required with resource_budget_amount")
+        if self.resource_budget_currency is not None and self.resource_budget_id is None:
+            raise ValueError("resource_budget_id is required with resource_budget_currency")
+        if self.resource_admission_id is not None and self.resource_budget_id is None:
+            raise ValueError("resource_budget_id is required with resource_admission_id")
+        if self.resource_budget_id is not None and self.resource_budget_amount is None:
+            raise ValueError("resource_budget_amount is required with resource_budget_id")
+        return self
+
+
 class LimitedExecutionClaimInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     current_state_hash: str = Field(pattern="^[0-9a-fA-F]{64}$")
