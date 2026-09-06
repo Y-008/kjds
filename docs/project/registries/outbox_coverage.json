@@ -425,6 +425,20 @@
       "activation_trigger": "预算告警或成本消费者需要跨服务投递前"
     },
     {
+      "module": "resource_admission.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_tenant_scoped_resource_admission_ledger",
+      "rationale": "执行前资源预算准入、预留、提交、释放和未知结果只形成租户隔离的内部控制面事实；当前不生成外部通知或支付动作。",
+      "activation_trigger": "资源准入状态需要独立消费者或跨服务告警前"
+    },
+    {
+      "module": "after_sales_ledger.py",
+      "status": "internal_only",
+      "delivery_contract": "append_only_exact_scope_after_sales_risk_ledger",
+      "rationale": "退货、拒付、赔付、争议和结算重开只追加 exact-scope 售后风险与利润修订事实；当前不直接触发退款、银行或平台外部动作。",
+      "activation_trigger": "售后风险事件需要独立处置或外部通知消费者前"
+    },
+    {
       "module": "temporal_fact_sql.py",
       "status": "internal_only",
       "delivery_contract": "append_only_bitemporal_fact_revision_ledger",
