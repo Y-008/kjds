@@ -4,14 +4,14 @@ import pytest
 from pydantic import ValidationError
 
 from apps.control_plane.data_fabric_contracts import (
+    DRILLDOWN_LEVEL_ORDER,
+    LINEAGE_STAGE_ORDER,
     ActionEnvelope,
     AnalysisRecipe,
-    DRILLDOWN_LEVEL_ORDER,
     DataEnvelope,
     DrilldownNode,
     DrilldownPath,
     FactDataContract,
-    LINEAGE_STAGE_ORDER,
     LineageChain,
     LineageNode,
     PeriodRef,
