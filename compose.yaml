@@ -15,6 +15,24 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # DDL is owned by a short-lived, one-shot service.  Keep the admin DSN out
+  # of api and every worker; a successful exit is the only condition that
+  # allows the runtime principal to start.
+  migrate:
+    build:
+      context: .
+      target: migrate
+      args:
+        KJDS_BUILD_COMMIT: ${KJDS_BUILD_COMMIT:-UNKNOWN}
+        KJDS_MIGRATION_HEAD: ${KJDS_MIGRATION_HEAD:-UNKNOWN}
+    environment:
+      KJDS_DATABASE_URL: ${KJDS_DATABASE_URL:?KJDS_DATABASE_URL must be set for the one-shot migrate service}
+      KJDS_MIGRATION_HEAD: ${KJDS_MIGRATION_HEAD:-UNKNOWN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build:
       context: .
@@ -25,7 +43,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:-}
+      # This must be a separately provisioned, non-owner runtime principal.
+      # There is intentionally no KJDS_DATABASE_URL entry in this service.
+      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:?KJDS_RUNTIME_DATABASE_URL must be set for the API runtime principal}
       KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL: ${KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL:-}
       KJDS_CLOSED_LOOP_ISSUER_DATABASE_URL: ${KJDS_CLOSED_LOOP_ISSUER_DATABASE_URL:-}
       KJDS_CLOSED_LOOP_EXPERIMENT_AUTHORITY_DATABASE_URL: ${KJDS_CLOSED_LOOP_EXPERIMENT_AUTHORITY_DATABASE_URL:-}
@@ -50,8 +70,8 @@ services:
       KJDS_LIMITED_EXECUTION_ENABLED: ${KJDS_LIMITED_EXECUTION_ENABLED:-false}
       KJDS_OZON_EXECUTION_IDENTITY_REF: ${KJDS_OZON_EXECUTION_IDENTITY_REF:-ozon-worker}
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD
@@ -102,7 +122,7 @@ services:
       - --worker-id
       - media-worker-compose
     environment:
-      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:-}
+      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:?KJDS_RUNTIME_DATABASE_URL must be set for the media worker runtime principal}
       KJDS_ENVIRONMENT: development
       KJDS_STRATEGIC_BENCHMARK_SEALING_KEY: ${KJDS_STRATEGIC_BENCHMARK_SEALING_KEY:-}
       KJDS_COMFYUI_URL: ${KJDS_COMFYUI_URL:-http://host.docker.internal:8189}
@@ -130,7 +150,7 @@ services:
       - --offer-id
       - ${KJDS_EXECUTION_OFFER_ID:-missing}
     environment:
-      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:-}
+      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:?KJDS_RUNTIME_DATABASE_URL must be set for the Ozon worker runtime principal}
       KJDS_EXECUTION_EVIDENCE_IDS: ${KJDS_EXECUTION_EVIDENCE_IDS:-}
       KJDS_CONTROL_PLANE_URL: http://api:8000
       KJDS_EXECUTOR_API_KEY: ${KJDS_EXECUTOR_API_KEY:-}
@@ -156,7 +176,7 @@ services:
       - --idempotency-key
       - ${KJDS_READ_ONLY_IDEMPOTENCY_KEY:-missing}
     environment:
-      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:-}
+      KJDS_RUNTIME_DATABASE_URL: ${KJDS_RUNTIME_DATABASE_URL:?KJDS_RUNTIME_DATABASE_URL must be set for the Ozon read worker runtime principal}
       KJDS_CONTROL_PLANE_URL: http://api:8000
       KJDS_PILOT_READER_API_KEY: ${KJDS_PILOT_READER_API_KEY:-}
       KJDS_READ_ONLY_OPERATION: ${KJDS_READ_ONLY_OPERATION:-ozon.product.read}

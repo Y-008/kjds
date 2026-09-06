@@ -43,6 +43,12 @@ API 文档：`http://127.0.0.1:8000/docs`
 docker compose up --build
 ```
 
+Compose 将 schema 迁移隔离为一次性的 `migrate` 服务。请在 `.env` 中分别提供
+迁移管理员 `KJDS_DATABASE_URL` 和已 provision 的非 owner 运行主体
+`KJDS_RUNTIME_DATABASE_URL`；前者只进入 `migrate`，不会进入 API 或 Worker。
+`migrate` 成功退出后 API 才会启动，迁移失败时 API 保持停止。完整边界见
+[Compose 迁移边界合同](docs/project/KJDS_COMPOSE_MIGRATION_BOUNDARY.md)。
+
 生产型数据库迁移使用项目锁定环境：
 
 ```powershell
