@@ -109,6 +109,29 @@ DEFAULT_METRIC_CATALOG: tuple[MetricDefinition, ...] = (
         aggregation="sum",
         currency_rule="not_applicable",
     ),
+    # ``stockout_interval`` is the user-facing name.  Keep the ``_days``
+    # spelling as a catalog alias because the demand estimator's transport
+    # field is ``stockout_interval_days`` and older recipes may use it.
+    MetricDefinition(
+        metric_id="stockout_interval",
+        version="1",
+        name="Stockout interval (days)",
+        formula="sum(demand.stockout_interval_days)",
+        fact_grain="sku_store_period",
+        dimensions=("store", "category", "sku", "month"),
+        aggregation="sum",
+        currency_rule="not_applicable",
+    ),
+    MetricDefinition(
+        metric_id="stockout_interval_days",
+        version="1",
+        name="Stockout interval (days) [alias]",
+        formula="sum(demand.stockout_interval_days)",
+        fact_grain="sku_store_period",
+        dimensions=("store", "category", "sku", "month"),
+        aggregation="sum",
+        currency_rule="not_applicable",
+    ),
     MetricDefinition(
         metric_id="realized_profit",
         version="1",
@@ -167,7 +190,13 @@ def compile_query_plan(
             {
                 "profit.cm3.v1" if metric_id in {"cm3", "realized_profit", "risk_adjusted_profit"}
                 else "orders.canonical.v1" if metric_id in {"units_sold", "net_sales"}
-                else "demand.censoring.v1" if metric_id in {"observed_demand", "censored_demand", "lost_sales_estimate"}
+                else "demand.censoring.v1" if metric_id in {
+                    "observed_demand",
+                    "censored_demand",
+                    "lost_sales_estimate",
+                    "stockout_interval",
+                    "stockout_interval_days",
+                }
                 else "inventory.snapshot.v1"
                 for metric_id in recipe.metrics
             }
@@ -561,6 +590,32 @@ def _decimal(value: Any, field: str) -> Decimal:
 
 
 def _metric_value(metric: str, payload: Mapping[str, Any]) -> Decimal | None:
+    demand_fields = {
+        "observed_demand": ("observed_demand", "observed_units"),
+        "censored_demand": ("censored_demand", "censored_units"),
+        "lost_sales_estimate": ("lost_sales_estimate", "lost_sales_units", "lost_sales"),
+        "stockout_interval": ("stockout_interval", "stockout_interval_days", "stockout_days"),
+        "stockout_interval_days": ("stockout_interval_days", "stockout_interval", "stockout_days"),
+    }
+    if metric in demand_fields:
+        present = [
+            (key, payload[key])
+            for key in demand_fields[metric]
+            if key in payload and payload[key] is not None
+        ]
+        if not present:
+            return None
+        value = _decimal(present[0][1], present[0][0])
+        if value < 0:
+            raise AnalyticsQueryPlanError(f"{metric} cannot be negative")
+        # A fact carrying two names for the same measure must not silently
+        # choose one when the values disagree.  Treat that as malformed
+        # evidence so a projection cannot hide a source-system conflict.
+        for key, raw in present[1:]:
+            alias_value = _decimal(raw, key)
+            if alias_value != value:
+                raise AnalyticsQueryPlanError(f"{metric} aliases disagree")
+        return value
     if metric == "units_sold":
         for key in ("units_sold", "units", "quantity", "qty"):
             if key in payload:

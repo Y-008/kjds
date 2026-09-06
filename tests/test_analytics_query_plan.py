@@ -106,6 +106,19 @@ def _verified_orders_product(*, status: str = "verified") -> DataProductDescript
     )
 
 
+def _verified_demand_product(*, status: str = "verified") -> DataProductDescriptor:
+    return DataProductDescriptor(
+        dataset_id="demand.censoring.v1",
+        version="1",
+        owner="demand",
+        grain="sku_store_period",
+        quality_threshold=0.0,
+        rebuild_method="test replay",
+        status=status,
+        authority="projection",
+    )
+
+
 def _order_fact(
     fact_id: str,
     event_time: datetime,
@@ -138,6 +151,45 @@ def _order_fact(
     }
 
 
+def _demand_fact(
+    fact_id: str,
+    event_time: datetime,
+    *,
+    observed_units: int | float = 0,
+    censored_units: int | float | None = None,
+    lost_sales_units: int | float | None = None,
+    stockout_interval_days: int | float | None = None,
+    quality_state: str = "VALID",
+    tenant_id: str = "t1",
+) -> dict:
+    payload = {
+        "sku": "sku-1",
+        "observed_units": observed_units,
+    }
+    if censored_units is not None:
+        payload["censored_units"] = censored_units
+    if lost_sales_units is not None:
+        payload["lost_sales_units"] = lost_sales_units
+    if stockout_interval_days is not None:
+        payload["stockout_interval_days"] = stockout_interval_days
+    return {
+        "fact_id": fact_id,
+        "revision_id": f"rev-{fact_id}",
+        "revision": 1,
+        "scope": {
+            "tenant_id": tenant_id,
+            "entity_id": "e1",
+            "store_ids": ("s1",),
+            "warehouse_ids": (),
+        },
+        "event_time": event_time,
+        "observed_time": event_time,
+        "quality_state": quality_state,
+        "source_system": "demand-model",
+        "payload": payload,
+    }
+
+
 def test_execute_orders_rolls_up_net_sales_and_units_without_losing_zero() -> None:
     start = datetime(2026, 9, 1, tzinfo=UTC)
     end = datetime(2026, 9, 2, tzinfo=UTC)
@@ -161,6 +213,100 @@ def test_execute_orders_rolls_up_net_sales_and_units_without_losing_zero() -> No
     by_sku = {row["sku"]: row for row in result.aggregates}
     assert by_sku["sku-1"]["metrics"] == {"net_sales": "15", "units_sold": "3"}
     assert by_sku["sku-zero"]["metrics"] == {"net_sales": "0", "units_sold": "0"}
+
+
+def test_execute_demand_metrics_exposes_stockout_censoring_and_interval() -> None:
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    end = datetime(2026, 9, 2, tzinfo=UTC)
+    demand_recipe = _orders_recipe(start=start, end=end).model_copy(
+        update={
+            "metrics": (
+                "observed_demand",
+                "censored_demand",
+                "lost_sales_estimate",
+                "stockout_interval",
+            )
+        }
+    )
+    plan = compile_query_plan(demand_recipe)
+    result = execute_analytics_plan(
+        plan,
+        [
+            _demand_fact(
+                "demand-1",
+                start,
+                observed_units=12,
+                censored_units=20,
+                lost_sales_units=8,
+                stockout_interval_days=0.6,
+                quality_state="PARTIAL",
+            )
+        ],
+        data_products=(_verified_demand_product(),),
+    )
+
+    assert result.status == "PARTIAL"
+    assert result.included_count == 1
+    assert result.excluded_count == 0
+    assert result.aggregates[0]["metrics"] == {
+        "censored_demand": "20",
+        "lost_sales_estimate": "8",
+        "observed_demand": "12",
+        "stockout_interval": "0.6",
+    }
+    assert result.aggregates[0]["quality_state"] == "PARTIAL"
+
+
+def test_demand_missing_estimates_are_partial_and_zero_observed_is_retained() -> None:
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    end = datetime(2026, 9, 2, tzinfo=UTC)
+    recipe = _orders_recipe(start=start, end=end).model_copy(
+        update={
+            "metrics": (
+                "observed_demand",
+                "censored_demand",
+                "lost_sales_estimate",
+                "stockout_interval_days",
+            )
+        }
+    )
+    result = execute_analytics_plan(
+        compile_query_plan(recipe),
+        [_demand_fact("demand-no-baseline", start, observed_units=0, stockout_interval_days=0)],
+        data_products=(_verified_demand_product(),),
+    )
+
+    assert result.status == "PARTIAL"
+    assert result.included_count == 1
+    assert result.aggregates[0]["metrics"] == {
+        "observed_demand": "0",
+        "stockout_interval_days": "0",
+    }
+    assert "metric_missing:censored_demand,lost_sales_estimate" in result.aggregates[0]["quality_reasons"]
+
+
+def test_demand_metric_rejects_negative_or_conflicting_aliases() -> None:
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    end = datetime(2026, 9, 2, tzinfo=UTC)
+    recipe = _orders_recipe(start=start, end=end).model_copy(
+        update={"metrics": ("observed_demand",)}
+    )
+    plan = compile_query_plan(recipe)
+    with pytest.raises(AnalyticsQueryPlanError, match="cannot be negative"):
+        execute_analytics_plan(
+            plan,
+            [_demand_fact("negative", start, observed_units=-1)],
+            data_products=(_verified_demand_product(),),
+        )
+
+    conflicting = _demand_fact("conflicting", start, observed_units=2)
+    conflicting["payload"]["observed_demand"] = 3
+    with pytest.raises(AnalyticsQueryPlanError, match="aliases disagree"):
+        execute_analytics_plan(
+            plan,
+            [conflicting],
+            data_products=(_verified_demand_product(),),
+        )
 
 
 def test_execute_quality_states_stay_separate_from_numeric_values() -> None:
