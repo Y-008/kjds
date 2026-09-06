@@ -137,6 +137,11 @@ def _scope(
         # unrestricted scope.  Keep the diagnostic generic so backend details
         # and tenant existence are not disclosed to callers.
         raise HTTPException(503, "scope authority is unavailable") from exc
+    except Exception as exc:
+        # Adapters may surface a driver-specific exception (for example a
+        # disconnected SQL session).  Treat every ordinary exception as an
+        # unavailable authority rather than allowing a 500 or an open scope.
+        raise HTTPException(503, "scope authority is unavailable") from exc
     if not isinstance(authority, Mapping):
         raise HTTPException(503, "scope authority returned an invalid result")
     if authority.get("status") != "ready" or authority.get("entity_ref") != entity_ref:
@@ -216,6 +221,17 @@ def _query_store(
             )
             if not isinstance(result, TemporalFactQueryResult):
                 raise TypeError("temporal fact adapter returned an invalid query result")
+            if result.as_of != cutoff:
+                raise ValueError("temporal fact adapter returned a different as_of cutoff")
+            if any(not isinstance(item, TemporalFactRevision) for item in result.items):
+                raise TypeError("temporal fact adapter returned invalid fact rows")
+            # The API boundary must enforce the scope even when an adapter
+            # claims to have applied it.  A buggy or compromised adapter must
+            # fail closed instead of leaking a foreign tenant/store row.
+            if any(not _fact_matches_scope(item, scope) for item in result.items):
+                return _blocked_result(cutoff, "temporal_fact_scope_mismatch"), "temporal_fact_scope_mismatch"
+            if result.quality_state != _query_quality(result.items):
+                return _blocked_result(cutoff, "temporal_fact_quality_mismatch"), "temporal_fact_quality_mismatch"
             return result, None
 
         as_of_reader = getattr(store, "as_of", None)
@@ -268,6 +284,29 @@ def _lineage_material(
             raw_edges = edge_reader(fact.fact_id, revision=fact.revision)
             for raw_edge in raw_edges:
                 edge = raw_edge if isinstance(raw_edge, LineageEdge) else LineageEdge.model_validate(raw_edge)
+                # Edges are scoped to the exact immutable revision.  Do not
+                # expose an adapter edge that points at another revision or
+                # carries a digest inconsistent with the referenced row.
+                if edge.to_id != fact.revision_id:
+                    errors.append("lineage_edge_target_mismatch")
+                    continue
+                matching_ref = next(
+                    (
+                        ref
+                        for ref in fact.lineage
+                        if ref.kind == edge.from_type and ref.id == edge.from_id
+                    ),
+                    None,
+                )
+                if matching_ref is None:
+                    errors.append("lineage_edge_source_mismatch")
+                    continue
+                if edge.from_sha256 is not None and matching_ref.sha256 != edge.from_sha256:
+                    errors.append("lineage_edge_source_hash_mismatch")
+                    continue
+                if edge.to_sha256 is not None and edge.to_sha256 != fact.content_sha256:
+                    errors.append("lineage_edge_target_hash_mismatch")
+                    continue
                 key = (
                     edge.from_type,
                     edge.from_id,
@@ -280,6 +319,8 @@ def _lineage_material(
                     edges.append(edge)
         except Exception:
             errors.append("lineage_edge_source_unavailable")
+    refs.sort(key=lambda item: (item.kind, item.id, item.relationship, item.version or ""))
+    edges.sort(key=lambda item: (item.from_type, item.from_id, item.to_id, item.relationship))
     return tuple(refs), tuple(edges), tuple(sorted(set(errors)))
 
 
@@ -564,10 +605,16 @@ def fact_versions(
             raise HTTPException(503, "temporal fact source is unavailable") from exc
         if not rows or not all(isinstance(row, TemporalFactRevision) for row in rows):
             raise HTTPException(503, "temporal fact source returned an invalid result")
+        rows = tuple(sorted(rows, key=lambda row: (row.revision, row.observed_time, row.revision_id)))
+        if tuple(row.revision for row in rows) != tuple(range(1, len(rows) + 1)):
+            raise HTTPException(503, "temporal fact source returned an invalid revision history")
+        if any(row.fact_id != fact_id for row in rows):
+            raise HTTPException(503, "temporal fact source returned an invalid fact history")
         if any(not _fact_matches_scope(row, scope) for row in rows):
             raise PermissionError("fact is outside authorized scope")
         lineage_refs, lineage_edges, lineage_errors = _lineage_material(rows, store=store)
         chain = _lineage_chain(rows)
+        history_quality = _query_quality(rows)
         history_hash = _projection_hash(
             {
                 "fact_id": fact_id,
@@ -578,7 +625,8 @@ def fact_versions(
         return {
             "contract_id": "kjds-temporal-fact-versions-v1",
             "status": "ready",
-            "quality_state": "VALID",
+            "quality_state": history_quality.value,
+            "history_quality_state": history_quality.value,
             "fact_id": fact_id,
             "scope": scope.model_dump(mode="json"),
             "as_of": cutoff.isoformat(),
@@ -707,30 +755,74 @@ def restate_fact(
 ):
     ensure_role(principal, "operator", "admin")
     scope = _scope(principal, body.entity_ref, body.store_ref)
+
     def mutate():
-        current = runtime.temporal_fact_store.get(fact_id)
-        if current.scope != scope:
+        store = getattr(runtime, "temporal_fact_store", None)
+        get_reader = getattr(store, "get", None)
+        restate_writer = getattr(store, "restate", None)
+        if not callable(get_reader) or not callable(restate_writer):
+            raise HTTPException(503, "temporal fact source is unavailable")
+        try:
+            current = get_reader(fact_id)
+        except FactNotFoundError:
+            raise
+        except Exception as exc:
+            raise HTTPException(503, "temporal fact source is unavailable") from exc
+        if not isinstance(current, TemporalFactRevision):
+            raise HTTPException(503, "temporal fact source returned an invalid fact")
+        if not _fact_matches_scope(current, scope):
             raise PermissionError("fact is outside authorized scope")
-        updated = runtime.temporal_fact_store.restate(
-            fact_id,
-            body.payload,
-            correction_reason=body.correction_reason,
-            observed_time=body.observed_time,
-            event_time=body.event_time,
-            effective_time=body.effective_time,
-            settled_time=body.settled_time,
-            fresh_until=body.fresh_until,
-            quality_state=body.quality_state,
-            lineage=body.lineage,
-            source_version=body.source_version,
-            causation_id=body.causation_id,
-            correlation_id=body.correlation_id,
-            idempotency_key=body.idempotency_key,
-            metadata=body.metadata,
-            # The authenticated actor is the only authoritative recorder;
-            # caller-supplied identity is retained only as an ignored legacy
-            # compatibility field in the transport model.
-            created_by=principal.actor_id,
-        )
-        return updated.model_dump(mode="json")
+        try:
+            updated = restate_writer(
+                fact_id,
+                body.payload,
+                correction_reason=body.correction_reason,
+                observed_time=body.observed_time,
+                event_time=body.event_time,
+                effective_time=body.effective_time,
+                settled_time=body.settled_time,
+                fresh_until=body.fresh_until,
+                quality_state=body.quality_state,
+                lineage=body.lineage,
+                source_version=body.source_version,
+                causation_id=body.causation_id,
+                correlation_id=body.correlation_id,
+                idempotency_key=body.idempotency_key,
+                metadata=body.metadata,
+                # The authenticated actor is the only authoritative recorder;
+                # caller-supplied identity is retained only as an ignored
+                # legacy compatibility field in the transport model.
+                created_by=principal.actor_id,
+            )
+        except FactNotFoundError:
+            raise
+        except (ValueError, PermissionError):
+            raise
+        except Exception as exc:
+            raise HTTPException(503, "temporal fact source is unavailable") from exc
+        if not isinstance(updated, TemporalFactRevision):
+            raise HTTPException(503, "temporal fact source returned an invalid revision")
+        if not _fact_matches_scope(updated, scope):
+            raise PermissionError("restated fact escaped authorized scope")
+        serialized = updated.model_dump(mode="json")
+        return {
+            # Preserve the original flat revision shape for existing clients;
+            # the nested ``fact`` field below is the explicit audited view.
+            **serialized,
+            "contract_id": "kjds-temporal-fact-restate-v1",
+            "status": "restated",
+            "quality_state": updated.quality_state.value,
+            "fact_id": updated.fact_id,
+            "revision": updated.revision,
+            "supersedes_revision": updated.supersedes_revision,
+            "scope": scope.model_dump(mode="json"),
+            "fact": serialized,
+            "lineage": [ref.model_dump(mode="json") for ref in updated.lineage],
+            "replay": {
+                "mode": "current_snapshot",
+                "revision_id": updated.revision_id,
+                "result_sha256": _projection_hash(serialized),
+            },
+            "external_write_allowed": False,
+        }
     return run(mutate)
