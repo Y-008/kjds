@@ -262,3 +262,7 @@ def test_versions_deny_foreign_scope_before_lineage_read(monkeypatch):
             store_ref="store-a",
         )
     assert caught.value.status_code == 403
+
+
+def test_lineage_status_never_calls_partial_chain_replayable() -> None:
+    assert temporal_facts._lineage_projection_status(None, None, ()) == "PARTIAL"

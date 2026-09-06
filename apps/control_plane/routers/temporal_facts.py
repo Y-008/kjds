@@ -492,6 +492,20 @@ def _projection_hash(payload: Mapping[str, Any]) -> str:
     return content_sha256(payload)
 
 
+def _lineage_projection_status(
+    chain: LineageChain | None,
+    path: DrilldownPath | None,
+    errors: Iterable[str],
+) -> str:
+    """Report replayable lineage only when structure is actually complete."""
+
+    if chain is None or not chain.structurally_complete:
+        return "PARTIAL"
+    if path is None or not path.complete:
+        return "PARTIAL"
+    return "PARTIAL" if tuple(errors) else "VALID"
+
+
 def _serialize_edges(edges: Iterable[LineageEdge]) -> list[dict[str, Any]]:
     return [edge.model_dump(mode="json") for edge in edges]
 
@@ -531,6 +545,8 @@ def facts_as_of(
             scope=scope,
             lineage_edges=lineage_edges,
         )
+        chain = _lineage_chain(result.items)
+        path = _fact_drilldown_path(result.items[0]) if result.items else None
         envelope = result.to_data_envelope(
             dataset="temporal.facts.v1",
             scope=scope,
@@ -552,7 +568,7 @@ def facts_as_of(
             "lineage": [item.model_dump(mode="json") for item in lineage_refs],
             "lineage_edges": _serialize_edges(lineage_edges),
             "lineage_errors": list(lineage_errors),
-            "lineage_status": "VALID" if not lineage_errors else "PARTIAL",
+            "lineage_status": _lineage_projection_status(chain, path, lineage_errors),
             "transparency": transparency.model_dump(mode="json"),
             "drilldown": [
                 _fact_drilldown_path(item).model_dump(mode="json")
