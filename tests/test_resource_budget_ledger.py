@@ -111,6 +111,19 @@ def test_metadata_is_copied_and_validated():
         )
 
 
+def test_event_rejects_malformed_state_and_timestamp():
+    with pytest.raises(ValueError, match="state"):
+        ResourceBudgetEvent(
+            event_id="bad-state", idempotency_key="bad-state-key", budget_id="budget-1",
+            tenant_id="tenant-a", state=[], amount="1",  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="occurred_at"):
+        ResourceBudgetEvent(
+            event_id="bad-time", idempotency_key="bad-time-key", budget_id="budget-1",
+            tenant_id="tenant-a", state="reserved", amount="1", occurred_at=None,  # type: ignore[arg-type]
+        )
+
+
 def test_overrun_cannot_be_attached_to_a_reservation(ledger):
     ledger.create_budget(ResourceBudget("budget-1", "tenant-a", "model_tokens", "cc-ai", Decimal("5")))
     ledger.record(event("reserved", "1", "r1", "e1"))

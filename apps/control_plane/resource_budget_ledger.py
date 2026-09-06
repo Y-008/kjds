@@ -108,7 +108,7 @@ class ResourceBudgetEvent:
         limits = {"event_id": 200, "idempotency_key": 300, "budget_id": 200, "tenant_id": 160}
         for field, maximum in limits.items():
             object.__setattr__(self, field, _text(getattr(self, field), field, maximum))
-        if self.state not in STATES:
+        if not isinstance(self.state, str) or self.state not in STATES:
             raise ValueError("state is not allowlisted")
         object.__setattr__(self, "amount", _amount(self.amount))
         object.__setattr__(self, "currency", _currency(self.currency))
@@ -123,6 +123,8 @@ class ResourceBudgetEvent:
                     raise ValueError("metadata values must be bounded strings")
                 canonical[key] = value
             object.__setattr__(self, "metadata", MappingProxyType(dict(sorted(canonical.items()))))
+        if not isinstance(self.occurred_at, datetime):
+            raise ValueError("occurred_at must be a timezone-aware datetime")
         if self.occurred_at.tzinfo is None or self.occurred_at.utcoffset() is None:
             raise ValueError("occurred_at must include a timezone")
         object.__setattr__(self, "occurred_at", self.occurred_at.astimezone(UTC))
