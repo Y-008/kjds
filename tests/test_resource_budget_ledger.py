@@ -82,6 +82,12 @@ def test_idempotent_retry_returns_persisted_event_identity(ledger):
 def test_numeric_precision_is_bounded_before_persistence(ledger):
     with pytest.raises(ValueError, match="NUMERIC"):
         ledger.create_budget(ResourceBudget("budget-1", "tenant-a", "model_tokens", "cc-ai", Decimal("0.1234567890123456789")))
+    # Trailing zeroes are harmless, while a 20-digit integer plus 18 decimal
+    # places is the largest value representable by NUMERIC(38,18).
+    ledger.create_budget(ResourceBudget(
+        "budget-2", "tenant-a", "model_tokens", "cc-ai",
+        Decimal("99999999999999999999.999999999999999999"),
+    ))
 
 
 def test_database_rejects_orphan_budget_event(ledger):

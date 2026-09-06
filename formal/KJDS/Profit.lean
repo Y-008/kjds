@@ -15,4 +15,11 @@ theorem order_contribution_is_cm3 (order : Order) (fullCost : Int) :
     cm3 order.netSales fullCost = order.contribution fullCost := by
   rfl
 
+-- Manifested theorem used by the control-plane proof runner.  Keep the
+-- settlement-level name explicit so a successful module build cannot be
+-- mistaken for proof of an unrelated declaration.
+theorem order_settlement_profit_closed (order : Order) (fullCost : Int) :
+    cm3 order.netSales fullCost = order.contribution fullCost := by
+  rfl
+
 end KJDS

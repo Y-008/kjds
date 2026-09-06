@@ -46,13 +46,19 @@ def _amount(value: Decimal | str | int | float, name: str = "amount") -> Decimal
         raise ValueError(f"{name} must be a finite non-negative decimal") from exc
     if not value.is_finite() or value < 0:
         raise ValueError(f"{name} must be a finite non-negative decimal")
-    normalized = value.normalize()
-    digits = normalized.as_tuple().digits
-    exponent = normalized.as_tuple().exponent
+    # Inspect the raw tuple instead of Decimal.normalize(), which is governed
+    # by the process decimal context and can silently round large values.
+    digits = list(value.as_tuple().digits)
+    exponent = value.as_tuple().exponent
+    while digits and digits[-1] == 0 and exponent < 0:
+        digits.pop()
+        exponent += 1
     fractional_digits = max(-exponent, 0)
     integer_digits = max(len(digits) + exponent, 0)
     if fractional_digits > 18 or integer_digits > 20:
         raise ValueError(f"{name} exceeds NUMERIC(38,18) precision")
+    if len(str(value)) > 100:
+        raise ValueError(f"{name} exceeds bounded text precision")
     return value
 
 

@@ -28,6 +28,15 @@ def run_manifest(path: str | Path) -> dict[str, Any]:
             "proved": [],
             "blocked": [entry.stable_key for entry in entries],
         }
+    missing_evidence = [entry.stable_key for entry in entries if not entry.evidence_refs]
+    if missing_evidence:
+        return {
+            **base,
+            "status": "blocked",
+            "reason": "proof_evidence_binding_missing",
+            "proved": [],
+            "blocked": missing_evidence,
+        }
     if toolchain["status"] != "ready":
         return {
             **base,

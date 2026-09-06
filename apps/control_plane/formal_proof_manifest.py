@@ -73,8 +73,14 @@ def validate_manifest_modules(entries: tuple[ProofEntry, ...], *, root: str | Pa
         if not module.is_file():
             errors.append(f"missing_module:{entry.stable_key}:{entry.module}")
             continue
-        if "sorry" in module.read_text(encoding="utf-8").lower():
+        source = module.read_text(encoding="utf-8")
+        if "sorry" in source.lower():
             errors.append(f"untrusted_sorry:{entry.stable_key}:{entry.module}")
+        if not any(
+            marker in source
+            for marker in (f"theorem {entry.theorem}", f"lemma {entry.theorem}")
+        ):
+            errors.append(f"missing_theorem:{entry.stable_key}:{entry.theorem}")
     return tuple(errors)
 
 
