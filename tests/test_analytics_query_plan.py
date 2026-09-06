@@ -309,6 +309,71 @@ def test_demand_metric_rejects_negative_or_conflicting_aliases() -> None:
         )
 
 
+def test_unreviewed_experiment_facts_are_excluded_from_long_term_rollups() -> None:
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    end = datetime(2026, 9, 2, tzinfo=UTC)
+    recipe = _orders_recipe(start=start, end=end)
+    fact = _order_fact("experimental", start, gross_sales=99, quantity=3)
+    fact["payload"]["experiment"] = {
+        "experiment_id": "price-a",
+        "review_eligible": False,
+        "causal_evidence": [],
+        "stop_rule": None,
+    }
+
+    result = execute_analytics_plan(
+        compile_query_plan(recipe),
+        [fact],
+        data_products=(_verified_orders_product(),),
+    )
+
+    assert result.status == "PARTIAL"
+    assert result.aggregates == ()
+    assert result.included_count == 0
+    assert result.excluded_count == 1
+    excluded = result.excluded_rows[0]
+    assert excluded["reason"] == "experiment_not_long_term_eligible"
+    assert excluded["experiment_id"] == "price-a"
+    assert set(excluded["experiment_reasons"]) == {
+        "experiment_causal_evidence_missing",
+        "experiment_not_review_eligible",
+        "experiment_stop_rule_missing",
+    }
+
+
+def test_reviewed_experiment_fact_can_enter_rollup_and_top_level_legacy_markers_are_gated() -> None:
+    start = datetime(2026, 9, 1, tzinfo=UTC)
+    end = datetime(2026, 9, 2, tzinfo=UTC)
+    recipe = _orders_recipe(start=start, end=end)
+    reviewed = _order_fact("reviewed-experimental", start, gross_sales=10, quantity=1)
+    reviewed["payload"]["experiment_context"] = {
+        "protocol_id": "protocol-1",
+        "review_eligible": True,
+        "causal_evidence": ["evidence-1"],
+        "stop_rule": "stop-rule-1",
+    }
+    legacy_unreviewed = _order_fact("legacy-experimental", start, gross_sales=20, quantity=2)
+    legacy_unreviewed.update(
+        {
+            "experiment_id": "protocol-2",
+            "review_eligible": True,
+            "causal_evidence": ["evidence-2"],
+        }
+    )
+
+    result = execute_analytics_plan(
+        compile_query_plan(recipe),
+        [reviewed, legacy_unreviewed],
+        data_products=(_verified_orders_product(),),
+    )
+
+    assert result.status == "PARTIAL"
+    assert result.included_count == 1
+    assert result.excluded_count == 1
+    assert result.aggregates[0]["metrics"] == {"net_sales": "10", "units_sold": "1"}
+    assert result.excluded_rows[0]["experiment_id"] == "protocol-2"
+
+
 def test_execute_quality_states_stay_separate_from_numeric_values() -> None:
     start = datetime(2026, 9, 1, tzinfo=UTC)
     plan = compile_query_plan(_orders_recipe(start=start, end=start.replace(day=2)))

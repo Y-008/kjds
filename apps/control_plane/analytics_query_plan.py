@@ -20,6 +20,7 @@ from .data_fabric_contracts import (
     PeriodRef,
     ScopeRef,
 )
+from .experiment_contamination_checker import evaluate_experiment_fact_admission
 
 
 class AnalyticsQueryPlan(BaseModel):
@@ -494,6 +495,31 @@ def _fact_view(fact: Any) -> dict[str, Any]:
         raise AnalyticsQueryPlanError("fact timestamps are invalid") from exc
     if event_value is None or observed_value is None:
         raise AnalyticsQueryPlanError("fact event_time and observed_time are required")
+    experiment_context: Any = None
+    if is_mapping:
+        if "experiment_context" in values:
+            experiment_context = values["experiment_context"]
+        elif "experiment" in values:
+            experiment_context = values["experiment"]
+        else:
+            marker_names = (
+                "experiment_id",
+                "protocol_id",
+                "review_eligible",
+                "causal_evidence",
+                "stop_rule",
+            )
+            marked_values = {
+                key: values[key] for key in marker_names if key in values
+            }
+            if marked_values:
+                experiment_context = marked_values
+    else:
+        experiment_context = getattr(
+            fact,
+            "experiment_context",
+            getattr(fact, "experiment", None),
+        )
     return {
         "fact_id": str(values.get("fact_id", values.get("id", ""))) if is_mapping else str(getattr(fact, "fact_id", "")),
         "revision_id": str(values.get("revision_id", "")) if is_mapping else str(getattr(fact, "revision_id", "")),
@@ -504,7 +530,37 @@ def _fact_view(fact: Any) -> dict[str, Any]:
         "event_time": _utc(event_value, "fact.event_time"),
         "observed_time": _utc(observed_value, "fact.observed_time"),
         "source_system": str(values.get("source_system", "unknown")) if is_mapping else str(getattr(fact, "source_system", "unknown")),
+        "experiment_context": experiment_context,
     }
+
+
+def _experiment_source(view: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Combine nested and payload experiment metadata without dropping markers."""
+
+    payload = view["payload"]
+    context = view.get("experiment_context")
+    if context is None:
+        return payload
+    if not isinstance(context, Mapping):
+        return {"experiment_context": context}
+    merged = dict(context)
+    # Payload-level markers are accepted for legacy fact producers.  Nested
+    # context wins when a producer supplies both names, making the protocol
+    # context the single source of truth for the gate.
+    for key in (
+        "experiment_id",
+        "protocol_id",
+        "review_eligible",
+        "causal_evidence",
+        "causal_evidence_refs",
+        "causal_evidence_id",
+        "stop_rule",
+        "stop_rule_ref",
+        "stop_rule_id",
+    ):
+        if key in payload and key not in merged:
+            merged[key] = payload[key]
+    return {"experiment_context": merged}
 
 
 def _scope_exact(actual: ScopeRef, expected: ScopeRef) -> bool:
@@ -707,6 +763,29 @@ def execute_analytics_plan(
             if quality in _TERMINAL_QUALITY:
                 excluded.append({"fact_id": fact_id, "revision_id": view["revision_id"], "quality_state": quality, "reason": f"quality_{quality.lower()}"})
                 quality_seen.append(quality)
+                continue
+            experiment_admission = evaluate_experiment_fact_admission(
+                _experiment_source(view)
+            )
+            if experiment_admission.status == "blocked":
+                excluded.append(
+                    {
+                        "fact_id": fact_id,
+                        "revision_id": view["revision_id"],
+                        "quality_state": quality,
+                        "reason": "experiment_not_long_term_eligible",
+                        "experiment_id": experiment_admission.experiment_id,
+                        "experiment_reasons": list(
+                            experiment_admission.blocked_reasons
+                        ),
+                        "experiment_gate_hash": experiment_admission.snapshot_sha256,
+                    }
+                )
+                # The row is known but intentionally withheld from a
+                # long-term projection.  ``PARTIAL`` communicates that the
+                # result is incomplete without turning the withheld values
+                # into zeros or claiming an external failure.
+                quality_seen.append("PARTIAL")
                 continue
             values: dict[str, Decimal] = {}
             missing_metrics: list[str] = []
