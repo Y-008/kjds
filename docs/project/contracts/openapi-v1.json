@@ -26167,6 +26167,22 @@
               "default": "0",
               "title": "Min Budget Remaining"
             }
+          },
+          {
+            "in": "query",
+            "name": "budget_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Id"
+            }
           }
         ],
         "responses": {

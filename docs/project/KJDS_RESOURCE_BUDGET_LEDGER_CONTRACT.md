@@ -33,6 +33,9 @@ external platform write.
 - `GET /v1/economics/budgets/{budget_id}` returns the reconciliable snapshot,
   including `reserved`, `consumed`, `released`, `overrun`, `available` and
   `external_write_allowed=false`.
+- `GET /v1/economics/guard-status?budget_id=...` can bind the economic guard to
+  this exact tenant budget; when `budget_remaining` is omitted, it uses the
+  ledger's `available` value and returns the source snapshot for drill-down.
 
 Budget exhaustion is a fail-closed error. Any automation that reacts to a
 threshold must still pass the existing Permit, readback, rollback and Kill

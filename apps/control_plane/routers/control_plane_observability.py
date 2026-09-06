@@ -576,10 +576,19 @@ def economics_guard_status(
     min_margin_rate: Decimal | None = None,
     budget_remaining: Decimal | None = None,
     min_budget_remaining: Decimal = Decimal("0"),
+    budget_id: str | None = None,
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    resource_budget = None
+    if budget_id is not None:
+        resource_budget = run(lambda: runtime.resource_budget_ledger.snapshot(
+            tenant_id=principal.tenant_ref,
+            budget_id=budget_id,
+        ))
+        if budget_remaining is None:
+            budget_remaining = Decimal(resource_budget["available"])
     if cash_available is None:
-        return {
+        response = {
             "contract_id": "kjds-economics-guard-v1",
             "status": "UNKNOWN",
             "reason": "cash_snapshot_missing",
@@ -589,12 +598,18 @@ def economics_guard_status(
             "scope": {"tenant_id": principal.tenant_ref},
             "external_write_allowed": False,
         }
+        if resource_budget is not None:
+            response["resource_budget"] = resource_budget
+        return response
     result = evaluate_economic_guard(EconomicGuardInput(
         cash_available=cash_available, min_cash=min_cash, margin_rate=margin_rate,
         min_margin_rate=min_margin_rate, budget_remaining=budget_remaining,
         min_budget_remaining=min_budget_remaining,
     ))
     quality_state = "VALID" if result.status == "allowed" else "BLOCKED"
-    return {"contract_id": "kjds-economics-guard-v1", "status": result.status.upper(),
-            "reasons": list(result.reasons), "snapshot_sha256": result.snapshot_sha256,
-            "quality_state": quality_state, "external_write_allowed": False}
+    response = {"contract_id": "kjds-economics-guard-v1", "status": result.status.upper(),
+                "reasons": list(result.reasons), "snapshot_sha256": result.snapshot_sha256,
+                "quality_state": quality_state, "external_write_allowed": False}
+    if resource_budget is not None:
+        response["resource_budget"] = resource_budget
+    return response
