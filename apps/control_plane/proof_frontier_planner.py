@@ -1162,7 +1162,7 @@ def _aggregate(states: Mapping[str, ProofState]) -> ProofState:
     return PROVEN
 
 
-def _snapshot(graph: _Graph) -> dict[str, Any]:
+def _snapshot(graph: _Graph, states: Mapping[str, ProofState] | None = None) -> dict[str, Any]:
     nodes = []
     for node_id in sorted(graph.nodes):
         node = graph.nodes[node_id]
@@ -1189,7 +1189,9 @@ def _snapshot(graph: _Graph) -> dict[str, Any]:
                     "operational_state": node.governance.operational_state,
                     "economic_state": node.governance.economic_state,
                     "rollback_available": node.governance.rollback_available,
-                    "admission_state": _admission_for_state(node.governance, node.direct_state),
+                    "admission_state": _admission_for_state(
+                        node.governance, (states or {}).get(node_id, node.direct_state)
+                    ),
                 }
             )
         nodes.append(snapshot_node)
@@ -1311,7 +1313,7 @@ def plan_proof_frontier(graph: Mapping[str, Any] | Any, *, as_of: datetime | str
     normalised, states, reasons, cycles = _evaluate(graph, as_of=as_of)
     actionable, boundary = _frontier_details(normalised, states, reasons)
     blockers = _blocker_details(normalised, states, reasons)
-    snapshot = _snapshot(normalised)
+    snapshot = _snapshot(normalised, states)
     node_views = [
         _safe_node_view(
             normalised.nodes[node_id],

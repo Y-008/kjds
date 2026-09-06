@@ -281,6 +281,28 @@ def test_governance_hold_survives_proof_dependency_propagation() -> None:
     assert "evidence_state_missing" in gated["reasons"]
 
 
+def test_plan_snapshot_uses_propagated_governance_state() -> None:
+    graph = {
+        "nodes": [
+            {"id": "source", "state": "stale"},
+            {
+                "id": "target",
+                "state": "passed",
+                "proof_state": "PROVED",
+                "evidence_state": "VALID",
+                "operational_state": "LIVE",
+                "economic_state": "ALLOWED",
+                "rollback_available": True,
+            },
+        ],
+        "edges": [{"source": "source", "target": "target", "relation": "invalidates"}],
+    }
+    result = plan_proof_frontier(graph)
+    snapshot_target = next(item for item in result["snapshot"]["nodes"] if item["id"] == "target")
+    assert result["states"]["target"] == BLOCKED
+    assert snapshot_target["admission_state"] == "BLOCKED"
+
+
 def test_explicit_direct_staleness_also_downgrades_green_admission() -> None:
     graph = {
         "nodes": [
