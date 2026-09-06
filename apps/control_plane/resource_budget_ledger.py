@@ -334,6 +334,8 @@ class ResourceBudgetLedger:
         )
 
     def record(self, event: ResourceBudgetEvent) -> ResourceBudgetEvent:
+        if event.occurred_at > datetime.now(UTC):
+            raise ValueError("occurred_at cannot be in the future")
         fingerprint = _fingerprint(event)
         try:
             with self._lock, Session(self.engine) as session, session.begin():

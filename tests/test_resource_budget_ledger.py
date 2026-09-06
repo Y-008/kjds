@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -191,3 +191,13 @@ def test_snapshot_rejects_corrupt_persisted_amount(ledger):
         ))
     with pytest.raises(ValueError, match="integrity"):
         ledger.snapshot(tenant_id="tenant-a", budget_id="budget-corrupt")
+
+
+def test_ledger_rejects_future_event_time(ledger):
+    ledger.create_budget(ResourceBudget("budget-future", "tenant-a", "model_tokens", "cc-ai", Decimal("5")))
+    with pytest.raises(ValueError, match="future"):
+        ledger.record(ResourceBudgetEvent(
+            event_id="future", idempotency_key="future-key", budget_id="budget-future",
+            tenant_id="tenant-a", state="reserved", amount="1",
+            occurred_at=datetime.now(UTC) + timedelta(days=1),
+        ))
