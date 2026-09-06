@@ -43,8 +43,8 @@ def test_migration_graph_has_one_current_head_after_ledger_hardening():
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini")))
-    assert script.get_heads() == ["20260906_0117"]
-    assert script.get_revision("20260906_0117").down_revision == "20260906_0116"
+    assert script.get_heads() == ["20260906_0118"]
+    assert script.get_revision("20260906_0118").down_revision == "20260906_0117"
 
 
 def test_ledger_immutability_migration_covers_all_new_tables():
@@ -58,11 +58,16 @@ def test_ledger_immutability_migration_covers_all_new_tables():
             "20260906_0115": "20260906_0115_resource_admission_events.py",
             "20260906_0116": "20260906_0116_after_sales_events.py",
             "20260906_0117": "20260906_0117_usage_entitlement_receipt_links.py",
+            "20260906_0118": "20260906_0118_usage_entitlement_scope_integrity.py",
         }.items()
     }
     for table in database.REQUIRED_RUNTIME_TABLES[1:]:
         assert any(f'"{table}"' in source for source in sources.values())
-    for source in sources.values():
+    # 0118 only tightens the existing 0117 relationship; it creates no new
+    # ledger table, so its append-only trigger is inherited from 0111/0117.
+    for revision, source in sources.items():
+        if revision == "20260906_0118":
+            continue
         assert (
             'trg_{table}_immutable' in source
             or 'trg_commercial_finance_events_immutable' in source
@@ -77,6 +82,11 @@ def test_ledger_immutability_migration_covers_all_new_tables():
         )
         assert "BEFORE UPDATE OR DELETE" in source
         assert "BEFORE TRUNCATE" in source
+
+    scope_integrity = sources["20260906_0118"]
+    assert "fk_skill_usage_entitlement_link_exact_event" in scope_integrity
+    assert "uq_skill_usage_entitlement_parent_identity" in scope_integrity
+    assert 'ondelete="RESTRICT"' in scope_integrity
 
 
 def test_postgresql_engine_gets_a_bounded_connect_timeout(monkeypatch):

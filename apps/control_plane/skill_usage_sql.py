@@ -20,7 +20,7 @@ from decimal import Decimal
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
-    ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Numeric,
     String,
@@ -56,6 +56,18 @@ class SkillUsageEventRow(Base):
             "tenant_id",
             "idempotency_key",
             name="uq_skill_usage_tenant_idempotency",
+        ),
+        # The entitlement link repeats the event scope.  Keep one database
+        # identity that covers every repeated field so a composite FK can
+        # reject a forged cross-tenant/customer binding before the adapter
+        # ever reads it.
+        UniqueConstraint(
+            "tenant_id",
+            "event_id",
+            "customer_id",
+            "idempotency_key",
+            "entitlement_receipt_ref",
+            name="uq_skill_usage_entitlement_parent_identity",
         ),
         CheckConstraint("units >= 0", name="ck_skill_usage_units_nonnegative"),
         CheckConstraint(
@@ -152,6 +164,25 @@ class SkillUsageEntitlementLinkRow(Base):
             "idempotency_key",
             name="uq_skill_usage_entitlement_link_idempotency",
         ),
+        ForeignKeyConstraint(
+            [
+                "tenant_id",
+                "usage_event_id",
+                "customer_id",
+                "idempotency_key",
+                "entitlement_receipt_ref",
+            ],
+            [
+                "skill_usage_events.tenant_id",
+                "skill_usage_events.event_id",
+                "skill_usage_events.customer_id",
+                "skill_usage_events.idempotency_key",
+                "skill_usage_events.entitlement_receipt_ref",
+            ],
+            name="fk_skill_usage_entitlement_link_exact_event",
+            ondelete="RESTRICT",
+            onupdate="RESTRICT",
+        ),
         CheckConstraint(
             "length(entitlement_receipt_ref) > 0",
             name="ck_skill_usage_entitlement_link_receipt_ref",
@@ -172,9 +203,7 @@ class SkillUsageEntitlementLinkRow(Base):
     )
 
     link_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    usage_event_id: Mapped[str] = mapped_column(
-        String(200), ForeignKey("skill_usage_events.event_id"), nullable=False
-    )
+    usage_event_id: Mapped[str] = mapped_column(String(200), nullable=False)
     tenant_id: Mapped[str] = mapped_column(String(160), nullable=False)
     customer_id: Mapped[str] = mapped_column(String(200), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(300), nullable=False)
