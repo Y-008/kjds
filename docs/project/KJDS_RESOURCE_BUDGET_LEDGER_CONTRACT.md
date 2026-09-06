@@ -6,7 +6,9 @@
 resource limits used by Agents, models, tokens, databases, external APIs and
 media generation. It records the budget and every reservation, consumption,
 release and overrun as immutable events. It does not authorize payment or an
-external platform write.
+external platform write. This is the durable accounting foundation; until a
+reservation is bound to an `ActionEnvelope`, Permit, actor, causation and
+readback receipt, it is not sufficient to admit a side effect.
 
 ## Scope and invariants
 
@@ -14,13 +16,16 @@ external platform write.
 - Amounts are finite, non-negative `Decimal` values with one budget currency.
 - `idempotency_key` is unique per tenant; a changed payload with the same key
   is rejected.
-- Optional lifecycle events must reference an event in the same tenant and
-  budget.
+- `consumed` and `released` lifecycle events must reference a `reserved` event
+  in the same tenant and budget, and their cumulative amount cannot exceed the
+  parent reservation. `overrun` events may stand alone for explicit loss
+  accounting.
 - PostgreSQL reservation admission locks the budget row, checks available
   capacity and inserts the event in one transaction. This prevents two workers
   from reserving the same remaining capacity.
-- The gross counters remain visible for reconciliation. Available capacity is
-  `limit - reserved - consumed + released - overrun`.
+- The gross counters remain visible for reconciliation. A settled child reduces
+  the parent's outstanding reservation, so available capacity is
+  `limit - consumed - overrun - outstanding_reserved`.
 - PostgreSQL update, delete and truncate triggers keep both budget tables
   append-only. Corrections are new events, never overwrites.
 

@@ -69,15 +69,14 @@ def create_budget(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "admin", "compliance")
-    budget = ResourceBudget(
+    return run(lambda: _budget_dict(runtime.resource_budget_ledger.create_budget(ResourceBudget(
         budget_id=budget_id,
         tenant_id=principal.tenant_ref,
         resource_type=body.resource_type,
         cost_center=body.cost_center,
         limit_amount=body.limit_amount,
         currency=_currency(body.currency),
-    )
-    return run(lambda: _budget_dict(runtime.resource_budget_ledger.create_budget(budget)))
+    ))))
 
 
 @router.post("/v1/economics/budgets/{budget_id}/events")
@@ -87,26 +86,29 @@ def record_budget_event(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "executor", "admin")
-    event = ResourceBudgetEvent(
-        event_id=body.event_id,
-        idempotency_key=body.idempotency_key,
-        budget_id=budget_id,
-        tenant_id=principal.tenant_ref,
-        state=body.state,
-        amount=body.amount,
-        currency=_currency(body.currency),
-        parent_event_id=body.parent_event_id,
-        occurred_at=(body.occurred_at or datetime.now(UTC)).astimezone(UTC),
-        metadata=body.metadata,
-    )
-    return run(lambda: {
-        "event_id": runtime.resource_budget_ledger.record(event).event_id,
-        "budget_id": event.budget_id,
-        "state": event.state,
-        "amount": str(event.amount),
-        "currency": event.currency,
-        "external_write_allowed": False,
-    })
+    def record():
+        event = ResourceBudgetEvent(
+            event_id=body.event_id,
+            idempotency_key=body.idempotency_key,
+            budget_id=budget_id,
+            tenant_id=principal.tenant_ref,
+            state=body.state,
+            amount=body.amount,
+            currency=_currency(body.currency),
+            parent_event_id=body.parent_event_id,
+            occurred_at=(body.occurred_at or datetime.now(UTC)).astimezone(UTC),
+            metadata=body.metadata,
+        )
+        persisted = runtime.resource_budget_ledger.record(event)
+        return {
+            "event_id": persisted.event_id,
+            "budget_id": persisted.budget_id,
+            "state": persisted.state,
+            "amount": str(persisted.amount),
+            "currency": persisted.currency,
+            "external_write_allowed": False,
+        }
+    return run(record)
 
 
 @router.get("/v1/economics/budgets/{budget_id}")

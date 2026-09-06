@@ -585,8 +585,9 @@ def economics_guard_status(
             tenant_id=principal.tenant_ref,
             budget_id=budget_id,
         ))
-        if budget_remaining is None:
-            budget_remaining = Decimal(resource_budget["available"])
+        # A bound ledger snapshot is authoritative; query parameters cannot
+        # override it with a more favorable value.
+        budget_remaining = Decimal(resource_budget["available"])
     if cash_available is None:
         response = {
             "contract_id": "kjds-economics-guard-v1",

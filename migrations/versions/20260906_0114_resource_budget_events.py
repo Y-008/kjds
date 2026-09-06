@@ -49,6 +49,21 @@ def upgrade() -> None:
         sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("event_id"),
         sa.UniqueConstraint("tenant_id", "idempotency_key", name="uq_resource_budget_event_tenant_idempotency"),
+        sa.UniqueConstraint("tenant_id", "budget_id", "event_id", name="uq_resource_budget_event_scope_id"),
+        sa.ForeignKeyConstraint(
+            ["tenant_id", "budget_id"],
+            ["resource_budgets.tenant_id", "resource_budgets.budget_id"],
+            name="fk_resource_budget_event_budget",
+        ),
+        sa.ForeignKeyConstraint(
+            ["tenant_id", "budget_id", "parent_event_id"],
+            ["resource_budget_events.tenant_id", "resource_budget_events.budget_id", "resource_budget_events.event_id"],
+            name="fk_resource_budget_event_parent",
+        ),
+        sa.CheckConstraint(
+            "state IN ('reserved', 'consumed', 'released', 'overrun')",
+            name="ck_resource_budget_event_state",
+        ),
         sa.CheckConstraint("amount >= 0", name="ck_resource_budget_event_amount_nonnegative"),
         sa.CheckConstraint("length(currency) = 3", name="ck_resource_budget_event_currency_shape"),
     )

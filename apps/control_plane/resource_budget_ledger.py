@@ -14,6 +14,7 @@ from sqlalchemy import (
     JSON,
     CheckConstraint,
     DateTime,
+    ForeignKeyConstraint,
     Index,
     Numeric,
     String,
@@ -30,6 +31,8 @@ STATES = frozenset({"reserved", "consumed", "released", "overrun"})
 
 
 def _text(value: str, name: str, maximum: int = 240) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} is required and bounded")
     value = str(value).strip()
     if not value or len(value) > maximum:
         raise ValueError(f"{name} is required and bounded")
@@ -43,6 +46,13 @@ def _amount(value: Decimal | str | int | float, name: str = "amount") -> Decimal
         raise ValueError(f"{name} must be a finite non-negative decimal") from exc
     if not value.is_finite() or value < 0:
         raise ValueError(f"{name} must be a finite non-negative decimal")
+    normalized = value.normalize()
+    digits = normalized.as_tuple().digits
+    exponent = normalized.as_tuple().exponent
+    fractional_digits = max(-exponent, 0)
+    integer_digits = max(len(digits) + exponent, 0)
+    if fractional_digits > 18 or integer_digits > 20:
+        raise ValueError(f"{name} exceeds NUMERIC(38,18) precision")
     return value
 
 
@@ -63,8 +73,8 @@ class ResourceBudget:
     currency: str = "USD"
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "budget_id", _text(self.budget_id, "budget_id"))
-        object.__setattr__(self, "tenant_id", _text(self.tenant_id, "tenant_id"))
+        object.__setattr__(self, "budget_id", _text(self.budget_id, "budget_id", 200))
+        object.__setattr__(self, "tenant_id", _text(self.tenant_id, "tenant_id", 160))
         object.__setattr__(self, "resource_type", _text(self.resource_type, "resource_type", 80))
         object.__setattr__(self, "cost_center", _text(self.cost_center, "cost_center", 160))
         object.__setattr__(self, "limit_amount", _amount(self.limit_amount, "limit_amount"))
@@ -85,8 +95,9 @@ class ResourceBudgetEvent:
     metadata: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
-        for field in ("event_id", "idempotency_key", "budget_id", "tenant_id"):
-            object.__setattr__(self, field, _text(getattr(self, field), field))
+        limits = {"event_id": 200, "idempotency_key": 300, "budget_id": 200, "tenant_id": 160}
+        for field, maximum in limits.items():
+            object.__setattr__(self, field, _text(getattr(self, field), field, maximum))
         if self.state not in STATES:
             raise ValueError("state is not allowlisted")
         object.__setattr__(self, "amount", _amount(self.amount))
@@ -128,6 +139,22 @@ class ResourceBudgetEventRow(Base):
     __tablename__ = "resource_budget_events"
     __table_args__ = (
         UniqueConstraint("tenant_id", "idempotency_key", name="uq_resource_budget_event_tenant_idempotency"),
+        UniqueConstraint("tenant_id", "budget_id", "event_id", name="uq_resource_budget_event_scope_id"),
+        CheckConstraint("state IN ('reserved', 'consumed', 'released', 'overrun')", name="ck_resource_budget_event_state"),
+        ForeignKeyConstraint(
+            ["tenant_id", "budget_id"],
+            ["resource_budgets.tenant_id", "resource_budgets.budget_id"],
+            name="fk_resource_budget_event_budget",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "budget_id", "parent_event_id"],
+            [
+                "resource_budget_events.tenant_id",
+                "resource_budget_events.budget_id",
+                "resource_budget_events.event_id",
+            ],
+            name="fk_resource_budget_event_parent",
+        ),
         CheckConstraint("amount >= 0", name="ck_resource_budget_event_amount_nonnegative"),
         CheckConstraint("length(currency) = 3", name="ck_resource_budget_event_currency_shape"),
         Index("ix_resource_budget_event_scope", "tenant_id", "budget_id", "occurred_at", "event_id"),
@@ -184,15 +211,8 @@ class ResourceBudgetLedger:
                 ResourceBudgetEventRow.tenant_id == tenant_id,
                 ResourceBudgetEventRow.budget_id == budget_id)).all()
             totals = self._totals(rows)
-        # Releases return capacity to the budget; the ledger still exposes the
-        # gross counters so operators can reconcile every transition.
-        available = (
-            Decimal(budget.limit_amount_text)
-            - totals["reserved"]
-            - totals["consumed"]
-            + totals["released"]
-            - totals["overrun"]
-        )
+            self._assert_numeric_integrity(budget, rows)
+        available = self._available(budget, rows, totals)
         return {
             "tenant_id": tenant_id, "budget_id": budget_id, "resource_type": budget.resource_type,
             "cost_center": budget.cost_center, "currency": budget.currency,
@@ -206,8 +226,64 @@ class ResourceBudgetLedger:
     def _totals(rows: list[ResourceBudgetEventRow]) -> dict[str, Decimal]:
         totals = {state: Decimal("0") for state in sorted(STATES)}
         for row in rows:
+            if row.state not in STATES:
+                raise ValueError("resource budget contains an unknown event state")
             totals[row.state] += Decimal(row.amount_text)
         return totals
+
+    @staticmethod
+    def _assert_numeric_integrity(
+        budget: ResourceBudgetRow, rows: list[ResourceBudgetEventRow]
+    ) -> None:
+        if Decimal(str(budget.limit_amount)) != Decimal(budget.limit_amount_text):
+            raise ValueError("resource budget numeric integrity check failed")
+        for row in rows:
+            if Decimal(str(row.amount)) != Decimal(row.amount_text):
+                raise ValueError("resource budget event numeric integrity check failed")
+            if row.currency != budget.currency:
+                raise ValueError("resource budget event currency integrity check failed")
+
+    @staticmethod
+    def _available(
+        budget: ResourceBudgetRow,
+        rows: list[ResourceBudgetEventRow],
+        totals: dict[str, Decimal],
+    ) -> Decimal:
+        # A consumed or released child settles its parent reservation.  This
+        # avoids charging the same amount twice while retaining gross counters.
+        settled_by_parent: dict[str, Decimal] = {}
+        for row in rows:
+            if row.parent_event_id and row.state in {"consumed", "released"}:
+                settled_by_parent[row.parent_event_id] = (
+                    settled_by_parent.get(row.parent_event_id, Decimal("0"))
+                    + Decimal(row.amount_text)
+                )
+        outstanding = Decimal("0")
+        for row in rows:
+            if row.state == "reserved":
+                outstanding += max(
+                    Decimal("0"),
+                    Decimal(row.amount_text) - settled_by_parent.get(row.event_id, Decimal("0")),
+                )
+        return Decimal(budget.limit_amount_text) - totals["consumed"] - totals["overrun"] - outstanding
+
+    @staticmethod
+    def _event_from_row(row: ResourceBudgetEventRow) -> ResourceBudgetEvent:
+        occurred = row.occurred_at
+        if occurred.tzinfo is None:
+            occurred = occurred.replace(tzinfo=UTC)
+        return ResourceBudgetEvent(
+            event_id=row.event_id,
+            idempotency_key=row.idempotency_key,
+            budget_id=row.budget_id,
+            tenant_id=row.tenant_id,
+            state=row.state,
+            amount=Decimal(row.amount_text),
+            currency=row.currency,
+            parent_event_id=row.parent_event_id,
+            occurred_at=occurred,
+            metadata=row.metadata_json,
+        )
 
     def record(self, event: ResourceBudgetEvent) -> ResourceBudgetEvent:
         fingerprint = _fingerprint(event)
@@ -229,8 +305,10 @@ class ResourceBudgetLedger:
                 if existing is not None:
                     if existing.fingerprint_sha256 != fingerprint:
                         raise ValueError("resource budget idempotency key conflicts")
-                    return event
+                    return self._event_from_row(existing)
                 if event.parent_event_id is not None:
+                    if event.state == "reserved":
+                        raise ValueError("reserved event cannot have a parent reservation")
                     parent = session.scalar(select(ResourceBudgetEventRow).where(
                         ResourceBudgetEventRow.tenant_id == event.tenant_id,
                         ResourceBudgetEventRow.budget_id == event.budget_id,
@@ -238,18 +316,28 @@ class ResourceBudgetLedger:
                     ))
                     if parent is None:
                         raise KeyError("parent resource budget event not found for exact scope")
+                elif event.state in {"consumed", "released"}:
+                    raise ValueError(f"{event.state} event requires a parent reservation")
+                if event.state in {"consumed", "released"}:
+                    assert event.parent_event_id is not None
+                    if parent.state != "reserved":
+                        raise ValueError(f"{event.state} event parent must be reserved")
+                    settled = session.scalars(select(ResourceBudgetEventRow).where(
+                        ResourceBudgetEventRow.tenant_id == event.tenant_id,
+                        ResourceBudgetEventRow.budget_id == event.budget_id,
+                        ResourceBudgetEventRow.parent_event_id == event.parent_event_id,
+                        ResourceBudgetEventRow.state.in_(("consumed", "released")),
+                    )).all()
+                    settled_amount = sum((Decimal(row.amount_text) for row in settled), Decimal("0"))
+                    if settled_amount + event.amount > Decimal(parent.amount_text):
+                        raise ValueError("resource budget parent reservation already settled")
                 if event.state == "reserved":
                     rows = session.scalars(select(ResourceBudgetEventRow).where(
                         ResourceBudgetEventRow.tenant_id == event.tenant_id,
                         ResourceBudgetEventRow.budget_id == event.budget_id)).all()
                     totals = self._totals(rows)
-                    available = (
-                        Decimal(budget.limit_amount_text)
-                        - totals["reserved"]
-                        - totals["consumed"]
-                        + totals["released"]
-                        - totals["overrun"]
-                    )
+                    self._assert_numeric_integrity(budget, rows)
+                    available = self._available(budget, rows, totals)
                     if available < event.amount:
                         raise ValueError("resource budget exceeded")
                 session.add(ResourceBudgetEventRow(
