@@ -335,6 +335,10 @@ class ResourceBudgetLedger:
                     if existing.fingerprint_sha256 != fingerprint:
                         raise ValueError("resource budget idempotency key conflicts")
                     return self._event_from_row(existing)
+                rows = session.scalars(select(ResourceBudgetEventRow).where(
+                    ResourceBudgetEventRow.tenant_id == event.tenant_id,
+                    ResourceBudgetEventRow.budget_id == event.budget_id)).all()
+                self._assert_numeric_integrity(budget, rows)
                 if event.parent_event_id is not None:
                     if event.state == "reserved":
                         raise ValueError("reserved event cannot have a parent reservation")
@@ -367,11 +371,7 @@ class ResourceBudgetLedger:
                     if settled_amount + event.amount > Decimal(parent.amount_text):
                         raise ValueError("resource budget parent reservation already settled")
                 if event.state == "reserved":
-                    rows = session.scalars(select(ResourceBudgetEventRow).where(
-                        ResourceBudgetEventRow.tenant_id == event.tenant_id,
-                        ResourceBudgetEventRow.budget_id == event.budget_id)).all()
                     totals = self._totals(rows)
-                    self._assert_numeric_integrity(budget, rows)
                     available = self._available(budget, rows, totals)
                     if available < event.amount:
                         raise ValueError("resource budget exceeded")
