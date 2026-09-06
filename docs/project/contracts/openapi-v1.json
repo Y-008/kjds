@@ -27861,6 +27861,100 @@
         "summary": "Get Fact"
       }
     },
+    "/v1/facts/{fact_id}/lineage": {
+      "get": {
+        "description": "Return one authorized fact revision and its auditable source path.\n\nThis is deliberately read-only.  ``as_of`` selects what was knowable at\nthe historical cutoff; ``revision`` selects an explicit immutable\nrevision.  Supplying both is rejected so a caller cannot mistake a later\nrevision for the historical one.",
+        "operationId": "fact_lineage_v1_facts__fact_id__lineage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": true,
+            "schema": {
+              "title": "Entity Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Revision"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Fact Lineage"
+      }
+    },
     "/v1/facts/{fact_id}/restate": {
       "post": {
         "operationId": "restate_fact_v1_facts__fact_id__restate_post",
@@ -27943,6 +28037,22 @@
               "default": "ozon-primary",
               "title": "Store Ref",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
             }
           }
         ],
