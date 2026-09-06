@@ -26,6 +26,7 @@ from apps.control_plane.channel_account_runtime_identity import (
     SignedManagedCredentialLeaseResolver,
 )
 from apps.control_plane.ozon_worker import (
+    OzonApiError,
     OzonCredentials,
     OzonSellerClient,
     validate_execution_environment,
@@ -301,8 +302,28 @@ def main() -> None:
                 else None
             ),
         )
+    except OzonApiError as exc:
+        # Preserve the worker's stable, non-secret provider code so an
+        # external 401/403 is distinguishable from a transport failure.  The
+        # message may include only the provider request id; credentials are
+        # never included by OzonSellerClient.
+        payload = {
+            "status": "failed",
+            "error_code": exc.code,
+            "error": str(exc),
+            "retryable": bool(exc.retryable),
+        }
+        if exc.status_code is not None:
+            payload["status_code"] = exc.status_code
+        print(json.dumps(payload, ensure_ascii=False))
+        sys.exit(1)
     except Exception as exc:  # noqa: BLE001 - CLI boundary
-        print(json.dumps({"status": "failed", "error_code": "READBACK_FAILED", "error": str(exc)}))
+        print(
+            json.dumps(
+                {"status": "failed", "error_code": "READBACK_FAILED", "error": str(exc)},
+                ensure_ascii=False,
+            )
+        )
         sys.exit(1)
     print(json.dumps(result, ensure_ascii=False))
 

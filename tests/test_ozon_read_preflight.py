@@ -201,6 +201,37 @@ def test_capture_artifacts_are_create_only(tmp_path):
     assert target.read_bytes() == b"first"
 
 
+def test_capture_cli_preserves_provider_error_code_without_secret_material(monkeypatch, capsys):
+    from apps.control_plane.ozon_worker import OzonApiError
+    from scripts import capture_ozon_readback
+
+    monkeypatch.setattr(
+        capture_ozon_readback,
+        "_capture",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            OzonApiError(
+                "Ozon API returned HTTP 403. request_id=trace-123",
+                code="OZON_HTTP_403",
+                status_code=403,
+            )
+        ),
+    )
+    monkeypatch.setattr(sys, "argv", ["capture_ozon_readback", "--execute"])
+
+    with pytest.raises(SystemExit) as caught:
+        capture_ozon_readback.main()
+
+    assert caught.value.code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "status": "failed",
+        "error_code": "OZON_HTTP_403",
+        "error": "Ozon API returned HTTP 403. request_id=trace-123",
+        "retryable": False,
+        "status_code": 403,
+    }
+
+
 @pytest.mark.parametrize(
     "control_plane_url",
     ["http://localhost:8000", "http://api:8000", "https://control.example.com"],

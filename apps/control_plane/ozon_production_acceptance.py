@@ -243,11 +243,12 @@ class OzonProductionAcceptanceService:
             "OZON_READBACK_ARTIFACT_MISSING",
         )
         if run_error_code:
-            blockers.append(
-                "OZON_READ_TRANSPORT_FAILED"
-                if "TRANSPORT" in run_error_code
-                else "OZON_READ_ATTEMPT_FAILED"
-            )
+            if "TRANSPORT" in run_error_code:
+                blockers.append("OZON_READ_TRANSPORT_FAILED")
+            elif run_error_code in {"OZON_HTTP_401", "OZON_HTTP_403"}:
+                blockers.append("OZON_READ_AUTHORIZATION_FAILED")
+            else:
+                blockers.append("OZON_READ_ATTEMPT_FAILED")
 
         record = None
         verification = None

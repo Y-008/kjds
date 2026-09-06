@@ -203,6 +203,15 @@ def test_transport_failed_run_is_blocked_even_when_scope_exists():
     assert "OZON_READBACK_ARTIFACT_MISSING" in result["blockers"]
 
 
+def test_provider_authorization_failed_run_has_distinct_blocker():
+    result = _evaluate(_service(_run(None, error_code="OZON_HTTP_403")))
+
+    assert result["status"] == "blocked"
+    assert result["gate_status"] == "BLOCKED_EVIDENCE"
+    assert "OZON_READ_AUTHORIZATION_FAILED" in result["blockers"]
+    assert "OZON_READ_ATTEMPT_FAILED" not in result["blockers"]
+
+
 def test_scoped_authority_failure_is_blocked_and_does_not_become_no_data():
     class _BrokenPilots:
         def require_run(self, **_kwargs):
