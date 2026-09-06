@@ -92,6 +92,10 @@ def product_bundle():
             "schema_version": "ozon-response-bundle-v2",
             "contract_version": READBACK_PRODUCT_CONTRACT_VERSION,
             "responses": responses,
+            "request_context": {
+                "operation": "ozon.product.read",
+                "offer_id_sha256": hashlib.sha256(b"offer-1").hexdigest(),
+            },
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -183,6 +187,48 @@ def test_valid_official_readback_passes_all_checks():
     assert len(observation["observation_sha256"]) == 64
     replay = verify()
     assert replay["observation_sha256"] == observation["observation_sha256"]
+
+
+def test_product_readback_rejects_target_hash_drift():
+    bundle = product_bundle()
+    observation = ProviderReadbackVerifier().verify(
+        summary=summary(
+            contract_version=READBACK_PRODUCT_CONTRACT_VERSION,
+            operation="ozon.product.read",
+            query_window_sha256=hashlib.sha256(b"different-offer").hexdigest(),
+            operation_count=2,
+            page_size=1,
+            response_bundle_sha256=hashlib.sha256(bundle).hexdigest(),
+            response_byte_size=len(bundle),
+        ),
+        bundle_bytes=bundle,
+        facts=facts(),
+        verifier_actor="kjds-external-verifier",
+        provisioner_actor="kjds-lease-provisioner",
+        as_of=NOW,
+    )
+    assert observation["verdict"] == "failed"
+    assert "READBACK_SUMMARY_BUNDLE_MISMATCH" in observation["blockers"]
+
+
+def test_product_readback_rejects_missing_target_binding_context():
+    bundle = json.loads(product_bundle())
+    bundle.pop("request_context")
+    encoded = json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()
+    observation = verify(
+        bundle_bytes=encoded,
+        summary=summary(
+            contract_version=READBACK_PRODUCT_CONTRACT_VERSION,
+            operation="ozon.product.read",
+            query_window_sha256=hashlib.sha256(b"offer-1").hexdigest(),
+            operation_count=2,
+            page_size=1,
+            response_bundle_sha256=hashlib.sha256(encoded).hexdigest(),
+            response_byte_size=len(encoded),
+        ),
+    )
+    assert observation["verdict"] == "failed"
+    assert "READBACK_BUNDLE_CONTRACT_INVALID" in observation["blockers"]
 
 
 def test_valid_official_product_readback_passes_all_checks():

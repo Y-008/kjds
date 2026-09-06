@@ -168,6 +168,38 @@ def test_environment_provider_credentials_are_not_worker_authority():
     assert "attacker" not in json.dumps(report)
 
 
+def test_capture_preflight_checks_only_credential_names():
+    from scripts import capture_ozon_readback
+
+    environment = RecordingEnvironment(
+        {
+            "OZON_CLIENT_ID": "client-secret-value",
+            "OZON_API_KEY": "api-secret-value",
+        }
+    )
+    report = capture_ozon_readback._report(environment)
+
+    assert report["credential_values_read"] is False
+    assert report["credential_names_present"] == {
+        "OZON_CLIENT_ID": True,
+        "OZON_API_KEY": True,
+    }
+    assert environment.reads == []
+    serialized = json.dumps(report)
+    assert "client-secret-value" not in serialized
+    assert "api-secret-value" not in serialized
+
+
+def test_capture_artifacts_are_create_only(tmp_path):
+    from scripts import capture_ozon_readback
+
+    target = tmp_path / "readback-bundle.json"
+    capture_ozon_readback._create_new(target, b"first")
+    with pytest.raises(ValueError, match="already exists"):
+        capture_ozon_readback._create_new(target, b"second")
+    assert target.read_bytes() == b"first"
+
+
 @pytest.mark.parametrize(
     "control_plane_url",
     ["http://localhost:8000", "http://api:8000", "https://control.example.com"],

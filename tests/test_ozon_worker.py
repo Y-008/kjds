@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import sys
 from datetime import UTC, datetime, timedelta
@@ -1016,6 +1017,10 @@ def test_read_only_worker_calls_only_read_contract_and_returns_sanitized_summary
     bundle = json.loads(raw_capture)
     assert bundle["schema_version"] == "ozon-response-bundle-v2"
     assert bundle["contract_version"] == "ozon-product-read-v1"
+    assert bundle["request_context"] == {
+        "operation": "ozon.product.read",
+        "offer_id_sha256": hashlib.sha256(b"private-offer").hexdigest(),
+    }
     bodies = [base64.b64decode(item["body_base64"]) for item in bundle["responses"]]
     assert any(b"private-offer" in body for body in bodies)
     assert any(b"sensitive product" in body for body in bodies)

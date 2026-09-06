@@ -64,8 +64,18 @@ def _required(value: str, name: str) -> str:
 
 
 def _report(environment: dict[str, str]) -> dict:
-    client_id = _required(environment.get("OZON_CLIENT_ID", ""), "OZON_CLIENT_ID")
-    api_key = _required(environment.get("OZON_API_KEY", ""), "OZON_API_KEY")
+    """Return a preflight report without reading credential values.
+
+    The preflight command is intentionally safe to run in a shared terminal.
+    Iterating environment *names* lets operators see whether the process was
+    configured, while avoiding reads, hashes, lengths, or serialization of
+    Client-Id/Api-Key material.  Explicit ``--execute`` is the only mode that
+    resolves those values for the one-shot provider request.
+    """
+    names = set(environment)
+    credential_names_present = {
+        name: name in names for name in ("OZON_CLIENT_ID", "OZON_API_KEY")
+    }
     return {
         "status": "ready_for_explicit_execution",
         "mode": "offline_preflight",
@@ -74,12 +84,24 @@ def _report(environment: dict[str, str]) -> dict:
         "official_origin": "https://api-seller.ozon.ru",
         "endpoints": ["/v3/product/info/list", "/v4/product/info/attributes", "/v3/finance/transaction/list"],
         "read_only": True,
-        "credentials_present": True,
-        "client_id_len": len(client_id),
-        "api_key_len": len(api_key),
-        "client_id_sha256": hashlib.sha256(client_id.encode()).hexdigest(),
+        "credential_names_present": credential_names_present,
+        "credential_values_read": False,
         "explicit_execution_required": True,
     }
+
+
+def _create_new(path: Path, content: bytes | str, *, encoding: str | None = None) -> None:
+    """Create one readback artifact without overwriting an earlier capture."""
+    mode = "xb"
+    try:
+        if isinstance(content, bytes):
+            with path.open(mode) as handle:
+                handle.write(content)
+        else:
+            with path.open(mode, encoding=encoding or "utf-8", newline="") as handle:
+                handle.write(content)
+    except FileExistsError as exc:
+        raise ValueError(f"Readback artifact already exists: {path.name}") from exc
 
 
 def _capture(
@@ -181,8 +203,9 @@ def _capture(
     output_dir.mkdir(parents=True, exist_ok=True)
     bundle_path = output_dir / "readback-bundle.json"
     summary_path = output_dir / "readback-summary.json"
-    bundle_path.write_bytes(bundle)
-    summary_path.write_text(
+    _create_new(bundle_path, bundle)
+    _create_new(
+        summary_path,
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True),
         encoding="utf-8",
     )
@@ -236,10 +259,13 @@ def main() -> None:
         default=os.getenv("KJDS_READBACK_OUTPUT_DIR", "output/readback"),
     )
     args = parser.parse_args()
-    environment = dict(os.environ)
+    # Keep preflight value-free.  The explicit execution branch snapshots the
+    # environment only after intent has been selected and then resolves the
+    # provider credentials inside the bounded capture function.
     if args.preflight:
-        print(json.dumps(_report(environment), ensure_ascii=False))
+        print(json.dumps(_report(os.environ), ensure_ascii=False))
         return
+    environment = dict(os.environ)
     try:
         result = _capture(
             environment=environment,

@@ -539,6 +539,13 @@ class OzonSellerClient:
             "response_evidence_bytes": self._response_bundle(
                 [info_capture, attributes_capture],
                 contract_version=self.PRODUCT_READ_CONTRACT_VERSION,
+                request_context={
+                    "operation": "ozon.product.read",
+                    # Keep the target out of the evidence envelope while
+                    # allowing an independent verifier to bind both official
+                    # responses to the requested offer.
+                    "offer_id_sha256": hashlib.sha256(offer_id.encode()).hexdigest(),
+                },
             ),
         }
 

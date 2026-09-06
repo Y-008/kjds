@@ -161,6 +161,15 @@ class ProviderReadbackVerifier:
                     self._finance_summary_matches_bundle(summary, bundle_bytes),
                     "READBACK_SUMMARY_BUNDLE_MISMATCH",
                 )
+            if (
+                summary.get("contract_version") == READBACK_PRODUCT_CONTRACT_VERSION
+                and bundle_contract_valid
+            ):
+                check(
+                    "product_summary_alignment",
+                    self._product_summary_matches_bundle(summary, bundle_bytes),
+                    "READBACK_SUMMARY_BUNDLE_MISMATCH",
+                )
             check(
                 "freshness",
                 self._fresh(
@@ -235,6 +244,25 @@ class ProviderReadbackVerifier:
             == parsed.get("query_window_sha256")
             and summary.get("page") == parsed.get("page")
             and summary.get("page_size") == parsed.get("page_size")
+        )
+
+    @classmethod
+    def _product_summary_matches_bundle(
+        cls,
+        summary: dict[str, Any],
+        bundle_bytes: bytes,
+    ) -> bool:
+        parsed = cls._parse_bundle(bundle_bytes, READBACK_PRODUCT_CONTRACT_VERSION)
+        if parsed is None:
+            return False
+        # ``query_window_sha256`` is the historical summary field used by the
+        # readback contract for a product target.  It carries the SHA-256 of
+        # the requested offer id; the raw offer id is intentionally absent
+        # from the bundle and from verifier output.
+        return (
+            summary.get("operation") == parsed.get("operation")
+            and summary.get("query_window_sha256")
+            == parsed.get("offer_id_sha256")
         )
 
     @classmethod
@@ -322,7 +350,24 @@ class ProviderReadbackVerifier:
                     return None
                 if not all(isinstance(body, dict) for body in parsed_bodies):
                     return None
-                return {"response_count": len(parsed_bodies)}
+                request_context = bundle.get("request_context")
+                if not isinstance(request_context, dict):
+                    return None
+                if set(request_context) != {"operation", "offer_id_sha256"}:
+                    return None
+                offer_hash = request_context.get("offer_id_sha256")
+                if (
+                    request_context.get("operation") != "ozon.product.read"
+                    or not isinstance(offer_hash, str)
+                    or len(offer_hash) != 64
+                    or any(character not in "0123456789abcdef" for character in offer_hash)
+                ):
+                    return None
+                return {
+                    "response_count": len(parsed_bodies),
+                    "operation": request_context["operation"],
+                    "offer_id_sha256": offer_hash,
+                }
             return None
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             return None
