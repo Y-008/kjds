@@ -164,3 +164,37 @@ def test_sql_read_preserves_payload_digest_and_rejects_tampered_row():
 
     with pytest.raises(ValueError, match="payload_hash does not match payload"):
         store.get(first.fact_id)
+
+
+def test_sql_roundtrip_preserves_first_class_sku_and_freshness():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine, tables=[TemporalFactRow.__table__])
+    store = SqlTemporalFactStore(engine)
+    fact = TemporalFactRevision(
+        fact_id="sku-fact-1",
+        revision_id="sku-rev-1",
+        fact_type="inventory",
+        natural_key="sku-1",
+        scope=ScopeRef(
+            tenant_id="t1",
+            entity_id="e1",
+            store_ids=("s1",),
+            warehouse_ids=("w1",),
+            sku_ids=("sku-1",),
+        ),
+        sku="sku-1",
+        payload={"available": 0},
+        event_time=datetime(2026, 9, 1, tzinfo=UTC),
+        observed_time=datetime(2026, 9, 1, 1, tzinfo=UTC),
+        effective_time=datetime(2026, 9, 1, tzinfo=UTC),
+        source_system="ozon",
+        source_record_id="inventory-1",
+        idempotency_key="inventory-1",
+        lineage=({"kind": "raw_file", "id": "file-1", "sha256": "a" * 64},),
+    )
+    stored = store.append(fact)
+    restored = store.get(stored.fact_id)
+    assert restored.sku == "sku-1"
+    assert restored.scope.sku_ids == ("sku-1",)
+    assert restored.freshness == "fresh"
+    assert restored.permission_scope == "t1:e1:s1:w1:sku-1"

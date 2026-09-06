@@ -89,6 +89,9 @@ class TemporalFactRow(Base):
     scope_key: Mapped[str] = mapped_column(String(500), nullable=False)
     store_ids_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     warehouse_ids_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    # Nullable keeps historical 0104 rows readable; new SKU-scoped facts
+    # write this column and bind it to ``scope.sku_ids`` in the model layer.
+    sku: Mapped[str | None] = mapped_column(String(240), nullable=True)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     lineage_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
@@ -98,6 +101,9 @@ class TemporalFactRow(Base):
     settled_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fresh_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     quality_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Legacy rows may have no explicit freshness column; the adapter derives
+    # it from quality_state on read while every new write persists the value.
+    freshness: Mapped[str | None] = mapped_column(String(20), nullable=True)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source_system: Mapped[str] = mapped_column(String(160), nullable=False)
     source_record_id: Mapped[str] = mapped_column(String(300), nullable=False)
@@ -105,7 +111,7 @@ class TemporalFactRow(Base):
     causation_id: Mapped[str] = mapped_column(String(300), nullable=False)
     correlation_id: Mapped[str] = mapped_column(String(300), nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    permission_scope: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    permission_scope: Mapped[str | None] = mapped_column(String(800), nullable=True)
     revision_reason: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     supersedes_revision: Mapped[int | None] = mapped_column(Integer)
     created_by: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -133,6 +139,7 @@ def _row_to_revision(row: TemporalFactRow) -> TemporalFactRevision:
             entity_id=row.entity_id,
             store_ids=tuple(row.store_ids_json or ()),
             warehouse_ids=tuple(row.warehouse_ids_json or ()),
+            sku=row.sku,
         ),
         payload=dict(row.payload_json or {}),
         metadata=dict(row.metadata_json or {}),
@@ -143,6 +150,7 @@ def _row_to_revision(row: TemporalFactRow) -> TemporalFactRevision:
         settled_time=_aware(row.settled_time),
         fresh_until=_aware(row.fresh_until),
         quality_state=QualityState(row.quality_state),
+        freshness=row.freshness,
         # Preserve the persisted digest so the Pydantic contract can verify
         # the payload instead of silently recomputing a new digest on read.
         # Recomputing here would hide a tampered/corrupt SQL row and make a
@@ -293,6 +301,7 @@ class SqlTemporalFactStore:
                     scope_key=scope_key,
                     store_ids_json=list(row_fact.scope.store_ids),
                     warehouse_ids_json=list(row_fact.scope.warehouse_ids),
+                    sku=row_fact.sku,
                     payload_json=row_fact.payload,
                     metadata_json=row_fact.metadata,
                     lineage_json=[item.model_dump(mode="json") for item in row_fact.lineage],
@@ -302,6 +311,7 @@ class SqlTemporalFactStore:
                     settled_time=row_fact.settled_time,
                     fresh_until=row_fact.fresh_until,
                     quality_state=row_fact.quality_state.value,
+                    freshness=row_fact.freshness,
                     payload_hash=row_fact.payload_hash,
                     source_system=row_fact.source_system,
                     source_record_id=row_fact.source_record_id,

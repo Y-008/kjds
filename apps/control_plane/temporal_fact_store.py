@@ -28,7 +28,14 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .data_fabric_contracts import DataEnvelope, EvidenceRef, QualitySummary, ScopeRef
+from .data_fabric_contracts import (
+    DataEnvelope,
+    EvidenceRef,
+    FreshnessState,
+    QualitySummary,
+    ScopeRef,
+    canonical_scope_key,
+)
 
 
 class QualityState(StrEnum):
@@ -311,6 +318,10 @@ class TemporalFactRevision(_Contract):
     natural_key: str = Field(min_length=1, max_length=300)
     payload: dict[str, Any] = Field(default_factory=dict)
     scope: ScopeRef
+    # SKU is optional only for legacy entity-level facts.  New SKU-level
+    # producers should provide it (or include one SKU in ``scope.sku_ids``);
+    # ``exclude_if`` keeps old serialized rows byte-compatible when absent.
+    sku: str | None = Field(default=None, min_length=1, max_length=240, exclude_if=lambda value: value is None)
     event_time: datetime
     observed_time: datetime
     effective_time: datetime
@@ -322,8 +333,14 @@ class TemporalFactRevision(_Contract):
     causation_id: str = Field(default="", max_length=300)
     correlation_id: str = Field(default="", max_length=300)
     idempotency_key: str = Field(default="", max_length=300)
-    permission_scope: str | None = Field(default=None, max_length=500)
+    permission_scope: str | None = Field(default=None, max_length=800)
     quality_state: QualityState = QualityState.VALID
+    # Freshness is deliberately separate from quality state.  It is persisted
+    # on new rows but derived from the state for legacy input that omitted it.
+    freshness: FreshnessState | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     lineage: tuple[LineageRef, ...] = ()
     supersedes_revision: int | None = Field(default=None, ge=1)
     revision_reason: str | None = Field(default=None, max_length=2000)
@@ -356,6 +373,9 @@ class TemporalFactRevision(_Contract):
             "source_ref": "source_record_id",
             "contract_version": "source_version",
             "hash": "payload_hash",
+            "sku_id": "sku",
+            "seller_sku": "sku",
+            "quality_status": "quality_state",
         }
         for source, target in aliases.items():
             if target not in data and source in data:
@@ -404,6 +424,31 @@ class TemporalFactRevision(_Contract):
         if not isinstance(payload, Mapping):
             raise ValueError("payload must be an object")
         data["payload"] = _json_safe(payload)
+        # Promote the common SKU keys into the row-level contract.  This is a
+        # lossless projection: the original payload remains untouched and
+        # legacy facts without a SKU continue to be valid entity-level facts.
+        if data.get("sku") is None:
+            payload_sku = payload.get("sku") or payload.get("sku_id") or payload.get("seller_sku")
+            if payload_sku is not None:
+                data["sku"] = str(payload_sku).strip()
+        raw_scope = data.get("scope")
+        if data.get("sku") and raw_scope is not None:
+            scope_obj = raw_scope if isinstance(raw_scope, ScopeRef) else ScopeRef.model_validate(raw_scope)
+            if scope_obj.sku_ids:
+                if data["sku"] not in scope_obj.sku_ids:
+                    raise ValueError("sku does not match fact scope")
+            else:
+                # Bind an explicit SKU to scope so permission and identity
+                # keys cannot accidentally collapse into an entity-wide row.
+                data["scope"] = scope_obj.model_copy(update={"sku_ids": (data["sku"],)})
+        elif data.get("sku") and raw_scope is None:
+            # Singular scope adapters may provide tenant/entity/store fields;
+            # the scope synthesis below will include the promoted SKU.
+            pass
+        elif raw_scope is not None:
+            scope_obj = raw_scope if isinstance(raw_scope, ScopeRef) else ScopeRef.model_validate(raw_scope)
+            if scope_obj.sku_ids and len(scope_obj.sku_ids) == 1:
+                data["sku"] = scope_obj.sku_ids[0]
         if data.get("metadata") is not None:
             data["metadata"] = _json_safe(data["metadata"])
         if data.get("payload_hash") is None:
@@ -414,6 +459,17 @@ class TemporalFactRevision(_Contract):
             data["correlation_id"] = ""
         if data.get("idempotency_key") is None:
             data["idempotency_key"] = ""
+        # Derive freshness after quality aliases have been normalized.  An
+        # explicit value is checked in ``validate_revision`` below.
+        if data.get("freshness") is None:
+            state_value = getattr(data.get("quality_state"), "value", data.get("quality_state", "VALID"))
+            data["freshness"] = (
+                "fresh"
+                if str(state_value).upper() == "VALID"
+                else "stale"
+                if str(state_value).upper() == "STALE"
+                else "unknown"
+            )
         if data.get("permission_scope") is None and data.get("scope") is not None:
             scope = data["scope"]
             if isinstance(scope, ScopeRef):
@@ -436,6 +492,7 @@ class TemporalFactRevision(_Contract):
             "permission_scope",
             "revision_reason",
             "created_by",
+            "sku",
         ):
             if data.get(name) is not None:
                 data[name] = str(data[name]).strip()
@@ -453,6 +510,8 @@ class TemporalFactRevision(_Contract):
             _sha256(self.payload_hash, "payload_hash")
         if self.event_time > self.observed_time:
             raise ValueError("event_time cannot be after observed_time")
+        if self.sku is not None and self.scope.sku_ids and self.sku not in self.scope.sku_ids:
+            raise ValueError("sku does not match fact scope")
         canonical_permission_scope = _scope_key(self.scope)
         if self.permission_scope != canonical_permission_scope:
             raise ValueError("permission_scope does not match fact scope")
@@ -472,6 +531,16 @@ class TemporalFactRevision(_Contract):
             and self.payload
         ):
             raise ValueError(f"{self.quality_state.value} fact cannot contain payload rows")
+        expected_freshness = {
+            QualityState.VALID: "fresh",
+            QualityState.STALE: "stale",
+            QualityState.NO_DATA: "unknown",
+            QualityState.PARTIAL: "unknown",
+            QualityState.BLOCKED: "unknown",
+            QualityState.UNKNOWN_OUTCOME: "unknown",
+        }[self.quality_state]
+        if self.freshness != expected_freshness:
+            raise ValueError("quality_state and freshness disagree")
         if self.supersedes_revision is not None and self.supersedes_revision >= self.revision:
             raise ValueError("supersedes_revision must precede revision")
         lineage_keys = [(item.kind, item.id, item.relationship) for item in self.lineage]
@@ -507,14 +576,7 @@ class TemporalFactRevision(_Contract):
 
 
 def _scope_key(scope: ScopeRef) -> str:
-    return ":".join(
-        (
-            scope.tenant_id,
-            scope.entity_id,
-            ",".join(scope.store_ids),
-            ",".join(scope.warehouse_ids),
-        )
-    )
+    return canonical_scope_key(scope)
 
 
 def _scope_matches(candidate: ScopeRef, requested: ScopeRef | None) -> bool:
@@ -524,7 +586,9 @@ def _scope_matches(candidate: ScopeRef, requested: ScopeRef | None) -> bool:
         return False
     if requested.store_ids and set(candidate.store_ids) != set(requested.store_ids):
         return False
-    return not requested.warehouse_ids or set(candidate.warehouse_ids) == set(requested.warehouse_ids)
+    if requested.warehouse_ids and set(candidate.warehouse_ids) != set(requested.warehouse_ids):
+        return False
+    return not requested.sku_ids or set(candidate.sku_ids) == set(requested.sku_ids)
 
 
 def _identity(fact: TemporalFactRevision) -> tuple[str, str, str]:
@@ -547,6 +611,7 @@ def _request_fingerprint(fact: TemporalFactRevision) -> str:
         {
             "identity": _identity(fact),
             "payload_hash": fact.payload_hash,
+            "sku": fact.sku,
             "event_time": fact.event_time.isoformat(),
             "observed_time": fact.observed_time.isoformat(),
             "effective_time": fact.effective_time.isoformat(),
@@ -560,6 +625,7 @@ def _request_fingerprint(fact: TemporalFactRevision) -> str:
             "idempotency_key": fact.idempotency_key,
             "permission_scope": fact.permission_scope,
             "quality_state": fact.quality_state.value,
+            "freshness": fact.freshness,
             "lineage": [item.model_dump(mode="json") for item in fact.lineage],
             "revision_reason": fact.revision_reason,
             "created_by": fact.created_by,
@@ -577,6 +643,7 @@ def _project_quality_at_cutoff(
     if fact.quality_state == QualityState.VALID and fact.fresh_until is not None and cutoff >= fact.fresh_until:
         values = fact.model_dump(mode="python")
         values["quality_state"] = QualityState.STALE
+        values["freshness"] = "stale"
         return TemporalFactRevision.model_validate(values)
     return fact
 

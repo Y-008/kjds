@@ -43,8 +43,8 @@ def test_migration_graph_has_one_current_head_after_ledger_hardening():
     from alembic.script import ScriptDirectory
 
     script = ScriptDirectory.from_config(Config(str(ROOT / "alembic.ini")))
-    assert script.get_heads() == ["20260906_0118"]
-    assert script.get_revision("20260906_0118").down_revision == "20260906_0117"
+    assert script.get_heads() == ["20260906_0119"]
+    assert script.get_revision("20260906_0119").down_revision == "20260906_0118"
 
 
 def test_ledger_immutability_migration_covers_all_new_tables():
@@ -59,14 +59,17 @@ def test_ledger_immutability_migration_covers_all_new_tables():
             "20260906_0116": "20260906_0116_after_sales_events.py",
             "20260906_0117": "20260906_0117_usage_entitlement_receipt_links.py",
             "20260906_0118": "20260906_0118_usage_entitlement_scope_integrity.py",
+            "20260906_0119": "20260906_0119_temporal_fact_row_provenance.py",
         }.items()
     }
     for table in database.REQUIRED_RUNTIME_TABLES[1:]:
         assert any(f'"{table}"' in source for source in sources.values())
-    # 0118 only tightens the existing 0117 relationship; it creates no new
-    # ledger table, so its append-only trigger is inherited from 0111/0117.
+    # 0118 only tightens the existing 0117 relationship and 0119 only adds
+    # temporal-fact columns; neither creates a new append-only ledger table.
     for revision, source in sources.items():
         if revision == "20260906_0118":
+            continue
+        if revision == "20260906_0119":
             continue
         assert (
             'trg_{table}_immutable' in source
@@ -87,6 +90,11 @@ def test_ledger_immutability_migration_covers_all_new_tables():
     assert "fk_skill_usage_entitlement_link_exact_event" in scope_integrity
     assert "uq_skill_usage_entitlement_parent_identity" in scope_integrity
     assert 'ondelete="RESTRICT"' in scope_integrity
+
+    provenance = sources["20260906_0119"]
+    assert '"sku"' in provenance
+    assert '"freshness"' in provenance
+    assert "ix_temporal_fact_sku" in provenance
 
 
 def test_postgresql_engine_gets_a_bounded_connect_timeout(monkeypatch):

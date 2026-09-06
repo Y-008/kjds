@@ -15,9 +15,19 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
-from .data_fabric_contracts import DataEnvelope, PeriodRef, QualitySummary, ScopeRef
+from .data_fabric_contracts import (
+    DRILLDOWN_LEVEL_ORDER,
+    LINEAGE_STAGE_ORDER,
+    DataEnvelope,
+    DrilldownPath,
+    FactDataContract,
+    LineageChain,
+    PeriodRef,
+    QualitySummary,
+    ScopeRef,
+)
 from .temporal_fact_store import (
     LineageEdge,
     LineageRef,
@@ -128,6 +138,11 @@ class TransparencyEnvelope(_Contract):
     data: tuple[dict[str, Any], ...] = ()
     included_rows: tuple[dict[str, Any], ...] = ()
     excluded_rows: tuple[dict[str, Any], ...] = ()
+    records: tuple[FactDataContract, ...] = Field(
+        default=(),
+        validation_alias=AliasChoices("records", "fact_records", "row_contracts"),
+        exclude_if=lambda value: not value,
+    )
     quality: TransparencyQuality | None = None
     source_count: int = Field(default=0, ge=0)
     excluded_count: int = Field(default=0, ge=0)
@@ -140,6 +155,8 @@ class TransparencyEnvelope(_Contract):
     authority_hash: str = Field(default="transparency-envelope", min_length=1, max_length=240)
     lineage: tuple[LineageRef, ...] = ()
     lineage_edges: tuple[LineageEdge, ...] = ()
+    lineage_chain: LineageChain | None = Field(default=None, exclude_if=lambda value: value is None)
+    drilldown_path: DrilldownPath | None = Field(default=None, exclude_if=lambda value: value is None)
     source_watermarks: dict[str, str] = Field(default_factory=dict)
     period: PeriodRef | None = None
     next_action: str | None = Field(default=None, max_length=1000)
@@ -154,6 +171,18 @@ class TransparencyEnvelope(_Contract):
         data = dict(values)
         if "lineage" not in data and "lineage_refs" in data:
             data["lineage"] = data.pop("lineage_refs")
+        if "records" not in data:
+            for alias in ("fact_records", "row_contracts"):
+                if alias in data:
+                    data["records"] = data.pop(alias)
+                    break
+        if "lineage_chain" not in data and "lineage_graph" in data:
+            data["lineage_chain"] = data.pop("lineage_graph")
+        if "drilldown_path" not in data:
+            for alias in ("drilldown", "hierarchy"):
+                if alias in data and isinstance(data[alias], Mapping):
+                    data["drilldown_path"] = data.pop(alias)
+                    break
         if "quality_state" not in data and "quality_status" in data:
             data["quality_state"] = data.pop("quality_status")
         if "excluded_rows" not in data and "exclusions" in data:
@@ -210,6 +239,15 @@ class TransparencyEnvelope(_Contract):
             data["lineage"] = tuple(LineageRef.model_validate(item) for item in data["lineage"])
         if data.get("lineage_edges") is not None:
             data["lineage_edges"] = tuple(LineageEdge.model_validate(item) for item in data["lineage_edges"])
+        if data.get("records") is not None:
+            raw_records = data["records"]
+            if not isinstance(raw_records, (list, tuple)):
+                raise TransparencyEnvelopeError("records must be a sequence of objects")
+            data["records"] = tuple(FactDataContract.model_validate(item) for item in raw_records)
+        if data.get("lineage_chain") is not None:
+            data["lineage_chain"] = LineageChain.model_validate(data["lineage_chain"])
+        if data.get("drilldown_path") is not None:
+            data["drilldown_path"] = DrilldownPath.model_validate(data["drilldown_path"])
         if data.get("source_watermarks") is not None:
             if not isinstance(data["source_watermarks"], Mapping):
                 raise TransparencyEnvelopeError("source_watermarks must be an object")
@@ -251,6 +289,28 @@ class TransparencyEnvelope(_Contract):
             object.__setattr__(self, "included_rows", self.data)
         if self.data and self.included_rows and self.data != self.included_rows:
             raise TransparencyEnvelopeError("data and included_rows differ")
+        if self.records:
+            if self.data and len(self.records) != len(self.data):
+                raise TransparencyEnvelopeError("records and data row counts differ")
+            if quality_state in {
+                QualityState.NO_DATA,
+                QualityState.BLOCKED,
+                QualityState.UNKNOWN_OUTCOME,
+            }:
+                raise TransparencyEnvelopeError(f"{quality_state.value} envelope cannot contain validated records")
+            for record in self.records:
+                if record.tenant != self.scope.tenant_id or record.entity != self.scope.entity_id:
+                    raise TransparencyEnvelopeError("record scope is outside envelope scope")
+                if self.scope.store_ids and record.store not in self.scope.store_ids:
+                    raise TransparencyEnvelopeError("record store is outside envelope scope")
+                if self.scope.warehouse_ids and record.warehouse not in self.scope.warehouse_ids:
+                    raise TransparencyEnvelopeError("record warehouse is outside envelope scope")
+                if self.scope.sku_ids and record.sku not in self.scope.sku_ids:
+                    raise TransparencyEnvelopeError("record SKU is outside envelope scope")
+            if quality_state == QualityState.VALID and any(
+                record.quality_state != "VALID" for record in self.records
+            ):
+                raise TransparencyEnvelopeError("VALID envelope cannot contain non-VALID records")
         if self.excluded_count < len(self.excluded_rows):
             object.__setattr__(self, "excluded_count", len(self.excluded_rows))
 
@@ -365,6 +425,14 @@ class TransparencyEnvelope(_Contract):
             data=rows,
             quality=self.quality.to_quality_summary(),
             lineage=tuple(evidence_lineage),
+            records=(
+                self.records
+                if self.quality_status
+                not in {QualityState.NO_DATA, QualityState.BLOCKED, QualityState.UNKNOWN_OUTCOME}
+                else ()
+            ),
+            lineage_chain=self.lineage_chain,
+            drilldown_path=self.drilldown_path,
             schema_version=self.schema_version,
             authority_hash=self.authority_hash,
             next_cursor=self.next_cursor,
@@ -383,6 +451,9 @@ class TransparencyEnvelope(_Contract):
         skill_version: str | None = None,
         source_watermarks: Mapping[str, str] | None = None,
         next_action: str | None = None,
+        records: tuple[FactDataContract, ...] = (),
+        lineage_chain: LineageChain | None = None,
+        drilldown_path: DrilldownPath | None = None,
     ) -> TransparencyEnvelope:
         quality_state = _STATUS_TO_QUALITY[envelope.status]
         quality = TransparencyQuality(
@@ -413,6 +484,9 @@ class TransparencyEnvelope(_Contract):
             skill_version=skill_version,
             authority_hash=envelope.authority_hash,
             lineage=tuple(LineageRef(kind=item.kind, id=item.id, sha256=item.sha256) for item in envelope.lineage),
+            records=records or envelope.records,
+            lineage_chain=lineage_chain or envelope.lineage_chain,
+            drilldown_path=drilldown_path or envelope.drilldown_path,
             lineage_edges=lineage_edges,
             source_watermarks=source_watermarks or {},
             schema_version=envelope.schema_version,
@@ -434,6 +508,9 @@ class TransparencyEnvelope(_Contract):
         rule_version: str | None = None,
         source_watermarks: Mapping[str, str] | None = None,
         next_action: str | None = None,
+        records: tuple[FactDataContract, ...] = (),
+        lineage_chain: LineageChain | None = None,
+        drilldown_path: DrilldownPath | None = None,
     ) -> TransparencyEnvelope:
         lineage: list[LineageRef] = []
         seen: set[tuple[str, str]] = set()
@@ -476,6 +553,9 @@ class TransparencyEnvelope(_Contract):
             rule_version=rule_version,
             authority_hash=authority_hash,
             lineage=tuple(lineage),
+            records=records,
+            lineage_chain=lineage_chain,
+            drilldown_path=drilldown_path,
             source_watermarks=source_watermarks or {},
             schema_version=schema_version,
             next_cursor=result.next_cursor,
@@ -495,6 +575,32 @@ class TransparencyEnvelope(_Contract):
             }
             for ref in self.lineage
         )
+
+    def lineage_audit(self) -> dict[str, Any]:
+        """Expose chain and row-contract completeness without asserting truth.
+
+        A complete shape still requires authority-level existence/hash checks by
+        the Evidence and Fact services; this read projection only reports what
+        was supplied and prevents a partial chain from being rendered as full.
+        """
+
+        chain = self.lineage_chain
+        path = self.drilldown_path
+        return {
+            "lineage_complete": bool(chain and chain.complete),
+            "lineage_missing_stages": list(chain.missing_stages) if chain else list(LINEAGE_STAGE_ORDER),
+            "lineage_coverage": chain.coverage_ratio() if chain else 0.0,
+            "drilldown_complete": bool(path and path.complete),
+            "drilldown_missing_levels": list(path.missing_levels) if path else list(DRILLDOWN_LEVEL_ORDER),
+            "record_contract_complete": bool(self.records) and len(self.records) == len(self.data),
+        }
+
+    def six_level_drilldown(self) -> tuple[dict[str, Any], ...]:
+        """Return the ordered entity→evidence path for UI drill-downs."""
+
+        if self.drilldown_path is None:
+            return ()
+        return tuple(node.model_dump(mode="json") for node in self.drilldown_path.nodes)
 
     def as_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
