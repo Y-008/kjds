@@ -131,7 +131,11 @@ class ResourceBudgetEvent:
             raise ValueError("occurred_at is required")
         if self.occurred_at.tzinfo is None or self.occurred_at.utcoffset() is None:
             raise ValueError("occurred_at must include a timezone")
-        object.__setattr__(self, "occurred_at", self.occurred_at.astimezone(UTC))
+        try:
+            normalized_occurred_at = self.occurred_at.astimezone(UTC)
+        except OverflowError as exc:
+            raise ValueError("occurred_at is outside the supported range") from exc
+        object.__setattr__(self, "occurred_at", normalized_occurred_at)
 
 
 def _fingerprint(event: ResourceBudgetEvent) -> str:

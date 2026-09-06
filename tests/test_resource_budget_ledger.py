@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -201,3 +201,12 @@ def test_ledger_rejects_future_event_time(ledger):
             tenant_id="tenant-a", state="reserved", amount="1",
             occurred_at=datetime.now(UTC) + timedelta(days=1),
         ))
+
+
+def test_event_rejects_unrepresentable_timezone_offset():
+    with pytest.raises(ValueError, match="outside the supported range"):
+        ResourceBudgetEvent(
+            event_id="overflow", idempotency_key="overflow-key", budget_id="budget-1",
+            tenant_id="tenant-a", state="reserved", amount="1",
+            occurred_at=datetime.max.replace(tzinfo=timezone(timedelta(hours=-14))),
+        )
