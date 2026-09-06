@@ -18650,6 +18650,45 @@
             "title": "Customer Id",
             "type": "string"
           },
+          "deployment_ref": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployment Ref"
+          },
+          "entitlement_id": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entitlement Id"
+          },
+          "entity_ref": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Ref"
+          },
           "event_id": {
             "maxLength": 200,
             "minLength": 1,
@@ -18677,6 +18716,19 @@
               }
             ],
             "title": "Input Units"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
           },
           "model_ref": {
             "anyOf": [
@@ -18742,6 +18794,19 @@
             "minLength": 1,
             "title": "Skill Id",
             "type": "string"
+          },
+          "store_ref": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Ref"
           },
           "unit_cost": {
             "anyOf": [
@@ -24509,6 +24574,86 @@
                 }
               ],
               "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entitlement_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entitlement Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "deployment_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deployment Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metric",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metric"
             }
           }
         ],
