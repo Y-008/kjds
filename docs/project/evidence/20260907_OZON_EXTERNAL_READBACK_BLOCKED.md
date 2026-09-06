@@ -6,14 +6,15 @@
 
 - 预检：通过。确认官方来源、只读端点和凭据变量名称存在；预检没有读取凭据值，也没有发起网络请求。
 - 执行：`READBACK_FAILED`。
-- 错误：`Ozon read transport failure`。
+- 首次错误：`Ozon read transport failure`（代理链路提前关闭 TLS）。
+- 直连复核：官方域名 DNS 与 TCP/443 可达；绕过代理后返回 HTTP `403`，因此当前账号/权限未获得可接受的商品读回。
 - 原始响应工件：未生成。
 - 外部写入：未执行。
-- 重试：未执行。传输失败时保持 fail-closed，避免把未知结果当成成功或重复请求。
+- 重试：仅在明确修正代理路径后进行一次直连复核；收到 `403` 后停止，避免重复请求。
 
 ## 验收含义
 
-本次尝试不能证明 Ozon 商品事实、库存事实、财务事实或生产发布就绪。生产验收接口必须返回 `BLOCKED_EVIDENCE`，并保留 `OZON_READBACK_ARTIFACT_MISSING`/传输失败原因，不能降级为 `NO_DATA` 或 `PASS`。
+本次尝试不能证明 Ozon 商品事实、库存事实、财务事实或生产发布就绪。生产验收接口必须返回 `BLOCKED_EVIDENCE`，并保留 `OZON_READBACK_ARTIFACT_MISSING`/传输或授权失败原因，不能降级为 `NO_DATA` 或 `PASS`。
 
 ## 恢复条件
 
