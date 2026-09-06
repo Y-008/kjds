@@ -52,10 +52,23 @@ def _timestamp(value: str | None) -> datetime:
     return parsed
 
 
-def _scope(principal: Principal, entity_ref: str, store_ref: str) -> ScopeRef:
+def _scope(
+    principal: Principal,
+    entity_ref: str,
+    store_ref: str,
+    *,
+    as_of: datetime | None = None,
+) -> ScopeRef:
     ensure_store_scope(principal, store_ref)
     if not entity_ref.strip():
         raise HTTPException(422, "entity_ref is required")
+    authority = runtime.scope_grants.current(
+        principal=principal,
+        store_ref=store_ref,
+        as_of=as_of or datetime.now(UTC),
+    )
+    if authority.get("status") != "ready" or authority.get("entity_ref") != entity_ref:
+        raise PermissionError("entity is outside the current authorized scope")
     return ScopeRef(tenant_id=principal.tenant_ref, entity_id=entity_ref, store_ids=(store_ref,))
 
 
@@ -69,8 +82,8 @@ def facts_as_of(
     include_stale: bool = True,
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
-    scope = _scope(principal, entity_ref, store_ref)
     cutoff = _timestamp(as_of)
+    scope = _scope(principal, entity_ref, store_ref, as_of=cutoff)
 
     def query():
         result = runtime.temporal_fact_store.query_as_of(
