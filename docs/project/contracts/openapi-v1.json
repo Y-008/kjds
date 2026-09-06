@@ -823,6 +823,60 @@
         "title": "BestSolutionRejectedOptionInput",
         "type": "object"
       },
+      "Body_analytics_drilldown_v1_analytics__recipe__drilldown_get": {
+        "properties": {
+          "dimension": {
+            "default": [
+              "store",
+              "sku"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Dimension",
+            "type": "array"
+          },
+          "metric": {
+            "default": [
+              "net_sales"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Metric",
+            "type": "array"
+          }
+        },
+        "title": "Body_analytics_drilldown_v1_analytics__recipe__drilldown_get",
+        "type": "object"
+      },
+      "Body_analytics_lineage_v1_analytics__recipe__lineage_get": {
+        "properties": {
+          "dimension": {
+            "default": [
+              "store",
+              "sku"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Dimension",
+            "type": "array"
+          },
+          "metric": {
+            "default": [
+              "net_sales"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Metric",
+            "type": "array"
+          }
+        },
+        "title": "Body_analytics_lineage_v1_analytics__recipe__lineage_get",
+        "type": "object"
+      },
       "Body_capture_evidence_v1_evidence_post": {
         "properties": {
           "effective_at": {
@@ -5220,6 +5274,95 @@
         "title": "DemandReportReviewInput",
         "type": "object"
       },
+      "DispatchWaveInput": {
+        "additionalProperties": false,
+        "description": "Bounded, proposal-only frontier dispatch request.",
+        "properties": {
+          "budget_units": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Units"
+          },
+          "expected_head": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "expected_snapshot_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Snapshot Sha256"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "max_tasks": {
+            "default": 8,
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Max Tasks",
+            "type": "integer"
+          },
+          "mode": {
+            "const": "propose",
+            "default": "propose",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "title": "DispatchWaveInput",
+        "type": "object"
+      },
       "EnterpriseCapacityPlanOutput": {
         "additionalProperties": false,
         "properties": {
@@ -7739,6 +7882,98 @@
         "title": "InternalBandValueProjectionResponse",
         "type": "object"
       },
+      "InvalidateGraphInput": {
+        "additionalProperties": false,
+        "description": "Describe an invalidation overlay without mutating canonical graph rows.",
+        "properties": {
+          "compensation_action": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compensation Action"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "expected_snapshot_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Snapshot Sha256"
+          },
+          "idempotency_key": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "mode": {
+            "const": "propose",
+            "default": "propose",
+            "title": "Mode",
+            "type": "string"
+          },
+          "node_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Node Ids",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_node_id": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Source Node Id",
+            "type": "string"
+          },
+          "target_node_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Node Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_node_id",
+          "reason",
+          "idempotency_key"
+        ],
+        "title": "InvalidateGraphInput",
+        "type": "object"
+      },
       "KillSwitchInput": {
         "additionalProperties": false,
         "properties": {
@@ -8195,6 +8430,63 @@
           "relationship"
         ],
         "title": "LineageLinkInput",
+        "type": "object"
+      },
+      "LineageRef": {
+        "additionalProperties": false,
+        "description": "A compact reference to an upstream or downstream artifact.",
+        "properties": {
+          "id": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "relationship": {
+            "default": "supports",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Relationship",
+            "type": "string"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "LineageRef",
         "type": "object"
       },
       "ListingRussianNativeReviewInput": {
@@ -12129,6 +12421,444 @@
         "title": "ProfitScenarioInput",
         "type": "object"
       },
+      "ProjectGraphSignalInput": {
+        "additionalProperties": false,
+        "description": "A verifier-backed observation for one graph task/node.\n\nSignals deliberately reuse the Harness observation authority.  A signal\nwithout a registered verifier would create an unverifiable second source\nof truth, so the verifier identity and input digest are required.",
+        "properties": {
+          "artifact_ref": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Artifact Ref",
+            "type": "string"
+          },
+          "evidence_ref": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Ref"
+          },
+          "expected_snapshot_sha256": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 64,
+                "pattern": "^[0-9a-fA-F]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Snapshot Sha256"
+          },
+          "idempotency_key": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "input_sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-fA-F]{64}$",
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "maxLength": 180,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Id"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "signal_type": {
+            "default": "operational",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Signal Type",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "blocked",
+              "passed",
+              "failed",
+              "no_data"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "maxLength": 180,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "verifier_id": {
+            "maxLength": 180,
+            "minLength": 1,
+            "title": "Verifier Id",
+            "type": "string"
+          },
+          "verifier_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Verifier Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verifier_id",
+          "verifier_version",
+          "state",
+          "summary",
+          "artifact_ref",
+          "input_sha256",
+          "idempotency_key"
+        ],
+        "title": "ProjectGraphSignalInput",
+        "type": "object"
+      },
+      "ProjectHeartbeatInput": {
+        "additionalProperties": false,
+        "properties": {
+          "budget_remaining": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Remaining"
+          },
+          "cash_available": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Cash Available"
+          },
+          "compensation_action": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compensation Action"
+          },
+          "data_quality_valid": {
+            "default": true,
+            "title": "Data Quality Valid",
+            "type": "boolean"
+          },
+          "economic_state_known": {
+            "default": false,
+            "title": "Economic State Known",
+            "type": "boolean"
+          },
+          "entity_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Entity Ref",
+            "type": "string"
+          },
+          "evidence_fresh": {
+            "default": true,
+            "title": "Evidence Fresh",
+            "type": "boolean"
+          },
+          "expected_next_event": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Next Event"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "experiment_clear": {
+            "default": true,
+            "title": "Experiment Clear",
+            "type": "boolean"
+          },
+          "external_readback_passed": {
+            "default": false,
+            "title": "External Readback Passed",
+            "type": "boolean"
+          },
+          "head": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Head",
+            "type": "string"
+          },
+          "head_verified": {
+            "default": false,
+            "title": "Head Verified",
+            "type": "boolean"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "lease_snapshot_known": {
+            "default": false,
+            "title": "Lease Snapshot Known",
+            "type": "boolean"
+          },
+          "liveness_deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liveness Deadline"
+          },
+          "margin_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Rate"
+          },
+          "min_budget_remaining": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Min Budget Remaining"
+          },
+          "min_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Min Cash"
+          },
+          "min_margin_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Margin Rate"
+          },
+          "progress_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Cursor"
+          },
+          "proof_receipts_current": {
+            "default": false,
+            "title": "Proof Receipts Current",
+            "type": "boolean"
+          },
+          "recovery_ref": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Ref"
+          },
+          "rollback_available": {
+            "default": true,
+            "title": "Rollback Available",
+            "type": "boolean"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          },
+          "stuck_detector_version": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stuck Detector Version"
+          },
+          "task_queue_known": {
+            "default": false,
+            "title": "Task Queue Known",
+            "type": "boolean"
+          },
+          "task_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Result"
+          },
+          "test_receipts_current": {
+            "default": false,
+            "title": "Test Receipts Current",
+            "type": "boolean"
+          },
+          "workspace_clean": {
+            "default": false,
+            "title": "Workspace Clean",
+            "type": "boolean"
+          },
+          "workspace_state_known": {
+            "default": false,
+            "title": "Workspace State Known",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entity_ref",
+          "head"
+        ],
+        "title": "ProjectHeartbeatInput",
+        "type": "object"
+      },
       "PublicExactValueProjectionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -12201,6 +12931,19 @@
         ],
         "title": "QualityOutput",
         "type": "object"
+      },
+      "QualityState": {
+        "description": "Quality is independent from the numeric value carried by a fact.",
+        "enum": [
+          "NO_DATA",
+          "PARTIAL",
+          "STALE",
+          "BLOCKED",
+          "UNKNOWN_OUTCOME",
+          "VALID"
+        ],
+        "title": "QualityState",
+        "type": "string"
       },
       "RateLimitSummaryInput": {
         "additionalProperties": false,
@@ -12789,6 +13532,201 @@
           "automatic_procurement"
         ],
         "title": "ResearchSignalResponse",
+        "type": "object"
+      },
+      "RestateFactInput": {
+        "additionalProperties": false,
+        "properties": {
+          "causation_id": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causation Id"
+          },
+          "correction_reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Correction Reason",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "effective_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Time"
+          },
+          "entity_ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Entity Ref",
+            "type": "string"
+          },
+          "event_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Time"
+          },
+          "fresh_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fresh Until"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "lineage": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LineageRef"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lineage"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "observed_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Time"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "quality_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QualityState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settled_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled Time"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
+          "store_ref": {
+            "default": "ozon-primary",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Store Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_ref",
+          "payload",
+          "correction_reason"
+        ],
+        "title": "RestateFactInput",
         "type": "object"
       },
       "RevokeInput": {
@@ -17166,6 +18104,178 @@
         "title": "UnavailableDashboardSectionResponse",
         "type": "object"
       },
+      "UsageEventInput": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_ref": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Ref"
+          },
+          "cost_center": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Center"
+          },
+          "currency": {
+            "default": "USD",
+            "maxLength": 3,
+            "minLength": 3,
+            "pattern": "^[A-Za-z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "customer_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "event_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Event Id",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "input_units": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Units"
+          },
+          "model_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Ref"
+          },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At"
+          },
+          "output_units": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Units"
+          },
+          "provider_ref": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Ref"
+          },
+          "resource_type": {
+            "default": "skill",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Resource Type",
+            "type": "string"
+          },
+          "skill_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Skill Id",
+            "type": "string"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Unit Cost"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Units"
+          }
+        },
+        "required": [
+          "event_id",
+          "idempotency_key",
+          "customer_id",
+          "skill_id",
+          "units",
+          "unit_cost"
+        ],
+        "title": "UsageEventInput",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -19796,6 +20906,242 @@
         "summary": "Resume Ai Listing Run"
       }
     },
+    "/v1/analytics/{recipe}/drilldown": {
+      "get": {
+        "operationId": "analytics_drilldown_v1_analytics__recipe__drilldown_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipe",
+            "required": true,
+            "schema": {
+              "title": "Recipe",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_id",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_analytics_drilldown_v1_analytics__recipe__drilldown_get"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Analytics Drilldown"
+      }
+    },
+    "/v1/analytics/{recipe}/lineage": {
+      "get": {
+        "operationId": "analytics_lineage_v1_analytics__recipe__lineage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recipe",
+            "required": true,
+            "schema": {
+              "title": "Recipe",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_id",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_analytics_lineage_v1_analytics__recipe__lineage_get"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Analytics Lineage"
+      }
+    },
     "/v1/anomaly-scans": {
       "get": {
         "operationId": "list_anomaly_scans_v1_anomaly_scans_get",
@@ -22173,6 +23519,104 @@
         "summary": "Record Tax Evidence"
       }
     },
+    "/v1/commercial/usage": {
+      "post": {
+        "operationId": "record_usage_v1_commercial_usage_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageEventInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Record Usage"
+      }
+    },
+    "/v1/commercial/usage-preview": {
+      "get": {
+        "operationId": "usage_preview_v1_commercial_usage_preview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Three-letter ASCII currency code",
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "default": "USD",
+              "description": "Three-letter ASCII currency code",
+              "maxLength": 3,
+              "minLength": 3,
+              "pattern": "^[A-Za-z]{3}$",
+              "title": "Currency",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Usage Preview"
+      }
+    },
     "/v1/content/assets": {
       "post": {
         "operationId": "create_content_asset_v1_content_assets_post",
@@ -23628,6 +25072,155 @@
         "summary": "Delivery Exception Workspace"
       }
     },
+    "/v1/economics/guard-status": {
+      "get": {
+        "operationId": "economics_guard_status_v1_economics_guard_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cash_available",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cash Available"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_cash",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "default": "0",
+              "title": "Min Cash"
+            }
+          },
+          {
+            "in": "query",
+            "name": "margin_rate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Margin Rate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_margin_rate",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Margin Rate"
+            }
+          },
+          {
+            "in": "query",
+            "name": "budget_remaining",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Remaining"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_budget_remaining",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "default": "0",
+              "title": "Min Budget Remaining"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Economics Guard Status"
+      }
+    },
     "/v1/enterprise-positioning/current": {
       "get": {
         "operationId": "current_enterprise_positioning_v1_enterprise_positioning_current_get",
@@ -24872,6 +26465,100 @@
         "summary": "List Facts"
       }
     },
+    "/v1/facts/as-of": {
+      "get": {
+        "operationId": "facts_as_of_v1_facts_as_of_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": true,
+            "schema": {
+              "title": "Entity Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fact_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fact Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_stale",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Stale",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Facts As Of"
+      }
+    },
     "/v1/facts/{fact_id}": {
       "get": {
         "operationId": "get_fact_v1_facts__fact_id__get",
@@ -24944,6 +26631,119 @@
           }
         ],
         "summary": "Get Fact"
+      }
+    },
+    "/v1/facts/{fact_id}/restate": {
+      "post": {
+        "operationId": "restate_fact_v1_facts__fact_id__restate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestateFactInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Restate Fact"
+      }
+    },
+    "/v1/facts/{fact_id}/versions": {
+      "get": {
+        "operationId": "fact_versions_v1_facts__fact_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": true,
+            "schema": {
+              "title": "Entity Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Fact Versions"
       }
     },
     "/v1/finance-control/workspace": {
@@ -26203,6 +28003,74 @@
           }
         ],
         "summary": "Dry Run Governed Execution Plan"
+      }
+    },
+    "/v1/graph/{project_id}/historical-frontier": {
+      "get": {
+        "description": "Return the proof frontier known at an explicit historical cutoff.",
+        "operationId": "historical_graph_frontier_v1_graph__project_id__historical_frontier_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": true,
+            "schema": {
+              "title": "As Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Historical Graph Frontier"
       }
     },
     "/v1/growth-channels/capabilities": {
@@ -32112,6 +33980,97 @@
         "summary": "Operations Readiness"
       }
     },
+    "/v1/operations/stuck": {
+      "get": {
+        "operationId": "operations_stuck_v1_operations_stuck_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "heartbeat_timeout_seconds",
+            "required": false,
+            "schema": {
+              "default": 300,
+              "title": "Heartbeat Timeout Seconds",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Operations Stuck"
+      }
+    },
     "/v1/orders": {
       "post": {
         "operationId": "create_order_v1_orders_post",
@@ -35070,6 +37029,966 @@
           }
         ],
         "summary": "Profit Erosion"
+      }
+    },
+    "/v1/project-graph/{project_id}/blockers": {
+      "get": {
+        "operationId": "graph_blockers_v1_project_graph__project_id__blockers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Blockers"
+      }
+    },
+    "/v1/project-graph/{project_id}/critical-path": {
+      "get": {
+        "operationId": "graph_critical_path_v1_project_graph__project_id__critical_path_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Critical Path"
+      }
+    },
+    "/v1/project-graph/{project_id}/diff": {
+      "get": {
+        "description": "Compare two immutable graph frontiers at explicit cutoffs.\n\nA baseline is mandatory.  Returning an empty diff for a missing baseline\nwould make a current snapshot look historically complete, so the API\nfails validation instead.",
+        "operationId": "graph_diff_v1_project_graph__project_id__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Diff"
+      }
+    },
+    "/v1/project-graph/{project_id}/dispatch-wave": {
+      "post": {
+        "description": "Compile a bounded dependency-free wave as a proposal.\n\nQueue submission, lease acquisition and provider invocation remain owned\nby TeamAgent routes.  This endpoint only produces a deterministic plan.",
+        "operationId": "dispatch_wave_v1_project_graph__project_id__dispatch_wave_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatchWaveInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Dispatch Wave"
+      }
+    },
+    "/v1/project-graph/{project_id}/frontier": {
+      "get": {
+        "operationId": "graph_frontier_v1_project_graph__project_id__frontier_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Frontier"
+      }
+    },
+    "/v1/project-graph/{project_id}/heartbeat": {
+      "post": {
+        "operationId": "project_heartbeat_v1_project_graph__project_id__heartbeat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectHeartbeatInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Project Heartbeat"
+      }
+    },
+    "/v1/project-graph/{project_id}/invalidate": {
+      "post": {
+        "description": "Evaluate an invalidation overlay and return its proof debt.\n\nCanonical graph rows are append-only and are not overwritten by this\nproposal endpoint.  A reviewed graph event can later be persisted by the\ngraph authority with the returned proposal hash.",
+        "operationId": "invalidate_graph_v1_project_graph__project_id__invalidate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvalidateGraphInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Invalidate Graph"
+      }
+    },
+    "/v1/project-graph/{project_id}/proof-debt": {
+      "get": {
+        "operationId": "graph_proof_debt_v1_project_graph__project_id__proof_debt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Proof Debt"
+      }
+    },
+    "/v1/project-graph/{project_id}/proposals": {
+      "get": {
+        "description": "List immutable proposal ledger entries in the authorized graph scope.",
+        "operationId": "graph_proposals_v1_project_graph__project_id__proposals_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "dispatch-wave",
+                    "invalidation"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Proposals"
+      }
+    },
+    "/v1/project-graph/{project_id}/proposals/replay": {
+      "get": {
+        "description": "Replay one persisted proposal by its scoped idempotency key.",
+        "operationId": "replay_graph_proposal_v1_project_graph__project_id__proposals_replay_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "idempotency_key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "dispatch-wave",
+                "invalidation"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Replay Graph Proposal"
+      }
+    },
+    "/v1/project-graph/{project_id}/proposals/{proposal_id}": {
+      "get": {
+        "description": "Read one immutable proposal after exact graph-scope authorization.",
+        "operationId": "graph_proposal_v1_project_graph__project_id__proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Proposal"
+      }
+    },
+    "/v1/project-graph/{project_id}/replay": {
+      "get": {
+        "operationId": "graph_replay_v1_project_graph__project_id__replay_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Replay"
+      }
+    },
+    "/v1/project-graph/{project_id}/signal": {
+      "post": {
+        "description": "Record a verifier-backed signal through the existing Harness authority.",
+        "operationId": "graph_signal_v1_project_graph__project_id__signal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectGraphSignalInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Signal"
       }
     },
     "/v1/read-only-claims": {

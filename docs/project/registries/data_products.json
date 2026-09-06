@@ -1,0 +1,16 @@
+{
+  "schema_version": "kjds-data-products-v1",
+  "status": "contract_only",
+  "external_write_allowed": false,
+  "products": [
+    {"id":"orders.canonical.v1","grain":"order_line","authority":"canonical_fact","owner":"oms"},
+    {"id":"inventory.snapshot.v1","grain":"sku_warehouse_time","authority":"canonical_fact","owner":"inventory"},
+    {"id":"settlement.line.v1","grain":"settlement_line","authority":"finance_ledger","owner":"finance"},
+    {"id":"cash.bank.v1","grain":"bank_transaction","authority":"finance_ledger","owner":"finance"},
+    {"id":"profit.cm3.v1","grain":"sku_store_period","authority":"projection","owner":"profit"},
+    {"id":"demand.censoring.v1","grain":"sku_store_period","authority":"projection","owner":"demand"},
+    {"id":"profit.after_sales.v1","grain":"order_store_period","authority":"projection","owner":"finance"},
+    {"id":"media.usage.v1","grain":"asset_listing_campaign","authority":"media","owner":"media"},
+    {"id":"agent.decision.v1","grain":"agent_run_decision","authority":"agent_evidence","owner":"agent_platform"}
+  ]
+}

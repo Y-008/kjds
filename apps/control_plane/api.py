@@ -18,6 +18,8 @@ from .routers import (
     channel_accounts,
     commerce_os,
     commercial_lifecycle,
+    commercial_usage,
+    control_plane_observability,
     customer_service,
     decision_science,
     delivery_exceptions,
@@ -39,6 +41,7 @@ from .routers import (
     procurement_supply,
     product_content,
     profit_command,
+    project_graph,
     returns_aftersales,
     seller_erp_bridge,
     seller_strategy,
@@ -46,6 +49,7 @@ from .routers import (
     strategic_benchmark,
     strategic_capital_dashboard,
     system,
+    temporal_facts,
     warehouse_fulfillment,
 )
 from .runtime import runtime
@@ -82,10 +86,28 @@ def is_write_safety_control_path(path: str) -> bool:
     agent_gate_observation = path.startswith(
         "/v1/agent-control/projects/"
     ) and path.endswith("/observe")
+    # The project-manager heartbeat is append-only safety bookkeeping.  It
+    # must remain writable while the kill switch is engaged so the control
+    # plane can record containment, liveness, and recovery state.  Match the
+    # concrete URL as middleware sees it; the router template contains a
+    # ``{project_id}`` placeholder and therefore cannot be an exact match.
+    project_graph_path = path.startswith("/v1/project-graph/")
+    project_graph_heartbeat = project_graph_path and path.endswith("/heartbeat")
+    # These project-graph endpoints only append internal observations or
+    # return proposal/overlay projections.  Keeping them available during a
+    # kill-switch event lets the PM record containment and compute recovery
+    # work without granting marketplace writes.
+    project_graph_control = project_graph_path and (
+        path.endswith("/signal")
+        or path.endswith("/dispatch-wave")
+        or path.endswith("/invalidate")
+    )
     return (
         path in KILL_SWITCH_CONTROL_PATHS
         or path in READ_ONLY_POST_PATHS
         or agent_gate_observation
+        or project_graph_heartbeat
+        or project_graph_control
         or path.startswith("/v1/operational-incidents")
         or path.startswith("/v1/operations-control")
         or limited_execution_bookkeeping
@@ -262,13 +284,17 @@ _ROUTE_MODULES = (
     strategic_benchmark,
     strategic_capital_dashboard,
     profit_command,
+    project_graph,
     returns_aftersales,
     warehouse_fulfillment,
     seller_erp_bridge,
     seller_strategy,
     sourcing_intelligence,
     finance_control,
+    temporal_facts,
     finance_imports,
+    commercial_usage,
+    control_plane_observability,
 )
 for _module in _ROUTE_MODULES:
     app.include_router(_module.router)

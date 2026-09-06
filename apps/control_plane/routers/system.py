@@ -108,7 +108,14 @@ def live() -> dict:
 
 @router.get("/health/ready")
 def ready() -> dict:
-    return health()
+    payload = health()
+    # Liveness and diagnostics may remain available while dependencies are
+    # degraded, but a readiness probe must fail closed.  Returning HTTP 200
+    # for an un-migrated or unreachable runtime lets Compose/Kubernetes route
+    # traffic into an instance that cannot safely persist facts.
+    if payload.get("status") != "ok":
+        raise HTTPException(status_code=503, detail=payload)
+    return payload
 
 
 @router.get("/v1/integrations/health")

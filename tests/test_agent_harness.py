@@ -211,6 +211,39 @@ def test_only_bound_verifier_can_pass_and_replay_is_idempotent():
     assert view["external_write_allowed"] is False
 
 
+def test_explicit_signal_idempotency_key_rejects_changed_payload():
+    service = harness()
+    observed_at = datetime.now(UTC)
+    payload = {
+        "project_id": "kjds-059",
+        "task_id": "task-pytest",
+        "verifier_id": "pytest",
+        "verifier_version": "1",
+        "source": "project-graph-signal/operational",
+        "scope": {
+            "tenant_ref": "tenant-a",
+            "store_ref": "store-a",
+            "idempotency_key": "signal-replay-1",
+        },
+        "state": "passed",
+        "summary": "first result",
+        "input_sha256": "2" * 64,
+        "artifact_ref": "output/pytest/signal.log",
+        "evidence_ref": None,
+        "observed_at": observed_at.isoformat(),
+        "store_ref": "store-a",
+    }
+    first = service.record_observation(payload, principal=principal())
+    replay = service.record_observation(payload, principal=principal())
+    assert replay == first
+
+    with pytest.raises(ValueError, match="observation idempotency payload conflict"):
+        service.record_observation(
+            {**payload, "summary": "changed result"},
+            principal=principal(),
+        )
+
+
 def test_team_agent_observation_rejects_elevated_verifier_authority():
     service = harness()
     service.register_verifier(

@@ -1610,6 +1610,7 @@ try {
             if (
                 -not $mutexReleaseError -and
                 $G1ControlMutexAcquired -and
+                $publishedReportSha256 -and
                 -not (Test-G1ControlMutexReleaseReceipt `
                     -Path $G1ControlMutexReleaseReceipt `
                     -RunTokenSha256 $RunTokenSha256 `

@@ -13,6 +13,25 @@
 
 > 本文件是 KJDS 的工程主规格，把需求、产品、系统架构、前后端模式、API 合同、核心业务流程、治理、安全、运行和阶段门集中在一个文件中。现有专题文档保留为证据和操作附件；新增工作必须先在本文件中找到对应的需求、Gate、Owner 和验收标准。
 
+### 0.5 AI ERP 数据与分析契约
+
+以下稳定契约补充本规格的数据、分析和无人值守目标，不建立第二套事实、利润、Evidence、Scope 或执行真源：
+
+- [KJDS AI Autonomous ERP Charter](KJDS_AI_AUTONOMOUS_ERP_CHARTER.md)
+- [KJDS Data Fabric and Transparency Contract](KJDS_DATA_FABRIC_AND_TRANSPARENCY_CONTRACT.md)
+- [KJDS Analytics Metric and Period Contract](KJDS_ANALYTICS_METRIC_AND_PERIOD_CONTRACT.md)
+- [KJDS Drill-down and Replay Contract](KJDS_DRILLDOWN_AND_REPLAY_CONTRACT.md)
+- [Data Product Registry](registries/data_products.json)
+- [Formal proof manifest](../../formal_proof_manifest.json)
+- `proof_frontier_planner.py`、`temporal_fact_store.py`、`transparency_envelope.py` 和 `temporal_fact_sql.py` 提供机器可检查的证明前沿、四时间事实、透明血缘和持久化适配器。
+- `project_manager_cycle.py` 组合前沿、四状态护栏、卡死恢复和 Agent 标准产物；`demand_censoring.py` 与 `after_sales_economics.py` 分别约束缺货截断需求和售后长尾利润。
+- `governed_graph_contracts.py` 固定 `temporal_truth`、`data_quality`、`economic_guard`、`experiment`、`counterexample`、`incident`、`recovery`、`commercial_entitlement` 和 `model_risk` 节点类型，并要求证明、证据、运行、经济四状态同时满足才可进入 `LIVE`。
+- [Standing Autonomous Execution Profile](KJDS_STANDING_AUTONOMOUS_EXECUTION_PROFILE.md) 与 `autonomous_execution_profile.py` 提供精确范围、六项门槛和一次性命令 Permit；它不改变 Approval、Readback、Rollback、Kill Switch 或 Agent 权限边界。
+- [Project Graph Proposal Ledger Contract](KJDS_PROJECT_GRAPH_PROPOSAL_LEDGER_CONTRACT.md) 与 `project_graph_proposal_ledger.py` 固化 `dispatch-wave`/`invalidate` 的 exact-scope 幂等、CAS revision、不可变响应和回放；proposal ledger 仍是内部审计投影，不是队列、Permit 或外部写入权威。
+- Alembic `20260906_0111` 为时间事实、心跳、用量和提案账本增加数据库级 append-only 触发器；`/health/ready` 必须同时通过 PostgreSQL 连通、代码迁移 head 和核心表检查，否则返回 HTTP 503。
+
+这些契约统一数据产品、事实粒度、双时间、指标、期间、血缘、下钻、回放、质量、租户作用域和导出格式。它们不授予外部写权限；任何策略自动执行仍须复用本文件的统一授权、Approval、Permit、预算、回读、审计和回滚要求。
+
 ## 0. 设计原则与文档规则
 
 ### 0.1 三层设计模型

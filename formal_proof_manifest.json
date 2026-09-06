@@ -1,0 +1,14 @@
+{
+  "contract_id": "kjds-formal-proof-manifest-v1",
+  "toolchain": "lean4-lake",
+  "entries": [
+    {
+      "stable_key": "order.settlement.profit.closed",
+      "theorem": "order_settlement_profit_closed",
+      "module": "formal/KJDS/Profit.lean",
+      "status": "blocked",
+      "assumptions": ["settlement_currency_explicit", "all_fee_facts_current"],
+      "evidence_refs": []
+    }
+  ]
+}

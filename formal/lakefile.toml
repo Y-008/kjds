@@ -1,0 +1,6 @@
+name = "kjds_formal"
+version = "0.1.0"
+defaultTargets = ["KJDS"]
+
+[[lean_lib]]
+name = "KJDS"

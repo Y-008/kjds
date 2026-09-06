@@ -134,6 +134,7 @@ from .ozon_finance_review import (
 from .ozon_global_rules import OzonGlobalRuleRegistry
 from .pilot_readiness import PilotReadinessService
 from .pilot_runs import PilotRunService
+from .pm_heartbeat_store import SqlProjectHeartbeatStore
 from .policy_shadow import PolicyShadowService
 from .post_execution import PostExecutionService
 from .primary_source_intake import PrimarySourceIntake
@@ -142,6 +143,7 @@ from .profit_command import ProfitCommandWorkspace
 from .profit_data_remediation import ProfitDataRemediationWorkspace
 from .profit_erp_sync import ProfitQualifiedErpSync, connector_from_environment
 from .profit_truth_readiness import ProfitTruthReadinessWorkspace
+from .project_graph_proposal_ledger import SqlProjectGraphProposalLedger
 from .providers import (
     ComfyUIProvider,
     FirecrawlProvider,
@@ -198,6 +200,7 @@ from .scoped_worker_credential_grants import CanonicalWorkerCredentialGrantIssue
 from .security import ApiKeyAuthenticator, KillSwitchService
 from .seller_operating_system import SellerOperatingSystem
 from .services import CommerceService
+from .skill_usage_sql import SqlSkillUsageLedger
 from .sourcing import SourcingService
 from .sourcing_intake import SupplierComparisonIntakeService
 from .sourcing_store import SqlSourcingStore
@@ -221,6 +224,7 @@ from .team_agent_postgres_runtime import PostgresTeamAgentRuntime
 from .team_agent_reviewer_authority import UnavailableTeamAgentReviewerAuthority
 from .team_agent_terminal_outbox import TeamAgentTerminalOutboxPublisher
 from .team_control_tower import TeamControlTower
+from .temporal_fact_sql import SqlTemporalFactStore
 from .truth_governance import TruthGovernanceService
 from .warehouse_fulfillment import WarehouseExecutionAuthorityService
 
@@ -291,6 +295,10 @@ class RuntimeServices:
     listing_execution_authority: Any
     execution_plans: Any
     facts: Any
+    temporal_fact_store: Any
+    skill_usage_ledger: Any
+    project_heartbeat_store: Any
+    project_graph_proposal_ledger: Any
     finance: Any
     fx_evidence_intake: Any
     finance_report_reviews: Any
@@ -478,6 +486,20 @@ def _build_team_agent_runtime(engine):
 def build_runtime() -> RuntimeServices:
     repo = build_repository()
     engine = getattr(repo, "engine", None) or create_database_engine()
+    # Bind the provider-neutral temporal fact adapter to the runtime engine.
+    # Schema ownership remains with migrations, so composition adds no startup
+    # DDL or other side effects.
+    temporal_fact_store = SqlTemporalFactStore(engine)
+    # Usage events are commercial accounting facts and must survive worker
+    # restarts.  The adapter does not create schema here; migration 0106 owns
+    # the table and an un-migrated runtime fails closed on first write.
+    skill_usage_ledger = SqlSkillUsageLedger(engine)
+    project_heartbeat_store = SqlProjectHeartbeatStore(engine)
+    # Project-graph dispatch/invalidation are proposal-only, but their
+    # immutable request/response identity must survive worker restarts.  The
+    # adapter intentionally performs no DDL here; migration 0110 owns the
+    # schema and an un-migrated runtime fails closed on first proposal write.
+    project_graph_proposal_ledger = SqlProjectGraphProposalLedger(engine)
     media_connector_contract = MediaConnectorContract()
     media_connectors = MediaConnectorRegistry(
         engine=engine,
@@ -1434,6 +1456,10 @@ def build_runtime() -> RuntimeServices:
         listing_execution_authority=listing_execution_authority,
         execution_plans=execution_plans,
         facts=facts,
+        temporal_fact_store=temporal_fact_store,
+        skill_usage_ledger=skill_usage_ledger,
+        project_heartbeat_store=project_heartbeat_store,
+        project_graph_proposal_ledger=project_graph_proposal_ledger,
         finance=finance,
         fx_evidence_intake=fx_evidence_intake,
         finance_report_reviews=finance_report_reviews,

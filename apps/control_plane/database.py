@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -12,6 +13,19 @@ load_dotenv()
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://hermes:hermes_dev@localhost:5432/hermes"
 RUNTIME_DATABASE_URL_ENV = "KJDS_RUNTIME_DATABASE_URL"
+MIGRATION_HEAD_ENV = "KJDS_MIGRATION_HEAD"
+DATABASE_CONNECT_TIMEOUT_ENV = "KJDS_DATABASE_CONNECT_TIMEOUT_SECONDS"
+# These tables are the minimum schema required for the control plane's core
+# repository and the replay/accounting slices added in 0104--0111.  A current
+# Alembic version without these tables is a corrupted or partially restored
+# database and must never be advertised as ready.
+REQUIRED_RUNTIME_TABLES = (
+    "outbox_events",
+    "temporal_fact_revisions",
+    "project_manager_heartbeats",
+    "skill_usage_events",
+    "project_graph_proposals",
+)
 COVERAGE_ISSUER_DATABASE_URL_ENV = "KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL"
 COVERAGE_ISSUER_ROLE = "kjds_gdc_issuance_runtime"
 CLOSED_LOOP_DATABASE_URL_ENVS = {
@@ -41,8 +55,87 @@ def database_url() -> str:
     return os.getenv("KJDS_DATABASE_URL", DEFAULT_DATABASE_URL)
 
 
+def _database_connect_timeout() -> int:
+    """Return a bounded PostgreSQL connect timeout without trusting env input."""
+
+    raw = str(os.getenv(DATABASE_CONNECT_TIMEOUT_ENV, "5")).strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 5
+    return max(1, min(value, 30))
+
+
 def create_database_engine(url: str | None = None) -> Engine:
-    return create_engine(url or database_url(), pool_pre_ping=True)
+    resolved = url or database_url()
+    parsed = make_url(resolved)
+    kwargs: dict[str, Any] = {"pool_pre_ping": True}
+    # SQLite and test doubles reject psycopg's connect_args.  Apply the bound
+    # timeout only to PostgreSQL, which is the production runtime contract.
+    if parsed.drivername.startswith("postgresql") and "connect_timeout" not in parsed.query:
+        kwargs["connect_args"] = {"connect_timeout": _database_connect_timeout()}
+    return create_engine(resolved, **kwargs)
+
+
+def expected_migration_heads() -> tuple[str, ...]:
+    """Resolve the code-owned Alembic heads without opening a database.
+
+    A release may optionally declare ``KJDS_MIGRATION_HEAD``.  The declaration
+    is checked against the migration files shipped with this process, so a
+    stale or forged environment value cannot make an older database appear
+    current.  Missing migration files fail closed instead of silently falling
+    back to a hard-coded revision.
+    """
+
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    root = Path(__file__).resolve().parents[2]
+    config_path = root / "alembic.ini"
+    migration_path = root / "migrations"
+    if not config_path.is_file() or not migration_path.is_dir():
+        raise RuntimeError("Alembic migration manifest is unavailable")
+    config = Config(str(config_path))
+    config.set_main_option("script_location", str(migration_path))
+    code_heads = tuple(sorted(ScriptDirectory.from_config(config).get_heads()))
+    if not code_heads:
+        raise RuntimeError("Alembic migration manifest has no head")
+
+    declared = str(os.getenv(MIGRATION_HEAD_ENV, "")).strip()
+    if declared and declared.upper() not in {"UNKNOWN", "UNSET"}:
+        declared_heads = tuple(sorted(item.strip() for item in declared.split(",") if item.strip()))
+        if declared_heads != code_heads:
+            raise RuntimeError("Declared migration head does not match shipped migrations")
+    return code_heads
+
+
+def _verify_postgresql_schema(connection: Any) -> None:
+    """Verify migration currentness and required tables on one connection."""
+
+    heads = expected_migration_heads()
+    current = tuple(
+        sorted(
+            str(value)
+            for value in connection.execute(
+                text("SELECT version_num FROM alembic_version ORDER BY version_num")
+            ).scalars()
+        )
+    )
+    if current != heads:
+        raise RuntimeError("Runtime database is not at the shipped Alembic head")
+
+    missing: list[str] = []
+    for table in REQUIRED_RUNTIME_TABLES:
+        # Pin the probe to the schema owned by Alembic.  Resolving an
+        # unqualified name through a mutable search_path could let a shadow
+        # table make an incomplete database look ready.
+        if connection.execute(
+            text("SELECT to_regclass(:qualified_name)"),
+            {"qualified_name": f"public.{table}"},
+        ).scalar() is None:
+            missing.append(table)
+    if missing:
+        raise RuntimeError("Runtime database schema is missing required tables")
 
 
 def runtime_database_url() -> str:
@@ -374,6 +467,15 @@ def database_health(engine: Engine | None = None) -> dict[str, str]:
     try:
         with target.connect() as connection:
             connection.execute(text("SELECT 1"))
+            # ``database_health`` is also used by the readiness probe.  Keep
+            # lightweight SQLite/fake-engine contract tests compatible, while
+            # requiring a real PostgreSQL runtime to be fully migrated before
+            # it can report healthy.
+            dialect_name = getattr(
+                getattr(target, "dialect", None), "name", None
+            )
+            if dialect_name == "postgresql":
+                _verify_postgresql_schema(connection)
         return {"status": "ok"}
     except Exception:
         raise RuntimeError("Runtime database health check failed") from None

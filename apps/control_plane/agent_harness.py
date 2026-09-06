@@ -708,7 +708,30 @@ class AgentHarnessService:
                 result_identity["idempotency_principal"] = principal_identity
             result_sha = _sha(result_identity)
             observation_identity: Any
-            if payload.get("source") == TEAM_AGENT_HARNESS_SOURCE:
+            # For ordinary verifier signals, an explicit scope idempotency key
+            # is the caller's operation identity.  Bind it to the deterministic
+            # observation id so replaying the same key with changed content
+            # resolves to the existing row and raises a conflict instead of
+            # silently creating a second observation.  TeamAgent observations
+            # retain their stronger scope/principal identity below because a
+            # restored worker is intentionally isolated from another worker's
+            # authority domain.
+            explicit_idempotency_key = (
+                payload.get("scope", {}).get("idempotency_key")
+                if isinstance(payload.get("scope"), Mapping)
+                else None
+            )
+            if (
+                explicit_idempotency_key
+                and payload.get("source") != TEAM_AGENT_HARNESS_SOURCE
+            ):
+                observation_identity = {
+                    "project_id": project.id,
+                    "verifier_id": verifier.id,
+                    "verifier_version": verifier.version,
+                    "idempotency_key": explicit_idempotency_key,
+                }
+            elif payload.get("source") == TEAM_AGENT_HARNESS_SOURCE:
                 observation_identity = {
                     "project_id": project.id,
                     "verifier_id": verifier.id,
