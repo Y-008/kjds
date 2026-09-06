@@ -46,6 +46,8 @@ def _amount(value: Decimal | str | int | float, name: str = "amount") -> Decimal
         raise ValueError(f"{name} must be a finite non-negative decimal") from exc
     if not value.is_finite() or value < 0:
         raise ValueError(f"{name} must be a finite non-negative decimal")
+    if value == 0:
+        return Decimal("0")
     # Inspect the raw tuple instead of Decimal.normalize(), which is governed
     # by the process decimal context and can silently round large values.
     digits = list(value.as_tuple().digits)
@@ -315,6 +317,8 @@ class ResourceBudgetLedger:
                 if event.parent_event_id is not None:
                     if event.state == "reserved":
                         raise ValueError("reserved event cannot have a parent reservation")
+                    if event.state == "overrun":
+                        raise ValueError("overrun event must be standalone")
                     parent = session.scalar(select(ResourceBudgetEventRow).where(
                         ResourceBudgetEventRow.tenant_id == event.tenant_id,
                         ResourceBudgetEventRow.budget_id == event.budget_id,
