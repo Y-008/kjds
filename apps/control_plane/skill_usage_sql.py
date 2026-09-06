@@ -12,12 +12,15 @@ engine and never creates tables implicitly.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    ForeignKey,
     Index,
     Numeric,
     String,
@@ -29,7 +32,12 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from .skill_usage_ledger import SkillUsageEvent, _normalize_cutoff, _usage_fingerprint
+from .skill_usage_ledger import (
+    SkillUsageEvent,
+    _legacy_usage_fingerprint,
+    _normalize_cutoff,
+    _usage_fingerprint,
+)
 from .sql_repository import Base
 
 
@@ -64,6 +72,10 @@ class SkillUsageEventRow(Base):
             "output_units IS NULL OR output_units >= 0",
             name="ck_skill_usage_output_units_nonnegative",
         ),
+        CheckConstraint(
+            "entitlement_receipt_ref IS NULL OR length(entitlement_receipt_ref) > 0",
+            name="ck_skill_usage_entitlement_receipt_ref",
+        ),
         Index(
             "ix_skill_usage_scope_occurred",
             "tenant_id",
@@ -75,6 +87,12 @@ class SkillUsageEventRow(Base):
             "ix_skill_usage_skill_occurred",
             "tenant_id",
             "skill_id",
+            "occurred_at",
+        ),
+        Index(
+            "ix_skill_usage_entitlement_receipt",
+            "tenant_id",
+            "entitlement_receipt_ref",
             "occurred_at",
         ),
     )
@@ -102,10 +120,100 @@ class SkillUsageEventRow(Base):
     cost_center: Mapped[str | None] = mapped_column(String(160), nullable=True)
     input_units: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
     output_units: Mapped[Decimal | None] = mapped_column(Numeric(38, 18), nullable=True)
+    entitlement_receipt_ref: Mapped[str | None] = mapped_column(
+        String(300), nullable=True
+    )
     fingerprint_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+
+
+class SkillUsageEntitlementLinkRow(Base):
+    """Immutable, tenant-scoped binding between usage and an admission receipt.
+
+    The usage event remains the accounting fact and this table is the durable
+    authorization edge.  Keeping the edge separate means legacy events can
+    remain unbound while every explicitly admitted event has a queryable,
+    append-only receipt reference.  Scope and idempotency columns are repeated
+    intentionally: they make an accidental cross-tenant join visible and let
+    the adapter verify the edge without trusting a caller supplied event id.
+    """
+
+    __tablename__ = "skill_usage_entitlement_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "usage_event_id",
+            name="uq_skill_usage_entitlement_link_event",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "idempotency_key",
+            name="uq_skill_usage_entitlement_link_idempotency",
+        ),
+        CheckConstraint(
+            "length(entitlement_receipt_ref) > 0",
+            name="ck_skill_usage_entitlement_link_receipt_ref",
+        ),
+        Index(
+            "ix_skill_usage_entitlement_link_receipt",
+            "tenant_id",
+            "entitlement_receipt_ref",
+            "recorded_at",
+        ),
+        Index(
+            "ix_skill_usage_entitlement_link_scope",
+            "tenant_id",
+            "customer_id",
+            "recorded_at",
+            "usage_event_id",
+        ),
+    )
+
+    link_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    usage_event_id: Mapped[str] = mapped_column(
+        String(200), ForeignKey("skill_usage_events.event_id"), nullable=False
+    )
+    tenant_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    customer_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    entitlement_receipt_ref: Mapped[str] = mapped_column(
+        String(300), nullable=False
+    )
+    fingerprint_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    @property
+    def receipt_sha256(self) -> str:
+        """Compatibility name for callers that call the ref a receipt hash."""
+
+        return self.entitlement_receipt_ref
+
+
+# Keep the longer spelling available to adapters that use the domain term
+# "receipt" in their type names while retaining the concise table contract.
+SkillUsageEntitlementReceiptLinkRow = SkillUsageEntitlementLinkRow
+
+
+def _entitlement_link_fingerprint(event: SkillUsageEvent) -> str:
+    """Hash the exact authorization edge, including its tenant boundary."""
+
+    return hashlib.sha256(
+        json.dumps(
+            {
+                "usage_event_id": event.event_id,
+                "tenant_id": event.tenant_id,
+                "customer_id": event.customer_id,
+                "idempotency_key": event.idempotency_key,
+                "entitlement_receipt_ref": event.entitlement_receipt_ref,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _aware(value: datetime) -> datetime:
@@ -136,6 +244,7 @@ def _event_from_row(row: SkillUsageEventRow) -> SkillUsageEvent:
         cost_center=row.cost_center,
         input_units=Decimal(str(row.input_units)) if row.input_units is not None else None,
         output_units=Decimal(str(row.output_units)) if row.output_units is not None else None,
+        entitlement_receipt_ref=row.entitlement_receipt_ref,
     )
 
 
@@ -154,7 +263,13 @@ class SqlSkillUsageLedger:
         """
 
         engine = create_engine(url, future=True)
-        Base.metadata.create_all(engine, tables=[SkillUsageEventRow.__table__])
+        Base.metadata.create_all(
+            engine,
+            tables=[
+                SkillUsageEventRow.__table__,
+                SkillUsageEntitlementLinkRow.__table__,
+            ],
+        )
         return cls(engine)
 
     @staticmethod
@@ -185,11 +300,92 @@ class SqlSkillUsageLedger:
     ) -> SkillUsageEvent:
         existing = _event_from_row(row)
         if (
-            row.fingerprint_sha256 != fingerprint
-            or _usage_fingerprint(existing) != row.fingerprint_sha256
+            _usage_fingerprint(existing) != fingerprint
+            or row.fingerprint_sha256
+            not in {
+                fingerprint,
+                # Rows written before 0117 have no receipt column and use the
+                # pre-binding digest.  They remain valid legacy retries.
+                _legacy_usage_fingerprint(existing)
+                if existing.entitlement_receipt_ref is None
+                else fingerprint,
+            }
         ):
             raise ValueError("usage idempotency key conflicts with immutable event")
         return existing
+
+    @staticmethod
+    def _verify_event_row(
+        row: SkillUsageEventRow, event: SkillUsageEvent
+    ) -> None:
+        """Verify the stored event digest before exposing it to a caller."""
+
+        accepted = {_usage_fingerprint(event)}
+        if event.entitlement_receipt_ref is None:
+            accepted.add(_legacy_usage_fingerprint(event))
+        if row.fingerprint_sha256 not in accepted:
+            raise ValueError("usage event fingerprint conflicts with immutable event")
+
+    @staticmethod
+    def _binding_for(
+        session: Session, event: SkillUsageEvent
+    ) -> SkillUsageEntitlementLinkRow | None:
+        """Load an authorization edge only inside the event's tenant scope."""
+
+        return session.scalar(
+            select(SkillUsageEntitlementLinkRow).where(
+                SkillUsageEntitlementLinkRow.tenant_id == event.tenant_id,
+                SkillUsageEntitlementLinkRow.usage_event_id == event.event_id,
+            )
+        )
+
+    @staticmethod
+    def _verify_binding(
+        session: Session, event: SkillUsageEvent
+    ) -> None:
+        """Fail closed when an explicit receipt edge is missing or altered.
+
+        Legacy events intentionally have no edge.  The two states are kept
+        disjoint so a stale/orphaned link cannot silently authorize a legacy
+        retry, and an explicitly admitted event cannot be returned after its
+        authorization edge has been deleted or rewritten.
+        """
+
+        if event.entitlement_receipt_ref is None:
+            # The link table was introduced after the legacy event schema.  A
+            # legacy read must remain usable even for a test/compatibility
+            # database that has only the original event table.
+            return
+        binding = SqlSkillUsageLedger._binding_for(session, event)
+        if binding is None:
+            raise ValueError("entitlement receipt binding is missing")
+        expected = _entitlement_link_fingerprint(event)
+        if (
+            binding.tenant_id != event.tenant_id
+            or binding.customer_id != event.customer_id
+            or binding.usage_event_id != event.event_id
+            or binding.idempotency_key != event.idempotency_key
+            or binding.entitlement_receipt_ref != event.entitlement_receipt_ref
+            or binding.fingerprint_sha256 != expected
+            or binding.link_id != expected
+        ):
+            raise ValueError("entitlement receipt binding conflicts with immutable usage event")
+
+    @staticmethod
+    def _new_binding(event: SkillUsageEvent) -> SkillUsageEntitlementLinkRow | None:
+        if event.entitlement_receipt_ref is None:
+            return None
+        fingerprint = _entitlement_link_fingerprint(event)
+        return SkillUsageEntitlementLinkRow(
+            link_id=fingerprint,
+            usage_event_id=event.event_id,
+            tenant_id=event.tenant_id,
+            customer_id=event.customer_id,
+            idempotency_key=event.idempotency_key,
+            entitlement_receipt_ref=event.entitlement_receipt_ref,
+            fingerprint_sha256=fingerprint,
+            recorded_at=datetime.now(UTC),
+        )
 
     def record(self, event: SkillUsageEvent) -> SkillUsageEvent:
         """Insert one event, returning the idempotent winner on retries.
@@ -206,7 +402,9 @@ class SqlSkillUsageLedger:
             with Session(self.engine) as session, session.begin():
                 existing = self._by_idempotency(session, event)
                 if existing is not None:
-                    return self._resolve_existing(existing, fingerprint)
+                    resolved = self._resolve_existing(existing, fingerprint)
+                    self._verify_binding(session, resolved)
+                    return resolved
                 by_id = session.get(SkillUsageEventRow, event.event_id)
                 if by_id is not None:
                     raise ValueError("event_id already exists")
@@ -229,11 +427,16 @@ class SqlSkillUsageLedger:
                     cost_center=event.cost_center,
                     input_units=event.input_units,
                     output_units=event.output_units,
+                    entitlement_receipt_ref=event.entitlement_receipt_ref,
                     fingerprint_sha256=fingerprint,
                     recorded_at=datetime.now(UTC),
                 )
                 session.add(row)
                 session.flush()
+                binding = self._new_binding(event)
+                if binding is not None:
+                    session.add(binding)
+                    session.flush()
                 return _event_from_row(row)
         except IntegrityError as exc:
             # A concurrent worker may have won either unique constraint.  Read
@@ -247,7 +450,9 @@ class SqlSkillUsageLedger:
                     )
                 )
                 if winner is not None:
-                    return self._resolve_existing(winner, fingerprint)
+                    resolved = self._resolve_existing(winner, fingerprint)
+                    self._verify_binding(session, resolved)
+                    return resolved
                 by_id = session.get(SkillUsageEventRow, event.event_id)
                 if by_id is not None:
                     raise ValueError("event_id already exists") from exc
@@ -258,7 +463,10 @@ class SqlSkillUsageLedger:
             row = session.get(SkillUsageEventRow, event_id)
             if row is None:
                 raise KeyError(f"Unknown usage event: {event_id}")
-            return _event_from_row(row)
+            event = _event_from_row(row)
+            self._verify_event_row(row, event)
+            self._verify_binding(session, event)
+            return event
 
     def events_for(
         self, *, tenant_id: str, customer_id: str | None = None,
@@ -278,7 +486,13 @@ class SqlSkillUsageLedger:
                     SkillUsageEventRow.occurred_at, SkillUsageEventRow.event_id
                 )
             ).all()
-        return tuple(_event_from_row(row) for row in rows)
+            events: list[SkillUsageEvent] = []
+            for row in rows:
+                event = _event_from_row(row)
+                self._verify_event_row(row, event)
+                self._verify_binding(session, event)
+                events.append(event)
+        return tuple(events)
 
     def total_cost(
         self,
@@ -314,4 +528,9 @@ class SqlSkillUsageLedger:
         return result
 
 
-__all__ = ["SkillUsageEventRow", "SqlSkillUsageLedger"]
+__all__ = [
+    "SkillUsageEntitlementLinkRow",
+    "SkillUsageEntitlementReceiptLinkRow",
+    "SkillUsageEventRow",
+    "SqlSkillUsageLedger",
+]

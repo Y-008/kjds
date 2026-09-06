@@ -28,6 +28,11 @@ class SkillUsageEvent:
     cost_center: str | None = None
     input_units: Decimal | None = None
     output_units: Decimal | None = None
+    # A receipt reference is issued by the server-side commercial entitlement
+    # authority.  It is deliberately optional so legacy, unbound metering
+    # requests continue to replay exactly as before.  When present, the SQL
+    # adapter persists a companion immutable binding row.
+    entitlement_receipt_ref: str | None = None
 
     def __post_init__(self) -> None:
         """Validate the immutable billing identity at construction time.
@@ -70,6 +75,15 @@ class SkillUsageEvent:
         if len(currency) != 3 or not currency.isascii() or not currency.isalpha():
             raise ValueError("currency must be a three-letter ASCII code")
         object.__setattr__(self, "currency", currency)
+        if self.entitlement_receipt_ref is not None:
+            if not isinstance(self.entitlement_receipt_ref, str):
+                raise ValueError("entitlement_receipt_ref must be a string")
+            receipt_ref = self.entitlement_receipt_ref.strip()
+            if not receipt_ref or len(receipt_ref) > 300:
+                raise ValueError(
+                    "entitlement_receipt_ref must be non-empty and <= 300 characters"
+                )
+            object.__setattr__(self, "entitlement_receipt_ref", receipt_ref)
         if not isinstance(self.occurred_at, datetime) or self.occurred_at.tzinfo is None:
             raise ValueError("occurred_at must include a timezone")
         try:
@@ -92,6 +106,39 @@ def _usage_fingerprint(event: SkillUsageEvent) -> str:
     the billable dimensions below define whether a retry is the same event.
     Keeping this canonicalizer shared by the memory and SQL adapters prevents
     a retry from being accepted by one adapter and rejected by the other.
+    """
+
+    return hashlib.sha256(
+        json.dumps(
+            {
+                "tenant_id": event.tenant_id,
+                "customer_id": event.customer_id,
+                "skill_id": event.skill_id,
+                "units": str(event.units),
+                "unit_cost": str(event.unit_cost),
+                "currency": event.currency,
+                "asset_ref": event.asset_ref,
+                "resource_type": event.resource_type,
+                "provider_ref": event.provider_ref,
+                "model_ref": event.model_ref,
+                "cost_center": event.cost_center,
+                "input_units": str(event.input_units) if event.input_units is not None else None,
+                "output_units": str(event.output_units) if event.output_units is not None else None,
+                "entitlement_receipt_ref": event.entitlement_receipt_ref,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
+def _legacy_usage_fingerprint(event: SkillUsageEvent) -> str:
+    """Hash format used before entitlement receipt binding was introduced.
+
+    Existing SQL rows may carry this digest.  Keeping a read/retry fallback
+    lets those legacy, unbound events remain idempotent after the nullable
+    receipt column is deployed; newly written events always use the current
+    fingerprint above.
     """
 
     return hashlib.sha256(

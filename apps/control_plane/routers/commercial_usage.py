@@ -153,6 +153,26 @@ def _entitlement_admission(
         raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc
 
 
+def _entitlement_receipt_ref(admission: dict[str, object] | None) -> str | None:
+    """Extract the immutable server-issued receipt reference.
+
+    The client never supplies this value.  It is derived from the authority's
+    admission receipt and copied into the usage event before the ledger write;
+    malformed authority output therefore cannot produce an apparently bound
+    event.  ``None`` preserves the legacy unbound metering contract.
+    """
+
+    if admission is None:
+        return None
+    value = admission.get("receipt_sha256")
+    if not isinstance(value, str) or not value.strip() or len(value.strip()) > 300:
+        raise HTTPException(
+            status_code=403,
+            detail="entitlement admission receipt is malformed",
+        )
+    return value.strip()
+
+
 @router.post("/v1/commercial/usage")
 def record_usage(
     body: UsageEventInput,
@@ -169,6 +189,7 @@ def record_usage(
         metric=body.metric,
         occurred_at=body.occurred_at,
     )
+    receipt_ref = _entitlement_receipt_ref(admission)
     event = SkillUsageEvent(
         event_id=body.event_id,
         idempotency_key=body.idempotency_key,
@@ -186,6 +207,7 @@ def record_usage(
         cost_center=body.cost_center,
         input_units=body.input_units,
         output_units=body.output_units,
+        entitlement_receipt_ref=receipt_ref,
     )
     result = run(lambda: runtime.skill_usage_ledger.record(event))
     if admission is not None and isinstance(result, dict):

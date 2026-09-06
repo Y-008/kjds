@@ -32,6 +32,7 @@ REQUIRED_RUNTIME_TABLES = (
     "resource_budget_events",
     "resource_admission_events",
     "after_sales_events",
+    "skill_usage_entitlement_links",
 )
 COVERAGE_ISSUER_DATABASE_URL_ENV = "KJDS_GLOBAL_DATA_COVERAGE_ISSUER_DATABASE_URL"
 COVERAGE_ISSUER_ROLE = "kjds_gdc_issuance_runtime"
