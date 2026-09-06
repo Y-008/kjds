@@ -15,10 +15,6 @@ from apps.control_plane.commercial_gate import (
 )
 
 
-def _gate() -> GovernedCommercialGate:
-    return GovernedCommercialGate()
-
-
 def _sha(label: str) -> str:
     return hashlib.sha256(label.encode()).hexdigest()
 
@@ -30,8 +26,30 @@ def _evidence_for_all() -> list[dict]:
     ]
 
 
+def _verified_evidence(evidence_id: str) -> dict[str, object]:
+    records = {entry["evidence_id"]: entry["content_sha256"] for entry in _evidence_for_all()}
+    records["evd-rel"] = _sha("rel")
+    digest = records.get(evidence_id)
+    if digest is None:
+        return {"evidence_id": evidence_id, "valid": False}
+    return {
+        "evidence_id": evidence_id,
+        "expected_sha256": digest,
+        "actual_sha256": digest,
+        "valid": True,
+    }
+
+
+def _server_verified_gate() -> GovernedCommercialGate:
+    return GovernedCommercialGate(evidence_verifier=_verified_evidence)
+
+
+def _gate() -> GovernedCommercialGate:
+    return GovernedCommercialGate()
+
+
 def test_assess_all_implemented_pass_but_not_for_sale():
-    result = _gate().assess_gate(evidence=_evidence_for_all())
+    result = _server_verified_gate().assess_gate(evidence=_evidence_for_all())
     assert result.status == "PASS"
     assert result.gate_pass is True
     assert result.not_for_sale is True
@@ -58,10 +76,10 @@ def test_assess_declared_only_contract_only_blocked():
 
 
 def test_assess_partial_mixed():
-    result = _gate().assess_gate(
+    result = _server_verified_gate().assess_gate(
         declared=["contract_dpa_privacy"],
         evidence=[
-            {"dimension": "stable_release", "evidence_id": "evd-1", "content_sha256": _sha("rel")},
+            {"dimension": "stable_release", "evidence_id": "evd-rel", "content_sha256": _sha("rel")},
         ],
     )
     statuses = {row["dimension"]: row["status"] for row in result.dimensions}
@@ -69,6 +87,80 @@ def test_assess_partial_mixed():
     assert statuses["contract_dpa_privacy"] == "CONTRACT_ONLY"
     assert statuses["unit_economics"] == "UNKNOWN"
     assert result.status == "BLOCKED"
+
+
+def test_unbound_server_verifier_cannot_promote_caller_supplied_refs():
+    result = _gate().assess_gate(evidence=_evidence_for_all())
+
+    assert result.status == "BLOCKED"
+    assert result.gate_pass is False
+    assert result.unknowns == C0_GATE_DIMENSIONS
+    assert all(row["status"] == "UNKNOWN" for row in result.dimensions)
+    assert all(row["verification_state"] == "UNAVAILABLE" for row in result.dimensions)
+    assert all(row["verification_reason"] == "evidence_verifier_not_bound" for row in result.dimensions)
+
+
+def test_server_verifier_hash_mismatch_is_unknown():
+    def wrong_hash(_evidence_id: str) -> dict[str, object]:
+        return {"valid": True, "actual_sha256": _sha("different")}
+
+    gate = GovernedCommercialGate(evidence_verifier=wrong_hash)
+    result = gate.assess_gate(
+        evidence=[
+            {
+                "dimension": "stable_release",
+                "evidence_id": "real-ref",
+                "content_sha256": _sha("claimed"),
+            }
+        ]
+    )
+    row = result.dimensions[0]
+
+    assert row["status"] == "UNKNOWN"
+    assert row["verification_state"] == "INVALID"
+    assert row["verification_reason"] == "evidence_hash_mismatch"
+    assert result.gate_pass is False
+
+
+def test_evidence_service_verify_result_is_bound_to_submitted_reference():
+    class EvidenceServiceStub:
+        def verify(self, evidence_id: str) -> dict[str, object]:
+            return _verified_evidence(evidence_id)
+
+    gate = GovernedCommercialGate(evidence_service=EvidenceServiceStub())
+    result = gate.assess_gate(
+        evidence=[
+            {
+                "dimension": "stable_release",
+                "evidence_id": "evd-0",
+                "content_sha256": _sha("stable_release"),
+            }
+        ]
+    )
+
+    row = result.dimensions[0]
+    assert row["status"] == "IMPLEMENTED"
+    assert row["verification_state"] == "VERIFIED"
+
+
+def test_server_verifier_failure_is_unknown_without_exception_details():
+    def unavailable(_evidence_id: str) -> object:
+        raise RuntimeError("database credentials must never escape")
+
+    result = GovernedCommercialGate(evidence_verifier=unavailable).assess_gate(
+        evidence=[
+            {
+                "dimension": "stable_release",
+                "evidence_id": "real-ref",
+                "content_sha256": _sha("claimed"),
+            }
+        ]
+    )
+    row = result.dimensions[0]
+
+    assert row["status"] == "UNKNOWN"
+    assert row["verification_state"] == "UNAVAILABLE"
+    assert row["verification_reason"] == "evidence_verification_failed"
 
 
 def test_dimensions_map_to_authoritative_modules():

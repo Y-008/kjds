@@ -6,9 +6,13 @@ sub-contracts: release provenance, isolated deployment, minimal
 billing/usage/entitlement, invoice/refund lifecycle, unit economics,
 contract/DPA/privacy, SLA/incident, backup/restore drill and exit/export/
 deletion. It references those sub-modules by name and never re-implements them.
-This kernel only ever reports ``not_for_sale=True`` and ``ready_to_sell=False``;
-it certifies no sales authority and admits no Fact, FinanceEntry, Approval,
-Permit, Pilot, Invoice, Payment, Receivable, Outbox or external write.
+Caller-supplied evidence ids and hashes are claims only; an ``IMPLEMENTED``
+result requires a server-bound EvidenceService/validator to resolve the id and
+return a matching, valid digest. Without that authority the dimension remains
+``UNKNOWN``. This kernel only ever reports ``not_for_sale=True`` and
+``ready_to_sell=False``; it certifies no sales authority and admits no Fact,
+FinanceEntry, Approval, Permit, Pilot, Invoice, Payment, Receivable, Outbox or
+external write.
 """
 
 from __future__ import annotations
@@ -159,10 +163,138 @@ def _hash(value: Any) -> str:
 
 
 class GovernedCommercialGate:
-    """Deterministic C0 commercial pilot gate contract kernel (capstone)."""
+    """Deterministic C0 commercial pilot gate contract kernel (capstone).
 
-    def __init__(self, *, clock: Any = None) -> None:
+    Evidence references are only claims made by the caller.  They become an
+    ``IMPLEMENTED`` dimension after a server-owned verifier resolves the
+    reference and proves that the stored bytes have the submitted digest.  A
+    gate without a verifier therefore remains fail-closed; a syntactically
+    valid (but unbound) evidence id can never promote a release.
+    """
+
+    def __init__(
+        self,
+        *,
+        clock: Any = None,
+        evidence_verifier: Any = None,
+        evidence_service: Any = None,
+        evidence_validator: Any = None,
+    ) -> None:
+        """Create a gate with an optional server-side evidence verifier.
+
+        ``EvidenceService`` instances expose ``verify(evidence_id)``.  A
+        callable verifier is also accepted for adapters and tests, and a
+        validator exposing ``validate`` is supported for existing integrations.
+        At most one source may be bound so that the authority used for an
+        assessment is deterministic and auditable.
+        """
+
+        verifiers = [
+            candidate
+            for candidate in (evidence_verifier, evidence_service, evidence_validator)
+            if candidate is not None
+        ]
+        if len(verifiers) > 1:
+            raise CommercialGateError("evidence_verifier_ambiguous")
         self.clock = clock or (lambda: datetime.now(UTC))
+        # Keep this public for dependency-injection wiring and diagnostics; it
+        # is supplied by server code, never by the assessment payload.
+        self.evidence_verifier = verifiers[0] if verifiers else None
+
+    @staticmethod
+    def _result_value(result: Any, names: tuple[str, ...]) -> Any:
+        """Read a verification field without trusting arbitrary error data."""
+
+        if isinstance(result, Mapping):
+            for name in names:
+                if name in result:
+                    return result[name]
+        for name in names:
+            try:
+                value = getattr(result, name)
+            except Exception:
+                continue
+            if value is not None:
+                return value
+        return None
+
+    @classmethod
+    def _nested_result_value(cls, result: Any, names: tuple[str, ...]) -> Any:
+        """Read fields from common EvidenceService wrapper objects."""
+
+        value = cls._result_value(result, names)
+        if value is not None:
+            return value
+        for container_name in ("verification", "record", "evidence"):
+            container = cls._result_value(result, (container_name,))
+            if container is not None:
+                value = cls._result_value(container, names)
+                if value is not None:
+                    return value
+        return None
+
+    @classmethod
+    def _verify_evidence(
+        cls,
+        verifier: Any,
+        *,
+        evidence_id: str,
+        expected_sha256: str,
+    ) -> tuple[str, str, str]:
+        """Resolve and verify one evidence reference.
+
+        The returned tuple is ``(dimension_status, verification_state,
+        reason)``.  Reasons are stable, non-sensitive contract codes.  No
+        verifier output is copied into the assessment, which keeps exception
+        text and arbitrary service payloads out of the canonical snapshot.
+        """
+
+        if verifier is None:
+            return "UNKNOWN", "UNAVAILABLE", "evidence_verifier_not_bound"
+
+        verify_method = getattr(verifier, "verify", None)
+        if not callable(verify_method):
+            verify_method = getattr(verifier, "validate", None)
+        if not callable(verify_method) and callable(verifier):
+            verify_method = verifier
+        if not callable(verify_method):
+            return "UNKNOWN", "UNAVAILABLE", "evidence_verifier_unavailable"
+
+        try:
+            result = verify_method(evidence_id)
+        except Exception:
+            # Verification failures are data uncertainty at this gate.  Do
+            # not let a random id turn into a 500 or reveal service details.
+            return "UNKNOWN", "UNAVAILABLE", "evidence_verification_failed"
+
+        valid = cls._nested_result_value(result, ("valid", "is_valid", "integrity_ok"))
+        if not isinstance(valid, bool):
+            return "UNKNOWN", "UNPROVEN", "evidence_verification_unproven"
+        if not valid:
+            return "UNKNOWN", "INVALID", "evidence_invalid"
+
+        returned_id = cls._nested_result_value(result, ("evidence_id", "id"))
+        if returned_id is not None and returned_id != evidence_id:
+            return "UNKNOWN", "INVALID", "evidence_id_mismatch"
+
+        actual_sha = cls._nested_result_value(
+            result,
+            ("actual_sha256", "content_sha256", "sha256", "blob_sha256", "content_hash", "hash"),
+        )
+        if not isinstance(actual_sha, str) or HEX64.fullmatch(actual_sha.lower()) is None:
+            return "UNKNOWN", "UNPROVEN", "evidence_actual_hash_missing"
+        actual_sha = actual_sha.lower()
+
+        # If the verifier returns its declared/recorded digest, bind that too
+        # so a valid blob under a different record cannot satisfy this claim.
+        recorded_sha = cls._nested_result_value(result, ("expected_sha256", "declared_sha256"))
+        if recorded_sha is not None and (
+            not isinstance(recorded_sha, str) or recorded_sha.lower() != expected_sha256
+        ):
+            return "UNKNOWN", "INVALID", "evidence_hash_mismatch"
+        if actual_sha != expected_sha256:
+            return "UNKNOWN", "INVALID", "evidence_hash_mismatch"
+        return "IMPLEMENTED", "VERIFIED", "evidence_verified"
 
     def assess_gate(
         self,
@@ -202,13 +334,24 @@ class GovernedCommercialGate:
         for dimension in C0_GATE_DIMENSIONS:
             module_ref = C0_DIMENSION_MODULE_REFS[dimension]
             if dimension in evidence_map:
+                evidence_id = evidence_map[dimension]["evidence_id"]
+                content_sha = evidence_map[dimension]["content_sha256"]
+                dimension_status, verification_state, verification_reason = self._verify_evidence(
+                    self.evidence_verifier,
+                    evidence_id=evidence_id,
+                    expected_sha256=content_sha,
+                )
+                if dimension_status != "IMPLEMENTED":
+                    unknowns.append(dimension)
                 rows.append(
                     {
                         "dimension": dimension,
                         "module_ref": module_ref,
-                        "status": "IMPLEMENTED",
-                        "evidence_id": evidence_map[dimension]["evidence_id"],
-                        "content_sha256": evidence_map[dimension]["content_sha256"],
+                        "status": dimension_status,
+                        "evidence_id": evidence_id,
+                        "content_sha256": content_sha,
+                        "verification_state": verification_state,
+                        "verification_reason": verification_reason,
                     }
                 )
             elif dimension in declared_set:
