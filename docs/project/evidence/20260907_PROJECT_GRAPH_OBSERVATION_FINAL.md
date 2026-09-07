@@ -6,8 +6,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| captured_at | 2026-09-07T04:29:10.553052+00:00 |
-| source_code_head_before_evidence_commit | `b34f63ce37f9d502fd3c6394aadd8470baa6cfa5` (`feat(web): align AI ERP UI with design tokens`) |
+| captured_at | 2026-09-07T04:37:52.083153+00:00 |
+| source_code_head_before_evidence_commit | `d1961b7c14e73f79ad7c0fc404d5ad5c60d616e5` (`fix: derive scoped graph reads safely`) |
 | API / schema | `0.59.0` / `v1` |
 | OpenAPI canonical SHA-256 | `cd8f5a0fd98379f121635390339c6ac7a88093334db14731b878144d57088d2f` |
 | OpenAPI paths | 394 |
@@ -27,10 +27,10 @@
 
 ## 图谱前沿、关键路径和回放
 
-- Frontier HTTP 200，`status=BLOCKED`，`frontier=224`，`blockers=606`；快照 SHA-256 `ba86778d9b94bfa69d16716fb5c95a73b085717eac55e7954d48855442f1bd51`，响应 SHA-256 `ecd9eaf573f4910151f33af0aebe70d7bc66ff13bffc9c87f94b5db73ea96b38`。
-- 关键路径 HTTP 200，目标 `task-m4-actual-cash`，长度 17，状态 `BLOCKED`；结果 SHA-256 `5b919009052696cedeaa128390d29ea659de6c7f17c4754189c13b63ac8d0988`，响应 SHA-256 `b4590cb1ba9bce4fd36df9a7cf2c165335166a7885070683a4c96a43dfd7dc1e`。
+- Frontier HTTP 200，`status=BLOCKED`，`frontier=224`，`blockers=606`；快照 SHA-256 `f6cebc3838f44f3a1e2d69c1b736fcb60b37a34fbe3d6bd614da29665e38a869`，响应 SHA-256 `6d6068a36b594d17f8aa719c3472eaed16972bb555f9c69f22149c3723a8ff14`。
+- 关键路径 HTTP 200，目标 `task-m4-actual-cash`，长度 17，状态 `BLOCKED`；结果 SHA-256 `c78abfba9f7ad9454abc4ead860b5b5ccec4174af7b756c219a19e707c01134b`，响应 SHA-256 `79598546e2c3dbc3c645d0b46e3e72fb352955d9b410c1a4b60e76943b762943`。
 - 主要阻断原因包括 `freshness_stale`、M0–M3 上游阻断，以及 API、容器、数据库、浏览器、测试证据过期。项目经理应优先刷新这些前置节点，而不是派发无依赖的外部写入。
-- Replay HTTP 200，`integrity.status=VALID`、`snapshot_hash_verified=true`，业务状态仍为 `BLOCKED`；结果 SHA-256 `75f81f5b97e01a1a5401688e184c6ae848eee39468f0750229ff953b06a53ab5`，回放快照 SHA-256 `fc9faaa6fc4dffea87480682444bc33ecde8568d38c5539b7449290fd8d2af6a`。
+- Replay HTTP 200，`integrity.status=VALID`、`snapshot_hash_verified=true`，业务状态仍为 `BLOCKED`；结果 SHA-256 `2f9c9b30c7a7b27c4fe1cd68bcbe009d09708897bfeb1fe6c5049984c7aaf56f`，回放快照 SHA-256 `6b0007a326793fcffa14d46c8e5b3a0c631447635c1e2392de576ca2c102717b`。
 
 ## 经济护栏
 
