@@ -157,6 +157,7 @@
 .commandItems { display: grid; gap: 6px; margin-top: 12px; }
 .commandItems a { display: grid; gap: 3px; border-radius: 9px; padding: 10px; color: var(--kjds-text-primary); text-decoration: none; }
 .commandItems a:hover { background: var(--kjds-surface-muted); }
+.commandGroup { margin: 9px 8px 2px; color: var(--kjds-accent-strong); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .commandItems strong { font-size: 12px; }
 .commandItems span, .commandEmpty, .commandMenu footer { color: var(--kjds-text-muted); font-size: 11px; }
 .commandEmpty { margin: 8px 0; padding: 10px; }

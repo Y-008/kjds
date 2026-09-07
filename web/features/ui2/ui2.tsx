@@ -130,6 +130,7 @@ export function PageHeader({
 }
 
 const commandItems = [
+  { href: "/module-catalog", label: "功能模块中心", detail: "L1 经营域 · L2 工作台 · L3 模块 · L4 操作说明" },
   { href: "/bi/overview", label: "BI Overview", detail: "经营分析总览" },
   { href: "/bi/capabilities", label: "能力成熟度", detail: "合同、验证与生产 Gate" },
   { href: "/bi/journeys/current", label: "经营旅程", detail: "从信号到现金的只读时间线" },
@@ -145,6 +146,12 @@ const commandItems = [
   { href: "/operating-intelligence", label: "经营智能", detail: "指标、异常和媒体工作台" },
   { href: "/evidenceops", label: "EvidenceOps", detail: "证据与工作项入口" },
 ] as const;
+
+function commandGroup(href: string) {
+  if (href === "/module-catalog" || href.startsWith("/profit") || href === "/operating-intelligence") return "经营工作台";
+  if (href.startsWith("/bi/")) return "分析与简报";
+  return "证据与治理";
+}
 
 export function CommandMenu() {
   const [open, setOpen] = useState(false);
@@ -246,18 +253,22 @@ export function CommandMenu() {
             找到 {items.length} 个可跳转工作区
           </p>
           <div className={styles.commandItems} id={commandItemsId}>
-            {items.map((item, index) => (
-              <Link
-                href={item.href}
-                key={item.href}
-                ref={(node) => { itemRefs.current[index] = node; }}
-                onClick={() => setOpen(false)}
-                onKeyDown={(event) => handleItemKeyDown(event, index)}
-              >
-                <strong>{item.label}</strong>
-                <span>{item.detail}</span>
-              </Link>
-            ))}
+            {items.map((item, index) => {
+              const group = commandGroup(item.href);
+              const previousGroup = index > 0 ? commandGroup(items[index - 1].href) : null;
+              return <div key={item.href}>
+                {group !== previousGroup ? <p className={styles.commandGroup}>{group}</p> : null}
+                <Link
+                  href={item.href}
+                  ref={(node) => { itemRefs.current[index] = node; }}
+                  onClick={() => setOpen(false)}
+                  onKeyDown={(event) => handleItemKeyDown(event, index)}
+                >
+                  <strong>{item.label}</strong>
+                  <span>{item.detail}</span>
+                </Link>
+              </div>;
+            })}
             {!items.length ? <p className={styles.commandEmpty}>未找到可跳转工作区。</p> : null}
           </div>
           <footer>仅导航和只读问答入口；不会创建审批、Permit 或平台写入。</footer>
