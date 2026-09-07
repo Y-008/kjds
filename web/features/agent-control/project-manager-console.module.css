@@ -1,0 +1,47 @@
+.page { min-height: 100vh; padding: 28px; color: #eaf1fa; background: #08101d; }
+.header, .scope, .metrics, .gates, .work, .columns { max-width: 1440px; margin: 0 auto 18px; }
+.header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.header h1 { margin: 0; font-size: clamp(34px, 5vw, 68px); }
+.header span { display: block; margin-top: 10px; color: #9aa9bb; }
+.header button { min-height: 44px; border: 1px solid #34506e; border-radius: 10px; padding: 10px 15px; color: inherit; background: #101d2d; }
+.header button:focus-visible, .panel li:focus-visible { outline: 3px solid #78d5ff; outline-offset: 3px; }
+.kicker { margin: 0 0 8px; color: #74d5ff; font-size: 11px; letter-spacing: .15em; }
+.scope { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; border: 1px solid #27415f; border-radius: 14px; padding: 16px; background: #0e1928; }
+.scope span { color: #9eafc1; font-size: 12px; }
+.scope strong { margin-left: auto; color: #ffcb7a; font-size: 12px; }
+.metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.metric, .gates, .work, .panel { border: 1px solid #1f334b; border-radius: 16px; background: #0b1523; }
+.metric { padding: 14px; }
+.metric span { display: block; color: #8092a6; font-size: 11px; text-transform: uppercase; }
+.metric strong { display: block; margin-top: 8px; color: #86d7ff; font-size: 22px; overflow-wrap: anywhere; }
+.gates, .work { padding: 20px; }
+.sectionHeading { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 16px; }
+.sectionHeading h2 { margin: 0; font-size: 26px; }
+.sectionHeading code { color: #72caef; }
+.sectionHeading > span { color: #73ddb7; }
+.gateGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.gate { display: grid; gap: 8px; border: 1px solid #243b55; border-radius: 12px; padding: 14px; background: #0e1a2a; }
+.gate span { color: #91a2b4; font-size: 12px; }
+.gate b { color: #77ddb8; }
+.gate[data-state="BLOCKED"], .gate[data-state="STALE"], .gate[data-state="NO_DATA"], .task[data-state="BLOCKED"], .task[data-state="STALE"] { border-color: #8f5a45; }
+.gate[data-state="BLOCKED"] b, .gate[data-state="STALE"] b, .gate[data-state="NO_DATA"] b { color: #ffb28a; }
+.guardLine { margin: 14px 0 0; color: #9eafc1; font-size: 12px; }
+.taskList { display: grid; gap: 10px; }
+.task { display: grid; grid-template-columns: 130px 1.1fr 1fr; gap: 18px; border: 1px solid #223a55; border-radius: 12px; padding: 16px; background: #0e1a2a; }
+.task > div { min-width: 0; }
+.task b { display: block; color: #77ddb8; font-size: 12px; }
+.task small, .task p { color: #93a4b7; font-size: 12px; overflow-wrap: anywhere; }
+.task h3 { margin: 0 0 6px; }
+.task p { margin: 0 0 6px; }
+.task strong { color: #dbe8f6; font-size: 12px; }
+.columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.panel { padding: 16px; }
+.panel h3 { margin: 0 0 10px; }
+.panel ul { margin: 0; padding-left: 20px; color: #a9bbce; }
+.panel li { margin: 8px 0; overflow-wrap: anywhere; }
+.panel p, .empty, .loading { color: #93a4b7; }
+.error { max-width: 1440px; margin: 0 auto 18px; border: 1px solid #8f5a45; border-radius: 10px; padding: 12px; color: #ffb0a5; background: #28171b; }
+.loading { max-width: 1440px; margin: 18px auto; }
+@media (max-width: 900px) { .page { padding: 18px; } .header { align-items: flex-start; flex-direction: column; } .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gateGrid, .columns { grid-template-columns: 1fr 1fr; } .task { grid-template-columns: 90px 1fr; } .task > div:last-child { grid-column: 2; } }
+@media (max-width: 520px) { .page { padding: 12px; } .metrics, .gateGrid, .columns { grid-template-columns: 1fr 1fr; } .scope strong { margin-left: 0; width: 100%; } .task { grid-template-columns: 1fr; } .task > div:last-child { grid-column: 1; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

@@ -1,2 +1,5 @@
-import { GraphConsole } from "../../features/agent-control/graph-console";
-export default function Page() { return <GraphConsole graphKind="project" />; }
+import { ProjectManagerConsole } from "../../features/agent-control/project-manager-console";
+
+export default function Page() {
+  return <ProjectManagerConsole />;
+}
