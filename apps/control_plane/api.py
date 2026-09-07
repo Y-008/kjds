@@ -21,6 +21,7 @@ from .routers import (
     commercial_finance,
     commercial_lifecycle,
     commercial_usage,
+    control_loop,
     control_plane_observability,
     customer_service,
     decision_science,
@@ -304,6 +305,7 @@ _ROUTE_MODULES = (
     autonomous_execution_profiles,
     resource_budgets,
     control_plane_observability,
+    control_loop,
 )
 for _module in _ROUTE_MODULES:
     app.include_router(_module.router)
