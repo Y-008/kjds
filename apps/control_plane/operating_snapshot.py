@@ -207,6 +207,76 @@ class OperatingSnapshot:
         return replace(self, **changes, snapshot_sha256="")
 
 
+@dataclass(frozen=True, slots=True)
+class OperatingSnapshotReplay:
+    """Result of validating a persisted snapshot before it is replayed.
+
+    A stored row is not evidence merely because it can be deserialized.  The
+    surrounding heartbeat must bind the snapshot to the same project scope,
+    graph digest, checkout observation and authority timestamp.  Keeping this
+    result separate from :class:`OperatingSnapshot` lets API readers return a
+    deterministic ``INVALID_REPLAY`` projection without ever exposing a
+    malformed snapshot as an admissible one.
+    """
+
+    snapshot: OperatingSnapshot | None
+    reasons: tuple[str, ...] = ()
+
+    @property
+    def valid(self) -> bool:
+        return self.snapshot is not None and not self.reasons
+
+
+def verify_operating_snapshot_replay(
+    value: Any,
+    *,
+    expected_scope: Mapping[str, str] | None = None,
+    expected_graph_snapshot_sha256: str | None = None,
+    expected_exact_head: str | None = None,
+    expected_observed_at: datetime | str | None = None,
+) -> OperatingSnapshotReplay:
+    """Validate a snapshot against the immutable heartbeat binding.
+
+    This function is pure and does not read the clock or any external system.
+    Missing or contradictory binding facts are reported as stable reason
+    codes.  A caller must treat every non-empty reason tuple as unusable,
+    even when the embedded snapshot's own digest is valid.
+    """
+
+    try:
+        snapshot = build_operating_snapshot(value)
+    except (OperatingSnapshotError, TypeError):
+        return OperatingSnapshotReplay(None, ("snapshot_invalid",))
+
+    reasons: list[str] = []
+    if expected_scope is not None:
+        for field in ("project_id", "tenant_ref", "entity_ref", "store_ref"):
+            expected = expected_scope.get(field)
+            if expected is not None and getattr(snapshot, field) != str(expected).strip():
+                reasons.append(f"snapshot_scope_mismatch:{field}")
+
+    if expected_graph_snapshot_sha256 is not None:
+        expected_graph = str(expected_graph_snapshot_sha256).strip().lower()
+        if snapshot.graph_snapshot_sha256 != expected_graph:
+            reasons.append("snapshot_graph_digest_mismatch")
+
+    if expected_exact_head is not None:
+        expected_head = str(expected_exact_head).strip()
+        if expected_head and snapshot.exact_head != expected_head:
+            reasons.append("snapshot_head_mismatch")
+
+    if expected_observed_at is not None:
+        try:
+            expected_time = _timestamp(expected_observed_at)
+        except OperatingSnapshotError:
+            reasons.append("snapshot_binding_time_invalid")
+        else:
+            if snapshot.observed_at != expected_time:
+                reasons.append("snapshot_observed_at_mismatch")
+
+    return OperatingSnapshotReplay(snapshot, tuple(dict.fromkeys(reasons)))
+
+
 def build_operating_snapshot(value: Mapping[str, Any]) -> OperatingSnapshot:
     """Build a snapshot from already observed server facts."""
 
@@ -231,7 +301,9 @@ __all__ = [
     "CONTRACT_ID",
     "OperatingSnapshot",
     "OperatingSnapshotError",
+    "OperatingSnapshotReplay",
     "build_operating_snapshot",
     "canonical_json",
     "snapshot_hash",
+    "verify_operating_snapshot_replay",
 ]

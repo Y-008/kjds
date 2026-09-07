@@ -14,6 +14,7 @@ from apps.control_plane.autonomous_pm_heartbeat import (
     ServerEconomicGuardRead,
 )
 from apps.control_plane.economic_guard_service import EconomicGuardInput, evaluate_economic_guard
+from apps.control_plane.operating_snapshot import build_operating_snapshot
 from apps.control_plane.routers import project_graph
 from apps.control_plane.runtime import runtime
 from apps.control_plane.security import Principal, WritesDisabled
@@ -199,9 +200,128 @@ def test_latest_heartbeat_replays_scoped_operating_snapshot(monkeypatch):
     result = project_graph.latest_project_heartbeat(
         project_id="project-a", principal=principal, store_ref="store-a"
     )
-    assert result["status"] == "REPLAYED"
-    assert result["operating_snapshot"]["snapshot_sha256"] == "a" * 64
+    assert result["status"] == "INVALID_REPLAY"
+    assert result["operating_snapshot"] is None
+    assert "heartbeat_payload_hash_missing" in result["replay_integrity"]["reasons"]
     assert result["external_write_allowed"] is False
+
+
+def _valid_heartbeat_replay_record(*, observed_at: datetime | None = None):
+    observed = observed_at or datetime(2026, 9, 7, 12, tzinfo=UTC)
+    snapshot = build_operating_snapshot(
+        {
+            "project_id": "project-a",
+            "tenant_ref": "tenant-a",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+            "observed_at": observed,
+            "exact_head": "a" * 40,
+            "migration_head": "migration-1",
+            "graph_snapshot_sha256": "b" * 64,
+            "proof_state": "PROVED",
+            "evidence_state": "VALID",
+            "operational_state": "LIVE",
+            "economic_state": "ALLOWED",
+            "rollback_available": True,
+            "external_readback_passed": True,
+        }
+    )
+    payload = {
+        "operating_snapshot": snapshot.as_dict(),
+        "operational_snapshot": {
+            "server_git": {"head": "a" * 40},
+            "authority_snapshot": {"observed_at": observed.isoformat()},
+        },
+    }
+    return {
+        "heartbeat_id": "hb-valid",
+        "project_id": "project-a",
+        "tenant_id": "tenant-a",
+        "entity_id": "entity-a",
+        "store_ref": "store-a",
+        "observed_at": observed.isoformat(),
+        "graph_snapshot_sha256": "b" * 64,
+        "payload": payload,
+        "payload_sha256": project_graph._heartbeat_payload_hash(payload),
+    }
+
+
+def test_latest_heartbeat_replays_only_a_bound_and_hashed_snapshot(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        project_graph,
+        "_graph",
+        lambda *_args, **_kwargs: {"scope": {"entity_ref": "entity-a", "store_ref": "store-a"}},
+    )
+    record = _valid_heartbeat_replay_record()
+    monkeypatch.setattr(runtime.project_heartbeat_store, "latest", lambda **_kwargs: record)
+
+    result = project_graph.latest_project_heartbeat(
+        project_id="project-a", principal=principal, store_ref="store-a"
+    )
+
+    assert result["status"] == "REPLAYED"
+    assert result["replay_integrity"]["valid"] is True
+    assert result["operating_snapshot"]["admission_state"] == "LIVE"
+    assert result["replay_integrity"]["reasons"] == []
+
+
+def test_latest_heartbeat_rejects_tampered_payload_even_when_snapshot_hash_is_valid(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        project_graph,
+        "_graph",
+        lambda *_args, **_kwargs: {"scope": {"entity_ref": "entity-a", "store_ref": "store-a"}},
+    )
+    record = _valid_heartbeat_replay_record()
+    record["payload"]["operating_snapshot"]["economic_state"] = "BLOCKED"
+    # Leave payload_sha256 untouched to model storage or transport tampering.
+    monkeypatch.setattr(runtime.project_heartbeat_store, "latest", lambda **_kwargs: record)
+
+    result = project_graph.latest_project_heartbeat(
+        project_id="project-a", principal=principal, store_ref="store-a"
+    )
+
+    assert result["status"] == "INVALID_REPLAY"
+    assert result["operating_snapshot"] is None
+    assert "heartbeat_payload_hash_mismatch" in result["replay_integrity"]["reasons"]
+
+
+def test_latest_heartbeat_rejects_old_receipt_binding(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        project_graph,
+        "_graph",
+        lambda *_args, **_kwargs: {"scope": {"entity_ref": "entity-a", "store_ref": "store-a"}},
+    )
+    record = _valid_heartbeat_replay_record()
+    record["graph_snapshot_sha256"] = "c" * 64
+    # Recompute the outer payload digest: the row is internally intact but
+    # its snapshot is bound to an older graph frontier.
+    record["payload_sha256"] = project_graph._heartbeat_payload_hash(record["payload"])
+    monkeypatch.setattr(runtime.project_heartbeat_store, "latest", lambda **_kwargs: record)
+
+    result = project_graph.latest_project_heartbeat(
+        project_id="project-a", principal=principal, store_ref="store-a"
+    )
+
+    assert result["status"] == "INVALID_REPLAY"
+    assert "snapshot_graph_digest_mismatch" in result["replay_integrity"]["reasons"]
 
 
 def test_heartbeat_rejects_entity_scope_mismatch(monkeypatch):
@@ -505,6 +625,7 @@ def test_heartbeat_route_uses_runtime_authority_and_ignores_caller_claims(monkey
     assert result["decision"].status == "dispatch"
     operational = captured["payload"]["operational_snapshot"]
     assert operational["authority_status"] == "ready"
+    assert captured["payload"]["operating_snapshot"]["proof_state"] == "PROVED"
     assert operational["authority_unverified_fields"] == []
     assert all(operational[field] is True for field in (
         "task_queue_known",

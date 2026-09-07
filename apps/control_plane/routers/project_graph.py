@@ -24,7 +24,10 @@ from ..economic_guard_service import (
     EconomicGuardResult,
     evaluate_economic_guard,
 )
-from ..operating_snapshot import build_operating_snapshot
+from ..operating_snapshot import (
+    build_operating_snapshot,
+    verify_operating_snapshot_replay,
+)
 from ..project_manager_cycle import normalize_task_result
 from ..project_task_contracts import (
     ProjectTaskContractError,
@@ -370,6 +373,7 @@ def _heartbeat_authority_fields(
 def _operating_snapshot_from_heartbeat(
     *,
     project_id: str,
+    tenant_ref: str,
     graph: Mapping[str, Any],
     projection: Mapping[str, Any],
     server_git: Any,
@@ -393,6 +397,12 @@ def _operating_snapshot_from_heartbeat(
         }.get(observation.status, "NO_DATA")
 
     proof_status = str(projection.get("status") or "NO_DATA").upper()
+    # ``proof_frontier_planner`` intentionally uses PROVEN for its graph
+    # projection, while OperatingSnapshot uses the governance vocabulary
+    # PROVED.  Normalize at this boundary so a proven graph is not silently
+    # downgraded to NO_DATA during replay.
+    if proof_status == "PROVEN":
+        proof_status = "PROVED"
     if proof_status not in {"PROVED", "UNPROVED", "STALE", "BLOCKED", "NO_DATA"}:
         proof_status = "NO_DATA"
     operational = "UNKNOWN"
@@ -415,12 +425,16 @@ def _operating_snapshot_from_heartbeat(
             if (isinstance(item, Mapping) and item.get("id") is not None) or isinstance(item, str)
         ]
 
+    graph_scope = graph.get("scope") if isinstance(graph.get("scope"), Mapping) else {}
     return build_operating_snapshot(
         {
             "project_id": project_id,
-            "tenant_ref": str((graph.get("scope") or {}).get("tenant_ref") or "unknown"),
-            "entity_ref": str((graph.get("scope") or {}).get("entity_ref") or "unknown"),
-            "store_ref": str((graph.get("scope") or {}).get("store_ref") or "unknown"),
+            # The authenticated tenant is the fallback when older graph
+            # snapshots omit tenant_ref.  Never emit an "unknown" tenant
+            # that cannot be replay-bound to the request principal.
+            "tenant_ref": str(graph_scope.get("tenant_ref") or tenant_ref),
+            "entity_ref": str(graph_scope.get("entity_ref") or "unknown"),
+            "store_ref": str(graph_scope.get("store_ref") or "unknown"),
             "observed_at": authority_snapshot.observed_at,
             "exact_head": str(getattr(server_git, "head", None) or "unobserved"),
             "migration_head": str(graph.get("migration_head") or "unbound"),
@@ -453,6 +467,106 @@ def _operating_snapshot_from_heartbeat(
             ),
         }
     )
+
+
+def _heartbeat_payload_hash(payload: Mapping[str, Any]) -> str:
+    """Match the immutable JSON digest used by ``SqlProjectHeartbeatStore``."""
+
+    return hashlib.sha256(
+        json.dumps(
+            dict(payload),
+            sort_keys=True,
+            default=str,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _verify_latest_heartbeat_replay(
+    *,
+    heartbeat: Mapping[str, Any],
+    project_id: str,
+    tenant_ref: str,
+    entity_ref: str,
+    store_ref: str,
+) -> tuple[dict[str, Any] | None, tuple[str, ...], str | None]:
+    """Validate a persisted heartbeat before exposing its operating snapshot.
+
+    The durable store protects the row with a payload digest, but an API
+    reader still has to verify that digest and the nested operating snapshot's
+    scope bindings.  This helper returns only a validated snapshot; callers
+    must treat any reason as an ``INVALID_REPLAY`` result.
+    """
+
+    reasons: list[str] = []
+    payload = heartbeat.get("payload")
+    computed_payload_sha256: str | None = None
+    if not isinstance(payload, Mapping):
+        reasons.append("heartbeat_payload_missing")
+    else:
+        computed_payload_sha256 = _heartbeat_payload_hash(payload)
+        supplied_payload_sha256 = heartbeat.get("payload_sha256")
+        if not isinstance(supplied_payload_sha256, str) or not supplied_payload_sha256.strip():
+            reasons.append("heartbeat_payload_hash_missing")
+        elif supplied_payload_sha256.strip().lower() != computed_payload_sha256:
+            reasons.append("heartbeat_payload_hash_mismatch")
+
+    expected_scope = {
+        "project_id": project_id,
+        "tenant_ref": tenant_ref,
+        "entity_ref": entity_ref,
+        "store_ref": store_ref,
+    }
+    for field, expected in (
+        ("project_id", project_id),
+        ("tenant_id", tenant_ref),
+        ("entity_id", entity_ref),
+        ("store_ref", store_ref),
+    ):
+        if heartbeat.get(field) != expected:
+            reasons.append(f"heartbeat_scope_mismatch:{field}")
+
+    graph_digest = heartbeat.get("graph_snapshot_sha256")
+    if not isinstance(graph_digest, str) or len(graph_digest.strip()) != 64:
+        reasons.append("heartbeat_graph_digest_missing")
+
+    snapshot_value = payload.get("operating_snapshot") if isinstance(payload, Mapping) else None
+    expected_head: str | None = None
+    expected_observed_at: Any = None
+    authority_binding_found = False
+    if isinstance(payload, Mapping):
+        operational = payload.get("operational_snapshot")
+        if isinstance(operational, Mapping):
+            server_git = operational.get("server_git")
+            if isinstance(server_git, Mapping) and isinstance(server_git.get("head"), str):
+                expected_head = server_git["head"]
+            elif isinstance(server_git, Mapping):
+                # A blocked git probe has a deliberate ``unobserved`` head in
+                # the OperatingSnapshot.  Bind that value as well instead of
+                # accepting a receipt with no checkout identity.
+                expected_head = "unobserved"
+        authority = operational.get("authority_snapshot") if isinstance(operational, Mapping) else None
+        if isinstance(authority, Mapping):
+            expected_observed_at = authority.get("observed_at")
+            authority_binding_found = expected_observed_at is not None
+    if not authority_binding_found:
+        reasons.append("heartbeat_authority_binding_missing")
+    if expected_observed_at is None:
+        expected_observed_at = heartbeat.get("observed_at")
+
+    verification = verify_operating_snapshot_replay(
+        snapshot_value,
+        expected_scope=expected_scope,
+        expected_graph_snapshot_sha256=graph_digest,
+        expected_exact_head=expected_head,
+        expected_observed_at=expected_observed_at,
+    )
+    reasons.extend(verification.reasons)
+    deduped = tuple(dict.fromkeys(reasons))
+    if deduped or not verification.valid:
+        return None, deduped or ("snapshot_invalid",), computed_payload_sha256
+    assert verification.snapshot is not None
+    return verification.snapshot.as_dict(), (), computed_payload_sha256
 
 
 def _proposal_request_hash(
@@ -1634,6 +1748,7 @@ def project_heartbeat(
         guard = heartbeat_input.economic_guard
         operating_snapshot = _operating_snapshot_from_heartbeat(
             project_id=project_id,
+            tenant_ref=principal.tenant_ref,
             graph=graph,
             projection=projection,
             server_git=server_git,
@@ -1689,6 +1804,11 @@ def project_heartbeat(
             head=body.head,
             graph_snapshot_sha256=projection["snapshot_sha256"],
             status=decision.status,
+            # Bind the row timestamp to the same server-owned observation
+            # instant used by OperatingSnapshot.  This prevents a later
+            # replay from accepting a snapshot detached from its authority
+            # receipt and makes old, unbound rows fail closed.
+            observed_at=authority_snapshot.observed_at,
             idempotency_key=body.idempotency_key,
             expected_revision=body.expected_revision,
             liveness_deadline=body.liveness_deadline,
@@ -1840,17 +1960,34 @@ def latest_project_heartbeat(
                 "heartbeat": None,
                 "external_write_allowed": False,
             }
-        payload = heartbeat.get("payload") if isinstance(heartbeat.get("payload"), Mapping) else {}
-        operating = payload.get("operating_snapshot") if isinstance(payload, Mapping) else None
+        operating, integrity_reasons, computed_payload_sha256 = _verify_latest_heartbeat_replay(
+            heartbeat=heartbeat,
+            project_id=project_id,
+            tenant_ref=principal.tenant_ref,
+            entity_ref=entity_ref,
+            store_ref=store_ref,
+        )
+        valid = not integrity_reasons and operating is not None
         return {
             "contract_id": "kjds-project-heartbeat-replay-v1",
-            "status": "REPLAYED",
+            "status": "REPLAYED" if valid else "INVALID_REPLAY",
             "project_id": project_id,
             "entity_ref": entity_ref,
             "store_ref": store_ref,
             "heartbeat": heartbeat,
             "operating_snapshot": operating,
             "replay_sha256": _stable_hash(heartbeat),
+            "replay_integrity": {
+                "valid": valid,
+                "reasons": list(integrity_reasons),
+                "stored_payload_sha256": heartbeat.get("payload_sha256"),
+                "computed_payload_sha256": computed_payload_sha256,
+                "operating_snapshot_sha256": (
+                    operating.get("snapshot_sha256")
+                    if isinstance(operating, Mapping)
+                    else None
+                ),
+            },
             "external_write_allowed": False,
         }
 
