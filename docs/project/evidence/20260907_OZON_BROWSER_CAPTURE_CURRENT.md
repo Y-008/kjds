@@ -13,3 +13,5 @@ This browser observation does not establish official Seller API readback or prod
 The automatically generated next-action queue is `output/playwright/ozon-next-action-queue.json`. It prioritizes content review for low content scores and replenishment review for low visible own-warehouse stock. Price, inventory, and listing writes remain gated by exact command scope, managed lease, Permit, economic guard, external readback, and rollback.
 
 The current cross-system acceptance snapshot is `output/playwright/ozon-production-acceptance-snapshot.json`. At capture time the exact scope grant was ready and the browser evidence projection was ready, while the official production gate remained blocked because the managed runtime identity configuration, official Ozon readback, RealFBS confirmation, and bank evidence were not all available.
+
+The snapshot also records seven historical managed leases for this scope and zero current unrevoked, unexpired leases. The latest historical lease expired on 2026-08-07, so it is not valid production evidence.
