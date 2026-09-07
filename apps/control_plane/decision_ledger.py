@@ -1,8 +1,9 @@
-"""Thread-safe, in-memory append-only decision event ledger.
+"""Thread-safe append-only decision event ledger with verified restoration.
 
-This module is intentionally an adapter-free service.  It provides a stable
-event seam for the control loop while leaving durable persistence to a later,
-explicitly authorized adapter.
+The hot path is kept small and deterministic.  Durable persistence remains
+owned by the repository outbox, while :meth:`DecisionLedger.hydrate` restores
+that projection after a process restart and verifies the complete chain before
+serving replay or accepting another append.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -115,6 +116,51 @@ class DecisionLedger:
         self._lock = threading.RLock()
         self._events: list[DecisionEvent] = []
         self._by_idempotency: dict[str, DecisionEvent] = {}
+
+    def hydrate(self, events: Iterable[DecisionEvent | Mapping[str, Any]]) -> None:
+        """Restore an existing chain from the durable event projection.
+
+        Hydration is intentionally all-or-nothing.  A process restart may
+        reconstruct the in-memory index from the repository outbox, but a
+        malformed, gapped, tampered, or duplicate chain is rejected instead
+        of being silently repaired or partially loaded.
+        """
+
+        candidates = [
+            item if isinstance(item, DecisionEvent) else DecisionEvent.model_validate(item)
+            for item in events
+        ]
+        candidates.sort(key=lambda item: item.sequence)
+        with self._lock:
+            if self._events:
+                if tuple(self._events) != tuple(candidates):
+                    raise DecisionLedgerError("cannot hydrate a non-empty ledger with a different chain")
+                return
+            previous = ""
+            by_idempotency: dict[str, DecisionEvent] = {}
+            for expected_sequence, event in enumerate(candidates, start=1):
+                if event.sequence != expected_sequence or event.previous_hash != previous:
+                    raise DecisionLedgerError("durable decision ledger chain is not contiguous")
+                expected_hash = _event_hash(
+                    sequence=event.sequence,
+                    event_id=event.event_id,
+                    event_type=event.event_type,
+                    decision_id=event.decision_id,
+                    scope=event.scope,
+                    payload=event.payload,
+                    actor_id=event.actor_id,
+                    idempotency_key=event.idempotency_key,
+                    occurred_at=event.occurred_at,
+                    previous_hash=event.previous_hash,
+                )
+                if event.event_hash != expected_hash:
+                    raise DecisionLedgerError("durable decision ledger hash mismatch")
+                if event.idempotency_key in by_idempotency:
+                    raise DecisionLedgerError("durable decision ledger has duplicate idempotency keys")
+                by_idempotency[event.idempotency_key] = event
+                previous = event.event_hash
+            self._events = list(candidates)
+            self._by_idempotency = by_idempotency
 
     def append(
         self,

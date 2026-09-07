@@ -164,6 +164,39 @@ def test_decision_payload_rejects_authority_fields():
     assert "not allowed" in str(caught.value.detail)
 
 
+def test_decision_ledger_restores_from_repository_after_process_restart(monkeypatch):
+    source = control_loop.DecisionLedger()
+    event = source.append(
+        "decision_proposed",
+        decision_id="decision-api-restore",
+        payload={"action": "hold"},
+        actor_id="operator-a",
+        idempotency_key="control-loop-restore",
+        scope=SCOPE,
+        occurred_at=WHEN,
+    )
+    repository = _Repo()
+    repository.events.append(
+        {
+            "sequence": 1,
+            "type": "control_loop.decision",
+            "aggregate_id": event.decision_id,
+            "payload": {
+                "contract_id": "kjds-decision-ledger-v1",
+                "event": event.model_dump(mode="json"),
+                "external_write_allowed": False,
+            },
+            "actor_id": "operator-a",
+        }
+    )
+    monkeypatch.setattr(control_loop.runtime, "repo", repository)
+    monkeypatch.setattr(control_loop, "_ledger", control_loop.DecisionLedger())
+    result = control_loop.control_loop_status(principal=ACTOR)
+    assert result["status"] == "VALID"
+    assert result["ledger_length"] == 1
+    assert result["ledger_verified"] is True
+
+
 def test_invalid_control_loop_inputs_return_422(monkeypatch):
     with pytest.raises(HTTPException) as objective_error:
         control_loop.evaluate_control_loop(

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
@@ -40,6 +41,7 @@ router = APIRouter()
 
 _compiler = MetricRecipeCompiler()
 _ledger = DecisionLedger()
+_ledger_hydration_lock = threading.RLock()
 _EVENT_TYPE = "control_loop.decision"
 _FORBIDDEN_PAYLOAD_KEYS = frozenset(
     {
@@ -254,6 +256,42 @@ def _persist_event(event: DecisionEvent, *, principal: Principal) -> str:
     return "persisted"
 
 
+def _hydrate_ledger_from_repository() -> None:
+    """Restore decision events once the repository is available.
+
+    The control-loop ledger is an in-process index over the canonical event
+    outbox.  Restoring it lazily avoids import-order coupling in tests and
+    startup, while ``DecisionLedger.hydrate`` verifies every persisted event
+    before it can affect status, idempotency, or replay.
+    """
+
+    if len(_ledger):
+        return
+    repository = getattr(runtime, "repo", None)
+    reader = getattr(repository, "events_after", None)
+    if not callable(reader):
+        return
+    with _ledger_hydration_lock:
+        if len(_ledger):
+            return
+        try:
+            records = reader(0) or ()
+            durable_events = []
+            for record in records:
+                if not isinstance(record, Mapping) or record.get("type") != _EVENT_TYPE:
+                    continue
+                payload = record.get("payload")
+                event = payload.get("event") if isinstance(payload, Mapping) else None
+                if isinstance(event, Mapping):
+                    durable_events.append(event)
+            if durable_events:
+                _ledger.hydrate(durable_events)
+        except DecisionLedgerError as exc:
+            raise HTTPException(status_code=503, detail="decision ledger restoration failed") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="decision ledger restoration unavailable") from exc
+
+
 @router.post("/v1/control-loop/objectives/evaluate")
 def evaluate_control_loop(
     body: EvaluateRequest,
@@ -329,6 +367,7 @@ def append_control_decision(
 
     ensure_role(principal, "operator", "reviewer", "compliance", "admin")
     _authorized_scope(principal, body.scope)
+    _hydrate_ledger_from_repository()
 
     def append() -> dict[str, Any]:
         try:
@@ -372,6 +411,7 @@ def list_control_decisions(
         raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
     if store_ref is not None:
         ensure_store_scope(principal, store_ref)
+    _hydrate_ledger_from_repository()
 
     def read() -> dict[str, Any]:
         selected_store = store_ref
@@ -409,6 +449,7 @@ def control_loop_status(
     principal: Annotated[Principal, Depends(current_principal)],
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    _hydrate_ledger_from_repository()
     verified = _ledger.verify()
     return {
         "contract_id": "kjds-control-loop-status-v1",
