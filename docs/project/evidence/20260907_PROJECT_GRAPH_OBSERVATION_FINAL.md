@@ -6,11 +6,11 @@
 
 | 字段 | 值 |
 | --- | --- |
-| captured_at | 2026-09-07T04:37:52.083153+00:00 |
-| source_code_head_before_evidence_commit | `d1961b7c14e73f79ad7c0fc404d5ad5c60d616e5` (`fix: derive scoped graph reads safely`) |
+| captured_at | 2026-09-07T04:55:19.240510+00:00 |
+| source_code_head_before_evidence_commit | `c4c23ead4bb3d17ef6fe3ba2b00bf37957538019` (`feat(api): expose read-only control loop projections`) |
 | API / schema | `0.59.0` / `v1` |
-| OpenAPI canonical SHA-256 | `cd8f5a0fd98379f121635390339c6ac7a88093334db14731b878144d57088d2f` |
-| OpenAPI paths | 394 |
+| OpenAPI canonical SHA-256 | `5c70476f2d87ad24b4ad5d5adca5eb0a9063df0a2280ef481ff150be95e8793e` |
+| OpenAPI paths | 398 |
 | migration head | `20260907_0120` |
 | evidence contract | `kjds-ozon-acceptance-snapshot-binding-v1` |
 
@@ -27,10 +27,10 @@
 
 ## 图谱前沿、关键路径和回放
 
-- Frontier HTTP 200，`status=BLOCKED`，`frontier=224`，`blockers=606`；快照 SHA-256 `f6cebc3838f44f3a1e2d69c1b736fcb60b37a34fbe3d6bd614da29665e38a869`，响应 SHA-256 `6d6068a36b594d17f8aa719c3472eaed16972bb555f9c69f22149c3723a8ff14`。
-- 关键路径 HTTP 200，目标 `task-m4-actual-cash`，长度 17，状态 `BLOCKED`；结果 SHA-256 `c78abfba9f7ad9454abc4ead860b5b5ccec4174af7b756c219a19e707c01134b`，响应 SHA-256 `79598546e2c3dbc3c645d0b46e3e72fb352955d9b410c1a4b60e76943b762943`。
+- Frontier HTTP 200，`status=BLOCKED`，`frontier=224`，`blockers=606`；快照 SHA-256 `c512d82833e97a5cd366a4f871e3a45fa5961efaf331280828dc6060c86c7d30`，响应 SHA-256 `a08078c5726e4e1d3b014ad0c085c2ff9143f3b2b4bd961f299258bbc3ca486b`。
+- 关键路径 HTTP 200，目标 `task-m4-actual-cash`，长度 17，状态 `BLOCKED`；结果 SHA-256 `99eb2e54d58bad5b9fbde12c1bdb88055adeeb21cf950342e626b5e1927c05db`，响应 SHA-256 `f28f1132c638d1df6a4ffe803d1cab86eba9b030c75c6ae723d3806c02fef512`。
 - 主要阻断原因包括 `freshness_stale`、M0–M3 上游阻断，以及 API、容器、数据库、浏览器、测试证据过期。项目经理应优先刷新这些前置节点，而不是派发无依赖的外部写入。
-- Replay HTTP 200，`integrity.status=VALID`、`snapshot_hash_verified=true`，业务状态仍为 `BLOCKED`；结果 SHA-256 `2f9c9b30c7a7b27c4fe1cd68bcbe009d09708897bfeb1fe6c5049984c7aaf56f`，回放快照 SHA-256 `6b0007a326793fcffa14d46c8e5b3a0c631447635c1e2392de576ca2c102717b`。
+- Replay HTTP 200，`integrity.status=VALID`、`snapshot_hash_verified=true`，业务状态仍为 `BLOCKED`；结果 SHA-256 `675c38e27d7b8e26048ba445575c80c9230380a99b7f89e807fd5ff8c71ef9cc`，回放快照 SHA-256 `9643bbd982012b96b05789b68bbf1a27ad08ce41e5ae2d9d892e1d632a6cd2c0`。
 
 ## 经济护栏
 
