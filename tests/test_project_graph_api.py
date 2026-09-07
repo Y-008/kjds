@@ -88,6 +88,98 @@ def test_task_contract_is_read_only_projection(monkeypatch):
     assert result["external_write_allowed"] is False
 
 
+def test_critical_path_uses_bound_read_envelope_and_legacy_alias(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    graph = {
+        "scope": {
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+        },
+        "snapshot_sha256": "b" * 64,
+    }
+    projection = {
+        "status": "BLOCKED",
+        "as_of": "2026-09-07T12:00:00+00:00",
+        "snapshot_sha256": "b" * 64,
+        "critical_path": {
+            "status": "BLOCKED",
+            "target_id": "task-a",
+            "node_ids": ["task-a"],
+        },
+    }
+    monkeypatch.setattr(project_graph, "_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(project_graph, "plan_proof_frontier", lambda _graph: projection)
+
+    result = project_graph.graph_critical_path(
+        project_id="project-a", principal=principal, store_ref="store-a"
+    )
+
+    assert result["contract_id"] == "kjds-project-graph-critical-path-v2"
+    assert result["project_id"] == "project-a"
+    assert result["scope"] == {
+        "tenant_ref": "tenant-a",
+        "entity_ref": "entity-a",
+        "store_ref": "store-a",
+    }
+    assert result["data"] == projection["critical_path"]
+    assert result["critical_path"] == result["data"]
+    assert result["source_snapshot_sha256"] == "b" * 64
+    assert result["result_sha256"] == project_graph._stable_hash(
+        {key: value for key, value in result.items() if key != "result_sha256"}
+    )
+    assert result["external_write_allowed"] is False
+
+
+def test_graph_replay_verifies_snapshot_hash_and_keeps_scope(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    snapshot_body = {
+        "contract_id": "kjds-proof-frontier-snapshot-v1",
+        "as_of": "2026-09-07T12:00:00+00:00",
+        "nodes": [],
+        "edges": [],
+        "graph_errors": [],
+    }
+    snapshot_hash = project_graph._stable_hash(snapshot_body)
+    snapshot = {**snapshot_body, "snapshot_sha256": snapshot_hash}
+    graph = {
+        "scope": {"entity_ref": "entity-a", "store_ref": "store-a"},
+        "snapshot_sha256": snapshot_hash,
+    }
+    projection = {
+        "status": "PROVEN",
+        "as_of": snapshot_body["as_of"],
+        "snapshot": snapshot,
+        "snapshot_sha256": snapshot_hash,
+    }
+    monkeypatch.setattr(project_graph, "_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(project_graph, "plan_proof_frontier", lambda _graph: projection)
+
+    result = project_graph.graph_replay(
+        project_id="project-a", principal=principal, store_ref="store-a"
+    )
+
+    assert result["contract_id"] == "kjds-project-graph-replay-v2"
+    assert result["data"] == snapshot
+    assert result["snapshot"] == snapshot
+    assert result["integrity"] == {
+        "mode": "current_graph_projection",
+        "status": "VALID",
+        "snapshot_hash_verified": True,
+    }
+    assert result["scope"]["tenant_ref"] == "tenant-a"
+    assert result["external_write_allowed"] is False
+
+
 def test_next_wave_is_read_only_and_contains_task_brief(monkeypatch):
     principal = Principal(
         actor_id="pm-test",
