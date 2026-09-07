@@ -6,8 +6,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| captured_at | 2026-09-07T05:10:08.355823+00:00 |
-| source_code_head_before_evidence_commit | `1b45557bea570bad350213be384e97d61cf9d219` (`fix(api): normalize control loop validation errors`) |
+| captured_at | 2026-09-07T05:18:56.190512+00:00 |
+| source_code_head_before_evidence_commit | `9a19c3782adcad961c7d18519dda00b4584f13a7` (`fix(graph): admit complete engineering edge vocabulary`) |
 | API / schema | `0.59.0` / `v1` |
 | OpenAPI canonical SHA-256 | `5c70476f2d87ad24b4ad5d5adca5eb0a9063df0a2280ef481ff150be95e8793e` |
 | OpenAPI paths | 398 |
@@ -21,16 +21,16 @@
 - `/health/ready`：HTTP 200，数据库 `ok`，事件数 231；响应 SHA-256 为 `98d005022e36932bca55d5e79e95dc9815c243fc51d788a60192e5b7635f8b6f`。
 - `/version`：HTTP 200，服务 `kjds-control-plane`，版本 `0.59.0`，数据库 `local-postgres`，`shadow_mode=true`。
 - `POST /v1/agent-control/projects/kjds-059-bas123/observe?store_ref=ozon-primary`：HTTP 200，观察桶 `2026-09-07T04:00:00+00:00`，状态 `blocked`。
-- 观察 `result_sha256=ee626c00ee6c15a818217a61fef168d53de0e7ec6a1701a4f0b12f81a4fda2e5`，响应 SHA-256 为 `eeeb823cb1352266e3e0e3ba6e0e54704b83ded46ba8091667c8ac60403efa60`。
-- 观察计数：`tasks=133`、`observations=937`、`nodes=267`、`edges=260`，`workspace_snapshot_sha256=693edfbf27fdb5a654b505c113fdf0155a28b94e7ca8ce4dd16d2f336011bba8`。
+- 观察 `result_sha256=268479694adff4e9eed73bce6162713f6610b9d49b205128c5c89198688e2076`，响应 SHA-256 为 `26e23596d80e37add29ed601e4c824ffeeedb67f71620a4d7db34c658d47d7a3`。
+- 观察计数：`tasks=133`、`observations=944`、`nodes=267`、`edges=260`，`workspace_snapshot_sha256=693edfbf27fdb5a654b505c113fdf0155a28b94e7ca8ce4dd16d2f336011bba8`。
 - 同一小时重复观察返回相同响应/结果哈希和计数，证明小时桶回放不会重复写入观察事实。
 
 ## 图谱前沿、关键路径和回放
 
-- Frontier HTTP 200，`status=BLOCKED`，`frontier=224`，`blockers=606`；快照 SHA-256 `c512d82833e97a5cd366a4f871e3a45fa5961efaf331280828dc6060c86c7d30`，响应 SHA-256 `a08078c5726e4e1d3b014ad0c085c2ff9143f3b2b4bd961f299258bbc3ca486b`。
+- Frontier HTTP 200，`status=BLOCKED`，`frontier=224`，`blockers=395`，`graph_errors=0`；快照 SHA-256 `f5144d8fdb1ae12f305d22cb1f54d68f8c2f1ae5004f7759854cfdf8b5dd147c`，响应 SHA-256 `33fdca477aa7704ef8669d79321ca47db9bae9e96b27244e704d8c18d1110773`。
 - 关键路径 HTTP 200，目标 `task-m4-actual-cash`，长度 17，状态 `BLOCKED`；结果 SHA-256 `99eb2e54d58bad5b9fbde12c1bdb88055adeeb21cf950342e626b5e1927c05db`，响应 SHA-256 `f28f1132c638d1df6a4ffe803d1cab86eba9b030c75c6ae723d3806c02fef512`。
 - 主要阻断原因包括 `freshness_stale`、M0–M3 上游阻断，以及 API、容器、数据库、浏览器、测试证据过期。项目经理应优先刷新这些前置节点，而不是派发无依赖的外部写入。
-- Replay HTTP 200，`integrity.status=VALID`、`snapshot_hash_verified=true`，业务状态仍为 `BLOCKED`；结果 SHA-256 `675c38e27d7b8e26048ba445575c80c9230380a99b7f89e807fd5ff8c71ef9cc`，回放快照 SHA-256 `9643bbd982012b96b05789b68bbf1a27ad08ce41e5ae2d9d892e1d632a6cd2c0`。
+- Replay HTTP 200，`integrity.status=VALID`、`snapshot_hash_verified=true`，业务状态仍为 `BLOCKED`；结果 SHA-256 `d56a58c0c154e38fe96638569eddb7d07377ef5cf8155aad31be15ac53f7416d`，回放快照 SHA-256 `e4f3ae5ba00e08cf8e789c5f25f7a7f71c628e8315078cd3b38041ad241ba048`，响应 SHA-256 `0b7558ce9a93259a191cb03f84db6aabd3d9cbfe5fb9849f838e63b4fa85404f`。
 
 ## 经济护栏
 
@@ -51,4 +51,4 @@
 
 ## 验收结论和下一步
 
-当前可交付级别为：工程控制平面、证据协议、图谱前沿、回放完整性和 AI ERP 只读工作台已具备可验证实现；Ozon 生产写入、真实利润、现金闭环和 SaaS 商业化仍保持阻断。下一波由 heartbeat 继续刷新过期工程证据、修复图谱未知边关系、取得官方只读回读并重新计算经济护栏；在证明、证据新鲜度、数据质量、外部读回和回滚路径同时满足前，系统保持只读。
+当前可交付级别为：工程控制平面、证据协议、图谱前沿、回放完整性和 AI ERP 只读工作台已具备可验证实现；Ozon 生产写入、真实利润、现金闭环和 SaaS 商业化仍保持阻断。下一波由 heartbeat 继续刷新过期工程证据、收敛剩余 395 个阻断节点、取得官方只读回读并重新计算经济护栏；在证明、证据新鲜度、数据质量、外部读回和回滚路径同时满足前，系统保持只读。
