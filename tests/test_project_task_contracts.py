@@ -17,6 +17,7 @@ from apps.control_plane.project_task_contracts import (
     critical_path,
     invalidate_downstream,
     minimum_blocker_set,
+    project_harness_graph,
     ready_frontier,
     validate_task_brief,
     validate_task_result,
@@ -151,3 +152,31 @@ def test_project_snapshot_is_read_only_and_content_bound():
     assert supplied == canonical_hash(first)
     first["nodes"][0]["title"] = "mutated"
     assert build_project_snapshot(_wbs())["nodes"][0]["title"] != "mutated"
+
+
+def test_harness_projection_preserves_source_hash_and_exposes_frontier():
+    projection = project_harness_graph(
+        {
+            "contract_id": "kjds-agent-harness-workspace-v1",
+            "project": {"id": "p-1", "title": "Control tower"},
+            "scope": {"tenant_ref": "tenant-a", "entity_ref": "entity-a", "store_ref": "store-a"},
+            "snapshot_sha256": "a" * 64,
+            "tasks": [
+                {
+                    "id": "task-a",
+                    "title": "Define contract",
+                    "owner": "agent-a",
+                    "dependencies": [],
+                    "state": "pending",
+                    "workspace": "apps/control_plane/project_task_contracts.py",
+                    "verification_condition": "focused tests pass",
+                }
+            ],
+        }
+    )
+
+    assert projection["projection_only"] is True
+    assert projection["source_snapshot_sha256"] == "a" * 64
+    assert projection["validation"]["valid"] is True
+    assert projection["ready_frontier"] == ["task-a"]
+    assert projection["external_write_allowed"] is False

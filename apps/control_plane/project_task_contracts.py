@@ -787,6 +787,157 @@ def build_project_snapshot(items: Iterable[WorkItem | Mapping[str, Any]]) -> dic
     return projection
 
 
+def project_harness_graph(graph: Mapping[str, Any]) -> dict[str, Any]:
+    """Project an existing Harness workspace into the five-level WBS contract.
+
+    This is intentionally a read-only adapter.  The Harness workspace remains
+    the authority for task observations and graph snapshots; the returned WBS
+    only makes planning completeness, frontier, blockers, and critical path
+    visible to the AI project manager.  Missing owner, reviewer, write-set, or
+    acceptance data is preserved as a validation error instead of being
+    silently promoted to a completed task.
+    """
+
+    if not isinstance(graph, Mapping):
+        raise ProjectTaskContractError("graph must be an object")
+    project = graph.get("project") if isinstance(graph.get("project"), Mapping) else {}
+    project_id = _string(project.get("id") or graph.get("project_id"), "project_id", required=True)
+    prefix = f"project:{project_id}"
+    system_owner = "system:project-manager"
+    system_reviewer = "system:auditor"
+    scope = graph.get("scope") if isinstance(graph.get("scope"), Mapping) else {}
+
+    items: list[WorkItem] = [
+        WorkItem(
+            node_id=f"{prefix}:initiative",
+            level=WorkLevel.INITIATIVE.value,
+            title=str(project.get("title") or project_id),
+            scope=scope,
+            owner=system_owner,
+            reviewer=system_reviewer,
+            status=TaskStatus.CONTRACT_VERIFIED.value,
+            claim_level=ClaimLevel.ENGINEERING.value,
+        ),
+        WorkItem(
+            node_id=f"{prefix}:program",
+            level=WorkLevel.PROGRAM.value,
+            title="AI project manager control tower",
+            parent_id=f"{prefix}:initiative",
+            scope=scope,
+            owner=system_owner,
+            reviewer=system_reviewer,
+            status=TaskStatus.CONTRACT_VERIFIED.value,
+            claim_level=ClaimLevel.ENGINEERING.value,
+        ),
+        WorkItem(
+            node_id=f"{prefix}:epic",
+            level=WorkLevel.EPIC.value,
+            title="Harness graph execution contract",
+            parent_id=f"{prefix}:program",
+            scope=scope,
+            owner=system_owner,
+            reviewer=system_reviewer,
+            status=TaskStatus.CONTRACT_VERIFIED.value,
+            claim_level=ClaimLevel.ENGINEERING.value,
+        ),
+        WorkItem(
+            node_id=f"{prefix}:slice",
+            level=WorkLevel.SLICE.value,
+            title="Observed graph tasks",
+            parent_id=f"{prefix}:epic",
+            scope=scope,
+            owner=system_owner,
+            reviewer=system_reviewer,
+            exact_write_set=(f"project-graph:{project_id}:planning-projection",),
+            acceptance_tests=("source_snapshot_hash_bound", "wbs_validation_reported"),
+            rollback_ref=(
+                f"source-snapshot:{graph.get('snapshot_sha256')}"
+                if graph.get("snapshot_sha256")
+                else None
+            ),
+            status=TaskStatus.CONTRACT_VERIFIED.value,
+            claim_level=ClaimLevel.ENGINEERING.value,
+        ),
+    ]
+
+    state_map = {
+        "passed": TaskStatus.CONTRACT_VERIFIED.value,
+        "ready": TaskStatus.READY.value,
+        "pending": TaskStatus.PLANNED.value,
+        "running": TaskStatus.IN_PROGRESS.value,
+        "blocked": TaskStatus.BLOCKED.value,
+        "failed": TaskStatus.BLOCKED.value,
+        "stale": TaskStatus.STALE.value,
+        "no_data": TaskStatus.BLOCKED.value,
+    }
+    tasks = graph.get("tasks") if isinstance(graph.get("tasks"), Sequence) else ()
+    for raw in tasks:
+        if not isinstance(raw, Mapping):
+            continue
+        task_id = _string(raw.get("id"), "task.id", required=True)
+        raw_state = _string(raw.get("state") or "pending", "task.state").lower()
+        status = state_map.get(raw_state, TaskStatus.BLOCKED.value)
+        owner = _string(raw.get("owner"), "task.owner")
+        reviewer = system_reviewer if owner != system_reviewer else system_owner
+        workspace = _string(raw.get("workspace"), "task.workspace")
+        verification = _string(raw.get("verification_condition"), "task.verification_condition")
+        dependencies = tuple(str(item) for item in (raw.get("dependencies") or ()) if str(item).strip())
+        blockers = raw.get("blockers") if isinstance(raw.get("blockers"), Sequence) else ()
+        blocker_kind = BlockerKind.RUNTIME.value if status in {
+            TaskStatus.BLOCKED.value,
+            TaskStatus.STALE.value,
+        } else None
+        items.append(
+            WorkItem(
+                node_id=task_id,
+                level=WorkLevel.TASK.value,
+                title=_string(raw.get("title") or task_id, "task.title"),
+                parent_id=f"{prefix}:slice",
+                scope={"source": "harness", "project_id": project_id, **dict(scope)},
+                owner=owner,
+                reviewer=reviewer,
+                dependencies=dependencies,
+                exact_write_set=(workspace,) if workspace else (),
+                acceptance_tests=(verification,) if verification else (),
+                status=status,
+                blocker_kind=blocker_kind,
+                rollback_ref=(f"observation:{raw.get('observation_id')}" if raw.get("observation_id") else None),
+                claim_level=ClaimLevel.ENGINEERING.value,
+                business_value=2 if not blockers else 1,
+                information_gain=2 if raw.get("evidence_ref") else 1,
+                risk_reduction=2 if raw.get("artifact_ref") else 1,
+            )
+        )
+
+    report = validate_work_breakdown(items)
+    result = build_project_snapshot(items) if report.valid else {
+        "contract_id": CONTRACT_ID + ".project-snapshot",
+        "contract_version": CONTRACT_VERSION,
+        "nodes": [item.to_dict() for item in sorted(items, key=lambda item: item.node_id)],
+        "ready_frontier": [],
+        "critical_path": [],
+        "minimum_blocker_set": [],
+    }
+    result.update(
+        {
+            "projection_only": True,
+            "source_contract_id": graph.get("contract_id"),
+            "source_snapshot_sha256": graph.get("snapshot_sha256"),
+            "project_id": project_id,
+            "validation": {
+                "valid": report.valid,
+                "errors": list(report.errors),
+                "warnings": list(report.warnings),
+                "node_ids": list(report.node_ids),
+                "snapshot_sha256": report.snapshot_sha256,
+            },
+            "external_write_allowed": False,
+        }
+    )
+    result["projection_sha256"] = canonical_hash(result)
+    return result
+
+
 def _cycle_errors(by_id: Mapping[str, WorkItem]) -> list[str]:
     errors: list[str] = []
     state: dict[str, int] = {}

@@ -22,6 +22,7 @@ from apps.control_plane.security import Principal, WritesDisabled
 def test_project_graph_read_routes_are_registered():
     paths = {route.path for route in registered_routes()}
     assert "/v1/project-graph/{project_id}/frontier" in paths
+    assert "/v1/project-graph/{project_id}/task-contract" in paths
     assert "/v1/project-graph/{project_id}/critical-path" in paths
     assert "/v1/project-graph/{project_id}/blockers" in paths
     assert "/v1/project-graph/{project_id}/proof-debt" in paths
@@ -41,6 +42,43 @@ def test_project_graph_read_routes_are_registered():
         assert is_write_safety_control_path(
             f"/v1/project-graph/project-a/{suffix}"
         ) is True
+
+
+def test_task_contract_is_read_only_projection(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        project_graph,
+        "_graph",
+        lambda *_args, **_kwargs: {
+            "contract_id": "kjds-agent-harness-workspace-v1",
+            "project": {"id": "project-a", "title": "Control tower"},
+            "scope": {"tenant_ref": "tenant-a", "entity_ref": "entity-a", "store_ref": "store-a"},
+            "snapshot_sha256": "b" * 64,
+            "tasks": [
+                {
+                    "id": "task-a",
+                    "title": "Read-only task",
+                    "owner": "agent-a",
+                    "dependencies": [],
+                    "state": "pending",
+                    "workspace": "apps/control_plane/project_task_contracts.py",
+                    "verification_condition": "focused tests pass",
+                }
+            ],
+        },
+    )
+
+    result = project_graph.graph_task_contract(
+        project_id="project-a", principal=principal, store_ref="store-a"
+    )
+    assert result["projection_only"] is True
+    assert result["ready_frontier"] == ["task-a"]
+    assert result["external_write_allowed"] is False
 
 
 def test_heartbeat_rejects_entity_scope_mismatch(monkeypatch):

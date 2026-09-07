@@ -25,6 +25,7 @@ from ..economic_guard_service import (
     evaluate_economic_guard,
 )
 from ..project_manager_cycle import normalize_task_result
+from ..project_task_contracts import project_harness_graph
 from ..proof_frontier_planner import plan_proof_frontier
 from ..runtime import runtime
 from ..security import Principal
@@ -577,6 +578,28 @@ def graph_frontier(
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
     return run(lambda: plan_proof_frontier(_graph(project_id, principal, store_ref, as_of)))
+
+
+@router.get("/v1/project-graph/{project_id}/task-contract")
+def graph_task_contract(
+    project_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str | None = None,
+    as_of: str | None = None,
+):
+    """Return the five-level WBS as a read-only projection of Harness.
+
+    This endpoint exposes planning contracts without creating a second task
+    ledger.  It never assigns work, acquires a lease, reserves budget, or
+    reaches an external connector.
+    """
+
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    return run(
+        lambda: project_harness_graph(
+            _graph(project_id, principal, store_ref, as_of)
+        )
+    )
 
 
 @router.get("/v1/graph/{project_id}/historical-frontier")
