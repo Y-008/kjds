@@ -34,6 +34,19 @@
 .task h3 { margin: 0 0 6px; }
 .task p { margin: 0 0 6px; }
 .task strong { color: #dbe8f6; font-size: 12px; }
+.nextWave { max-width: 1440px; margin: 0 auto 18px; border: 1px solid #1f334b; border-radius: 16px; padding: 20px; background: #0b1523; }
+.readOnlyNote { margin: -4px 0 16px; color: #93a4b7; font-size: 12px; }
+.inlineError { margin: 0 0 14px; border-left: 3px solid #ffb28a; padding-left: 10px; color: #ffb28a; font-size: 12px; }
+.frontierList { display: grid; gap: 10px; }
+.frontierCard { display: grid; grid-template-columns: 120px 1.1fr 1fr; gap: 18px; border: 1px solid #223a55; border-radius: 12px; padding: 15px; background: #0e1a2a; }
+.frontierCard[data-state="BLOCKED"], .frontierCard[data-state="STALE"] { border-color: #8f5a45; }
+.frontierCard > div { min-width: 0; }
+.frontierMeta { display: grid; align-content: start; gap: 8px; color: #74d5ff; font-size: 12px; text-transform: uppercase; }
+.frontierMeta b { color: #77ddb8; }
+.frontierCard h3 { margin: 0 0 5px; }
+.frontierCard p, .frontierCard small { display: block; margin: 0 0 6px; color: #93a4b7; font-size: 12px; overflow-wrap: anywhere; }
+.frontierContract { display: grid; align-content: start; gap: 7px; }
+.frontierContract strong { color: #dbe8f6; font-size: 12px; }
 .columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .panel { padding: 16px; }
 .panel h3 { margin: 0 0 10px; }
@@ -42,6 +55,6 @@
 .panel p, .empty, .loading { color: #93a4b7; }
 .error { max-width: 1440px; margin: 0 auto 18px; border: 1px solid #8f5a45; border-radius: 10px; padding: 12px; color: #ffb0a5; background: #28171b; }
 .loading { max-width: 1440px; margin: 18px auto; }
-@media (max-width: 900px) { .page { padding: 18px; } .header { align-items: flex-start; flex-direction: column; } .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gateGrid, .columns { grid-template-columns: 1fr 1fr; } .task { grid-template-columns: 90px 1fr; } .task > div:last-child { grid-column: 2; } }
-@media (max-width: 520px) { .page { padding: 12px; } .metrics, .gateGrid, .columns { grid-template-columns: 1fr 1fr; } .scope strong { margin-left: 0; width: 100%; } .task { grid-template-columns: 1fr; } .task > div:last-child { grid-column: 1; } }
+@media (max-width: 900px) { .page { padding: 18px; } .header { align-items: flex-start; flex-direction: column; } .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gateGrid, .columns { grid-template-columns: 1fr 1fr; } .task, .frontierCard { grid-template-columns: 90px 1fr; } .task > div:last-child, .frontierCard > div:last-child { grid-column: 2; } }
+@media (max-width: 520px) { .page { padding: 12px; } .metrics, .gateGrid, .columns { grid-template-columns: 1fr 1fr; } .scope strong { margin-left: 0; width: 100%; } .task, .frontierCard { grid-template-columns: 1fr; } .task > div:last-child, .frontierCard > div:last-child { grid-column: 1; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

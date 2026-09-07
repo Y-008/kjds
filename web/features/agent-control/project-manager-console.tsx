@@ -54,7 +54,99 @@ type HeartbeatReplay = {
   external_write_allowed: false;
 };
 
-type ConsoleData = { contract: TaskContract; replay: HeartbeatReplay };
+type FrontierItem = {
+  id: string;
+  node_id?: string;
+  label: string;
+  state: string;
+  status?: string;
+  frontier_kind?: string;
+  priority?: number;
+  weight?: number;
+  dependencies: string[];
+  unresolved_dependencies?: string[];
+  reasons?: string[];
+  evidence_refs?: string[];
+  external_write_allowed?: false;
+};
+
+type TaskBrief = {
+  task_id: string;
+  parent_id: string | null;
+  scope: Record<string, unknown>;
+  owner: string;
+  reviewer: string;
+  objective: string;
+  business_context: string;
+  allowed_scope: string[];
+  prohibited_scope: string[];
+  dependencies: string[];
+  input_snapshot: Record<string, unknown>;
+  exact_files_or_domain: string[];
+  expected_outputs: string[];
+  acceptance_tests: string[];
+  budget: Record<string, unknown>;
+  lease: Record<string, unknown>;
+  deadline: string | null;
+  risk_tier: string;
+  rollback_ref: string | null;
+  reporting_format: string[];
+};
+
+type DefinitionOfReady = {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  snapshot_sha256?: string;
+};
+
+type NextWaveTask = {
+  task_ref: string;
+  title: string;
+  priority?: number;
+  weight?: number;
+  dependencies: string[];
+  unresolved_dependencies?: string[];
+  next_safe_action?: string | null;
+  dispatch_allowed: false;
+  task_contract_status: string;
+  work_breakdown?: {
+    node_id?: string;
+    level?: string;
+    parent_id?: string | null;
+    status?: string;
+    claim_level?: string;
+  } | null;
+  task_brief: TaskBrief | null;
+  definition_of_ready: DefinitionOfReady;
+};
+
+type NextWavePlan = {
+  status: string;
+  as_of?: string | null;
+  frontier: FrontierItem[];
+  tasks: NextWaveTask[];
+  critical_path?: Array<{ target_id?: string; node_ids?: string[]; status?: string }>;
+  blockers?: FrontierItem[];
+  minimum_blocker_set?: FrontierItem[];
+  task_contract?: {
+    status?: string;
+    projection_sha256?: string;
+    validation?: { valid?: boolean; errors?: string[]; warnings?: string[] };
+  };
+  snapshot_sha256?: string;
+  plan_sha256?: string;
+  projection_sha256?: string;
+  projection_only: true;
+  dispatch_allowed: false;
+  external_write_allowed: false;
+};
+
+type ConsoleData = {
+  contract: TaskContract;
+  replay: HeartbeatReplay;
+  nextWave: NextWavePlan | null;
+};
 
 function queryScope(): { projectId: string; storeRef: string } {
   if (typeof window === "undefined") return { projectId: "kjds-059-bas123", storeRef: "ozon-primary" };
@@ -69,21 +161,26 @@ export function ProjectManagerConsole() {
   const [scope, setScope] = useState(queryScope);
   const [data, setData] = useState<ConsoleData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nextWaveError, setNextWaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setNextWaveError(null);
     const nextScope = queryScope();
     setScope(nextScope);
     const encodedProject = encodeURIComponent(nextScope.projectId);
     const encodedStore = encodeURIComponent(nextScope.storeRef);
-    const [contractResponse, replayResponse] = await Promise.all([
+    const [contractResponse, replayResponse, nextWaveResponse] = await Promise.all([
       fetchJson<TaskContract>(
         `/backend/v1/project-graph/${encodedProject}/task-contract?store_ref=${encodedStore}`,
       ),
       fetchJson<HeartbeatReplay>(
         `/backend/v1/project-graph/${encodedProject}/heartbeat/latest?store_ref=${encodedStore}`,
+      ),
+      fetchJson<NextWavePlan>(
+        `/backend/v1/project-graph/${encodedProject}/next-wave?store_ref=${encodedStore}&max_tasks=8`,
       ),
     ]);
     if (!contractResponse.ok) {
@@ -103,7 +200,22 @@ export function ProjectManagerConsole() {
       setLoading(false);
       return;
     }
-    setData({ contract, replay });
+    let nextWave: NextWavePlan | null = null;
+    if (!nextWaveResponse.ok) {
+      setNextWaveError(`Next-wave projection unavailable (${nextWaveResponse.status})`);
+    } else {
+      const candidate = await nextWaveResponse.json();
+      if (
+        candidate.external_write_allowed !== false ||
+        candidate.projection_only !== true ||
+        candidate.dispatch_allowed !== false
+      ) {
+        setNextWaveError("next-wave contract did not prove read-only scope");
+      } else {
+        nextWave = candidate;
+      }
+    }
+    setData({ contract, replay, nextWave });
     setLoading(false);
   }, []);
 
@@ -115,6 +227,7 @@ export function ProjectManagerConsole() {
     () => (data?.contract.nodes ?? []).filter((node) => node.level === "task"),
     [data],
   );
+  const nextWaveTasks = data?.nextWave?.tasks ?? [];
   const snapshot = data?.replay.operating_snapshot ?? null;
 
   return (
@@ -171,6 +284,68 @@ export function ProjectManagerConsole() {
               ))}
               {!taskNodes.length ? <p className={styles.empty}>NO_DATA · 当前快照没有任务节点</p> : null}
             </div>
+          </section>
+          <section className={styles.nextWave} aria-label="下一波任务候选">
+            <div className={styles.sectionHeading}>
+              <div>
+                <p className={styles.kicker}>NEXT WAVE · PROJECTION ONLY</p>
+                <h2>下一波任务候选</h2>
+              </div>
+              <span>{data.nextWave ? `${nextWaveTasks.length} tasks` : "NO_DATA"}</span>
+            </div>
+            <p className={styles.readOnlyNote}>
+              这里是服务端根据图谱和任务契约计算的候选波次；页面不会派发 Agent、获取租约或写入 Ozon。
+            </p>
+            {nextWaveError ? <p className={styles.inlineError} role="status">{nextWaveError}</p> : null}
+            {data.nextWave ? (
+              <div className={styles.frontierList}>
+                {nextWaveTasks.map((task) => {
+                  const brief = task.task_brief;
+                  const dor = task.definition_of_ready;
+                  const unresolved = task.unresolved_dependencies ?? [];
+                  return (
+                    <article key={task.task_ref} className={styles.frontierCard} data-state={task.task_contract_status}>
+                      <div className={styles.frontierMeta}>
+                        <span>{task.task_contract_status}</span>
+                        <b>{dor.valid ? "DOR_READY" : "DOR_BLOCKED"}</b>
+                      </div>
+                      <div>
+                        <h3>{task.title}</h3>
+                        <p>{task.task_ref}</p>
+                        <small>
+                          priority {task.priority ?? 0} · weight {task.weight ?? 0} ·
+                          {unresolved.length ? ` unresolved ${unresolved.join(", ")}` : " dependencies clear"}
+                        </small>
+                        {brief ? <small>{brief.objective}</small> : <small>TaskBrief：NO_DATA</small>}
+                      </div>
+                      <div className={styles.frontierContract}>
+                        <strong>TaskBrief / DoR</strong>
+                        {brief ? (
+                          <small>
+                            owner {brief.owner || "missing"} · reviewer {brief.reviewer || "missing"} · risk {brief.risk_tier}
+                          </small>
+                        ) : (
+                          <small>任务契约不可用，需先补齐五级 WBS</small>
+                        )}
+                        {brief?.exact_files_or_domain.length ? (
+                          <small>写域 {brief.exact_files_or_domain.join(" · ")}</small>
+                        ) : (
+                          <small>写域：NO_DATA</small>
+                        )}
+                        <small>{dor.valid ? "DoR 通过" : `DoR 阻塞：${dor.errors.join(" · ") || "缺少验收条件"}`}</small>
+                        {dor.warnings.length ? <small>警告 {dor.warnings.join(" · ")}</small> : null}
+                        <small>dispatch_allowed=false · 仅供评审</small>
+                      </div>
+                    </article>
+                  );
+                })}
+                {!nextWaveTasks.length ? (
+                  <p className={styles.empty}>
+                    NO_DATA · 当前没有满足依赖和 WIP 门禁的下一波任务（前沿 {data.nextWave.frontier.length} 项）
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </section>
           <section className={styles.columns}>
             <Panel title="Ready frontier" items={data.contract.ready_frontier} />
