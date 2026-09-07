@@ -156,6 +156,27 @@ _TARGET_PREREQUISITE_RELATIONS = frozenset(
 )
 _INVALIDATES_RELATIONS = frozenset({"invalidates", "invalidating", "supersedes"})
 _INVALIDATED_BY_RELATIONS = frozenset({"invalidated_by", "superseded_by"})
+# These relations describe lineage, accountability, or presentation metadata.
+# They are meaningful graph edges, but they do not make one node a prerequisite
+# of another.  Treating them as unknown would incorrectly block the synthetic
+# ``__graph__`` node for otherwise valid graphs.
+_ANNOTATION_RELATIONS = frozenset(
+    {
+        "observed_as",
+        "decided_by",
+        "specified_by",
+        "rendered_by",
+        "modifies",
+        "authorizes",
+        "targets",
+        "closes",
+        "accountable_for",
+        "recorded_in",
+        "delivers",
+        "constrained_by",
+        "migrated_by",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -791,6 +812,8 @@ def _normalise_graph(graph: Mapping[str, Any] | Any, *, as_of: datetime | str | 
                 proof_dependencies[edge.target].add(edge.source)
         elif edge.relation in _TARGET_PREREQUISITE_RELATIONS:
             dependencies[edge.source].add(edge.target)
+        elif edge.relation in _ANNOTATION_RELATIONS:
+            continue
         else:
             # An edge with an explicit dependency-looking name is safer to
             # interpret as a dependency than to silently drop it.

@@ -127,6 +127,22 @@ def test_blockers_explain_missing_dependencies_and_graph_errors() -> None:
     assert result["states"]["b"] == BLOCKED
 
 
+def test_known_lineage_edges_do_not_create_false_graph_blockers() -> None:
+    graph = {
+        "nodes": [
+            {"id": "fact", "state": "passed"},
+            {"id": "decision", "state": "passed"},
+        ],
+        "edges": [
+            {"id": "lineage", "source": "fact", "target": "decision", "relation": "observed_as"},
+            {"id": "unknown", "source": "decision", "target": "fact", "relation": "mystery"},
+        ],
+    }
+    result = plan_proof_frontier(graph)
+    assert "unknown_edge_relation:lineage:observed_as" not in result["graph_errors"]
+    assert "unknown_edge_relation:unknown:mystery" in result["graph_errors"]
+
+
 def test_critical_path_is_deterministic_and_prefers_weighted_unresolved_leaf() -> None:
     graph = {
         "nodes": [
