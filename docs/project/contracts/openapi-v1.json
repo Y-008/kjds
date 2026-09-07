@@ -5207,6 +5207,57 @@
         "title": "DecisionAnalysisReviewInput",
         "type": "object"
       },
+      "DecisionAppendRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "decision_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "event_type": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Event Type",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ScopeRef"
+          }
+        },
+        "required": [
+          "event_type",
+          "decision_id",
+          "scope",
+          "idempotency_key"
+        ],
+        "title": "DecisionAppendRequest",
+        "type": "object"
+      },
       "DecisionContractInput": {
         "additionalProperties": false,
         "properties": {
@@ -6469,6 +6520,23 @@
           "external_write_performed"
         ],
         "title": "EnterpriseSystemActionsOutput",
+        "type": "object"
+      },
+      "EvaluateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "objective": {
+            "$ref": "#/components/schemas/ObjectiveRequest"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/ObservationRequest"
+          }
+        },
+        "required": [
+          "objective",
+          "observation"
+        ],
+        "title": "EvaluateRequest",
         "type": "object"
       },
       "EvidenceGrade": {
@@ -10284,6 +10352,170 @@
         "title": "MethodologyResponse",
         "type": "object"
       },
+      "MetricFilter": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Field",
+            "type": "string"
+          },
+          "operator": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Operator",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "operator",
+          "value"
+        ],
+        "title": "MetricFilter",
+        "type": "object"
+      },
+      "MetricRecipeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "dimensions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "filters": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MetricFilter"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "metric_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "metric_version": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Version"
+          },
+          "period_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Ref"
+          },
+          "quality_states": {
+            "default": [
+              "VALID"
+            ],
+            "items": {
+              "enum": [
+                "NO_DATA",
+                "PARTIAL",
+                "STALE",
+                "BLOCKED",
+                "UNKNOWN_OUTCOME",
+                "VALID"
+              ],
+              "type": "string"
+            },
+            "title": "Quality States",
+            "type": "array"
+          },
+          "quality_threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Threshold"
+          },
+          "recipe_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Recipe Id",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ScopeRef"
+          },
+          "version": {
+            "default": "1",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipe_id",
+          "scope",
+          "metric_id"
+        ],
+        "title": "MetricRecipeRequest",
+        "type": "object"
+      },
       "NonCurrentDashboardSectionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -10435,6 +10667,111 @@
         "title": "NonCurrentDashboardSectionResponse",
         "type": "object"
       },
+      "ObjectiveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cadence": {
+            "enum": [
+              "fast",
+              "medium",
+              "slow"
+            ],
+            "title": "Cadence",
+            "type": "string"
+          },
+          "cooldown_seconds": {
+            "anyOf": [
+              {
+                "maximum": 31536000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Seconds"
+          },
+          "direction": {
+            "enum": [
+              "maximize",
+              "minimize"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "hysteresis": {
+            "default": "0",
+            "title": "Hysteresis",
+            "type": "string"
+          },
+          "max_change": {
+            "default": "0",
+            "title": "Max Change",
+            "type": "string"
+          },
+          "metric_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "objective_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Objective Id",
+            "type": "string"
+          },
+          "owner": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
+          "rollback_rule": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Rollback Rule",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ScopeRef"
+          },
+          "stop_rule": {
+            "default": "target_reached",
+            "enum": [
+              "never",
+              "target_reached",
+              "quality_invalid"
+            ],
+            "title": "Stop Rule",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "version": {
+            "default": "1",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objective_id",
+          "scope",
+          "metric_id",
+          "direction",
+          "target",
+          "cadence",
+          "owner",
+          "rollback_rule"
+        ],
+        "title": "ObjectiveRequest",
+        "type": "object"
+      },
       "ObservationInput": {
         "properties": {
           "category": {
@@ -10504,6 +10841,69 @@
           "confidence"
         ],
         "title": "ObservationInput",
+        "type": "object"
+      },
+      "ObservationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "objective_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Objective Id",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "observed_value": {
+            "title": "Observed Value",
+            "type": "string"
+          },
+          "quality_state": {
+            "enum": [
+              "NO_DATA",
+              "PARTIAL",
+              "STALE",
+              "BLOCKED",
+              "UNKNOWN_OUTCOME",
+              "VALID"
+            ],
+            "title": "Quality State",
+            "type": "string"
+          },
+          "safety_event": {
+            "default": false,
+            "title": "Safety Event",
+            "type": "boolean"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ScopeRef"
+          },
+          "snapshot_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Snapshot Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objective_id",
+          "scope",
+          "snapshot_sha256",
+          "observed_value",
+          "quality_state",
+          "observed_at"
+        ],
+        "title": "ObservationRequest",
         "type": "object"
       },
       "ObservationResponse": {
@@ -14424,6 +14824,53 @@
           "idempotency_key"
         ],
         "title": "ScopeGrantSourceReviewInput",
+        "type": "object"
+      },
+      "ScopeRef": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "sku_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sku Ids",
+            "type": "array"
+          },
+          "store_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Store Ids",
+            "type": "array"
+          },
+          "tenant_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "warehouse_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warehouse Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tenant_id",
+          "entity_id"
+        ],
+        "title": "ScopeRef",
         "type": "object"
       },
       "ScopedFxEvidenceInput": {
@@ -25241,6 +25688,226 @@
           }
         ],
         "summary": "Ozon Contracts"
+      }
+    },
+    "/v1/control-loop/decisions": {
+      "get": {
+        "operationId": "list_control_decisions_v1_control_loop_decisions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "decision_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "List Control Decisions"
+      },
+      "post": {
+        "description": "Append one decision event and bind it to the existing outbox.",
+        "operationId": "append_control_decision_v1_control_loop_decisions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionAppendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Append Control Decision"
+      }
+    },
+    "/v1/control-loop/metrics/compile": {
+      "post": {
+        "description": "Compile one metric recipe against the versioned catalog.",
+        "operationId": "compile_control_metric_v1_control_loop_metrics_compile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetricRecipeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Compile Control Metric"
+      }
+    },
+    "/v1/control-loop/objectives/evaluate": {
+      "post": {
+        "description": "Evaluate a scoped objective without granting action authority.",
+        "operationId": "evaluate_control_loop_v1_control_loop_objectives_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Evaluate Control Loop"
+      }
+    },
+    "/v1/control-loop/status": {
+      "get": {
+        "operationId": "control_loop_status_v1_control_loop_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Control Loop Status"
       }
     },
     "/v1/customer-service/cases": {
