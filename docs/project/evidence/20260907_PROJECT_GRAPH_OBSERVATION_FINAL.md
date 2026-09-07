@@ -6,8 +6,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| captured_at | 2026-09-07T04:55:19.240510+00:00 |
-| source_code_head_before_evidence_commit | `c4c23ead4bb3d17ef6fe3ba2b00bf37957538019` (`feat(api): expose read-only control loop projections`) |
+| captured_at | 2026-09-07T05:10:08.355823+00:00 |
+| source_code_head_before_evidence_commit | `1b45557bea570bad350213be384e97d61cf9d219` (`fix(api): normalize control loop validation errors`) |
 | API / schema | `0.59.0` / `v1` |
 | OpenAPI canonical SHA-256 | `5c70476f2d87ad24b4ad5d5adca5eb0a9063df0a2280ef481ff150be95e8793e` |
 | OpenAPI paths | 398 |
@@ -35,6 +35,13 @@
 ## 经济护栏
 
 `GET /v1/economics/guard-status?store_ref=ozon-primary` 返回 HTTP 200、`status=UNKNOWN`、`quality_state=NO_DATA`、`admission_state=HOLD`、`status_source=unavailable`，原因 `cash_snapshot_missing`，且 `external_write_allowed=false`。未知或无数据经济状态不能触发调价、补货、广告、发布或其他平台写入。
+
+## 控制回路 HTTP 烟测
+
+- `GET /v1/control-loop/status`：HTTP 200，`status=VALID`、`execution=proposal_only`，响应 SHA-256 `6b606df9a3afee13fe2128df2ba8138d8f0d8425ec4269b8abb0e5ead2446f03`。
+- `POST /v1/control-loop/metrics/compile`：HTTP 200，`status=COMPILED`、`execution=read_only`，`plan_hash=4498db8802aaeb5fa7fc0cd814de050980793313e865bd6eb5823cd5bafe552e`，响应 SHA-256 `e4476a267db66882f9b3ca787d7a342449851cba4f428f8b87143460eb664b63`。
+- `POST /v1/control-loop/objectives/evaluate`：HTTP 200，`status=PROPOSED`、`execution=proposal_only`，响应 SHA-256 `d191d2d23818c58a0efcabfae97fe98de2efb76aef6e3c13fd6dfab487fce0e2`。
+- 三个端点均返回 `external_write_allowed=false`；烟测未调用 Ozon、银行或其他外部写接口。
 
 ## Ozon 浏览器与官方读回
 
