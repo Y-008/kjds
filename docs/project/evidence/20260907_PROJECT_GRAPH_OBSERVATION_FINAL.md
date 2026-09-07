@@ -6,8 +6,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| captured_at | 2026-09-07T06:05:00.000000+00:00 |
-| source_code_head_before_evidence_commit | `a04f918f552e3d139bc07c3130e11f1e614847da` (`docs: bind graph evidence to restored ledger`) |
+| captured_at | 2026-09-07T06:02:40.000000+00:00 |
+| source_code_head_before_evidence_commit | `5bec22bedbf3e63d5618f6716b36b9dc28c37264` (`docs: add isolated postgres contract evidence`) |
 | API / schema | `0.59.0` / `v1` |
 | OpenAPI canonical SHA-256 | `5c70476f2d87ad24b4ad5d5adca5eb0a9063df0a2280ef481ff150be95e8793e` |
 | OpenAPI paths | 398 |
@@ -20,19 +20,19 @@
 
 - `/health/ready`：HTTP 200，数据库 `ok`，事件数 231；响应 SHA-256 为 `98d005022e36932bca55d5e79e95dc9815c243fc51d788a60192e5b7635f8b6f`。
 - `/version`：HTTP 200，服务 `kjds-control-plane`，版本 `0.59.0`，数据库 `local-postgres`，`shadow_mode=true`。
-- `POST /v1/agent-control/projects/kjds-059-bas123/observe?store_ref=ozon-primary`：HTTP 200，状态 `blocked`，本次响应 SHA-256 为 `3f2ccfaefef845ad66d70241b50bcef6a5e4be5224ff131cc6ee7307f3e48fb9`。
-- 观察 `result_sha256=268479694adff4e9eed73bce6162713f6610b9d49b205128c5c89198688e2076`；计数为 `tasks=133`、`observations=948`、`nodes=267`、`edges=260`。
+- `POST /v1/agent-control/projects/kjds-059-bas123/observe?store_ref=ozon-primary`：HTTP 200，状态 `blocked`，本次响应 SHA-256 为 `c7cf5dc597d0b109bcaff87b736e00a6daef94ebb507c0b65f314f2c4b0fbfea`。
+- 观察 `result_sha256=9047a14a424d65167f1c2771049e6c95a6cb39935d187f6acdebab6d9fa1486f`；计数为 `tasks=133`、`observations=955`、`nodes=267`、`edges=260`。
 - 本轮新增四条当前 HEAD 绑定的工程回执：API `passed`（`.runtime/bas123-api-20260907-133608.json`，SHA-256 `8fe8855a71d78b95d8a1ff82449ced7a69ae2a43348749a2453188edb880ac06`）、PostgreSQL `passed`（`.runtime/bas123-database-20260907-133748.json`，SHA-256 `7e536da88113799c9e8749c8d4a4e73dfc17868d2a04f45504767ff927200665`）、容器 `passed`（`.runtime/bas123-containers-20260907-133624.json`，SHA-256 `cce46b5dfe5924ce0ab7f6d3ac7bc75dd29d04286a5530206a3692b65a65bd20`）。
 - GDC PostgreSQL 合同在专用入口上 `84 passed`（`.runtime/pytest-gdc-20260907-135633.log`，SHA-256 `1e4a71a673dd32c3a2128648d345beccc60e8f0750209f13bdab247c07d4e740`）；闭环演进 PostgreSQL 合同在一次性 `kjds_g1_contract_manual_*` 基线库上 `101 passed`（`.runtime/pytest-cloe-isolated-20260907-135944.log`，SHA-256 `651920cff81d259ef0f4dd018c67c1175faf8c2ebf9ca5abc1773db14d8e0f99`），临时库已清理。一次直接对业务库运行的全量命令不作为 G-1 证据：它把需要专用契约库的生命周期测试错误地指向 `hermes`，产生 `11 failed, 174 errors`；受管业务库版本为 `20260907_0120`，没有被回滚。
-- 观察工作区快照为 `76488501cadecaeb40d2def483415da3208aebcd6437235224cd53ba37367b07`；API 重启后控制回路 `/v1/control-loop/status` 返回 `VALID`、`ledger_length=0`、`ledger_verified=true`，说明新恢复逻辑已加载。
+- 观察工作区快照为 `5f7eea6a124cb463a24f77cdbf4b8535a60f199f6b89504c5590a21070c9da08`；API 重启后控制回路 `/v1/control-loop/status` 返回 `VALID`、`ledger_length=0`、`ledger_verified=true`，说明新恢复逻辑已加载。
 - 同一小时重复观察返回相同响应/结果哈希和计数，证明小时桶回放不会重复写入观察事实。
 
 ## 图谱前沿、关键路径和回放
 
-- Frontier HTTP 200，`status=BLOCKED`，`frontier=223`，`blockers=395`，`graph_errors=0`；快照 SHA-256 `e21436cf2b6427e2b8f075395cd1ab4fced009166b30387b1162a2eb05ef6cb8`，响应 SHA-256 `794df2a14b4396322407f74cdfd23a24abe6bd9d9101ba5d280da98b43a08ec4`。
+- Frontier HTTP 200，`status=BLOCKED`，`frontier=223`，`blockers=395`，`graph_errors=0`；快照 SHA-256 `4a3fe6fd7b56d631276a2afd98703e12b15b398cdabb0b6df70302c72a614b44`，响应 SHA-256 `b3fede0acedbdf9dddb6da9ff1f95eef6877ae8a67c6b552fae6a323f51fee41`。
 - 关键路径目标仍为 `task-m4-actual-cash`，长度 17，状态 `BLOCKED`；完整前置集合仍包含 API、数据库、容器、浏览器、证据、测试及 M0–M3 节点。
 - 主要阻断原因包括 `freshness_stale`、M0–M3 上游阻断，以及 BAS-124 派生链、浏览器、证据和全量回归失败。基础 API、PostgreSQL、容器回执已刷新为 `passed`，但不能越过失败的测试与 M0–M3 前置；项目经理应继续处理这些节点，而不是派发无依赖的外部写入。
-- Replay HTTP 200，`integrity.status=VALID`、`snapshot_hash_verified=true`，业务状态仍为 `BLOCKED`；结果 SHA-256 `094f0a3b2a4c07becfc6764b9803924be2969530210fca7260055c32398e43f1`，回放快照 SHA-256 `9b9d4a00474591336848e5d0fc9f7db2caff7d7f8c7631e798fb2d7c772d8478`，响应 SHA-256 `495a5ecf5e35f9b14065febe7fa9d3fe2bc37013f91c8332010e3b7663a59cf9`。
+- Replay HTTP 200，`integrity.status=VALID`、`snapshot_hash_verified=true`，业务状态仍为 `BLOCKED`；结果 SHA-256 `33fb26fdba55974f95f270b7966c7c09cc0ae283f5cc710d3dce14bcd6b8500a`，回放快照 SHA-256 `fdb17822eab9f04532e61a0c3d6678911fba2292e538d5aa0defead9adb405a9`，响应 SHA-256 `15bc853dd4686c70e9e98cf53c447f04f26319e3644c68546f958b00c53b1861`。
 
 ## 经济护栏
 
