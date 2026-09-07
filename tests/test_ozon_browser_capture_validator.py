@@ -39,7 +39,7 @@ def _artifact(
     raw_visible_text: str | None = None,
     item_count: int | None = None,
 ) -> dict[str, object]:
-    rows = items or [_item("offer-a"), _item("offer-b")]
+    rows = items if items is not None else [_item("offer-a"), _item("offer-b")]
     text = raw_visible_text or "\n".join([line for item in rows for line in item["raw_row_lines"]])
     return {
         "evidence_type": "ozon_browser_visible_dom_observation",
@@ -195,6 +195,23 @@ def test_item_count_and_duplicate_ids_are_reported_without_exposing_raw_text():
     assert "duplicate_external_item_id" in report["issue_codes"]
     assert "raw_visible_text" not in report
     assert all("title" not in issue for issue in report["issues"])
+
+
+def test_raw_offer_order_and_empty_capture_fail_closed():
+    items = [_item("offer-a"), _item("offer-b")]
+    shuffled_text = "\n".join(
+        ["offer-b", "visible-b", "offer-a", "visible-a"]
+    )
+    shuffled = validate_capture_bytes(
+        _bytes(_artifact(items=items, raw_visible_text=shuffled_text))
+    )
+    assert shuffled["status"] == "QUARANTINED"
+    assert "raw_offer_id_order_mismatch" in shuffled["issue_codes"]
+
+    empty = _artifact(items=[], item_count=0, raw_visible_text="no products")
+    empty_report = validate_capture_bytes(_bytes(empty))
+    assert empty_report["status"] == "QUARANTINED"
+    assert "items_empty" in empty_report["issue_codes"]
 
 
 def test_unreadable_file_returns_deterministic_quarantine_report(tmp_path):
