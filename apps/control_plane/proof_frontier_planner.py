@@ -137,6 +137,7 @@ _SOURCE_PREREQUISITE_RELATIONS = frozenset(
         "blocks",
         "blocked_by_source",
         "derived_from_source",
+        "blocks_until_verified",
     }
 )
 # Relations whose source depends on the target.
@@ -175,6 +176,30 @@ _ANNOTATION_RELATIONS = frozenset(
         "delivers",
         "constrained_by",
         "migrated_by",
+        "implemented_by",
+        "verified_by",
+        "observed_by",
+        "observes",
+        "governs",
+        "composes_at",
+        "persisted_by",
+        "benchmarked_by",
+        "bound_by",
+        "bounded_by",
+        "closes_engineering",
+        "compiled_as",
+        "composed_by",
+        "composes_with",
+        "deployed_as",
+        "guards",
+        "indexed_by",
+        "informs",
+        "persists_at",
+        "persists_to",
+        "preflights",
+        "produces",
+        "reads_from",
+        "scopes",
     }
 )
 

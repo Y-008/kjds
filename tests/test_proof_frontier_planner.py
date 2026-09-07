@@ -135,11 +135,15 @@ def test_known_lineage_edges_do_not_create_false_graph_blockers() -> None:
         ],
         "edges": [
             {"id": "lineage", "source": "fact", "target": "decision", "relation": "observed_as"},
+            {"id": "verified", "source": "fact", "target": "decision", "relation": "verified_by"},
+            {"id": "gate", "source": "fact", "target": "decision", "relation": "blocks_until_verified"},
             {"id": "unknown", "source": "decision", "target": "fact", "relation": "mystery"},
         ],
     }
     result = plan_proof_frontier(graph)
     assert "unknown_edge_relation:lineage:observed_as" not in result["graph_errors"]
+    assert "unknown_edge_relation:verified:verified_by" not in result["graph_errors"]
+    assert "unknown_edge_relation:gate:blocks_until_verified" not in result["graph_errors"]
     assert "unknown_edge_relation:unknown:mystery" in result["graph_errors"]
 
 
