@@ -865,6 +865,7 @@ def project_harness_graph(graph: Mapping[str, Any]) -> dict[str, Any]:
         "ready": TaskStatus.READY.value,
         "pending": TaskStatus.PLANNED.value,
         "running": TaskStatus.IN_PROGRESS.value,
+        "in_progress": TaskStatus.IN_PROGRESS.value,
         "blocked": TaskStatus.BLOCKED.value,
         "failed": TaskStatus.BLOCKED.value,
         "stale": TaskStatus.STALE.value,

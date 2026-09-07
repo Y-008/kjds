@@ -26,7 +26,13 @@ from ..economic_guard_service import (
 )
 from ..operating_snapshot import build_operating_snapshot
 from ..project_manager_cycle import normalize_task_result
-from ..project_task_contracts import ProjectTaskContractError, project_harness_graph, validate_task_brief
+from ..project_task_contracts import (
+    ProjectTaskContractError,
+    WorkItem,
+    project_harness_graph,
+    validate_task_brief,
+    validate_wip,
+)
 from ..proof_frontier_planner import plan_proof_frontier
 from ..runtime import runtime
 from ..security import Principal
@@ -1042,6 +1048,15 @@ def dispatch_wave(
             for item in (task_contract_projection or {}).get("nodes", [])
             if isinstance(item, Mapping) and item.get("node_id") is not None
         }
+        wip_report: Any | None = None
+        wip_error: str | None = None
+        if contract_nodes:
+            try:
+                wip_report = validate_wip(
+                    tuple(WorkItem.from_mapping(item) for item in contract_nodes.values())
+                )
+            except ProjectTaskContractError as exc:
+                wip_error = str(exc)
         proposal_key = body.idempotency_key or (
             f"dispatch:{project_id}:{store_ref}:{body.expected_head or 'current'}:"
             f"{body.max_tasks}:{body.budget_units or 'unbounded'}"
@@ -1116,7 +1131,12 @@ def dispatch_wave(
             selected.append(item)
             if remaining_budget is not None:
                 remaining_budget -= weight
+        wip_blocked = bool(wip_report is not None and not wip_report.valid)
+        if wip_blocked:
+            selected = []
         status = "proposed" if selected else projection.get("status", "NO_DATA").lower()
+        if wip_blocked:
+            status = "blocked_wip"
         tasks = [
             {
                 "task_ref": item.get("id"),
@@ -1167,13 +1187,27 @@ def dispatch_wave(
             "external_write_allowed": False,
             "task_contract": {
                 "status": (
-                    "valid"
+                    "blocked_wip"
+                    if wip_blocked
+                    else "valid"
                     if task_contract_projection and task_contract_projection.get("validation", {}).get("valid")
                     else "blocked" if task_contract_projection else "unavailable"
                 ),
                 "projection_sha256": (task_contract_projection or {}).get("projection_sha256"),
                 "validation": (task_contract_projection or {}).get("validation"),
                 "error": task_contract_error,
+                "wip": (
+                    {
+                        "valid": wip_report.valid,
+                        "counts": dict(wip_report.counts),
+                        "violations": list(wip_report.violations),
+                        "active_task_ids": list(wip_report.active_task_ids),
+                        "snapshot_sha256": wip_report.snapshot_sha256,
+                    }
+                    if wip_report is not None
+                    else None
+                ),
+                "wip_error": wip_error,
             },
         }
         proposal["proposal_sha256"] = _stable_hash(proposal)
