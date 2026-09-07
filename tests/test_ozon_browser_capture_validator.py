@@ -199,12 +199,8 @@ def test_item_count_and_duplicate_ids_are_reported_without_exposing_raw_text():
 
 def test_raw_offer_order_and_empty_capture_fail_closed():
     items = [_item("offer-a"), _item("offer-b")]
-    shuffled_text = "\n".join(
-        ["offer-b", "visible-b", "offer-a", "visible-a"]
-    )
-    shuffled = validate_capture_bytes(
-        _bytes(_artifact(items=items, raw_visible_text=shuffled_text))
-    )
+    shuffled_text = "\n".join(["offer-b", "visible-b", "offer-a", "visible-a"])
+    shuffled = validate_capture_bytes(_bytes(_artifact(items=items, raw_visible_text=shuffled_text)))
     assert shuffled["status"] == "QUARANTINED"
     assert "raw_offer_id_order_mismatch" in shuffled["issue_codes"]
 
