@@ -301,7 +301,11 @@ def test_heartbeat_ignores_caller_git_attestation_and_binds_server_observation(m
     )
 
     operational = captured["payload"]["operational_snapshot"]
+    operating = captured["payload"]["operating_snapshot"]
     assert operational["server_git"]["snapshot_sha256"] == server_observation.snapshot_sha256
+    assert operating["contract_id"] == "kjds-operating-snapshot-v1"
+    assert operating["admission_state"] == "HOLD"
+    assert operating["external_write_allowed"] is False
     assert operational["workspace_clean"] is False
     assert operational["caller_claims_ignored"]["workspace_clean"] is True
     assert result["server_observation"]["caller_git_attestation_used"] is False

@@ -180,3 +180,16 @@ def test_harness_projection_preserves_source_hash_and_exposes_frontier():
     assert projection["validation"]["valid"] is True
     assert projection["ready_frontier"] == ["task-a"]
     assert projection["external_write_allowed"] is False
+
+
+def test_harness_projection_keeps_replay_digest_when_contract_is_incomplete():
+    projection = project_harness_graph(
+        {
+            "project": {"id": "p-2"},
+            "snapshot_sha256": "b" * 64,
+            "tasks": [{"id": "task-missing-contract", "state": "pending"}],
+        }
+    )
+    assert projection["validation"]["valid"] is False
+    assert projection["snapshot_sha256"] == projection["validation"]["snapshot_sha256"]
+    assert projection["ready_frontier"] == []

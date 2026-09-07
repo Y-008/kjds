@@ -934,6 +934,10 @@ def project_harness_graph(graph: Mapping[str, Any]) -> dict[str, Any]:
             "external_write_allowed": False,
         }
     )
+    # Invalid projections still need a deterministic binding for replay and
+    # repair work.  The validation digest is the contract snapshot even when
+    # the convenience planner fields are withheld due to malformed inputs.
+    result.setdefault("snapshot_sha256", report.snapshot_sha256)
     result["projection_sha256"] = canonical_hash(result)
     return result
 

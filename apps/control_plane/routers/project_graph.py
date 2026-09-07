@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -24,6 +24,7 @@ from ..economic_guard_service import (
     EconomicGuardResult,
     evaluate_economic_guard,
 )
+from ..operating_snapshot import build_operating_snapshot
 from ..project_manager_cycle import normalize_task_result
 from ..project_task_contracts import project_harness_graph
 from ..proof_frontier_planner import plan_proof_frontier
@@ -358,6 +359,94 @@ def _heartbeat_authority_fields(
         else:
             unverified.append(target)
     return verified, unverified, flags
+
+
+def _operating_snapshot_from_heartbeat(
+    *,
+    project_id: str,
+    graph: Mapping[str, Any],
+    projection: Mapping[str, Any],
+    server_git: Any,
+    authority_snapshot: ServerAuthoritySnapshot,
+    decision: Any,
+    guard: EconomicGuardResult,
+) -> Any:
+    """Join heartbeat observations into the immutable replay projection."""
+
+    def authority_state(name: str) -> str:
+        observation = authority_snapshot.observation(name)
+        if observation is None:
+            return "NO_DATA"
+        if observation.status == "valid" and observation.is_current(authority_snapshot.observed_at):
+            return "VALID"
+        return {
+            "partial": "PARTIAL",
+            "stale": "STALE",
+            "blocked": "BLOCKED",
+            "unknown": "UNKNOWN_OUTCOME",
+        }.get(observation.status, "NO_DATA")
+
+    proof_status = str(projection.get("status") or "NO_DATA").upper()
+    if proof_status not in {"PROVED", "UNPROVED", "STALE", "BLOCKED", "NO_DATA"}:
+        proof_status = "NO_DATA"
+    operational = "UNKNOWN"
+    if getattr(server_git, "available", False):
+        operational = "LIVE" if (
+            decision.status == "dispatch"
+            and getattr(server_git, "worktree_clean", False) is True
+            and bool(graph.get("migration_head"))
+        ) else "PAUSED"
+    elif authority_snapshot.status == "blocked":
+        operational = "BLOCKED"
+    economic = "ALLOWED" if guard.status == "allowed" else "BLOCKED"
+
+    def string_ids(value: Any) -> list[str]:
+        if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+            return []
+        return [
+            str(item.get("id")) if isinstance(item, Mapping) and item.get("id") is not None else str(item)
+            for item in value
+            if (isinstance(item, Mapping) and item.get("id") is not None) or isinstance(item, str)
+        ]
+
+    return build_operating_snapshot(
+        {
+            "project_id": project_id,
+            "tenant_ref": str((graph.get("scope") or {}).get("tenant_ref") or "unknown"),
+            "entity_ref": str((graph.get("scope") or {}).get("entity_ref") or "unknown"),
+            "store_ref": str((graph.get("scope") or {}).get("store_ref") or "unknown"),
+            "observed_at": authority_snapshot.observed_at,
+            "exact_head": str(getattr(server_git, "head", None) or "unobserved"),
+            "migration_head": str(graph.get("migration_head") or "unbound"),
+            "graph_snapshot_sha256": str(projection.get("snapshot_sha256") or ""),
+            "proof_state": proof_status,
+            "evidence_state": authority_state("evidence"),
+            "operational_state": operational,
+            "economic_state": economic,
+            "rollback_available": authority_snapshot.observation("rollback") is not None
+            and authority_snapshot.observation("rollback").is_current(authority_snapshot.observed_at),
+            "external_readback_passed": authority_snapshot.observation("external_readback") is not None
+            and authority_snapshot.observation("external_readback").is_current(authority_snapshot.observed_at),
+            "task_frontier": string_ids(projection.get("frontier_ids")),
+            "critical_path": string_ids(projection.get("critical_path")),
+            "blockers": projection.get("blockers") or [],
+            "test_receipts": string_ids(
+                [authority_snapshot.observation("test_receipts").snapshot_sha256]
+                if authority_snapshot.observation("test_receipts") is not None
+                else []
+            ),
+            "proof_receipts": string_ids(
+                [authority_snapshot.observation("proof_receipts").snapshot_sha256]
+                if authority_snapshot.observation("proof_receipts") is not None
+                else []
+            ),
+            "evidence_refs": string_ids(
+                [authority_snapshot.observation("evidence").snapshot_sha256]
+                if authority_snapshot.observation("evidence") is not None
+                else []
+            ),
+        }
+    )
 
 
 def _proposal_request_hash(
@@ -1288,6 +1377,15 @@ def project_heartbeat(
         )
         decision = evaluate_heartbeat(heartbeat_input)
         guard = heartbeat_input.economic_guard
+        operating_snapshot = _operating_snapshot_from_heartbeat(
+            project_id=project_id,
+            graph=graph,
+            projection=projection,
+            server_git=server_git,
+            authority_snapshot=authority_snapshot,
+            decision=decision,
+            guard=guard,
+        )
         submitted_task_result = normalize_task_result(body.task_result)
         # The PM itself is responsible for carrying graph-derived debt and
         # dependencies.  A caller-supplied result may add detail, but it
@@ -1412,6 +1510,7 @@ def project_heartbeat(
                     ],
                     **authority_flags,
                 },
+                "operating_snapshot": operating_snapshot.as_dict(),
                 # Keep the standard Agent result inside the immutable
                 # heartbeat payload.  This makes the PM decision replayable
                 # together with changed files, evidence and dependencies.
@@ -1423,6 +1522,7 @@ def project_heartbeat(
             "decision": decision,
             "proof": projection,
             "task_result": task_result,
+            "operating_snapshot": operating_snapshot.as_dict(),
             "server_observation": {
                 "git": {
                     "status": server_git.status,
