@@ -39136,6 +39136,85 @@
         "summary": "Invalidate Graph"
       }
     },
+    "/v1/project-graph/{project_id}/next-wave": {
+      "get": {
+        "description": "Compile the next safe wave as a read-only control-tower projection.\n\nThis intentionally mirrors the dispatch planner's selection rules without\npersisting a proposal, acquiring a lease, reserving budget, or invoking a\nTeamAgent/provider.  A caller can therefore render the next wave on a\ndashboard while the actual dispatch path remains separately governed.",
+        "operationId": "graph_next_wave_v1_project_graph__project_id__next_wave_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_tasks",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "title": "Max Tasks",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Next Wave"
+      }
+    },
     "/v1/project-graph/{project_id}/proof-debt": {
       "get": {
         "operationId": "graph_proof_debt_v1_project_graph__project_id__proof_debt_get",

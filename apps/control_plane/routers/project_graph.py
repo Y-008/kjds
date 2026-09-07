@@ -869,6 +869,133 @@ def graph_proof_debt(
     return run(project)
 
 
+@router.get("/v1/project-graph/{project_id}/next-wave")
+def graph_next_wave(
+    project_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+    max_tasks: int = 8,
+):
+    """Compile the next safe wave as a read-only control-tower projection.
+
+    This intentionally mirrors the dispatch planner's selection rules without
+    persisting a proposal, acquiring a lease, reserving budget, or invoking a
+    TeamAgent/provider.  A caller can therefore render the next wave on a
+    dashboard while the actual dispatch path remains separately governed.
+    """
+
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    ensure_store_scope(principal, store_ref)
+    if max_tasks < 1 or max_tasks > 64:
+        raise HTTPException(status_code=422, detail="max_tasks must be between 1 and 64")
+
+    def project() -> dict[str, Any]:
+        graph = _graph(project_id, principal, store_ref, as_of)
+        projection = plan_proof_frontier(graph)
+        contract_projection: dict[str, Any] | None = None
+        contract_error: str | None = None
+        try:
+            contract_projection = project_harness_graph(graph)
+        except ProjectTaskContractError as exc:
+            contract_error = str(exc)
+        contract_nodes = {
+            str(item.get("node_id")): item
+            for item in (contract_projection or {}).get("nodes", [])
+            if isinstance(item, Mapping) and item.get("node_id") is not None
+        }
+        wip_report: Any | None = None
+        wip_error: str | None = None
+        if contract_nodes:
+            try:
+                wip_report = validate_wip(
+                    tuple(WorkItem.from_mapping(item) for item in contract_nodes.values())
+                )
+            except ProjectTaskContractError as exc:
+                wip_error = str(exc)
+        frontier = sorted(
+            projection.get("frontier", []),
+            key=lambda item: (
+                -float(item.get("priority", 0) or 0),
+                -float(item.get("weight", 0) or 0),
+                str(item.get("id", "")),
+            ),
+        )
+        selected = frontier[:max_tasks]
+        wip_blocked = bool(wip_report is not None and not wip_report.valid)
+        if wip_blocked:
+            selected = []
+        tasks = [
+            {
+                "task_ref": item.get("id"),
+                "title": item.get("label"),
+                "priority": item.get("priority"),
+                "weight": item.get("weight"),
+                "dependencies": item.get("dependencies", []),
+                "unresolved_dependencies": item.get("unresolved_dependencies", []),
+                "next_safe_action": item.get("next_safe_action"),
+                "agent_binding": None,
+                "lease_binding": None,
+                "dispatch_allowed": False,
+                **_dispatch_task_contract(
+                    project_id=project_id,
+                    item=item,
+                    contract_node=contract_nodes.get(str(item.get("id"))),
+                    graph=graph,
+                    projection=projection,
+                ),
+            }
+            for item in selected
+        ]
+        result: dict[str, Any] = {
+            "contract_id": "kjds-project-graph-next-wave-v1",
+            "project_id": project_id,
+            "store_ref": store_ref,
+            "as_of": projection.get("as_of"),
+            "source_snapshot_sha256": projection.get("snapshot_sha256"),
+            "status": (
+                "blocked_wip"
+                if wip_blocked
+                else "proposed" if tasks else str(projection.get("status", "NO_DATA")).lower()
+            ),
+            "frontier": frontier,
+            "critical_path": projection.get("critical_path", []),
+            "minimum_blocker_set": projection.get("blockers", []),
+            "tasks": tasks,
+            "task_contract": {
+                "status": (
+                    "blocked_wip"
+                    if wip_blocked
+                    else "valid"
+                    if contract_projection and contract_projection.get("validation", {}).get("valid")
+                    else "blocked" if contract_projection else "unavailable"
+                ),
+                "projection_sha256": (contract_projection or {}).get("projection_sha256"),
+                "validation": (contract_projection or {}).get("validation"),
+                "error": contract_error,
+                "wip": (
+                    {
+                        "valid": wip_report.valid,
+                        "counts": dict(wip_report.counts),
+                        "violations": list(wip_report.violations),
+                        "active_task_ids": list(wip_report.active_task_ids),
+                        "snapshot_sha256": wip_report.snapshot_sha256,
+                    }
+                    if wip_report is not None
+                    else None
+                ),
+                "wip_error": wip_error,
+            },
+            "projection_only": True,
+            "dispatch_allowed": False,
+            "external_write_allowed": False,
+        }
+        result["projection_sha256"] = _stable_hash(result)
+        return result
+
+    return run(project)
+
+
 @router.get("/v1/project-graph/{project_id}/replay")
 def graph_replay(
     project_id: str,

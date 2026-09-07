@@ -28,6 +28,7 @@ def test_project_graph_read_routes_are_registered():
     assert "/v1/project-graph/{project_id}/critical-path" in paths
     assert "/v1/project-graph/{project_id}/blockers" in paths
     assert "/v1/project-graph/{project_id}/proof-debt" in paths
+    assert "/v1/project-graph/{project_id}/next-wave" in paths
     assert "/v1/project-graph/{project_id}/replay" in paths
     assert "/v1/project-graph/{project_id}/heartbeat" in paths
     assert "/v1/graph/{project_id}/historical-frontier" in paths
@@ -84,6 +85,48 @@ def test_task_contract_is_read_only_projection(monkeypatch):
     assert result["projection_only"] is True
     assert result["ready_frontier"] == ["task-a"]
     assert result["external_write_allowed"] is False
+
+
+def test_next_wave_is_read_only_and_contains_task_brief(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        project_graph,
+        "_graph",
+        lambda *_args, **_kwargs: {
+            "contract_id": "kjds-agent-harness-workspace-v1",
+            "project": {"id": "project-a", "title": "Control tower"},
+            "scope": {"tenant_ref": "tenant-a", "entity_ref": "entity-a", "store_ref": "store-a"},
+            "snapshot_sha256": "d" * 64,
+            "tasks": [
+                {
+                    "id": "task-a",
+                    "title": "Define contract",
+                    "owner": "agent-a",
+                    "reviewer": "reviewer-a",
+                    "dependencies": [],
+                    "state": "pending",
+                    "workspace": "apps/control_plane/project_task_contracts.py",
+                    "verification_condition": "focused tests pass",
+                }
+            ],
+        },
+    )
+
+    result = project_graph.graph_next_wave(
+        project_id="project-a", principal=principal, store_ref="store-a", max_tasks=1
+    )
+
+    assert result["projection_only"] is True
+    assert result["dispatch_allowed"] is False
+    assert result["external_write_allowed"] is False
+    assert result["status"] == "proposed"
+    assert result["tasks"][0]["task_brief"]["task_id"] == "task-a"
+    assert result["tasks"][0]["definition_of_ready"]["valid"] is True
 
 
 def test_release_contract_validation_never_grants_release(monkeypatch):
