@@ -170,7 +170,12 @@ class OperatingGateObserverService:
             principal=principal,
             operating_principal=operating_principal,
             store_ref=store_ref,
-            observed_at=now,
+            # The verifier's semantic unit is the hourly observation bucket.
+            # Persist that canonical time so heartbeat retries within the same
+            # bucket replay the exact append-only facts even though their
+            # wall-clock invocation timestamps differ.  A new bucket still
+            # changes the verifier/input digests and appends a new fact set.
+            observed_at=bucket,
             workspace=workspace,
             authority=authority,
             subject_binding=subject_binding,

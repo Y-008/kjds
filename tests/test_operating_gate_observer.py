@@ -400,6 +400,65 @@ def test_observer_records_real_verifier_states_and_replays_idempotently(
         )
 
 
+def test_observer_same_bucket_replay_allows_heartbeat_timestamp_drift(
+    observer,
+) -> None:
+    principal = Principal(
+        actor_id="monitor-a",
+        roles=frozenset({"monitor"}),
+        tenant_ref="default",
+        store_refs=frozenset({"ozon-primary"}),
+    )
+    # Move the fixture binding sufficiently into the past so both historical
+    # buckets remain admissible while exercising append-only time semantics.
+    with Session(observer.engine) as session, session.begin():
+        binding = session.scalar(
+            select(OperatingSubjectBindingEventRow)
+            .order_by(OperatingSubjectBindingEventRow.effective_at)
+        )
+        assert binding is not None
+        binding.effective_at = datetime.now(UTC) - timedelta(days=1)
+    bucket = datetime.now(UTC).replace(
+        minute=0, second=0, microsecond=0
+    ) - timedelta(hours=2)
+
+    first = observer.observe(
+        project_id=PROJECT_ID,
+        principal=principal,
+        store_ref="ozon-primary",
+        observed_at=bucket + timedelta(minutes=5),
+    )
+    same_hour_retry = observer.observe(
+        project_id=PROJECT_ID,
+        principal=principal,
+        store_ref="ozon-primary",
+        observed_at=bucket + timedelta(minutes=35),
+    )
+    next_bucket = observer.observe(
+        project_id=PROJECT_ID,
+        principal=principal,
+        store_ref="ozon-primary",
+        observed_at=bucket + timedelta(hours=1, minutes=5),
+    )
+
+    assert same_hour_retry["result_sha256"] == first["result_sha256"]
+    assert same_hour_retry["counts"]["observations"] == 7
+    assert next_bucket["result_sha256"] != first["result_sha256"]
+    assert next_bucket["counts"]["observations"] == 14
+    with Session(observer.engine) as session:
+        rows = session.scalars(
+            select(HarnessObservationRow)
+            .order_by(HarnessObservationRow.observed_at)
+        ).all()
+        assert len(rows) == 14
+        assert {
+            row.observed_at.replace(
+                minute=0, second=0, microsecond=0, tzinfo=UTC
+            )
+            for row in rows
+        } == {bucket, bucket + timedelta(hours=1)}
+
+
 def test_observer_rejects_non_monitor_identity(observer) -> None:
     principal = Principal(
         actor_id="operator-a",
