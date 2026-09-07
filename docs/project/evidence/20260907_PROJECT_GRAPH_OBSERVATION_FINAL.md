@@ -6,8 +6,8 @@
 
 | 字段 | 值 |
 | --- | --- |
-| captured_at | 2026-09-07T05:50:01.000000+00:00 |
-| source_code_head_before_evidence_commit | `5dd647014e5bf09be666a4f7490402f359e8d1db` (`feat(control-loop): restore decision ledger after restart`) |
+| captured_at | 2026-09-07T06:05:00.000000+00:00 |
+| source_code_head_before_evidence_commit | `a04f918f552e3d139bc07c3130e11f1e614847da` (`docs: bind graph evidence to restored ledger`) |
 | API / schema | `0.59.0` / `v1` |
 | OpenAPI canonical SHA-256 | `5c70476f2d87ad24b4ad5d5adca5eb0a9063df0a2280ef481ff150be95e8793e` |
 | OpenAPI paths | 398 |
@@ -22,7 +22,8 @@
 - `/version`：HTTP 200，服务 `kjds-control-plane`，版本 `0.59.0`，数据库 `local-postgres`，`shadow_mode=true`。
 - `POST /v1/agent-control/projects/kjds-059-bas123/observe?store_ref=ozon-primary`：HTTP 200，状态 `blocked`，本次响应 SHA-256 为 `3f2ccfaefef845ad66d70241b50bcef6a5e4be5224ff131cc6ee7307f3e48fb9`。
 - 观察 `result_sha256=268479694adff4e9eed73bce6162713f6610b9d49b205128c5c89198688e2076`；计数为 `tasks=133`、`observations=948`、`nodes=267`、`edges=260`。
-- 本轮新增四条当前 HEAD 绑定的工程回执：API `passed`（`.runtime/bas123-api-20260907-133608.json`，SHA-256 `8fe8855a71d78b95d8a1ff82449ced7a69ae2a43348749a2453188edb880ac06`）、PostgreSQL `passed`（`.runtime/bas123-database-20260907-133748.json`，SHA-256 `7e536da88113799c9e8749c8d4a4e73dfc17868d2a04f45504767ff927200665`）、容器 `passed`（`.runtime/bas123-containers-20260907-133624.json`，SHA-256 `cce46b5dfe5924ce0ab7f6d3ac7bc75dd29d04286a5530206a3692b65a65bd20`）。全量后端回归回执为 `4111 passed, 11 failed, 174 errors, 160 skipped`（`.runtime/pytest-full-20260907-133056.log`，SHA-256 `0786b595b3d5f0936de7b4347e870691895897765a098f42746782f9b0079e90`），已如实记录为 `failed`；失败集中在 PostgreSQL 生命周期测试期待 `20260803_0094`，而当前受管数据库为 `20260907_0120`。
+- 本轮新增四条当前 HEAD 绑定的工程回执：API `passed`（`.runtime/bas123-api-20260907-133608.json`，SHA-256 `8fe8855a71d78b95d8a1ff82449ced7a69ae2a43348749a2453188edb880ac06`）、PostgreSQL `passed`（`.runtime/bas123-database-20260907-133748.json`，SHA-256 `7e536da88113799c9e8749c8d4a4e73dfc17868d2a04f45504767ff927200665`）、容器 `passed`（`.runtime/bas123-containers-20260907-133624.json`，SHA-256 `cce46b5dfe5924ce0ab7f6d3ac7bc75dd29d04286a5530206a3692b65a65bd20`）。
+- GDC PostgreSQL 合同在专用入口上 `84 passed`（`.runtime/pytest-gdc-20260907-135633.log`，SHA-256 `1e4a71a673dd32c3a2128648d345beccc60e8f0750209f13bdab247c07d4e740`）；闭环演进 PostgreSQL 合同在一次性 `kjds_g1_contract_manual_*` 基线库上 `101 passed`（`.runtime/pytest-cloe-isolated-20260907-135944.log`，SHA-256 `651920cff81d259ef0f4dd018c67c1175faf8c2ebf9ca5abc1773db14d8e0f99`），临时库已清理。一次直接对业务库运行的全量命令不作为 G-1 证据：它把需要专用契约库的生命周期测试错误地指向 `hermes`，产生 `11 failed, 174 errors`；受管业务库版本为 `20260907_0120`，没有被回滚。
 - 观察工作区快照为 `76488501cadecaeb40d2def483415da3208aebcd6437235224cd53ba37367b07`；API 重启后控制回路 `/v1/control-loop/status` 返回 `VALID`、`ledger_length=0`、`ledger_verified=true`，说明新恢复逻辑已加载。
 - 同一小时重复观察返回相同响应/结果哈希和计数，证明小时桶回放不会重复写入观察事实。
 
