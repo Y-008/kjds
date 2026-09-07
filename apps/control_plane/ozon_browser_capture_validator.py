@@ -402,6 +402,8 @@ def validate_capture_bytes(
         issues.append(_issue("item_count_invalid", field="item_count"))
     elif item_count_declared != item_count_observed:
         issues.append(_issue("item_count_mismatch", field="item_count"))
+    if not items_list:
+        issues.append(_issue("items_empty", field="items"))
 
     indexed_item_ids: list[tuple[int, str]] = []
     for index, item in enumerate(items_list, 1):
@@ -425,8 +427,10 @@ def validate_capture_bytes(
             seen_ids.add(item_id)
 
     raw_id_lines: set[str] = set()
+    raw_lines_sequence: list[str] = []
     if isinstance(raw_text, str):
-        raw_id_lines = {line.strip() for line in raw_text.splitlines() if line.strip()}
+        raw_lines_sequence = [line.strip() for line in raw_text.splitlines() if line.strip()]
+        raw_id_lines = set(raw_lines_sequence)
 
     currency_summary = {
         "items_checked": 0,
@@ -441,6 +445,7 @@ def validate_capture_bytes(
         "rows_with_first_line_mismatch": [],
     }
 
+    raw_item_positions: list[tuple[int, int, str]] = []
     for index, raw_item in enumerate(items_list, 1):
         if not isinstance(raw_item, Mapping):
             issues.append(_issue("item_not_object", item_index=index))
@@ -458,6 +463,18 @@ def validate_capture_bytes(
                     external_item_id=item_id,
                 )
             )
+        else:
+            positions = [position for position, line in enumerate(raw_lines_sequence) if line == item_id]
+            if len(positions) > 1:
+                issues.append(
+                    _issue(
+                        "external_item_id_repeated_in_raw_visible_text",
+                        item_index=index,
+                        external_item_id=item_id,
+                    )
+                )
+            if positions:
+                raw_item_positions.append((index, positions[0], item_id))
 
         price_display = item.get("price_display")
         if not _nonempty_text(price_display):
@@ -557,6 +574,18 @@ def validate_capture_bytes(
                         foreign_offer_id=line,
                     )
                 )
+
+    previous_position: int | None = None
+    for index, position, item_id in raw_item_positions:
+        if previous_position is not None and position <= previous_position:
+            issues.append(
+                _issue(
+                    "raw_offer_id_order_mismatch",
+                    item_index=index,
+                    external_item_id=item_id,
+                )
+            )
+        previous_position = position
 
     row_summary = _row_issue_summary(issues) | {
         "rows_checked": row_summary["rows_checked"],
