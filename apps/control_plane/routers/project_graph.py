@@ -272,12 +272,20 @@ def _as_of(value: str | None):
 
 
 def _graph(project_id: str, principal: Principal, store_ref: str | None, as_of: str | None) -> dict[str, Any]:
-    if store_ref:
-        ensure_store_scope(principal, store_ref)
+    resolved_store_ref = store_ref
+    if resolved_store_ref is None:
+        # A single-store principal has an unambiguous server-derived scope.
+        # Multi-store principals must provide the store explicitly so a graph
+        # read can never silently aggregate across stores.
+        stores = tuple(sorted(principal.store_refs))
+        if len(stores) == 1:
+            resolved_store_ref = stores[0]
+    if resolved_store_ref:
+        ensure_store_scope(principal, resolved_store_ref)
     return runtime.agent_harness.workspace(
         project_id,
         principal=principal,
-        store_ref=store_ref,
+        store_ref=resolved_store_ref,
         as_of=_as_of(as_of),
     )
 
@@ -852,6 +860,7 @@ def _graph_read_envelope(
     project_id: str,
     graph: Mapping[str, Any],
     projection: Mapping[str, Any],
+    tenant_ref: str,
     data: Any,
     status: str,
     source_snapshot_sha256: str | None,
@@ -872,7 +881,7 @@ def _graph_read_envelope(
 
     raw_scope = graph.get("scope") if isinstance(graph.get("scope"), Mapping) else {}
     scope = {
-        key: raw_scope.get(key)
+        key: raw_scope.get(key) or (tenant_ref if key == "tenant_ref" else None)
         for key in ("tenant_ref", "entity_ref", "store_ref")
     }
     resolved_store = scope["store_ref"] or projection.get("store_ref")
@@ -1007,6 +1016,7 @@ def graph_critical_path(
             project_id=project_id,
             graph=graph,
             projection=projection,
+            tenant_ref=principal.tenant_ref,
             data=critical,
             status=str(projection.get("status") or "NO_DATA"),
             source_snapshot_sha256=projection.get("snapshot_sha256"),
@@ -1207,6 +1217,7 @@ def graph_replay(
             project_id=project_id,
             graph=graph,
             projection=projection,
+            tenant_ref=principal.tenant_ref,
             data=snapshot,
             status=str(projection.get("status") or "NO_DATA"),
             source_snapshot_sha256=snapshot_hash,
