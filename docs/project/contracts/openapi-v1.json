@@ -39504,6 +39504,81 @@
         "summary": "Graph Signal"
       }
     },
+    "/v1/project-graph/{project_id}/task-contract": {
+      "get": {
+        "description": "Return the five-level WBS as a read-only projection of Harness.\n\nThis endpoint exposes planning contracts without creating a second task\nledger.  It never assigns work, acquires a lease, reserves budget, or\nreaches an external connector.",
+        "operationId": "graph_task_contract_v1_project_graph__project_id__task_contract_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Store Ref"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Graph Task Contract"
+      }
+    },
     "/v1/read-only-claims": {
       "get": {
         "operationId": "list_read_only_claims_v1_read_only_claims_get",
