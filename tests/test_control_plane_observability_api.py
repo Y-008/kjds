@@ -5,7 +5,15 @@ import pytest
 from fastapi import HTTPException
 
 from apps.control_plane.api import registered_routes
+from apps.control_plane.autonomous_pm_heartbeat import (
+    AuthorityObservation,
+    ServerEconomicGuardRead,
+)
 from apps.control_plane.data_fabric_contracts import DataProductDescriptor
+from apps.control_plane.economic_guard_service import (
+    EconomicGuardInput,
+    evaluate_economic_guard,
+)
 from apps.control_plane.routers import control_plane_observability
 from apps.control_plane.security import Principal
 from apps.control_plane.temporal_fact_store import (
@@ -499,3 +507,180 @@ def test_economic_guard_missing_cash_snapshot_has_explicit_read_only_shape() -> 
     assert result["snapshot_sha256"] is None
     assert result["reasons"] == ["cash_snapshot_missing"]
     assert result["external_write_allowed"] is False
+
+
+def _ready_economic_scope(monkeypatch):
+    monkeypatch.setattr(
+        control_plane_observability.runtime.scope_grants,
+        "current",
+        lambda **_values: {
+            "status": "ready",
+            "entity_ref": "entity-a",
+            "store_ref": "store-a",
+        },
+    )
+
+
+def _economic_read(*, scope_key: str, observed_at: datetime, age: timedelta = timedelta(seconds=1)):
+    guard = evaluate_economic_guard(EconomicGuardInput(cash_available=Decimal("100")))
+    observed = observed_at - age
+    observation = AuthorityObservation(
+        name="economic_guard",
+        status="valid",
+        scope_key=scope_key,
+        observed_at=observed,
+        source_ref="server://test/economic-guard",
+        payload_sha256=guard.snapshot_sha256,
+        expires_at=observed + timedelta(minutes=5),
+    )
+    return ServerEconomicGuardRead(guard=guard, observation=observation)
+
+
+def test_economic_guard_favorable_caller_values_never_allow_without_server_reader(monkeypatch):
+    principal = Principal(
+        actor_id="analyst",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    _ready_economic_scope(monkeypatch)
+    monkeypatch.setattr(control_plane_observability.runtime, "pm_economic_guard_reader", None)
+
+    result = control_plane_observability.economics_guard_status(
+        principal=principal,
+        cash_available=Decimal("1000000"),
+        store_ref="store-a",
+        entity_ref="entity-a",
+    )
+
+    assert result["status"] == "UNKNOWN"
+    assert result["admission_state"] == "HOLD"
+    assert result["status_source"] == "unavailable"
+    assert result["caller_diagnostic"]["status"] == "ALLOWED"
+    assert result["caller_diagnostic"]["used_for_admission"] is False
+    assert result["external_write_allowed"] is False
+
+
+def test_economic_guard_uses_current_scoped_server_reader_over_caller_claim(monkeypatch):
+    principal = Principal(
+        actor_id="analyst",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    _ready_economic_scope(monkeypatch)
+    calls = []
+
+    def reader(*, scope_key, observed_at):
+        calls.append((scope_key, observed_at))
+        return _economic_read(scope_key=scope_key, observed_at=observed_at)
+
+    monkeypatch.setattr(control_plane_observability.runtime, "pm_economic_guard_reader", reader)
+    result = control_plane_observability.economics_guard_status(
+        principal=principal,
+        cash_available=Decimal("0"),
+        min_cash=Decimal("100"),
+        store_ref="store-a",
+        entity_ref="entity-a",
+    )
+
+    assert calls and calls[0][0] == "tenant-a/entity-a/store-a"
+    assert result["status"] == "ALLOWED"
+    assert result["admission_state"] == "ALLOW"
+    assert result["status_source"] == "server_authority"
+    assert result["authority"]["scope_key"] == "tenant-a/entity-a/store-a"
+    assert result["caller_diagnostic"]["status"] == "BLOCKED"
+
+
+def test_economic_guard_stale_server_reader_holds_even_with_favorable_claim(monkeypatch):
+    principal = Principal(
+        actor_id="analyst",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    _ready_economic_scope(monkeypatch)
+
+    def reader(*, scope_key, observed_at):
+        return _economic_read(
+            scope_key=scope_key,
+            observed_at=observed_at,
+            age=timedelta(minutes=10),
+        )
+
+    monkeypatch.setattr(control_plane_observability.runtime, "pm_economic_guard_reader", reader)
+    result = control_plane_observability.economics_guard_status(
+        principal=principal,
+        cash_available=Decimal("1000000"),
+        store_ref="store-a",
+        entity_ref="entity-a",
+    )
+
+    assert result["status"] == "UNKNOWN"
+    assert result["admission_state"] == "HOLD"
+    assert result["quality_state"] == "STALE"
+    assert "stale" in result["authority_reason"]
+
+
+def test_economic_guard_reader_scope_mismatch_is_held(monkeypatch):
+    principal = Principal(
+        actor_id="analyst",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    _ready_economic_scope(monkeypatch)
+
+    def reader(*, scope_key, observed_at):
+        return _economic_read(
+            scope_key="tenant-a/entity-other/store-a",
+            observed_at=observed_at,
+        )
+
+    monkeypatch.setattr(control_plane_observability.runtime, "pm_economic_guard_reader", reader)
+    result = control_plane_observability.economics_guard_status(
+        principal=principal,
+        cash_available=Decimal("1000000"),
+        store_ref="store-a",
+        entity_ref="entity-a",
+    )
+
+    assert result["status"] == "UNKNOWN"
+    assert result["admission_state"] == "HOLD"
+    assert result["authority"] is None
+    assert result["authority_reason"] == "server_observation_unavailable:economic_guard"
+
+
+def test_economic_guard_blocked_server_observation_preserves_blocked_quality(monkeypatch):
+    principal = Principal(
+        actor_id="analyst",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    _ready_economic_scope(monkeypatch)
+
+    def reader(*, scope_key, observed_at):
+        guard = evaluate_economic_guard(EconomicGuardInput(cash_available=Decimal("100")))
+        observation = AuthorityObservation(
+            name="economic_guard",
+            status="blocked",
+            scope_key=scope_key,
+            observed_at=observed_at,
+            source_ref="server://test/economic-guard",
+            payload_sha256=guard.snapshot_sha256,
+            reason="reader_failed",
+        )
+        return ServerEconomicGuardRead(guard=guard, observation=observation)
+
+    monkeypatch.setattr(control_plane_observability.runtime, "pm_economic_guard_reader", reader)
+    result = control_plane_observability.economics_guard_status(
+        principal=principal,
+        cash_available=Decimal("1000000"),
+        store_ref="store-a",
+        entity_ref="entity-a",
+    )
+
+    assert result["status"] == "UNKNOWN"
+    assert result["quality_state"] == "BLOCKED"
+    assert result["admission_state"] == "HOLD"

@@ -23,6 +23,7 @@ from ..analytics_query_plan import (
     execute_analytics_plan,
 )
 from ..api_contracts import current_principal, ensure_role, ensure_store_scope, run
+from ..autonomous_pm_heartbeat import AuthorityObservation, ServerEconomicGuardRead
 from ..data_fabric_contracts import (
     LINEAGE_STAGE_ORDER,
     AnalysisRecipe,
@@ -74,6 +75,81 @@ def _time(value: str | None, name: str, default: datetime | None = None) -> date
     if name in {"as_of", "end_at"} and parsed > datetime.now(UTC):
         raise HTTPException(422, f"{name} cannot be in the future")
     return parsed
+
+
+def _coerce_server_economic_guard_read(
+    value: object,
+    *,
+    scope_key: str,
+    observed_at: datetime,
+) -> ServerEconomicGuardRead:
+    """Normalize the server-owned economic reader contract.
+
+    Query parameters are caller diagnostics.  Only this explicitly bound
+    runtime reader can provide the economic fact used by the endpoint.  Keep
+    the accepted adapter shapes deliberately small and let the shared
+    ``ServerEconomicGuardRead`` contract validate the digest and observation
+    receipt.
+    """
+
+    if isinstance(value, ServerEconomicGuardRead):
+        read = value
+    else:
+        guard = value if hasattr(value, "status") and hasattr(value, "snapshot_sha256") else None
+        if guard is None:
+            raise ValueError("economic guard reader must return ServerEconomicGuardRead")
+        read = ServerEconomicGuardRead(
+            guard=guard,
+            observation=AuthorityObservation(
+                name="economic_guard",
+                status="valid",
+                scope_key=scope_key,
+                observed_at=observed_at,
+                source_ref="server://authority/economic_guard",
+                payload_sha256=str(guard.snapshot_sha256),
+            ),
+        )
+    if read.observation.scope_key != scope_key:
+        raise ValueError("economic guard observation scope mismatch")
+    return read
+
+
+def _economic_scope(
+    principal: Principal,
+    *,
+    store_ref: str,
+    entity_ref: str | None,
+    as_of: datetime,
+) -> tuple[str | None, Mapping[str, Any] | None, str | None]:
+    """Resolve the exact entity scope without trusting a caller claim.
+
+    The endpoint remains useful for caller diagnostics when scope authority is
+    absent, but it never invokes a server economic reader outside a ready
+    scope grant.  A mismatched explicit entity is a permission error.
+    """
+
+    current_reader = getattr(getattr(runtime, "scope_grants", None), "current", None)
+    grant: Mapping[str, Any] | None = None
+    if not callable(current_reader):
+        return entity_ref, None, "entity_scope_authority_unavailable"
+    try:
+        candidate = current_reader(principal=principal, store_ref=store_ref, as_of=as_of)
+    except (KeyError, PermissionError, RuntimeError, ValueError):
+        return entity_ref, None, "entity_scope_authority_unavailable"
+    if isinstance(candidate, Mapping):
+        grant = candidate
+    if grant is not None and grant.get("status") == "ready":
+        granted_entity = grant.get("entity_ref")
+        if not isinstance(granted_entity, str) or not granted_entity.strip():
+            return entity_ref, grant, "entity_scope_authority_invalid"
+        if entity_ref is not None and entity_ref != granted_entity:
+            raise HTTPException(403, "entity is outside the current authorized scope")
+        return granted_entity, grant, None
+    return entity_ref, grant, (
+        str(grant.get("reason"))
+        if grant is not None and grant.get("reason")
+        else "entity_scope_authority_missing"
+    )
 
 
 def _recipe(
@@ -1022,8 +1098,25 @@ def economics_guard_status(
     budget_remaining: Decimal | None = None,
     min_budget_remaining: Decimal = Decimal("0"),
     budget_id: str | None = None,
+    store_ref: str | None = None,
+    entity_ref: str | None = None,
+    as_of: str | None = None,
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    # Keep the old no-query-parameter call shape usable for a principal with
+    # one exact store, while still enforcing the principal's store boundary.
+    resolved_store_ref = store_ref
+    if resolved_store_ref is None:
+        stores = tuple(sorted(principal.store_refs))
+        resolved_store_ref = stores[0] if len(stores) == 1 else "ozon-primary"
+    ensure_store_scope(principal, resolved_store_ref)
+    cutoff = _time(as_of, "as_of", datetime.now(UTC))
+    resolved_entity, scope_grant, scope_reason = _economic_scope(
+        principal,
+        store_ref=resolved_store_ref,
+        entity_ref=entity_ref,
+        as_of=cutoff,
+    )
     resource_budget = None
     if budget_id is not None:
         resource_budget = run(lambda: runtime.resource_budget_ledger.snapshot(
@@ -1033,30 +1126,135 @@ def economics_guard_status(
         # A bound ledger snapshot is authoritative; query parameters cannot
         # override it with a more favorable value.
         budget_remaining = Decimal(resource_budget["available"])
-    if cash_available is None:
-        response = {
-            "contract_id": "kjds-economics-guard-v1",
-            "status": "UNKNOWN",
-            "reason": "cash_snapshot_missing",
-            "reasons": ["cash_snapshot_missing"],
-            "quality_state": "NO_DATA",
-            "snapshot_sha256": None,
-            "scope": {"tenant_id": principal.tenant_ref},
-            "external_write_allowed": False,
-        }
-        if resource_budget is not None:
-            response["resource_budget"] = resource_budget
-        return response
-    result = evaluate_economic_guard(EconomicGuardInput(
+    # Keep URL values available as an auditable diagnostic. They never become
+    # the economic authority used by this endpoint, even when they evaluate to
+    # ``allowed``.
+    diagnostic = evaluate_economic_guard(EconomicGuardInput(
         cash_available=cash_available, min_cash=min_cash, margin_rate=margin_rate,
         min_margin_rate=min_margin_rate, inventory_days=inventory_days,
         max_inventory_days=max_inventory_days, budget_remaining=budget_remaining,
         min_budget_remaining=min_budget_remaining,
     ))
-    quality_state = "VALID" if result.status == "allowed" else "BLOCKED"
-    response = {"contract_id": "kjds-economics-guard-v1", "status": result.status.upper(),
-                "reasons": list(result.reasons), "snapshot_sha256": result.snapshot_sha256,
-                "quality_state": quality_state, "external_write_allowed": False}
+
+    diagnostic_reasons = [
+        "cash_snapshot_missing" if reason == "cash_available_missing" else reason
+        for reason in diagnostic.reasons
+    ]
+    diagnostic_has_breach = any(
+        reason not in {"cash_snapshot_missing"}
+        for reason in diagnostic_reasons
+    )
+    reader = getattr(runtime, "pm_economic_guard_reader", None)
+    scope_key = (
+        f"{principal.tenant_ref}/{resolved_entity}/{resolved_store_ref}"
+        if resolved_entity and scope_reason is None
+        else None
+    )
+    authority_read: ServerEconomicGuardRead | None = None
+    authority_reason: str | None = None
+    if reader is None:
+        authority_reason = "server_observation_unavailable:economic_guard"
+    elif scope_key is None:
+        authority_reason = scope_reason or "entity_scope_authority_missing"
+    else:
+        try:
+            raw_read = (
+                reader
+                if isinstance(reader, ServerEconomicGuardRead)
+                else reader(scope_key=scope_key, observed_at=cutoff)
+            )
+            authority_read = _coerce_server_economic_guard_read(
+                raw_read,
+                scope_key=scope_key,
+                observed_at=cutoff,
+            )
+            if not authority_read.observation.is_current(cutoff):
+                authority_reason = authority_read.observation.failure_reason(cutoff)
+                if authority_reason is None:
+                    authority_reason = "server_observation_stale:economic_guard"
+        except Exception:
+            # Adapter details can contain platform or credential material. The
+            # API exposes a stable hold reason only.
+            authority_read = None
+            authority_reason = "server_observation_unavailable:economic_guard"
+
+    if authority_read is not None and authority_reason is None:
+        result = authority_read.guard
+        status = result.status.upper()
+        reasons = list(result.reasons)
+        quality_state = "VALID" if result.status == "allowed" else "BLOCKED"
+        admission_state = "ALLOW" if result.status == "allowed" else "HOLD"
+        status_source = "server_authority"
+        snapshot_sha256 = result.snapshot_sha256
+    else:
+        # A caller diagnostic may conservatively produce a HOLD when it sees a
+        # breach, but a favorable caller claim can never produce ALLOW.
+        status = "BLOCKED" if diagnostic_has_breach else "UNKNOWN"
+        if cash_available is None and not any(
+            value is not None
+            for value in (margin_rate, inventory_days, budget_remaining)
+        ) and budget_id is None:
+            # Preserve the legacy no-data reason while exposing the stronger
+            # authority diagnosis in its dedicated field below.
+            reasons = ["cash_snapshot_missing"]
+        else:
+            reasons = [authority_reason or "server_observation_unavailable:economic_guard"]
+            reasons.extend(diagnostic_reasons)
+        if diagnostic_has_breach:
+            quality_state = "BLOCKED"
+        elif authority_read is not None:
+            quality_state = (
+                "STALE"
+                if authority_reason and "stale" in authority_reason
+                else {
+                    "valid": "VALID",
+                    "partial": "PARTIAL",
+                    "stale": "STALE",
+                    "blocked": "BLOCKED",
+                    "unknown": "NO_DATA",
+                }.get(authority_read.observation.status, "NO_DATA")
+            )
+        else:
+            quality_state = (
+                "STALE" if authority_reason and "stale" in authority_reason else "NO_DATA"
+            )
+        admission_state = "HOLD"
+        status_source = (
+            "caller_diagnostic_hold" if diagnostic_has_breach else "unavailable"
+        )
+        snapshot_sha256 = None
+
+    response = {
+        "contract_id": "kjds-economics-guard-v1",
+        "status": status,
+        "reason": reasons[0] if reasons else None,
+        "reasons": list(dict.fromkeys(reasons)),
+        "snapshot_sha256": snapshot_sha256,
+        "quality_state": quality_state,
+        "admission_state": admission_state,
+        "status_source": status_source,
+        "authority": (
+            authority_read.observation.as_dict()
+            if authority_read is not None and authority_reason is None
+            else None
+        ),
+        "authority_reason": authority_reason,
+        "caller_diagnostic": {
+            "status": diagnostic.status.upper(),
+            "reasons": diagnostic_reasons,
+            "snapshot_sha256": diagnostic.snapshot_sha256,
+            "source": "caller_query_parameters",
+            "used_for_admission": False,
+        },
+        "scope": {
+            "tenant_id": principal.tenant_ref,
+            "entity_ref": resolved_entity,
+            "store_ref": resolved_store_ref,
+            "scope_key": scope_key,
+            "grant_status": scope_grant.get("status") if scope_grant else None,
+        },
+        "external_write_allowed": False,
+    }
     if resource_budget is not None:
         response["resource_budget"] = resource_budget
     return response
