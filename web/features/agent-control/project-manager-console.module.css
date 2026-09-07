@@ -57,4 +57,4 @@
 .loading { max-width: 1440px; margin: 18px auto; }
 @media (max-width: 900px) { .page { padding: 18px; } .header { align-items: flex-start; flex-direction: column; } .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gateGrid, .columns { grid-template-columns: 1fr 1fr; } .task, .frontierCard { grid-template-columns: 90px 1fr; } .task > div:last-child, .frontierCard > div:last-child { grid-column: 2; } }
 @media (max-width: 520px) { .page { padding: 12px; } .metrics, .gateGrid, .columns { grid-template-columns: 1fr 1fr; } .scope strong { margin-left: 0; width: 100%; } .task, .frontierCard { grid-template-columns: 1fr; } .task > div:last-child, .frontierCard > div:last-child { grid-column: 1; } }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+@media (prefers-reduced-motion: reduce) { .page, .page * { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

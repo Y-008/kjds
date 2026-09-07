@@ -10,7 +10,7 @@ export type ApiCredential = {
   scopeExplicit: boolean;
 };
 
-export function webAuthMode(environment: NodeJS.ProcessEnv = process.env): WebAuthMode {
+export function webAuthMode(environment: Partial<NodeJS.ProcessEnv> = process.env): WebAuthMode {
   const configured = (environment.KJDS_WEB_AUTH_MODE ?? "legacy").trim().toLowerCase();
   if (configured !== "legacy" && configured !== "supabase") {
     throw new Error("KJDS_WEB_AUTH_MODE must be legacy or supabase");
@@ -102,7 +102,7 @@ export function credentialsByActor(raw: string | undefined): Map<string, ApiCred
 }
 
 export function resolveLegacyApiCredential(
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: Partial<NodeJS.ProcessEnv> = process.env,
 ): ApiCredential {
   const configuredActorId = environment.KJDS_API_ACTOR?.trim();
   const directApiKey = environment.KJDS_API_KEY?.trim();
