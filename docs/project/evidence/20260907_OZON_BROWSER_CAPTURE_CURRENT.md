@@ -15,3 +15,5 @@ The automatically generated next-action queue is `output/playwright/ozon-next-ac
 The current cross-system acceptance snapshot is `output/playwright/ozon-production-acceptance-snapshot.json`. At capture time the exact scope grant was ready and the browser evidence projection was ready, while the official production gate remained blocked because the managed runtime identity configuration, official Ozon readback, RealFBS confirmation, and bank evidence were not all available.
 
 The snapshot also records seven historical managed leases for this scope and zero current unrevoked, unexpired leases. The latest historical lease expired on 2026-08-07, so it is not valid production evidence.
+
+The live project graph `kjds-059-bas123` was queried with the exact store scope. Its frontier summary is preserved at `output/playwright/ozon-project-graph-frontier-summary.json`: status `BLOCKED`, 238 frontier nodes, 611 blockers, and state counts of 354 `STALE`, 33 `NO_DATA`, and 13 `BLOCKED`. The next safe action is monitor-owned refresh of stale observations; no external dispatch is permitted from this snapshot.
