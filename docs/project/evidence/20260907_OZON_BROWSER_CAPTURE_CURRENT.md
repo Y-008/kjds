@@ -17,3 +17,9 @@ The current cross-system acceptance snapshot is `output/playwright/ozon-producti
 The snapshot also records seven historical managed leases for this scope and zero current unrevoked, unexpired leases. The latest historical lease expired on 2026-08-07, so it is not valid production evidence.
 
 The live project graph `kjds-059-bas123` was queried with the exact store scope. Its frontier summary is preserved at `output/playwright/ozon-project-graph-frontier-summary.json`: status `BLOCKED`, 238 frontier nodes, 611 blockers, and state counts of 354 `STALE`, 33 `NO_DATA`, and 13 `BLOCKED`. The next safe action is monitor-owned refresh of stale observations; no external dispatch is permitted from this snapshot.
+
+The monitor-owned refresh was then executed locally after fixing a blocked
+content-projection composition bug. The route returned HTTP 200 with
+`scope_authority=passed`, all M0-M4 gates still `blocked`, and
+`external_write_allowed=false`; the exact receipt and graph state are recorded
+in [20260907_OPERATING_GATE_OBSERVATION.md](20260907_OPERATING_GATE_OBSERVATION.md).

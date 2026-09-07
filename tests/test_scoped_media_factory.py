@@ -356,6 +356,30 @@ def test_missing_or_invalid_entity_reads_no_upstream_sources():
     assert missing["control_envelope"]["scoped_input_read"] is False
 
 
+@pytest.mark.parametrize("raw_read", [False, True])
+def test_blocked_product_content_projection_keeps_read_flag_and_does_not_crash(
+    raw_read: bool,
+):
+    blocked = product_projection(status="blocked")
+    blocked["control_envelope"]["raw_product_content_read"] = raw_read
+    blocked = hashed(blocked)
+    service, content, media = workspace(
+        content=ProductContent(blocked),
+    )
+
+    result = service.project(
+        principal=principal(),
+        entity_scope=SCOPE,
+        store_ref="ozon-primary",
+        as_of=AT,
+    )
+
+    assert result["status"] == "blocked"
+    assert result["control_envelope"]["scoped_input_read"] is raw_read
+    assert content.calls == 1
+    assert media.calls == 0
+
+
 def test_exact_scope_projection_is_deterministic_and_suggestion_only():
     service, _, _ = workspace()
 

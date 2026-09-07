@@ -176,6 +176,11 @@ class ScopedContentMediaFactoryWorkspace:
                     *[self._blocker(reason) for reason in conflicts],
                     *self._blockers(content.get("blockers")),
                 ],
+                raw_read=bool(
+                    content.get("control_envelope", {}).get(
+                        "raw_product_content_read", False
+                    )
+                ),
                 upstream={
                     "product_content_snapshot_sha256": content.get(
                         "snapshot_sha256"
