@@ -284,7 +284,7 @@ def evaluate_control_loop(
 
     try:
         return run(project)
-    except ObjectiveControlLoopError as exc:
+    except (ObjectiveControlLoopError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -316,7 +316,7 @@ def compile_control_metric(
 
     try:
         return run(compile)
-    except MetricRecipeError as exc:
+    except (MetricRecipeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -331,7 +331,10 @@ def append_control_decision(
     _authorized_scope(principal, body.scope)
 
     def append() -> dict[str, Any]:
-        payload = _bounded_payload(body.payload)
+        try:
+            payload = _bounded_payload(body.payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
             event = _ledger.append(
                 body.event_type,

@@ -37,7 +37,6 @@ class _Repo:
             }
         )
 
-
 def _objective(**overrides):
     values = {
         "objective_id": "obj-cm3",
@@ -163,3 +162,42 @@ def test_decision_payload_rejects_authority_fields():
         )
     assert caught.value.status_code == 422
     assert "not allowed" in str(caught.value.detail)
+
+
+def test_invalid_control_loop_inputs_return_422(monkeypatch):
+    with pytest.raises(HTTPException) as objective_error:
+        control_loop.evaluate_control_loop(
+            control_loop.EvaluateRequest(
+                objective=_objective(max_change="0"),
+                observation=_observation(),
+            ),
+            principal=ACTOR,
+        )
+    assert objective_error.value.status_code == 422
+
+    with pytest.raises(HTTPException) as metric_error:
+        control_loop.compile_control_metric(
+            control_loop.MetricRecipeRequest(
+                recipe_id="invalid-metric",
+                scope=SCOPE,
+                metric_id="missing",
+            ),
+            principal=ACTOR,
+        )
+    assert metric_error.value.status_code == 422
+
+    repository = _Repo()
+    monkeypatch.setattr(control_loop.runtime, "repo", repository)
+    with pytest.raises(HTTPException) as payload_error:
+        control_loop.append_control_decision(
+            control_loop.DecisionAppendRequest(
+                event_type="decision_proposed",
+                decision_id="decision-api-invalid-payload",
+                scope=SCOPE,
+                payload={"permit": "forbidden"},
+                idempotency_key="control-loop-invalid-payload",
+                occurred_at=WHEN,
+            ),
+            principal=ACTOR,
+        )
+    assert payload_error.value.status_code == 422
