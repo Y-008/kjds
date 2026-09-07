@@ -17,10 +17,15 @@ test("AI ERP kit keeps truth states and action contracts explicit", () => {
 });
 
 test("AI ERP kit exposes accessible responsive boundaries", () => {
+  assert.match(ui, /const titleId = useId\(\)/);
+  assert.doesNotMatch(ui, /aria-labelledby="(?:action-contract-title|evidence-trail-title|state-matrix-title)"/);
   assert.match(styles, /@media \(max-width: 700px\)/);
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(styles, /:focus-visible/);
   assert.match(styles, /overflow-wrap: anywhere/);
+  assert.match(styles, /--kjds-surface-elevated/);
+  assert.match(styles, /--kjds-border-default/);
+  assert.doesNotMatch(styles, /--ui2-/);
   assert.doesNotMatch(styles, /@media[^{}]*\{\s*\*[, ]/);
 });
 
