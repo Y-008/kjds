@@ -39004,6 +39004,59 @@
         "summary": "Project Heartbeat"
       }
     },
+    "/v1/project-graph/{project_id}/heartbeat/latest": {
+      "get": {
+        "description": "Replay the latest scoped PM heartbeat without recomputing or mutating it.",
+        "operationId": "latest_project_heartbeat_v1_project_graph__project_id__heartbeat_latest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Latest Project Heartbeat"
+      }
+    },
     "/v1/project-graph/{project_id}/invalidate": {
       "post": {
         "description": "Evaluate an invalidation overlay and return its proof debt.\n\nCanonical graph rows are append-only and are not overwritten by this\nproposal endpoint.  A reviewed graph event can later be persisted by the\ngraph authority with the returned proposal hash.",

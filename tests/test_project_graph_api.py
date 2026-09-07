@@ -24,6 +24,7 @@ def test_project_graph_read_routes_are_registered():
     assert "/v1/project-graph/{project_id}/frontier" in paths
     assert "/v1/project-graph/{project_id}/task-contract" in paths
     assert "/v1/project-graph/{project_id}/release-contract/validate" in paths
+    assert "/v1/project-graph/{project_id}/heartbeat/latest" in paths
     assert "/v1/project-graph/{project_id}/critical-path" in paths
     assert "/v1/project-graph/{project_id}/blockers" in paths
     assert "/v1/project-graph/{project_id}/proof-debt" in paths
@@ -127,6 +128,36 @@ def test_release_contract_validation_never_grants_release(monkeypatch):
     assert result["validation"]["valid"] is True
     assert result["snapshot_binding"] == "bound"
     assert result["release_allowed"] is False
+    assert result["external_write_allowed"] is False
+
+
+def test_latest_heartbeat_replays_scoped_operating_snapshot(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"monitor"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        project_graph,
+        "_graph",
+        lambda *_args, **_kwargs: {
+            "scope": {"entity_ref": "entity-a", "store_ref": "store-a"},
+        },
+    )
+    monkeypatch.setattr(
+        runtime.project_heartbeat_store,
+        "latest",
+        lambda **_kwargs: {
+            "heartbeat_id": "hb-1",
+            "payload": {"operating_snapshot": {"snapshot_sha256": "a" * 64}},
+        },
+    )
+    result = project_graph.latest_project_heartbeat(
+        project_id="project-a", principal=principal, store_ref="store-a"
+    )
+    assert result["status"] == "REPLAYED"
+    assert result["operating_snapshot"]["snapshot_sha256"] == "a" * 64
     assert result["external_write_allowed"] is False
 
 

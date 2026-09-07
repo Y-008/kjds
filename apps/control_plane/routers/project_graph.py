@@ -1553,3 +1553,50 @@ def project_heartbeat(
         }
 
     return run(record)
+
+
+@router.get("/v1/project-graph/{project_id}/heartbeat/latest")
+def latest_project_heartbeat(
+    project_id: str,
+    principal: Annotated[Principal, Depends(current_principal)],
+    store_ref: str = "ozon-primary",
+):
+    """Replay the latest scoped PM heartbeat without recomputing or mutating it."""
+
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    ensure_store_scope(principal, store_ref)
+
+    def read() -> dict[str, Any]:
+        graph = _graph(project_id, principal, store_ref, None)
+        entity_ref = _proposal_entity_id(graph)
+        heartbeat = runtime.project_heartbeat_store.latest(
+            project_id=project_id,
+            tenant_id=principal.tenant_ref,
+            entity_id=entity_ref,
+            store_ref=store_ref,
+        )
+        if heartbeat is None:
+            return {
+                "contract_id": "kjds-project-heartbeat-replay-v1",
+                "status": "NO_DATA",
+                "project_id": project_id,
+                "entity_ref": entity_ref,
+                "store_ref": store_ref,
+                "heartbeat": None,
+                "external_write_allowed": False,
+            }
+        payload = heartbeat.get("payload") if isinstance(heartbeat.get("payload"), Mapping) else {}
+        operating = payload.get("operating_snapshot") if isinstance(payload, Mapping) else None
+        return {
+            "contract_id": "kjds-project-heartbeat-replay-v1",
+            "status": "REPLAYED",
+            "project_id": project_id,
+            "entity_ref": entity_ref,
+            "store_ref": store_ref,
+            "heartbeat": heartbeat,
+            "operating_snapshot": operating,
+            "replay_sha256": _stable_hash(heartbeat),
+            "external_write_allowed": False,
+        }
+
+    return run(read)
