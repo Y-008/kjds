@@ -770,6 +770,75 @@ def test_dispatch_wave_persists_and_replays_the_immutable_proposal(monkeypatch):
     assert all(call["proposal"]["external_write_allowed"] is False for call in fake.calls)
 
 
+def test_dispatch_wave_attaches_wbs_task_brief_and_definition_of_ready(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"operator"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    graph = {
+        "scope": {"tenant_ref": "tenant-a", "entity_ref": "entity-a", "store_ref": "store-a"},
+        "project": {"id": "project-a", "title": "Control tower", "baseline_sha256": "h" * 64},
+        "snapshot_sha256": "a" * 64,
+        "nodes": [],
+        "edges": [],
+        "tasks": [
+            {
+                "id": "task-a",
+                "title": "Define contract",
+                "owner": "agent-a",
+                "dependencies": [],
+                "state": "pending",
+                "workspace": "apps/control_plane/project_task_contracts.py",
+                "verification_condition": "focused tests pass",
+            }
+        ],
+    }
+    projection = {
+        "status": "NO_DATA",
+        "as_of": "2026-09-06T00:00:00+00:00",
+        "snapshot_sha256": "a" * 64,
+        "frontier": [{"id": "task-a", "label": "Define contract", "priority": 1, "weight": 1, "dependencies": []}],
+        "frontier_ids": ["task-a"],
+        "blockers": [],
+    }
+    monkeypatch.setattr(project_graph, "_graph", lambda *_args, **_kwargs: graph)
+    monkeypatch.setattr(project_graph, "plan_proof_frontier", lambda _graph: projection)
+
+    captured: dict[str, object] = {}
+
+    class FakeLedger:
+        def record(self, **values):
+            captured.update(values)
+            return {
+                "proposal_id": "pgp-contract",
+                "revision": 1,
+                "idempotency_key": values["idempotency_key"],
+                "request_sha256": values["request_sha256"],
+                "proposal_sha256": values["proposal_sha256"],
+                "payload_sha256": "c" * 64,
+                "payload": dict(values["proposal"]),
+                "replayed": False,
+            }
+
+    monkeypatch.setattr(runtime, "project_graph_proposal_ledger", FakeLedger())
+    result = project_graph.dispatch_wave(
+        project_id="project-a",
+        body=project_graph.DispatchWaveInput(idempotency_key="dispatch-contract-1"),
+        principal=principal,
+        store_ref="store-a",
+    )
+    task = result["tasks"][0]
+    assert result["task_contract"]["status"] == "valid"
+    assert task["task_contract_status"] == "ready"
+    assert task["work_breakdown"]["level"] == "task"
+    assert task["task_brief"]["owner"] == "agent-a"
+    assert task["definition_of_ready"]["valid"] is True
+    assert result["dispatch_allowed"] is False
+    assert result["external_write_allowed"] is False
+
+
 def test_invalidation_persists_with_expected_revision_and_stays_proposal_only(monkeypatch):
     principal = Principal(
         actor_id="reviewer",

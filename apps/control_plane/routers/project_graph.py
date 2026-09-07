@@ -26,7 +26,7 @@ from ..economic_guard_service import (
 )
 from ..operating_snapshot import build_operating_snapshot
 from ..project_manager_cycle import normalize_task_result
-from ..project_task_contracts import project_harness_graph
+from ..project_task_contracts import ProjectTaskContractError, project_harness_graph, validate_task_brief
 from ..proof_frontier_planner import plan_proof_frontier
 from ..runtime import runtime
 from ..security import Principal
@@ -566,6 +566,70 @@ def _persist_graph_proposal(
     return response
 
 
+def _dispatch_task_contract(
+    *,
+    project_id: str,
+    item: Mapping[str, Any],
+    contract_node: Mapping[str, Any] | None,
+    graph: Mapping[str, Any],
+    projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Attach a bounded WBS/DoR projection to one dispatch proposal task."""
+
+    if contract_node is None:
+        return {
+            "task_contract_status": "unavailable",
+            "task_brief": None,
+            "definition_of_ready": {
+                "valid": False,
+                "errors": ["task is missing from five-level WBS projection"],
+                "warnings": [],
+            },
+        }
+    scope = graph.get("scope") if isinstance(graph.get("scope"), Mapping) else {}
+    task_id = str(item.get("id") or contract_node.get("node_id"))
+    brief = {
+        "task_id": task_id,
+        "parent_id": contract_node.get("parent_id"),
+        "scope": dict(scope),
+        "owner": contract_node.get("owner") or "",
+        "reviewer": contract_node.get("reviewer") or "",
+        "objective": str(item.get("label") or contract_node.get("title") or task_id),
+        "business_context": f"project graph {project_id}",
+        "allowed_scope": list(contract_node.get("exact_write_set") or ()),
+        "prohibited_scope": ["external_write", "permit", "approval", "credential"],
+        "dependencies": list(contract_node.get("dependencies") or ()),
+        "input_snapshot": {"graph_snapshot_sha256": projection.get("snapshot_sha256")},
+        "exact_files_or_domain": list(contract_node.get("exact_write_set") or ()),
+        "expected_outputs": ["TaskResult", "test_receipt"],
+        "acceptance_tests": list(contract_node.get("acceptance_tests") or ()),
+        "budget": {},
+        "lease": {},
+        "deadline": None,
+        "risk_tier": contract_node.get("risk_tier") or "R0",
+        "rollback_ref": contract_node.get("rollback_ref"),
+        "reporting_format": ["TaskResult"],
+    }
+    report = validate_task_brief(brief)
+    return {
+        "task_contract_status": "ready" if report.valid else "blocked",
+        "work_breakdown": {
+            "node_id": contract_node.get("node_id"),
+            "level": contract_node.get("level"),
+            "parent_id": contract_node.get("parent_id"),
+            "status": contract_node.get("status"),
+            "claim_level": contract_node.get("claim_level"),
+        },
+        "task_brief": brief,
+        "definition_of_ready": {
+            "valid": report.valid,
+            "errors": list(report.errors),
+            "warnings": list(report.warnings),
+            "snapshot_sha256": report.snapshot_sha256,
+        },
+    }
+
+
 def _graph_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     """Produce a deterministic, field-level diff for two planner results."""
 
@@ -965,6 +1029,19 @@ def dispatch_wave(
         ).lower():
             raise ValueError("dispatch snapshot is stale; refresh the project graph")
         projection = plan_proof_frontier(graph)
+        task_contract_projection: dict[str, Any] | None = None
+        task_contract_error: str | None = None
+        try:
+            task_contract_projection = project_harness_graph(graph)
+        except ProjectTaskContractError as exc:
+            # A legacy or incomplete graph can still produce a proof proposal,
+            # but the missing WBS contract must remain explicit in the packet.
+            task_contract_error = str(exc)
+        contract_nodes = {
+            str(item.get("node_id")): item
+            for item in (task_contract_projection or {}).get("nodes", [])
+            if isinstance(item, Mapping) and item.get("node_id") is not None
+        }
         proposal_key = body.idempotency_key or (
             f"dispatch:{project_id}:{store_ref}:{body.expected_head or 'current'}:"
             f"{body.max_tasks}:{body.budget_units or 'unbounded'}"
@@ -1054,6 +1131,13 @@ def dispatch_wave(
                 "requires_idempotency_key": True,
                 "requires_fresh_head": True,
                 "requires_recovery_on_unknown_outcome": True,
+                **_dispatch_task_contract(
+                    project_id=project_id,
+                    item=item,
+                    contract_node=contract_nodes.get(str(item.get("id"))),
+                    graph=graph,
+                    projection=projection,
+                ),
             }
             for item in selected
         ]
@@ -1081,6 +1165,16 @@ def dispatch_wave(
                 ),
             },
             "external_write_allowed": False,
+            "task_contract": {
+                "status": (
+                    "valid"
+                    if task_contract_projection and task_contract_projection.get("validation", {}).get("valid")
+                    else "blocked" if task_contract_projection else "unavailable"
+                ),
+                "projection_sha256": (task_contract_projection or {}).get("projection_sha256"),
+                "validation": (task_contract_projection or {}).get("validation"),
+                "error": task_contract_error,
+            },
         }
         proposal["proposal_sha256"] = _stable_hash(proposal)
         return _persist_graph_proposal(
