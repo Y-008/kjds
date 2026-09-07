@@ -847,6 +847,55 @@ def _graph_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]
     return diff
 
 
+def _graph_read_envelope(
+    *,
+    project_id: str,
+    graph: Mapping[str, Any],
+    projection: Mapping[str, Any],
+    data: Any,
+    status: str,
+    source_snapshot_sha256: str | None,
+    as_of: Any,
+    contract_id: str,
+    claim_level: str = "engineering",
+    legacy_aliases: Mapping[str, Any] | None = None,
+    integrity: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the common read-only envelope for graph projections.
+
+    Frontier-family endpoints used to return unrelated bare values.  Keeping
+    the envelope assembly here makes scope, historical cutoff, source hash and
+    the write boundary impossible to omit when a new read projection is
+    added.  ``legacy_aliases`` preserves names used by older clients while
+    the canonical payload remains under ``data``.
+    """
+
+    raw_scope = graph.get("scope") if isinstance(graph.get("scope"), Mapping) else {}
+    scope = {
+        key: raw_scope.get(key)
+        for key in ("tenant_ref", "entity_ref", "store_ref")
+    }
+    resolved_store = scope["store_ref"] or projection.get("store_ref")
+    envelope: dict[str, Any] = {
+        "contract_id": contract_id,
+        "project_id": project_id,
+        "scope": scope,
+        "store_ref": resolved_store,
+        "as_of": as_of,
+        "source_snapshot_sha256": source_snapshot_sha256,
+        "status": status,
+        "claim_level": claim_level,
+        "data": data,
+        "external_write_allowed": False,
+    }
+    if integrity is not None:
+        envelope["integrity"] = dict(integrity)
+    if legacy_aliases:
+        envelope.update(dict(legacy_aliases))
+    envelope["result_sha256"] = _stable_hash(envelope)
+    return envelope
+
+
 @router.get("/v1/project-graph/{project_id}/frontier")
 def graph_frontier(
     project_id: str,
@@ -949,7 +998,24 @@ def graph_critical_path(
     as_of: str | None = None,
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
-    return run(lambda: plan_proof_frontier(_graph(project_id, principal, store_ref, as_of))["critical_path"])
+
+    def project() -> dict[str, Any]:
+        graph = _graph(project_id, principal, store_ref, as_of)
+        projection = plan_proof_frontier(graph)
+        critical = projection.get("critical_path", {})
+        return _graph_read_envelope(
+            project_id=project_id,
+            graph=graph,
+            projection=projection,
+            data=critical,
+            status=str(projection.get("status") or "NO_DATA"),
+            source_snapshot_sha256=projection.get("snapshot_sha256"),
+            as_of=projection.get("as_of"),
+            contract_id="kjds-project-graph-critical-path-v2",
+            legacy_aliases={"critical_path": critical},
+        )
+
+    return run(project)
 
 
 @router.get("/v1/project-graph/{project_id}/blockers")
@@ -1118,7 +1184,43 @@ def graph_replay(
     as_of: str | None = None,
 ):
     ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
-    return run(lambda: plan_proof_frontier(_graph(project_id, principal, store_ref, as_of))["snapshot"])
+
+    def project() -> dict[str, Any]:
+        graph = _graph(project_id, principal, store_ref, as_of)
+        projection = plan_proof_frontier(graph)
+        snapshot = projection.get("snapshot")
+        snapshot_hash = projection.get("snapshot_sha256")
+        snapshot_integrity = (
+            isinstance(snapshot, Mapping)
+            and snapshot.get("snapshot_sha256") == snapshot_hash
+            and isinstance(snapshot_hash, str)
+            and _stable_hash(
+                {
+                    key: value
+                    for key, value in snapshot.items()
+                    if key != "snapshot_sha256"
+                }
+            )
+            == snapshot_hash
+        )
+        return _graph_read_envelope(
+            project_id=project_id,
+            graph=graph,
+            projection=projection,
+            data=snapshot,
+            status=str(projection.get("status") or "NO_DATA"),
+            source_snapshot_sha256=snapshot_hash,
+            as_of=projection.get("as_of"),
+            contract_id="kjds-project-graph-replay-v2",
+            legacy_aliases={"snapshot": snapshot},
+            integrity={
+                "mode": "current_graph_projection",
+                "status": "VALID" if snapshot_integrity else "INVALID",
+                "snapshot_hash_verified": snapshot_integrity,
+            },
+        )
+
+    return run(project)
 
 
 @router.get("/v1/project-graph/{project_id}/diff")

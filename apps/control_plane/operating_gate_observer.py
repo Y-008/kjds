@@ -128,10 +128,13 @@ class OperatingGateObserverService:
             raise ValueError(
                 "operating Gate observation requires migration sequence 0070 or later"
             )
+        # All authority projections in one observation share the same
+        # semantic cutoff.  Reading them at wall-clock ``now`` would make a
+        # retry in the same hourly bucket produce a different input digest.
         subject_binding = self.agent_harness.operating_subject(
             project_id=project_id,
             principal=principal,
-            as_of=now,
+            as_of=bucket,
         )
         if subject_binding["status"] != "ready":
             raise ValueError(
@@ -158,7 +161,7 @@ class OperatingGateObserverService:
         authority = self.scope_grants.current(
             principal=operating_principal,
             store_ref=store_ref,
-            as_of=now,
+            as_of=bucket,
         )
         result = self.verifier.evaluate(
             workspace=workspace,

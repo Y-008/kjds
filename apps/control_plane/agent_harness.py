@@ -752,6 +752,25 @@ class AgentHarnessService:
                 ]
             obs_id = f"obs_{_sha(observation_identity)[:32]}"
 
+            def observation_time_matches(candidate: HarnessObservationRow) -> bool:
+                candidate_time = _utc(candidate.observed_at)
+                requested_time = observed_at.astimezone(UTC)
+                # Operating gate observations are hourly semantic snapshots.
+                # Older rows stored the invocation timestamp rather than the
+                # bucket start, so compare their canonical bucket during
+                # replay while keeping the stored append-only value intact.
+                if payload.get("source") in {
+                    "commerce_os_projection",
+                    "project_operating_subject_projection",
+                    "scope_grant_projection",
+                }:
+                    return candidate_time.replace(
+                        minute=0, second=0, microsecond=0
+                    ) == requested_time.replace(
+                        minute=0, second=0, microsecond=0
+                    )
+                return candidate_time == requested_time
+
             def observation_matches(candidate: HarnessObservationRow) -> bool:
                 return not (
                     candidate.project_id != project.id
@@ -767,7 +786,7 @@ class AgentHarnessService:
                     or candidate.authority != verifier.authority
                     or candidate.artifact_ref != payload["artifact_ref"]
                     or candidate.evidence_ref != payload.get("evidence_ref")
-                    or _utc(candidate.observed_at) != observed_at.astimezone(UTC)
+                    or not observation_time_matches(candidate)
                     or candidate.recorded_by != principal.actor_id
                 )
 

@@ -399,6 +399,8 @@ schema 时必须满足全部必填维度；桌下理线架至少绑定数量、�
 
 页面只负责展示、路由、表单体验、loading/empty/error 状态和用户交互；业务规则、权限、持久化、证据和事务必须留在后端服务。
 
+AI+ERP Web 统一采用 `EnterpriseShell`：ERP 工作台承载事实与队列，AI 只通过上下文建议、情景模拟和受控 `ActionContract` 进入操作链；Evidence、snapshot、as-of、权限、Permit、外部读回和回滚在同一页面上下文中可见。首期按 [ADR-0108](../adr/ADR-0108-ai-erp-enterprise-shell-and-seller-workbench.md) 以 UI2 作为唯一基础层渐进迁移，禁止页面自建壳、前端重算权威指标或用 `NO_DATA` 代替零值。
+
 ### 3.1 五条产品主旅程
 
 当前产品范围按用户必须完成的经营任务验收，不按页面或模块数量验收：
