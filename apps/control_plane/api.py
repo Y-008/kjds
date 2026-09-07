@@ -105,6 +105,7 @@ def is_write_safety_control_path(path: str) -> bool:
         path.endswith("/signal")
         or path.endswith("/dispatch-wave")
         or path.endswith("/invalidate")
+        or path.endswith("/release-contract/validate")
     )
     return (
         path in KILL_SWITCH_CONTROL_PATHS

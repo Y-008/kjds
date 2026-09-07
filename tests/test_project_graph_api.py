@@ -23,6 +23,7 @@ def test_project_graph_read_routes_are_registered():
     paths = {route.path for route in registered_routes()}
     assert "/v1/project-graph/{project_id}/frontier" in paths
     assert "/v1/project-graph/{project_id}/task-contract" in paths
+    assert "/v1/project-graph/{project_id}/release-contract/validate" in paths
     assert "/v1/project-graph/{project_id}/critical-path" in paths
     assert "/v1/project-graph/{project_id}/blockers" in paths
     assert "/v1/project-graph/{project_id}/proof-debt" in paths
@@ -37,6 +38,9 @@ def test_project_graph_read_routes_are_registered():
     ) is True
     assert is_write_safety_control_path(
         "/v1/project-graph/project-a/heartbeat"
+    ) is True
+    assert is_write_safety_control_path(
+        "/v1/project-graph/project-a/release-contract/validate"
     ) is True
     for suffix in ("signal", "dispatch-wave", "invalidate"):
         assert is_write_safety_control_path(
@@ -78,6 +82,51 @@ def test_task_contract_is_read_only_projection(monkeypatch):
     )
     assert result["projection_only"] is True
     assert result["ready_frontier"] == ["task-a"]
+    assert result["external_write_allowed"] is False
+
+
+def test_release_contract_validation_never_grants_release(monkeypatch):
+    principal = Principal(
+        actor_id="pm-test",
+        roles=frozenset({"reviewer"}),
+        tenant_ref="tenant-a",
+        store_refs=frozenset({"store-a"}),
+    )
+    monkeypatch.setattr(
+        project_graph,
+        "_graph",
+        lambda *_args, **_kwargs: {
+            "snapshot_sha256": "c" * 64,
+            "scope": {"tenant_ref": "tenant-a", "entity_ref": "entity-a", "store_ref": "store-a"},
+        },
+    )
+    body = {
+        "wave_id": "W-001",
+        "goal": "contract validation",
+        "included_tasks": ["WP-001"],
+        "excluded_tasks": [],
+        "dependency_frontier": [],
+        "claim_level": "engineering",
+        "exact_head": "a" * 40,
+        "migration_head": "migration-1",
+        "changed_paths": ["apps/control_plane/project_task_contracts.py"],
+        "api_schema_diff": {},
+        "test_receipts": ["test:contract"],
+        "runtime_receipt": None,
+        "business_evidence": None,
+        "economic_impact": None,
+        "open_blockers": [],
+        "invalidated_nodes": [],
+        "rollback_ref": "git:HEAD",
+        "next_wave": [],
+        "snapshot_id": "c" * 64,
+    }
+    result = project_graph.validate_graph_release_contract(
+        project_id="project-a", body=body, principal=principal, store_ref="store-a"
+    )
+    assert result["validation"]["valid"] is True
+    assert result["snapshot_binding"] == "bound"
+    assert result["release_allowed"] is False
     assert result["external_write_allowed"] is False
 
 

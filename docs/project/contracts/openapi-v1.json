@@ -39377,6 +39377,87 @@
         "summary": "Graph Proposal"
       }
     },
+    "/v1/project-graph/{project_id}/release-contract/validate": {
+      "post": {
+        "description": "Validate a wave packet against the release contract without publishing it.\n\nThis is a read-only contract check.  A valid packet remains evidence for\nreview only: it cannot mint a Permit, acquire a lease, enqueue an Agent,\nor perform an Ozon/platform write.",
+        "operationId": "validate_graph_release_contract_v1_project_graph__project_id__release_contract_validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "store_ref",
+            "required": false,
+            "schema": {
+              "default": "ozon-primary",
+              "title": "Store Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "KjdsApiKey": []
+          }
+        ],
+        "summary": "Validate Graph Release Contract"
+      }
+    },
     "/v1/project-graph/{project_id}/replay": {
       "get": {
         "operationId": "graph_replay_v1_project_graph__project_id__replay_get",

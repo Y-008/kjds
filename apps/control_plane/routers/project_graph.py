@@ -29,6 +29,11 @@ from ..project_task_contracts import project_harness_graph
 from ..proof_frontier_planner import plan_proof_frontier
 from ..runtime import runtime
 from ..security import Principal
+from ..wave_release_packet import (
+    build_release_packet,
+    derive_claim_level,
+    validate_release_packet,
+)
 
 router = APIRouter()
 
@@ -600,6 +605,49 @@ def graph_task_contract(
             _graph(project_id, principal, store_ref, as_of)
         )
     )
+
+
+@router.post("/v1/project-graph/{project_id}/release-contract/validate")
+def validate_graph_release_contract(
+    project_id: str,
+    body: dict[str, Any],
+    principal: Annotated[Principal, Depends(current_principal)] = None,
+    store_ref: str = "ozon-primary",
+    as_of: str | None = None,
+):
+    """Validate a wave packet against the release contract without publishing it.
+
+    This is a read-only contract check.  A valid packet remains evidence for
+    review only: it cannot mint a Permit, acquire a lease, enqueue an Agent,
+    or perform an Ozon/platform write.
+    """
+
+    ensure_role(principal, "operator", "reviewer", "compliance", "admin", "monitor")
+    ensure_store_scope(principal, store_ref)
+
+    def validate() -> dict[str, Any]:
+        graph = _graph(project_id, principal, store_ref, as_of)
+        report = validate_release_packet(body)
+        result: dict[str, Any] = {
+            "contract_id": "kjds-project-graph-release-contract-validation-v1",
+            "project_id": project_id,
+            "validation": report.as_dict(),
+            "source_snapshot_sha256": graph.get("snapshot_sha256"),
+            "snapshot_binding": (
+                "bound"
+                if body.get("snapshot_id") == graph.get("snapshot_sha256")
+                else "unbound"
+            ),
+            "claim_level": derive_claim_level(body),
+            "release_allowed": False,
+            "external_write_allowed": False,
+        }
+        if report.valid:
+            result["packet"] = build_release_packet(body).as_dict()
+        result["result_sha256"] = _stable_hash(result)
+        return result
+
+    return run(validate)
 
 
 @router.get("/v1/graph/{project_id}/historical-frontier")
